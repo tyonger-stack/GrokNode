@@ -115,6 +115,22 @@ The container:
 - is validated before the coordinator connects; and
 - is stopped or replaced through the same settings lifecycle.
 
+The container runs as `grok-bot-local-vm` from the image
+`public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest`, which
+OrbStack publishes as the domain `grok-bot-local-vm.orb.local`. Six ports are
+forwarded to loopback on the host:
+
+| Host port | Purpose |
+| --- | --- |
+| 1337 | box execution daemon |
+| 1339 | fork desktop router |
+| 1340 | host gateway |
+| 6080 | primary noVNC desktop |
+| 6081 | fork noVNC desktop |
+| 8790 | egress tunnel websocket |
+
+![The local Docker container in OrbStack, showing its name, image, domain and six loopback port forwards](docs/assets/local-docker-container.png)
+
 Docker Desktop, or another compatible local Docker daemon, must be running.
 Remote mode remains the default.
 
