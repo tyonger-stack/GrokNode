@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "product": "Grok Bot",
+  "version": "0.18.0",
+  "artifacts": [
+    {
+      "platform": "darwin",
+      "architecture": "arm64",
+      "path": "macos-arm64/Grok_Bot_0.18.0.dmg",
+      "bytes": 155793020,
+      "sha256": "a253ccd8aab01e083f9812a0264354c5034d8ba7f0610bbb557e82ae77d203eb",
+      "sourceUrl": "https://downloads.cursor.com/grokbot/stable/darwin-arm64/0.18.0/Grok_Bot_0.18.0.dmg"
+    }
+  ],
+  "note": "This repository publishes the macOS arm64 reconstruction only. The Windows x64 installer is out of scope and is not listed here."
+}

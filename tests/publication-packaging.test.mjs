@@ -1,0 +1,94 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import createIgnore from "ignore";
+
+import { resolvePackagedAppArtifacts } from "../scripts/lib/packaged-app.mjs";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+test("packaged verification authority is the selected app bundle", () => {
+  const appPath = path.join(repoRoot, "dist", "Example.app");
+  const artifacts = resolvePackagedAppArtifacts(appPath);
+  assert.equal(artifacts.appPath, appPath);
+  assert.equal(artifacts.asarPath, path.join(appPath, "Contents", "Resources", "app.asar"));
+  assert.equal(artifacts.unpackedPath, `${artifacts.asarPath}.unpacked`);
+  assert.notEqual(artifacts.asarPath, path.join(repoRoot, ".build", "app.asar"));
+  assert.throws(() => resolvePackagedAppArtifacts(path.join(repoRoot, ".build", "app.asar")), /\.app bundle/);
+});
+
+test("publication ignore rules retain reconstructed frontend source", async () => {
+  const ignoreRules = await readFile(path.join(repoRoot, ".gitignore"), "utf8");
+  assert.match(ignoreRules, /^\/recovered\/$/m);
+  assert.doesNotMatch(ignoreRules, /^recovered\/$/m);
+  const retained = "frontend/src/recovered/ui/sand-form-primitives.css";
+  const matcher = createIgnore().add(ignoreRules);
+  assert.equal(matcher.ignores(retained), false, `${retained} must remain addable in a fresh repository`);
+  assert.equal(matcher.ignores("recovered/generated-output.txt"), true, "root recovery output must remain ignored");
+});
+
+test("default packaging keeps the polished checksum-pinned renderer", async () => {
+  const source = await readFile(path.join(repoRoot, "scripts", "package-macos.mjs"), "utf8");
+  assert.match(source, /import \{ buildFidelityReconstructedAsar \} from "\.\/clean-build\.mjs"/);
+  assert.match(source, /await buildFidelityReconstructedAsar\(\)/);
+});
+
+test("Router settings and inference packaging expose only local providers", async () => {
+  const rendererPatch = await readFile(path.join(repoRoot, "scripts", "lib", "router-renderer-patch.mjs"), "utf8");
+  const preload = await readFile(path.join(repoRoot, "source", "electron-preload", "preload.ts"), "utf8");
+  const mainEdge = await readFile(path.join(repoRoot, "source", "electron-main", "main-edge.ts"), "utf8");
+  const inference = await readFile(path.join(repoRoot, "source", "host", "extensions", "inference", "inference-service.ts"), "utf8");
+  const providers = await readFile(path.join(repoRoot, "source", "host", "extensions", "inference", "provider-session.ts"), "utf8");
+  const openRouterProxy = await readFile(path.join(repoRoot, "source", "shared", "node", "openrouter-proxy.ts"), "utf8");
+  const codexDirect = await readFile(path.join(repoRoot, "source", "host", "extensions", "inference", "codex-direct-responses.ts"), "utf8");
+  const turnShell = await readFile(path.join(repoRoot, "source", "host", "runner", "turn-run-shell.ts"), "utf8");
+  const coordinator = await readFile(path.join(repoRoot, "source", "node-agent-coordinator", "inference-router.ts"), "utf8");
+  const coordinatorMain = await readFile(path.join(repoRoot, "source", "node-agent-coordinator", "main.ts"), "utf8");
+  const mcpBridge = await readFile(path.join(repoRoot, "source", "node-agent-coordinator", "routed-mcp-bridge.ts"), "utf8");
+  assert.match(rendererPatch, /value:"codex"/);
+  assert.match(rendererPatch, /value:"openrouter"/);
+  assert.match(rendererPatch, /label:"TokenHub"/);
+  assert.match(rendererPatch, /TokenHub account/);
+  assert.match(rendererPatch, /TokenHub model/);
+  assert.doesNotMatch(rendererPatch, /OpenRouter account|OpenRouter model|OpenRouter endpoint/);
+  assert.doesNotMatch(rendererPatch, /value:"cursor"|value:"claude-code"/);
+  assert.match(rendererPatch, /useState\(\{provider:"openrouter"/);
+  assert.match(rendererPatch, /desktop\.agent\.getInferenceRouter\(\)/);
+  assert.match(rendererPatch, /desktop\.agent\.setInferenceRouter\(n\)/);
+  assert.match(rendererPatch, /desktop\.secrets\.upsert/);
+  assert.match(rendererPatch, /Usage for /);
+  assert.match(rendererPatch, /Tracked activity/);
+  assert.match(preload, /getInferenceRouter: \(\) => edge\("getInferenceRouter"\)/);
+  assert.match(mainEdge, /syncHostSettingsToBox\(\{ inferenceProvider: provider \}\)/);
+  assert.match(mainEdge, /invoke\(deps\.settingsStore, "setInferenceProvider", provider\)/);
+  assert.match(mainEdge, /return \{ provider, usage:/);
+  assert.match(inference, /createProviderPromptSession/);
+  assert.match(inference, /PrivacyMode\.UNSPECIFIED/);
+  assert.match(providers, /https:\/\/chatgpt\.com\/backend-api\/codex/);
+  assert.match(providers, /streamCodexDirectResponses/);
+  assert.doesNotMatch(providers, /queryClaude|claude-code|resolveClaudeCodeCliPath/);
+  assert.match(codexDirect, /store: false/);
+  assert.match(codexDirect, /type: "function_call_output"/);
+  assert.match(providers, /parameters: jsonSchema\(toToolWireParameters\(parameters\)/);
+  assert.match(providers, /You are Grok Bot, a warm, concise desktop assistant/);
+  assert.match(providers, /recordRoutedUsage\(provider, usage\)/);
+  assert.match(openRouterProxy, /https:\/\/openrouter\.ai\/api\/v1/);
+  assert.match(openRouterProxy, /listOpenRouterProxyModels/);
+  assert.match(providers, /readPersistedOpenRouterModel/);
+  assert.match(rendererPatch, /desktop\.agent\.getOpenRouterModelOptions\(\)/);
+  assert.match(rendererPatch, /desktop\.agent\.setOpenRouterModel\(i\)/);
+  assert.match(mainEdge, /invoke\(deps\.settingsStore, "setOpenRouterModel", model\.trim\(\)\)/);
+  assert.match(providers, /OpenRouter needs OPENROUTER_API_KEY/);
+  assert.doesNotMatch(turnShell, /inferenceProvider === "cursor"/);
+  assert.match(turnShell, /createProviderPromptSession\(inferenceProvider\)/);
+  assert.match(coordinator, /method !== "sendPrompt" \|\| provider === "codex" \|\| provider === "openrouter"/);
+  assert.doesNotMatch(coordinator, /createRoutedMcpBridge/);
+  assert.match(coordinator, /executeTool: async \(definition, toolArgs, toolCallId\)/);
+  assert.match(coordinatorMain, /createCoordinatorInferenceRouter/);
+  assert.match(coordinator, /inference-router-transcript\.json/);
+  assert.match(coordinator, /listRoutedMcpTools/);
+  assert.match(coordinator, /executeRoutedMcpTool/);
+  assert.match(mcpBridge, /server\.listen\(0, "127\.0\.0\.1"/);
+});

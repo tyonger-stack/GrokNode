@@ -1,0 +1,46 @@
+.grok-template {
+  --bt-panel:var(--cursor-bg-elevated,#181818);--bt-detail:var(--cursor-bg-editor,#111);
+  --bt-text:var(--cursor-text-primary,#fafafa);--bt-muted:var(--cursor-text-secondary,#aaa);
+  --bt-border:var(--cursor-border-secondary,#3b3b3b);--bt-focus:var(--cursor-stroke-focused,#72b7ff);
+  --bt-space:8px;--bt-gutter:56px;--bt-gap:32px;--bt-radius:20px;
+  --bt-title:28px;--bt-body:18px;--bt-note:14px;
+  box-sizing:border-box;position:fixed;inset:var(--bt-space);margin:auto;
+  width:calc(100% - 16px);max-width:1240px;height:calc(100% - 16px);max-height:none;
+  padding:0;border:1px solid var(--bt-border);border-radius:var(--bt-radius);
+  background:var(--bt-panel);color:var(--bt-text);overflow:hidden;
+  font:var(--bt-body)/1.5 var(--cursor-font-family-sans,system-ui,-apple-system,sans-serif);
+}
+.grok-template::backdrop{background:rgba(0,0,0,.4)}
+.grok-template *{box-sizing:border-box}
+.grok-template button{font:inherit;color:inherit;cursor:pointer;border:0}
+.grok-template button:disabled{cursor:wait;opacity:.5}
+.grok-template button:focus-visible,.grok-template a:focus-visible{outline:2px solid var(--bt-focus);outline-offset:3px}
+.grok-template header{height:64px;display:flex;align-items:center;gap:16px;padding:0 20px;border-bottom:1px solid var(--bt-border)}
+.grok-template .bt-spacer{flex:1}
+.grok-template .bt-icon{display:grid;place-items:center;width:36px;height:36px;padding:6px;background:transparent;border-radius:8px;color:var(--bt-muted)}
+.grok-template .bt-icon:hover{background:var(--bt-detail);color:var(--bt-text)}
+.grok-template .bt-icon svg{width:24px;height:24px}
+.grok-template .bt-scroll{height:calc(100% - 64px);overflow:auto;padding:0 var(--bt-gutter) var(--bt-gap);overscroll-behavior:contain}
+.grok-template .bt-hero{padding:8px 0 var(--bt-gap);border-bottom:1px solid var(--bt-border)}
+.grok-template .bt-avatar{display:block;width:100px;height:100px;margin-bottom:var(--bt-gap);color:var(--bt-muted)}
+.grok-template .bt-title-row{display:flex;align-items:center;justify-content:space-between;gap:24px}
+.grok-template h1{font-size:var(--bt-title);line-height:1.2;font-weight:600;margin:0;overflow-wrap:anywhere}
+.grok-template p{margin:0}
+.grok-template .bt-author{color:var(--bt-muted);margin-top:12px}
+.grok-template .bt-description{margin-top:24px;white-space:pre-wrap;overflow-wrap:anywhere}
+.grok-template .bt-import{flex-shrink:0;padding:10px 24px;min-height:48px;border-radius:100px;background:var(--bt-text);color:var(--bt-panel);white-space:nowrap}
+.grok-template .bt-import:hover:not(:disabled){filter:brightness(.9)}
+.grok-template .bt-details{display:grid;grid-template-columns:280px minmax(0,1fr);gap:var(--bt-gap);padding-top:var(--bt-gap)}
+.grok-template .bt-tabs{display:flex;flex-direction:column;gap:4px}
+.grok-template .bt-tab{padding:16px;text-align:left;background:transparent;border-radius:var(--bt-radius);width:100%}
+.grok-template .bt-tab[aria-selected=true]{background:var(--bt-detail)}
+.grok-template .bt-tab span{display:block;color:var(--bt-muted)}
+.grok-template .bt-content{border-radius:var(--bt-radius);background:var(--bt-detail);padding:24px;color:var(--bt-muted);min-height:400px;white-space:pre-wrap;overflow-wrap:anywhere}
+.grok-template .bt-note{color:var(--bt-muted);font-size:var(--bt-note);margin-top:16px}
+.grok-template .bt-status{margin:16px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.grok-template .bt-status[role=alert]{color:var(--cursor-text-red,#ff5266)}
+.grok-template .bt-loading{padding-top:var(--bt-gap)}
+.grok-template .bt-loading button{margin-top:24px}
+@media(prefers-color-scheme:light){.grok-template{--bt-panel:var(--cursor-bg-elevated,#fff);--bt-detail:var(--cursor-bg-editor,#f3f3f3);--bt-text:var(--cursor-text-primary,#181818);--bt-muted:var(--cursor-text-secondary,#626262);--bt-border:var(--cursor-border-secondary,#ddd)}}
+@media(max-width:760px){.grok-template{--bt-gutter:24px;--bt-gap:24px}.grok-template .bt-details{grid-template-columns:minmax(0,1fr)}.grok-template .bt-tabs{flex-direction:row;flex-wrap:wrap}.grok-template .bt-tab{width:auto;padding:8px 12px}.grok-template .bt-tab span{display:none}.grok-template .bt-content{min-height:240px}.grok-template .bt-title-row{align-items:flex-start}.grok-template .bt-import{padding:10px 16px}}
+@media(max-width:440px){.grok-template{--bt-gutter:16px;--bt-title:24px;--bt-body:16px}.grok-template .bt-title-row{flex-wrap:wrap}.grok-template .bt-avatar{margin-bottom:16px}}
