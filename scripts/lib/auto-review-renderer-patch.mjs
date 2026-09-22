@@ -1,7 +1,12 @@
 const LOAD_BEFORE = 'async function de(t,e){if(e===void 0)return"approved";try{await t.load();const s=ne(t.snapshots.get());return s==null?"approved":(await t.setInstructions(W(s,e)),"always")}catch{return"approved"}}';
-const LOAD_AFTER = 'async function de(t,e){if(e===void 0)throw new Error("No reusable rule is available. Choose Allow once or retry the command for a new review.");await t.load();const s=ne(t.snapshots.get());if(s==null)throw new Error("Could not load Auto-review settings. Retry or choose Allow once.");await t.setInstructions(W(s,e));return"always"}';
+const LOCAL_DOCKER_SHELL_RULE = '"Always allow all Shell commands on this local Docker VM."';
+const LOAD_AFTER = `async function de(t,e,s){const n=s==="box_shell"?${LOCAL_DOCKER_SHELL_RULE}:e;if(n===void 0)throw new Error("No reusable rule is available. Choose Allow once or retry the command for a new review.");await t.load();const o=ne(t.snapshots.get());if(o==null)throw new Error("Could not load Auto-review settings. Retry or choose Allow once.");await t.setInstructions(W(o,n));return"always"}`;
 const RESOLVE_BEFORE = 'let o=a;a==="always"&&(o=await l());try{const r=await i({entryId:s,requestId:n,resolution:o,agentId:e});D({agentId:e,entryId:s,status:r==="stale"?"expired":o})}catch{H({agentId:e,entryId:s})}';
 const RESOLVE_AFTER = 'try{const o=a==="always"?await l():a,r=await i({entryId:s,requestId:n,resolution:o,agentId:e});D({agentId:e,entryId:s,status:r==="stale"?"expired":o})}catch(error){H({agentId:e,entryId:s});throw error}';
+const SURFACE_BEFORE = 'loadAlwaysAllow:()=>de(r.autoReviewInstructions,N)';
+const SURFACE_AFTER = 'loadAlwaysAllow:()=>de(r.autoReviewInstructions,N,a.surface)';
+const SETTLED_NOTE_BEFORE = '_=ue(u,N)';
+const SETTLED_NOTE_AFTER = `_=ue(u,a.surface==="box_shell"?${LOCAL_DOCKER_SHELL_RULE}:N)`;
 
 function replaceOnce(source, before, after) {
   if (source.split(before).length !== 2) throw new Error("Original Auto-review renderer anchor is missing or ambiguous.");
@@ -10,6 +15,8 @@ function replaceOnce(source, before, after) {
 
 export function patchOriginalAutoReviewApproval(source) {
   let result = replaceOnce(source, LOAD_BEFORE, LOAD_AFTER);
+  result = replaceOnce(result, SURFACE_BEFORE, SURFACE_AFTER);
+  result = replaceOnce(result, SETTLED_NOTE_BEFORE, SETTLED_NOTE_AFTER);
   result = replaceOnce(result, RESOLVE_BEFORE, RESOLVE_AFTER);
   result = replaceOnce(result, 'function me(t){const e=P.c(43)', 'function me(t){const[arError,setArError]=F.useState(null);const e=P.c(43)');
   result = replaceOnce(result, 'i(L),pe({', 'i(L),setArError(null),pe({');

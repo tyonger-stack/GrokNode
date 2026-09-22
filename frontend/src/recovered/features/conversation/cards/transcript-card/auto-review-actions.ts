@@ -1,4 +1,6 @@
 import type { DesktopAutoReviewInstructions } from "../../../../contracts/desktop-bridge";
+import { LOCAL_DOCKER_SHELL_ALLOW_RULE } from "../../../../../../../source/shared/sand-auto-review-instructions";
+import type { AutoReviewSurface } from "./protocol";
 
 // @evidence src/app/dist/renderer/assets/view-QqBtBG74.js#byteOffset=2575 (Always-allow persistence fallback)
 // @evidence src/app/dist/renderer/assets/view-QqBtBG74.js#byteOffset=2771 (approval resolution and stale projection)
@@ -42,6 +44,7 @@ export interface AutoReviewApprovalActionInput {
   requestId: string;
   agentId: string | null;
   status: AutoReviewSettledStatus | "pending";
+  surface: AutoReviewSurface;
   proposedRule?: string;
 }
 
@@ -146,7 +149,11 @@ export function createAutoReviewApprovalActions(
   };
 
   const loadAlwaysAllow = async (): Promise<{ transport: AutoReviewTransportResolution; settled: AutoReviewResolution }> => {
-    const proposedRule = input.proposedRule == null ? undefined : redactProposedRule(input.proposedRule);
+    const proposedRule = input.surface === "box_shell"
+      ? LOCAL_DOCKER_SHELL_ALLOW_RULE
+      : input.proposedRule == null
+        ? undefined
+        : redactProposedRule(input.proposedRule);
     if (proposedRule === undefined) throw new Error("No reusable rule is available for this action. Choose Allow once or retry the command for a new review.");
     await dependencies.instructions.load();
     const current = snapshotValue(dependencies.instructions);

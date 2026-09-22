@@ -12,7 +12,7 @@ import type { BoxConnectionInfo } from "../shared/node/egress-tunnel/box-connect
 import type { EgressTunnelController } from "../shared/node/egress-tunnel/egress-tunnel-controller.js";
 import { SandDeepLinkController, extractDeepLinkCandidatesFromArgv } from "./deep-link/deep-link-controller.js";
 import { createBotTemplateController } from "./deep-link/bot-template-controller.js";
-import type { BotTemplatePreview } from "../shared/bot-template.js";
+import type { BotTemplateManualContents, BotTemplatePreview } from "../shared/bot-template.js";
 import { resolveAttachProdBoxPreferred } from "./dev/dev-attach-prod-box.js";
 import { resolveSandMainWindowPreload } from "./dev/dev-capability.js";
 import type { SandThemeController, SandThemeState } from "./prefs/theme-controller.js";
@@ -349,7 +349,8 @@ export interface ProductionServiceContext {
     readonly submitFeedback: (request: unknown) => Promise<{ ok: true } | { ok: false; code: string }>;
     readonly markDeepLinksReady: () => void;
     readonly getBotTemplatePreview?: (templateId: string) => Promise<BotTemplatePreview>;
-    readonly confirmBotTemplateImport?: (previewId: string) => Promise<{ readonly agentId: string }>;
+    readonly getBotTemplateManualPreview?: (templateId: string, name: string) => Promise<BotTemplatePreview>;
+    readonly confirmBotTemplateImport?: (previewId: string, contents: BotTemplateManualContents) => Promise<{ readonly agentId: string }>;
   };
   /** Exact window-control edge collaborator shared by MainEdge and preload. */
   readonly windowChrome: ReturnType<typeof createWindowChromeEdgePort>;
@@ -557,8 +558,9 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
         },
         markDeepLinksReady: (): void => { deepLinks.markReady(); },
         getBotTemplatePreview: (templateId: string) => botTemplates.preview(templateId),
-        confirmBotTemplateImport: async (previewId: string) => {
-          const result = await botTemplates.import(previewId);
+        getBotTemplateManualPreview: (templateId: string, name: string) => botTemplates.previewManual(templateId, name),
+        confirmBotTemplateImport: async (previewId: string, contents: BotTemplateManualContents) => {
+          const result = await botTemplates.import(previewId, contents);
           requireValue(mainEdge, "main-edge").emit("focus-agent", { id: result.agentId });
           return result;
         },

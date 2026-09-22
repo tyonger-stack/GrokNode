@@ -10,10 +10,23 @@ export interface BotTemplateRecord {
 
 export interface BotTemplatePreview {
   readonly previewId: string;
+  readonly templateId: string;
   readonly template: BotTemplateRecord;
+}
+
+export interface BotTemplateManualContents {
+  readonly instructions: string;
+  readonly memory: string;
+  readonly skills: string;
+  readonly routines: string;
+  readonly integrations: string;
 }
 
 export interface BotTemplateBridge {
   preview(templateId: string): Promise<BotTemplatePreview>;
-  import(previewId: string): Promise<{ readonly agentId: string }>;
+  previewManual(templateId: string, name: string): Promise<BotTemplatePreview>;
+  import(
+    previewId: string,
+    contents: BotTemplateManualContents,
+  ): Promise<{ readonly agentId: string }>;
 }

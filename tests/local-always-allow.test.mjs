@@ -22,7 +22,7 @@ await build({ stdin: { resolveDir: root, contents: [
 const api = createRequire(import.meta.url)(output);
 const target = (overrides = {}) => new api.SmartModeClassifierArgs({ parentConversationId: "bot", target: new api.SmartModeRiskTarget({ action: "shell", arguments: api.Struct.fromJson({ command: "command -v node", working_directory: "/workspace", surface: "isolated_box", ...overrides }) }) });
 
-test("Always allow persists an exact command rule, survives restart, and preserves its card status", async () => {
+test("Always allow persists a Docker VM Shell grant, survives restart, and preserves its card status", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "grok-always-"));
   const file = path.join(dir, "settings.json");
   const store = new api.SandSettingsStore(file);
@@ -35,37 +35,53 @@ test("Always allow persists an exact command rule, survives restart, and preserv
   try {
     const result = await classifier.execute({}, target());
     assert.equal(result.result.value.decision, 2);
-    const rule = result.result.value.proposedAllowRule;
-    assert.ok(rule, "Local review must propose a persistable scoped rule");
+    const exactRule = result.result.value.proposedAllowRule;
+    assert.ok(exactRule, "Local review must propose a persistable scoped rule");
     const bound = service.bindRunner({ agentId: "bot", onUpdate: e => updates.push(e) });
-    const pending = bound.autoReviewController.requestApproval({ surface: "box_shell", summary: "Check node", reason: "confirmation", command: "command -v node", fingerprint: "node", proposedRule: rule, expiryPolicy: "park" });
+    const pending = bound.autoReviewController.requestApproval({ surface: "box_shell", summary: "Check node", reason: "confirmation", command: "command -v node", fingerprint: "node", proposedRule: exactRule, expiryPolicy: "park" });
     const card = updates[0].message.approval;
-    const actions = api.createAutoReviewApprovalActions({ entryId: "entry", requestId: card.requestId, agentId: "bot", status: "pending", proposedRule: rule }, {
+    const actions = api.createAutoReviewApprovalActions({ entryId: "entry", requestId: card.requestId, agentId: "bot", status: "pending", surface: "box_shell", proposedRule: exactRule }, {
       instructions: { load: async () => {}, snapshots: { get: () => ({ status: "ready", value: store.getAutoReviewInstructions() }), subscribe: () => () => {} }, setInstructions: async v => store.setAutoReviewInstructions(v) },
       resolver: { resolveAutoReviewApproval: async args => { await service.resolveApproval(args); return "resolved"; } },
     });
     assert.deepEqual(await actions.resolve("always"), { status: "settled", resolution: "always" });
     assert.deepEqual(await pending, { approved: true });
     assert.equal(updates.at(-1).status, "always", "Reloaded transcript must still say Always allowed");
-    assert.equal((await classifier.execute({}, target({ description: "Different wording" }))).result.value.decision, 1);
+    const nextCommand = await classifier.execute({}, target({ command: "pwd", working_directory: "/workspace" }));
+    assert.equal(nextCommand.result.value.decision, 1, "A different VM command must inherit the standing Shell grant");
+    assert.equal(nextCommand.result.value.blockReason, undefined);
+    const otherDirectory = await classifier.execute({}, target({ command: "ls /tmp", working_directory: "/tmp" }));
+    assert.equal(otherDirectory.result.value.decision, 1, "The grant applies across VM working directories");
+    assert.deepEqual(bound.getAutoReviewModes(), {
+      hostShell: "enforce",
+      boxShell: "off",
+      mcp: "enforce",
+      computer: "enforce",
+      automationWrite: "off",
+      cloudAgent: "enforce",
+      subagentLaunch: "enforce",
+    });
     const restoredStore = new api.SandSettingsStore(file);
-    const restored = api.createLocalSmartModeClassifierExecutor(() => restoredStore.getAutoReviewInstructions());
-    assert.equal((await restored.execute({}, target())).result.value.decision, 1, "Restart must retain the grant");
-    for (const change of [{ command: "npm install test" }, { working_directory: "/tmp" }, { surface: "host_machine" }, { target_enrichment: { definition_hash: "changed" } }]) {
-      assert.equal((await restored.execute({}, target(change))).result.value.decision, 2, "Unapproved target must still block");
-    }
+    const restoredService = new api.AutoReviewService({ auth: {}, settings: restoredStore, experiments: { checkFeatureGate: () => true },
+      telemetry: { reportAutoReviewDisplayRecheckFailed() {}, reportAutoReviewApproval() {} },
+      awaitingSink: { trySetForTab() {}, clearForTab() {} }, transcript: { settleStaleAutoReviewCard: async () => false },
+      hostGeneration: "restored", createClassifierExecutor: () => classifier });
+    const restoredBound = restoredService.bindRunner({ agentId: "other-bot", onUpdate() {} });
+    assert.equal(restoredBound.getAutoReviewModes().boxShell, "off", "Restart must retain the grant");
     const saved = store.getAutoReviewInstructions();
     store.setAutoReviewInstructions({ ...saved, blockInstructions: ["Ask before running node commands"] });
-    assert.equal((await classifier.execute({}, target())).result.value.decision, 2, "Ask-first rules have priority");
+    assert.equal(bound.getAutoReviewModes().boxShell, "enforce", "Ask-first rules have priority");
+    assert.equal((await classifier.execute({}, target({ command: "pwd" }))).result.value.decision, 2, "Ask-first rules retain classifier priority");
     store.setAutoReviewInstructions({ ...saved, allowInstructions: [] });
-    assert.equal((await classifier.execute({}, target())).result.value.decision, 2, "Removing the rule revokes permission");
+    assert.equal(bound.getAutoReviewModes().boxShell, "enforce", "Removing the rule revokes permission");
+    restoredService.stop();
   } finally { service.stop(); await rm(dir, { recursive: true, force: true }); }
 });
 
 for (const failure of ["missing-rule", "save-failed"]) {
   test("Always allow never silently becomes allow-once when " + failure, async () => {
     let resolutions = 0;
-    const action = api.createAutoReviewApprovalActions({ agentId: "bot", entryId: "e", requestId: "r", status: "pending", ...(failure === "missing-rule" ? {} : { proposedRule: "Allow pwd" }) }, {
+    const action = api.createAutoReviewApprovalActions({ agentId: "bot", entryId: "e", requestId: "r", status: "pending", surface: "host_shell", ...(failure === "missing-rule" ? {} : { proposedRule: "Allow pwd" }) }, {
       instructions: { load: async () => {}, snapshots: { get: () => ({ status: "ready", value: { isEnabled: true, allowInstructions: [], blockInstructions: [] } }), subscribe: () => () => {} }, setInstructions: async () => { throw new Error("disk full"); } },
       resolver: { resolveAutoReviewApproval: async () => { resolutions++; return "resolved"; } },
     });

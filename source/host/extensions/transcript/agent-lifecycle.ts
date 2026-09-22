@@ -32,7 +32,7 @@ interface CreateOptions {
   purpose?: string;
   isKickstartRequested?: boolean;
   isIntroductionSuppressed?: boolean;
-  configureAgentDir?(dir: string): void;
+  configureAgentDir?(dir: string, db: SandAgentDb): void;
 }
 
 export class AgentLifecycle {
@@ -107,7 +107,7 @@ export class AgentLifecycle {
       origin,
       options.purpose,
     );
-    options.configureAgentDir?.(this.tm.sessionStore.getAgentDir(session.id));
+    options.configureAgentDir?.(this.tm.sessionStore.getAgentDir(session.id), session.db);
     if (options.isIntroductionSuppressed !== true)
       session.db.setIntroductionPending(true);
     return session;

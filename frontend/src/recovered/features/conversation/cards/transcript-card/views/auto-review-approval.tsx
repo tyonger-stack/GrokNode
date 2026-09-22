@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useSyncExternalStore } from "re
 import type { AutoReviewApprovalActionState } from "../auto-review-actions";
 import type { AutoReviewApproval, AutoReviewSurface } from "../protocol";
 import { projectLeafEntry, useTranscriptCardLeafProviders, type TranscriptCardLeafProps } from "./shared";
+import { LOCAL_DOCKER_SHELL_ALLOW_RULE } from "../../../../../../../../source/shared/sand-auto-review-instructions";
 
 // @evidence src/app/dist/renderer/assets/view-QqBtBG74.js#byteOffset=0 (auto-review approval leaf)
 // @evidence src/app/dist/renderer/assets/view-QqBtBG74.js#byteOffset=2575 (Always-allow persistence fallback)
@@ -91,6 +92,7 @@ function AutoReviewApprovalBody({ approval, entryId, isStale }: { approval: Auto
     requestId: approval.requestId,
     agentId: providers?.scope.agentId ?? null,
     status: approval.status,
+    surface: approval.surface,
     proposedRule: approval.proposedRule,
   }), [approval, entryId, providers?.scope.agentId]);
   const action = useMemo(() => providers?.autoReviewApproval?.(actionInput) ?? null, [actionInput, providers?.autoReviewApproval]);
@@ -103,7 +105,7 @@ function AutoReviewApprovalBody({ approval, entryId, isStale }: { approval: Auto
   const hideSummary = approval.command === undefined || approval.summary === "Run a command on your local computer" || approval.summary === "Run a command on Grok Bot's computer" || approval.summary === "Run a command on the agent's VM" || /^Run [“"]/.test(approval.summary) || /^Use .+ tool .+ with /.test(approval.summary);
   const redactedRule = redactProposedRule(approval.proposedRule);
   const settledNote = state.status === "settled" && state.resolution === "always"
-    ? `A rule always allowing this was added to your Auto-review settings${redactedRule === undefined ? "" : `: “${redactedRule}”`}`
+    ? `A rule always allowing this was added to your Auto-review settings: “${approval.surface === "box_shell" ? LOCAL_DOCKER_SHELL_ALLOW_RULE : redactedRule}”`
     : undefined;
   const resolve = (resolution: "approved" | "always" | "denied") => {
     if (!canAct) return;

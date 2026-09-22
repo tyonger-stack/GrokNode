@@ -39,8 +39,11 @@ export class AutoReviewService<Classifier = unknown, Auth = unknown> {
     const pending = owner?.getPendingApprovals().find(approval => approval.id === args.requestId);
     if (pending !== undefined && pending.agentId !== args.agentId) throw new Error(SAND_AUTO_REVIEW_STALE_MESSAGE);
     if (pending !== undefined && args.resolution === "always") {
-      const rule = pending.proposedRule;
-      if (rule === undefined || !hasSavedAutoReviewRule(rule, this.deps.settings.getAutoReviewInstructions().allowInstructions)) {
+      const instructions = this.deps.settings.getAutoReviewInstructions();
+      const standingGrantSaved = pending.surface === "box_shell"
+        ? hasLocalDockerShellGrant(instructions)
+        : pending.proposedRule !== undefined && hasSavedAutoReviewRule(pending.proposedRule, instructions.allowInstructions);
+      if (!standingGrantSaved) {
         throw new Error("The Always allow rule has not been saved on the computer. Retry saving it or choose Allow once.");
       }
     }

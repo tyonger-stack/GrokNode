@@ -3,6 +3,9 @@ import {
   parseCoordinatorAgentThreadRequest,
   parseCoordinatorTranscriptWindowRequest,
 } from "../shared/rpc/coordinator.js";
+import type { BotTemplateManualContents } from "../shared/bot-template.js";
+import { applyLocalBotTemplateContents } from "./extensions/transcript/local-bot-template-contents.js";
+import type { SandAgentDb } from "./extensions/session/agent-db.js";
 
 export const HOST_CAPABILITIES = [
   "orderedReplicasV1",
@@ -12,7 +15,7 @@ export const CREATE_AGENT_NONCE_LEDGER_CAP = 64;
 export const DISABLE_SEND_ACCEPT_RETURN_ENV = "SAND_DISABLE_SEND_ACCEPT_RETURN";
 
 const SAND_AGENT_PURPOSES = new Set(["disk-saver", "plugin-auth"]);
-const TEMPLATE_ID_PATTERN = /^[a-z0-9-]{1,64}$/;
+const TEMPLATE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 type DynamicMethod = (...args: any[]) => any;
 export type DynamicGatewayApi = Record<string, any>;
@@ -45,6 +48,21 @@ function sanitizeTemplateId(value: unknown): string | undefined {
   return typeof value === "string" && TEMPLATE_ID_PATTERN.test(value)
     ? value
     : undefined;
+}
+
+function parseLocalTemplateContents(value: unknown): BotTemplateManualContents | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const candidate = value as Record<string, unknown>;
+  const keys = ["instructions", "memory", "skills", "routines", "integrations"] as const;
+  if (!keys.every((key) => typeof candidate[key] === "string")) return undefined;
+  if ((candidate.instructions as string).trim().length === 0) return undefined;
+  return {
+    instructions: candidate.instructions as string,
+    memory: candidate.memory as string,
+    skills: candidate.skills as string,
+    routines: candidate.routines as string,
+    integrations: candidate.integrations as string,
+  };
 }
 
 function method(api: DynamicGatewayApi, name: string): DynamicMethod {
@@ -80,6 +98,7 @@ export function createHostGatewayApi(
   };
 
   const mintAgent = async (args: any) => {
+    const localTemplateContents = parseLocalTemplateContents(args.localTemplateContents);
     const result = await method(manager, "createAgent")(
       {
         name: args.name,
@@ -98,7 +117,19 @@ export function createHostGatewayApi(
         isKickstartRequested: args.isKickstartRequested ?? false,
         ...(isSandAgentPurpose(args.purpose)
           ? { purpose: args.purpose }
-          : {})
+          : {}),
+        ...(localTemplateContents === undefined
+          ? {}
+          : {
+              configureAgentDir: (agentDir: string, db: SandAgentDb) =>
+                applyLocalBotTemplateContents(
+                  agentDir,
+                  localTemplateContents,
+                  now(),
+                  () => method(settings, "getUserTimeZone")(),
+                  db,
+                ),
+            })
       }
     );
     markActive("user_action");

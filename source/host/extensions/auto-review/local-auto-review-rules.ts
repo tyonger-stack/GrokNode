@@ -40,6 +40,13 @@ export function localShellAllowRule(args: SmartModeClassifierArgs): string | und
   return RULE_PREFIX + key + "] on " + location + ": " + summary;
 }
 
+export function isIsolatedBoxShellTarget(args: SmartModeClassifierArgs): boolean {
+  if (args.target?.action !== "shell") return false;
+  const target = args.target.arguments?.toJson();
+  if (target === null || typeof target !== "object" || Array.isArray(target)) return false;
+  return typeof target.command === "string" && target.command.trim().length > 0 && target.surface === "isolated_box";
+}
+
 export function matchesLocalAutoReviewRule(expected: string, candidate: string): boolean {
   const key = RULE_KEY.exec(expected)?.[1];
   return key !== undefined && RULE_KEY.exec(candidate)?.[1] === key;
