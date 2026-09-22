@@ -9,6 +9,32 @@ export function settlePendingAutoReviewApprovalEntry<T extends ApprovalEntry>(en
   return { ...entry, message: { ...entry.message, approval: { ...approval, status } } } as T;
 }
 
+export function formatAutoReviewExpiryNote(cause: string): string {
+  switch (cause) {
+    case "user_redirect":
+      return "This approval expired because a new message started a new turn before you answered. Ask the assistant to retry the action for a fresh approval card.";
+    case "session_end":
+      return "This approval expired because the session ended before you answered. Ask the assistant to retry the action for a fresh approval card.";
+    case "settings_change":
+      return "This approval expired because Auto-review settings changed. Retry the action for a fresh approval card.";
+    case "cancelled":
+      return "This approval expired because the action was cancelled before you answered.";
+    case "ttl":
+      return "This approval expired after waiting for approval. Ask the assistant to retry the action for a fresh approval card.";
+    case "quiesce":
+      return "This approval expired because a host update interrupted it; this was not a denial. Ask the assistant to retry the action for a fresh approval card.";
+    default:
+      return "This approval expired before you answered. Ask the assistant to retry the action for a fresh approval card.";
+  }
+}
+
+export function withAutoReviewExpiryNote(reason: unknown, cause: string): string {
+  const note = formatAutoReviewExpiryNote(cause);
+  if (typeof reason !== "string" || reason.length === 0) return note;
+  if (reason.includes(note)) return reason;
+  return `${reason} ${note}`.slice(0, 1200);
+}
+
 export function settlePendingLocalToolPermissionEntry<T extends ApprovalEntry>(entry: T, status: string, requestId?: string): T | null {
   const ask = entry.message?.ask;
   if (entry.kind !== "send-message" || entry.message?.type !== "local-tool-permission" || ask?.status !== "pending" || (requestId != null && ask.requestId !== requestId)) return null;

@@ -107,7 +107,39 @@ export function createDesktopPreloadBridge(options: {
   const env = options.env ?? process.env;
   const isDevRestartEnabled = options.devRestartEnabled ?? hasDevRestart(env);
   const edge = (method: string, ...args: any[]): any => mainEdge[method]!(...args);
-  const subscribe = (event: string, listener: (payload: any) => void): (() => void) => mainEdge.subscribe({ [event]: listener });
+  const earlyEventListeners: Record<string, Set<(payload: any) => void>> = {};
+  const eventsAwaitingFirstSubscriber: Record<string, any[]> = { "deep-link": [], "focus-agent": [] };
+  const routeEarlyEvent = (event: string, payload: any): void => {
+    console.info("[bt-trace] preload routeEarlyEvent", event, "listeners=" + (earlyEventListeners[event]?.size ?? 0), document.visibilityState, window.innerWidth + "x" + window.innerHeight);
+    const listeners = earlyEventListeners[event];
+    if (listeners !== undefined && listeners.size > 0) {
+      for (const listener of listeners) listener(payload);
+      return;
+    }
+    const queue = eventsAwaitingFirstSubscriber[event] ?? [];
+    eventsAwaitingFirstSubscriber[event] = queue;
+    queue.push(payload);
+    if (queue.length > 8) queue.shift();
+  };
+  mainEdge.subscribe({
+    "deep-link": (payload: any) => routeEarlyEvent("deep-link", payload),
+    "focus-agent": (payload: any) => routeEarlyEvent("focus-agent", payload),
+  });
+  const subscribe = (event: string, listener: (payload: any) => void): (() => void) => {
+    console.info("[bt-trace] preload subscribe", event, "queued=" + (eventsAwaitingFirstSubscriber[event]?.length ?? -1));
+    if (earlyEventListeners[event] === undefined && eventsAwaitingFirstSubscriber[event] === undefined) {
+      return mainEdge.subscribe({ [event]: listener });
+    }
+    const listeners = earlyEventListeners[event] ?? new Set<(payload: any) => void>();
+    earlyEventListeners[event] = listeners;
+    listeners.add(listener);
+    const queue = eventsAwaitingFirstSubscriber[event];
+    if (queue !== undefined) {
+      delete eventsAwaitingFirstSubscriber[event];
+      if (queue.length > 0) setTimeout(() => { for (const payload of queue) listener(payload); }, 0);
+    }
+    return () => { listeners.delete(listener); };
+  };
   const initialState = options.initialState ?? readPrimaryPreloadInitialState(ipc);
   const desktop: Record<string, any> = {
     resolveAttachmentMedia: (url: string) => edge("resolveAttachmentMedia", { source: url }),

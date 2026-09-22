@@ -1,6 +1,6 @@
 import { isMessageAddress } from "../../../shared/message-reference.js";
 import { sandDualSurfaceToolTelemetry } from "../../../shared/agents/agent-tool-names.js";
-import { SAND_REACTION_AGENT } from "../../../shared/transcript.js";
+import { SAND_REACTION_AGENT, withAutoReviewExpiryNote } from "../../../shared/transcript.js";
 import { UNKNOWN_CONNECTOR_TAG } from "../../../shared/observability/connector-auth-telemetry.js";
 import { sandErrorDetail } from "../../ports/telemetry.js";
 import {
@@ -788,6 +788,7 @@ export class TurnRuntime {
           "approval",
           update.requestId,
           update.status,
+          update.cause,
         );
         return undefined;
       case "local-tool-permission-status":
@@ -864,6 +865,7 @@ export class TurnRuntime {
     key: string,
     requestId: string,
     status: unknown,
+    causeForExpired?: unknown,
   ): void {
     const matchesCard = (entry: TranscriptEntry) =>
       messageOf(entry)?.type === type &&
@@ -876,6 +878,18 @@ export class TurnRuntime {
         message[key]?.requestId !== requestId
       )
         return entry;
+      if (
+        status === "expired" &&
+        typeof causeForExpired === "string" &&
+        type === "auto-review-approval" &&
+        key === "approval"
+      ) {
+        const card = message[key] as Record<string, unknown>;
+        return {
+          ...entry,
+          message: { ...message, [key]: { ...card, status, reason: withAutoReviewExpiryNote(card.reason, causeForExpired) } },
+        };
+      }
       return {
         ...entry,
         message: { ...message, [key]: { ...message[key], status } },

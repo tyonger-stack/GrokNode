@@ -1,4 +1,4 @@
-import type { BotTemplateBridge, BotTemplatePreview, BotTemplateRecord } from "../../../source/shared/bot-template";
+import type { BotTemplateBridge, BotTemplateManualContents, BotTemplatePreview, BotTemplateRecord } from "../../../source/shared/bot-template";
 import styles from "./bot-template.css?inline";
 
 interface TemplateDesktop {
@@ -51,14 +51,14 @@ function avatar(template: BotTemplateRecord): SVGSVGElement {
 }
 
 const SECTIONS = [
-  ["instructions", "指令", "此 Bot 的工作方式"],
-  ["memory", "记忆", "它已知的信息"],
-  ["skills", "技能", "它可以运行的操作手册"],
-  ["routines", "例行任务", "自动运行的任务"],
-  ["integrations", "集成", "它可以使用的工具"],
+  ["instructions", "指令", "此 Bot 的工作方式", "填写此 Bot 的核心指令、工作边界和回答方式。"],
+  ["memory", "记忆", "它已知的信息", "每行填写一条它应长期记住的信息。"],
+  ["skills", "技能", "它可以运行的操作手册", "粘贴本地 SKILL.md 内容，或用自然语言描述它应掌握的操作手册。"],
+  ["routines", "例行任务", "自动运行的任务", "每行一项，格式如：0 9 * * 1-5 | 工作日早上检查待办。"],
+  ["integrations", "集成", "它可以使用的工具", "填写需要使用的本地工具或集成；导入不会自动安装云端插件。"],
 ] as const;
 
-function details(template: BotTemplateRecord): HTMLElement {
+function details(template: BotTemplateRecord): { readonly node: HTMLElement; collect(): BotTemplateManualContents } {
   const area = element("section", "bt-details");
   const tabs = element("div", "bt-tabs");
   tabs.setAttribute("role", "tablist");
@@ -68,16 +68,22 @@ function details(template: BotTemplateRecord): HTMLElement {
   content.setAttribute("role", "tabpanel");
   content.tabIndex = 0;
   const items: HTMLButtonElement[] = [];
+  const editors = new Map<string, HTMLTextAreaElement>();
   const select = (index: number): void => {
     const section = SECTIONS[index];
     if (section === undefined) return;
     items.forEach((item, i) => { item.setAttribute("aria-selected", String(i === index)); item.tabIndex = i === index ? 0 : -1; });
     content.setAttribute("aria-labelledby", "grok-template-" + section[0]);
-    content.textContent = index === 0
-      ? "目前只读取到分享简介，尚未获取完整模板指令。完整模板需通过官方授权接口加载。"
-      : "尚未加载完整模板的" + section[1] + "。分享网页不包含这些详情；官方模板接口要求登录。";
+    editors.forEach((editor, id) => { editor.classList.toggle("active", id === section[0]); });
+    editors.get(section[0])?.focus();
   };
-  SECTIONS.forEach(([id, label, subtitle], index) => {
+  SECTIONS.forEach(([id, label, subtitle, placeholder], index) => {
+    const editor = element("textarea", "bt-editor");
+    editor.value = id === "instructions" ? template.description : "";
+    editor.placeholder = placeholder;
+    editor.setAttribute("aria-label", label);
+    editors.set(id, editor);
+    content.append(editor);
     const tab = button(label, "bt-tab", () => select(index));
     tab.id = "grok-template-" + id;
     tab.setAttribute("role", "tab");
@@ -94,11 +100,21 @@ function details(template: BotTemplateRecord): HTMLElement {
   });
   select(0);
   area.append(tabs, content);
-  return area;
+  return {
+    node: area,
+    collect: () => ({
+      instructions: editors.get("instructions")?.value ?? "",
+      memory: editors.get("memory")?.value ?? "",
+      skills: editors.get("skills")?.value ?? "",
+      routines: editors.get("routines")?.value ?? "",
+      integrations: editors.get("integrations")?.value ?? ""
+    })
+  };
 }
 
 function openPreview(bridge: BotTemplateBridge, templateId: string): { close(): boolean } {
   const dialog = element("dialog", "grok-template");
+  console.info("[bt-trace] openPreview enter", templateId, document.visibilityState, window.innerWidth + "x" + window.innerHeight);
   dialog.setAttribute("aria-label", "导入 Bot");
   const style = element("style", ""); style.textContent = styles;
   const header = element("header", "");
@@ -119,43 +135,115 @@ function openPreview(bridge: BotTemplateBridge, templateId: string): { close(): 
   header.append(back, element("span", "bt-spacer"), share, dismiss);
   dialog.append(style, header, body);
   dialog.addEventListener("cancel", event => { if (pending) event.preventDefault(); });
-  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.addEventListener("close", () => { console.info("[bt-trace] dialog close event"); dialog.remove(); }, { once: true });
   document.body.append(dialog);
   dialog.showModal();
+  console.info("[bt-trace] openPreview showModal open=" + dialog.open, document.visibilityState, window.innerWidth + "x" + window.innerHeight);
+  console.info("[bt-trace] post-show connected=" + dialog.isConnected, "open=" + dialog.open, "parent=" + (dialog.parentElement?.tagName ?? "none"), "bodyChildren=" + document.body.childElementCount, location.href);
+  new MutationObserver(mutations => { for (const mutation of mutations) for (const node of mutation.removedNodes) if (node === dialog) console.info("[bt-trace] dialog removed from DOM"); }).observe(document.body, { childList: true });
+  window.setTimeout(() => {
+    const computed = window.getComputedStyle(dialog);
+    const rect = dialog.getBoundingClientRect();
+    console.info("[bt-trace] t3s connected=" + dialog.isConnected, "open=" + dialog.open, "bodyChildren=" + document.body.childElementCount,
+      "display=" + computed.display, "visibility=" + computed.visibility, "opacity=" + computed.opacity, "position=" + computed.position,
+      "z=" + computed.zIndex, "rect=" + Math.round(rect.x) + "," + Math.round(rect.y) + "," + Math.round(rect.width) + "x" + Math.round(rect.height),
+      "bodyClass=" + document.body.className, "htmlClass=" + document.documentElement.className);
+  }, 3000);
+  window.setTimeout(() => console.info("[bt-trace] t12s connected=" + dialog.isConnected, "open=" + dialog.open, "bodyChildren=" + document.body.childElementCount), 12000);
   const render = (snapshot: BotTemplatePreview): void => {
     const template = snapshot.template;
+    console.info("[bt-trace] render", template.name);
+    const templateDetails = details(template);
     const hero = element("section", "bt-hero");
     const row = element("div", "bt-title-row");
     const title = element("h1", "", template.name);
     const confirm = button("导入 Bot", "bt-import", () => {
       if (pending) return;
+      const contents = templateDetails.collect();
+      if (contents.instructions.trim().length === 0) {
+        status.setAttribute("role", "alert");
+        status.textContent = "请先填写指令，再导入 Bot。";
+        return;
+      }
       pending = true; confirm.disabled = true; back.disabled = true; dismiss.disabled = true;
       confirm.textContent = "正在导入…"; status.textContent = ""; status.setAttribute("role", "status");
-      void bridge.import(snapshot.previewId).then(() => { pending = false; dialog.close(); }, (error: unknown) => {
+      void bridge.import(snapshot.previewId, contents).then(() => { pending = false; dialog.close(); }, (error: unknown) => {
         pending = false; confirm.disabled = false; back.disabled = false; dismiss.disabled = false;
         confirm.textContent = "重试导入"; status.setAttribute("role", "alert");
         status.textContent = "导入失败：" + (error instanceof Error ? error.message : String(error));
       });
     });
-    confirm.disabled = true;
-    confirm.title = "尚未取得完整模板，暂不能导入。";
     row.append(title, confirm);
     hero.append(avatar(template), row, element("p", "bt-author", template.author === null ? "创建者未公开" : "由 " + template.author + " 创建"), element("p", "bt-description", template.description));
-    body.replaceChildren(hero, details(template), element("p", "bt-note", "当前为分享简介预览。完整模板需要官方授权，尚未导入任何内容。"), status);
+    body.replaceChildren(
+      hero,
+      templateDetails.node,
+      element("p", "bt-note", "公开分享页未提供完整详情。请逐项补全后本地导入；集成内容只作为本地配置，不会自动安装云端插件。"),
+      status
+    );
+  };
+  const openManual = (reason: string): void => {
+    console.info("[bt-trace] openManual", reason);
+    preview = null;
+    share.disabled = true;
+    const manualRecord: BotTemplateRecord = { templateId, sourceUrl: "https://x.ai/bot/" + encodeURIComponent(templateId), name: "", description: "", author: null, color: null, shape: null };
+    const templateDetails = details(manualRecord);
+    const nameInput = element("input", "bt-name");
+    nameInput.type = "text";
+    nameInput.maxLength = 120;
+    nameInput.placeholder = "例如 dr eggbot";
+    nameInput.setAttribute("aria-label", "Bot 名称");
+    const confirm = button("导入 Bot", "bt-import", () => {
+      if (pending) return;
+      const name = nameInput.value.trim();
+      const contents = templateDetails.collect();
+      if (name.length === 0 || contents.instructions.trim().length === 0) {
+        status.setAttribute("role", "alert");
+        status.textContent = name.length === 0 ? "请先填写 Bot 名称，再导入。" : "请先填写指令，再导入 Bot。";
+        return;
+      }
+      pending = true; confirm.disabled = true; back.disabled = true; dismiss.disabled = true;
+      confirm.textContent = "正在导入…"; status.textContent = ""; status.setAttribute("role", "status");
+      void bridge.previewManual(templateId, name)
+        .then(snapshot => bridge.import(snapshot.previewId, contents))
+        .then(() => { pending = false; dialog.close(); }, (error: unknown) => {
+          pending = false; confirm.disabled = false; back.disabled = false; dismiss.disabled = false;
+          confirm.textContent = "重试导入"; status.setAttribute("role", "alert");
+          status.textContent = "导入失败：" + (error instanceof Error ? error.message : String(error));
+        });
+    });
+    const row = element("div", "bt-title-row");
+    row.append(nameInput, confirm);
+    const hero = element("section", "bt-hero");
+    hero.append(row);
+    status.setAttribute("role", "alert");
+    status.textContent = "无法读取公开模板：" + reason + "。请手动填写名称与内容后本地导入。";
+    body.replaceChildren(
+      hero,
+      templateDetails.node,
+      element("p", "bt-note", "手动导入只写入本地配置；集成内容不会自动安装云端插件。网络恢复后可用下方按钮重新读取公开分享页。"),
+      button("重试读取公开页", "bt-tab", () => { void load(); }),
+      status
+    );
+    nameInput.focus();
   };
   const load = async (): Promise<void> => {
     const loading = element("div", "bt-loading");
     const message = element("p", "bt-status", "正在读取 Bot 模板…"); message.setAttribute("role", "status");
     loading.append(message); body.replaceChildren(loading);
+    let watchdog: number | undefined;
     try {
-      const result = await bridge.preview(templateId);
+      const result = await Promise.race([
+        bridge.preview(templateId),
+        new Promise<never>((_resolve, reject) => { watchdog = window.setTimeout(() => reject(new Error("读取公开模板超时，已切换到手动填写。")), 26_000); }),
+      ]);
       if (!dialog.isConnected) return;
       preview = result; share.disabled = false; render(result);
     } catch (error) {
       if (!dialog.isConnected) return;
-      message.textContent = "无法读取模板：" + (error instanceof Error ? error.message : String(error));
-      message.setAttribute("role", "alert");
-      loading.append(button("重试", "bt-import", () => { void load(); }));
+      openManual(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (watchdog !== undefined) window.clearTimeout(watchdog);
     }
   };
   void load();
@@ -165,10 +253,16 @@ function openPreview(bridge: BotTemplateBridge, templateId: string): { close(): 
 export function installBotTemplatePreview(desktop: TemplateDesktop): () => void {
   let active: ReturnType<typeof openPreview> | null = null;
   const unsubscribe = desktop.onDeepLink(value => {
+    console.info("[bt-trace] ext onDeepLink", JSON.stringify(value).slice(0, 120), document.visibilityState, window.innerWidth + "x" + window.innerHeight);
     if (typeof value !== "object" || value === null || !("route" in value) || value.route !== "bot-template"
       || !("templateId" in value) || typeof value.templateId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value.templateId)) return;
     if (active !== null && !active.close()) return;
-    active = openPreview(desktop.botTemplates, value.templateId);
+    try {
+      active = openPreview(desktop.botTemplates, value.templateId);
+    } catch (error) {
+      console.info("[bt-trace] openPreview threw", error instanceof Error ? error.message : String(error));
+    }
   });
+  console.info("[bt-trace] ext installed");
   return () => { unsubscribe(); active?.close(); };
 }

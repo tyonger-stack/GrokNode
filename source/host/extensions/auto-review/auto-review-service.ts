@@ -68,6 +68,6 @@ export class AutoReviewService<Classifier = unknown, Auth = unknown> {
   #handleApprovalEvent(onUpdate: AutoReviewUpdateSink, event: SandAutoReviewEvent): void {
     const approval = event.approval; this.deps.telemetry.reportAutoReviewApproval({ eventType: event.type, conversationId: approval.agentId, approvalId: approval.id, surface: approval.surface, status: approval.status, ageMs: this.#now() - approval.createdAtMs, ...(approval.expiresAtMs === undefined ? {} : { ttlMs: approval.expiresAtMs - approval.createdAtMs }), ...(event.type === "expired" ? { cause: event.cause } : {}) });
     if (event.type === "created") { onUpdate({ type: "send-message", message: { type: "auto-review-approval", approval: { requestId: approval.id, surface: approval.surface, summary: approval.summary, reason: approval.reason, status: "pending", ...(approval.command === undefined ? {} : { command: approval.command }), ...(approval.proposedRule === undefined ? {} : { proposedRule: approval.proposedRule }) } }, timestampMs: this.#now() }); return; }
-    onUpdate({ type: "auto-review-status", requestId: approval.id, status: event.type === "expired" || approval.status === "pending" ? "expired" : approval.status });
+    onUpdate({ type: "auto-review-status", requestId: approval.id, status: event.type === "expired" || approval.status === "pending" ? "expired" : approval.status, ...(event.type === "expired" ? { cause: event.cause } : {}) });
   }
 }

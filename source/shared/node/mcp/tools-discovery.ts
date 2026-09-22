@@ -26,6 +26,7 @@ import { toJsonArgs } from "./mcp-validation.js";
 
 export const MCP_TOOLS_CACHE_TTL_MS = 24 * 60 * 60 * 1_000;
 export const TOOLS_DISCOVERY_DEADLINE_MS = 120_000;
+export const MCP_TURN_DISCOVERY_TIMEOUT_MS = 30_000;
 
 export interface McpDiscoveryResultFactory extends McpResultFactory {
   error(message: string): McpResultLike;
@@ -44,6 +45,25 @@ type CacheEntry = {
   fulfilled?: { tools: Tool[]; resolvedKey: string; atMs: number };
   staleTools?: Tool[];
 };
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`MCP turn discovery timed out after ${ms}ms`)),
+          ms,
+        );
+        const unref = (timer as unknown as { unref?: () => void }).unref;
+        if (typeof unref === "function") unref.call(timer);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 export function applyCustomInstructionsToMcpResult<T extends McpResultLike>(
   result: T,
@@ -429,24 +449,38 @@ export function createMcpToolsDiscovery(
     );
   }
 
+  const getTools = async (_ctx?: unknown): Promise<Tool[]> =>
+    filterDisabledTools(await getToolsRaw());
+  const getToolsForTurnStart = async (_ctx?: unknown): Promise<Tool[]> => {
+    const serverNames = peekDiscoveryServerNames();
+    if (serverNames === undefined) {
+      scheduleColdStartWarm();
+      return [];
+    }
+    const key = toolServerSetKey(serverNames);
+    if (key === "") {
+      dropSettledCacheForEmptyServerSet();
+      return [];
+    }
+    if (!toolsEntryUsable(key)) startToolsResolution(key, true);
+    return filterDisabledTools(currentToolsForKey(key) ?? []);
+  };
+  const getToolsForTurn = async (
+    _ctx?: unknown,
+    timeoutMs: number = MCP_TURN_DISCOVERY_TIMEOUT_MS,
+  ): Promise<Tool[]> => {
+    try {
+      return await withTimeout(getTools(_ctx), timeoutMs);
+    } catch {
+      return getToolsForTurnStart(_ctx);
+    }
+  };
+
   return {
-    getTools: async (_ctx?: unknown) =>
-      filterDisabledTools(await getToolsRaw()),
+    getTools,
     getToolsRaw,
-    getToolsForTurnStart: async (_ctx?: unknown) => {
-      const serverNames = peekDiscoveryServerNames();
-      if (serverNames === undefined) {
-        scheduleColdStartWarm();
-        return [];
-      }
-      const key = toolServerSetKey(serverNames);
-      if (key === "") {
-        dropSettledCacheForEmptyServerSet();
-        return [];
-      }
-      if (!toolsEntryUsable(key)) startToolsResolution(key, true);
-      return filterDisabledTools(currentToolsForKey(key) ?? []);
-    },
+    getToolsForTurnStart,
+    getToolsForTurn,
     async listBoxServers(
       serverIdentifiers: string[],
       options?: unknown,
