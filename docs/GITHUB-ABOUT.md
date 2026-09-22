@@ -8,10 +8,10 @@ match what the tree actually contains.
 Use this for the About description:
 
 ```text
-Unofficial source-oriented reconstruction of the shipped Grok Bot 0.18.0 macOS app into readable TypeScript, plus an inference router for Cursor, Claude Code, Codex and OpenRouter, an optional local Docker sandbox, and local usage tracking. Research only; not affiliated with Anysphere.
+Unofficial source-oriented reconstruction of the shipped Grok Bot 0.18.0 macOS app into readable TypeScript, plus an inference router for Codex and OpenRouter, an optional local Docker sandbox, and local usage tracking. Research only; not affiliated with Anysphere.
 ```
 
-That is 286 characters, comfortably under the limit. The current live description is
+That is 265 characters, comfortably under the limit. The current live description is
 `Unofficial source-oriented reconstruction and extension of Grok Bot 0.18.0 for
 macOS`, which is accurate but says nothing about what the repository adds.
 
@@ -37,8 +37,8 @@ For a project page, a submission form, or a first paragraph in a write-up:
 > application at source level. It reads the distributed artifact, recovers the
 > Electron, host, coordinator, protocol and renderer boundaries as readable
 > TypeScript, and rebuilds a working application from those sources. On top of
-> the reconstruction it adds an inference router that sends new turns to Cursor,
-> Claude Code, Codex or OpenRouter, an optional local Docker sandbox that
+> the reconstruction it adds an inference router that sends new turns to Codex
+> or OpenRouter, an optional local Docker sandbox that
 > replaces the remote box, and local tracking of request and token usage.
 >
 > It is an unofficial research project. It is not Anysphere's source, not an

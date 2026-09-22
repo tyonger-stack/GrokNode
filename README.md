@@ -13,7 +13,7 @@ application.
 
 It also adds a few practical experiments:
 
-- an inference router for Cursor, Claude Code, Codex, and OpenRouter;
+- an inference router for Codex and OpenRouter;
 - Grok Bot plugin/MCP tools across the routed providers;
 - local usage tracking for routed inference;
 - an optional local Docker sandbox in place of the remote box; and
@@ -83,19 +83,18 @@ machine-readable manifest and verification commands.
 
 ### Inference Router
 
-Open **Settings → Router** to choose the backend used for new turns:
+Open **Settings → Router** to choose the backend used for new turns. The
+router ships two providers:
 
 | Provider | Authentication | Tool support |
 | --- | --- | --- |
-| Cursor | Existing Grok Bot/Cursor session | Native Grok Bot tools and plugins |
-| Claude Code | Existing Claude Code login | Routed Grok Bot MCP tools |
 | Codex | Existing local ChatGPT/Codex login | Direct Responses transport with Grok Bot tools |
-| OpenRouter | API key saved through the desktop secrets bridge | Grok Bot tool-execution loop |
+| OpenRouter (shown as TokenHub) | API key saved through the desktop secrets bridge | Grok Bot tool-execution loop |
 
-Cursor is the default. Claude Code and Codex do not require separate API keys
-when their local clients are already authenticated. The application preserves
-streaming responses, thinking state, reactions, rich plugin mentions, and MCP
-tool execution across routed conversations.
+OpenRouter is the default. Codex needs no separate API key once the local
+Codex login is present. The application preserves streaming responses,
+thinking state, reactions, rich plugin mentions, and MCP tool execution across
+routed conversations.
 
 **Usage & Billing** shows the locally recorded request and token totals for
 providers that return usage data. These figures are activity records, not an
@@ -141,7 +140,7 @@ Remote mode remains the default.
 - Xcode Command Line Tools
 - Git LFS
 - Docker Desktop (optional, only for the local sandbox)
-- local Claude Code or Codex authentication for those router choices
+- an existing Codex login or an OpenRouter API key for the router choices
 
 ## Quick start
 
@@ -193,10 +192,10 @@ polished shipped renderer
               coordinator + host
                        │
               inference router
-           ┌───────────┼───────────┐
-        Cursor      Claude       Codex / OpenRouter
-                       │
-                 Grok Bot MCP tools
+          ┌────────────┴────────────┐
+       Codex                   OpenRouter
+          └────────────┬────────────┘
+               Grok Bot MCP tools
 ```
 
 The main source areas are:

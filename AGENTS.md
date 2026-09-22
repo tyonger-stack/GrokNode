@@ -72,13 +72,12 @@ npm run frontend:build  # 构建可读 renderer 重建
 
 ## 登录与 Router 现状
 
-- **登录是硬前置**：`source/electron-main/account/cursor-auth.ts:26` → `Sign in to Cursor to run Grok Bot.`；后端 `api2.cursor.sh`，OAuth PKCE，机器级账号绑定。**账号权限不足时表现为 "Start a Grok Bot trial"**，不是技术故障，本地无法也不应伪造。
-- **Router 四档**：Cursor（默认）/ Claude Code / Codex / OpenRouter。
+- **登录不再是硬前置**：本地构建的 preload 固定返回 `kind: "logged-in"`（`source/electron-preload/preload.ts:167`），Cursor 云登录入口已移除（`login` 返回 `Cursor cloud login is unavailable in the local-only build.`）。推理凭据全部走 Router 两档 provider。
+- **Router 两档**：Codex / OpenRouter（默认 openrouter；UI 标签 TokenHub）。判定函数只暴露 `getLocalInferenceCliStatus().codex`，Claude Code 路径已移除。
 - **Provider 判定函数**：`source/shared/node/inference-router-local.ts` 的 `getLocalInferenceCliStatus()`。
   - **Codex**：看 `~/.codex/auth.json`，`hasUsableCodexLogin()` 要求 `auth_mode=chatgpt` + access/refresh/id/account_id 四字段非空 + 权限不含 group/other 位 → **本机 TRUE**（零额外 key）。
-  - **Claude Code**：`installed` = PATH 有 `claude`；`authenticated` = `~/.claude/.credentials.json` 存在 **或** `ANTHROPIC_API_KEY` 非空 → **本机 FALSE**。注意：**活跃使用 ≠ 凭据文件存在**（有 session/history 不代表 authenticated）。
   - **OpenRouter**：需 API key（Settings → Router 或 `OPENROUTER_API_KEY`）。
-- **本地 Docker VM**：默认 `DEFAULT_SAND_BOX_RUNTIME="remote"`，需 UI 显式切。容器 `grok-bot-local-vm`，镜像 `public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest`，`--platform linux/amd64`，6 端口全绑 `127.0.0.1`，schema v6，host-sha256 内容寻址，`READY_TIMEOUT_MS=180000`。`~/.claude`、`~/.codex` 以**只读**挂载复用登录态。
+- **本地 Docker VM**：默认 `DEFAULT_SAND_BOX_RUNTIME="remote"`，需 UI 显式切。容器 `grok-bot-local-vm`，镜像 `public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest`，`--platform linux/amd64`，6 端口全绑 `127.0.0.1`，schema v6，host-sha256 内容寻址，`READY_TIMEOUT_MS=180000`。`~/.codex` 以**只读**挂载复用登录态（`localAuthMountArguments()`，目前仅此一项）。
 
 ## 本地未提交改动（工作区脏，接手先确认）
 
