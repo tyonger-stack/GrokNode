@@ -1,20 +1,27 @@
-# Grok Bot 0.18 —— 重建与扩展
+# Grok Bot 0.18 本地化改造
 
-![Grok Bot 设置中的 Router 页，选中 Codex 并显示本地用量统计](docs/assets/router-settings.png)
 
-本仓库是对公开发布的 Grok Bot 0.18.0 macOS 应用所做的非官方、面向源码的重建。
+本仓库是对公开发布的 Grok Bot 0.18.0 macOS 应用所做的非官方本地化改造：先对桌面
+应用做源码级重建，再把推理、沙箱执行、设置与用量统计全部搬回你自己的机器。
 
-项目最初只是为了搞清楚这个桌面应用是怎么拼装的。现在它包含 Electron、host、
-coordinator、本地执行、协议与渲染层各边界的可读 TypeScript 实现，外加一条把这些
-源码重新构建为可用 macOS 应用的确定性工具链。
+项目名 **Grok Node** 的由来也正在于此。原版应用依赖云端会话与远端沙箱；改造之后，
+它像一个自足的节点（node）一样跑在本机：推理走本机已有的 Codex 登录或 OpenRouter
+API key，代码执行跑在由应用自管的本地 Docker 容器里，登录态由 preload 层提供的
+固定本地账户承担，打包出的应用因此命名为 `Grok Node.app`。
 
-在重建之上，项目还做了几项实用扩展：
+## 本地化改造做了什么？
 
-- 推理路由（Inference Router）：支持 Codex 与 OpenRouter 两档 provider；
+- 推理路由（Inference Router）：Codex 与 OpenRouter 两档 provider，替代原有的
+  云端推理入口；
 - 在两档路由 provider 上保留 Grok Bot 插件/MCP 工具执行；
-- 路由推理的本地用量统计；
-- 由应用自管的本地 Docker 沙箱（当前唯一的 box 运行时）；以及
-- 融入精修版出厂 UI 的重建设置界面。
+- 路由推理的本地用量统计，数据不出本机；
+- 由应用自管的本地 Docker 沙箱，是当前唯一的 box 运行时，不再连接任何远端沙箱；
+- 融入精修版出厂 UI 的重建设置界面；
+- 在打包边界禁用 upstream 更新器，默认关闭 Sentry 与遥测上报。
+
+改造建立在一次完整的源码级重建之上：`source/` 下是 Electron、host、
+coordinator、本地执行、协议与渲染层各边界的可读 TypeScript 实现，`scripts/`
+下是一条把这些源码重新构建为可用 macOS 应用的确定性工具链。
 
 这是一个折腾与研究性质的项目，不是 Anysphere 的原始 monorepo，也不是官方 Grok Bot
 发布版本。从编译产物推断出的命名与模块边界可能与原始源码不同。
@@ -34,7 +41,8 @@ coordinator、本地执行、协议与渲染层各边界的可读 TypeScript 实
 - 精修版的出厂渲染器保留为 UI 基线；
 - 一小段确定性的变换负责注入重建的 Router 设置界面；
 - 原始与打过补丁的渲染器分块哈希都被记录并接受校验；并且
-- 成品应用使用独立的 bundle identifier 和 ad-hoc 签名。
+- 成品应用使用独立的 bundle identifier（`com.anysphere.sand.reconstructed`）和
+  ad-hoc 签名。
 
 机器上已安装的 upstream 应用永远不会被覆盖。
 
@@ -209,9 +217,9 @@ npm run publication:check # 证明干净历史导出无损
 
 ## 项目状态
 
-应用可以启动，核心重建链路可用，包括路由推理、已连接的插件与本地 Docker 沙箱。这
-仍然是一个实验性重建：只面向一个固定的 macOS/arm64 版本，依赖外部 provider 会话，
-不承诺与未来 Grok Bot 版本的兼容性。
+应用可以启动，核心本地化链路可用，包括路由推理、已连接的插件与本地 Docker 沙箱。
+这仍然是一个实验性改造项目：只面向一个固定的 macOS/arm64 版本，依赖外部 provider
+会话，不承诺与未来 Grok Bot 版本的兼容性。
 
 改动请先读 [CONTRIBUTING.md](CONTRIBUTING.md)。干净历史的导出流程见
 [docs/PUBLISHING.md](docs/PUBLISHING.md)。技术溯源与被保留的 upstream 边界见
