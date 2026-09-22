@@ -1,7 +1,10 @@
+import { join } from "node:path";
 import type { HostInferenceOptions } from "./inference-service.js";
 import type { SummarizationPromptSession } from "../../../packages/agent-summarization/summarization-handler.js";
 import { getLocalInferenceCliStatus } from "../../../shared/node/inference-router-local.js";
 import { isOpenRouterProxyMode } from "../../../shared/node/openrouter-proxy.js";
+import { getSandRootDir } from "../../host-paths.js";
+import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 
 export interface InferenceExtensionContext {
   deps: {
@@ -14,6 +17,13 @@ export interface InferenceExtensionContext {
   createWebFetch(args: unknown): unknown;
 }
 
+function persistedOpenRouterBaseUrl(): string | null {
+  try {
+    const stored = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getOpenRouterBaseUrl();
+    return typeof stored === "string" && stored.trim().length > 0 ? stored.trim() : null;
+  } catch { return null; }
+}
+
 function isRoutedProviderReady(provider: string): boolean {
   if (provider === "codex") {
     try {
@@ -22,7 +32,7 @@ function isRoutedProviderReady(provider: string): boolean {
       return false;
     }
   }
-  if (provider === "openrouter") return (process.env.OPENROUTER_API_KEY?.trim().length ?? 0) > 0 || isOpenRouterProxyMode();
+  if (provider === "openrouter") return (process.env.OPENROUTER_API_KEY?.trim().length ?? 0) > 0 || isOpenRouterProxyMode(persistedOpenRouterBaseUrl());
   return false;
 }
 

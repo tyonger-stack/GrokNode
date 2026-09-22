@@ -102,6 +102,13 @@ function readPersistedOpenRouterModel(): string | null {
   } catch { return null; }
 }
 
+function readPersistedOpenRouterBaseUrl(): string | null {
+  try {
+    const stored = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getOpenRouterBaseUrl();
+    return typeof stored === "string" && stored.trim().length > 0 ? stored.trim() : null;
+  } catch { return null; }
+}
+
 export function resolveOpenRouterModel(): string {
   return process.env.SAND_OPENROUTER_MODEL?.trim() || readPersistedOpenRouterModel() || readCodexConfigValue("openrouter_model") || "openai/gpt-5.2";
 }
@@ -109,7 +116,7 @@ export function resolveOpenRouterModel(): string {
 function openRouterCredential(): string {
   const value = process.env.OPENROUTER_API_KEY?.trim() || persistedSecrets().OPENROUTER_API_KEY?.trim();
   if (value != null && value.length > 0) return value;
-  if (isOpenRouterProxyMode()) return "local-proxy";
+  if (isOpenRouterProxyMode(readPersistedOpenRouterBaseUrl())) return "local-proxy";
   throw new Error("OpenRouter needs OPENROUTER_API_KEY. Add it in Settings → Router.");
 }
 
@@ -301,7 +308,7 @@ function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: Rout
 }
 
 function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void, signal?: AbortSignal) {
-  const transport = resolveOpenRouterTransport();
+  const transport = resolveOpenRouterTransport(readPersistedOpenRouterBaseUrl());
   const id = resolveOpenRouterModel();
   try {
   } catch {}

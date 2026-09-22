@@ -80,6 +80,16 @@ test("Router settings and inference packaging expose only local providers", asyn
   assert.match(rendererPatch, /desktop\.agent\.getOpenRouterModelOptions\(\)/);
   assert.match(rendererPatch, /desktop\.agent\.setOpenRouterModel\(i\)/);
   assert.match(mainEdge, /invoke\(deps\.settingsStore, "setOpenRouterModel", model\.trim\(\)\)/);
+  assert.match(mainEdge, /persistedOpenRouterBaseUrl\(deps\.settingsStore\)/);
+  assert.match(mainEdge, /listOpenRouterProxyModels\(2500, persistedBaseUrl\)/);
+  assert.match(mainEdge, /isOpenRouterProxyMode\(persistedBaseUrl\)/);
+  assert.match(rendererPatch, /RRouterEndpointCard/);
+  assert.match(rendererPatch, /TokenHub API address/);
+  assert.match(rendererPatch, /desktop\.agent\.setOpenRouterBaseUrl\(/);
+  assert.match(preload, /setOpenRouterBaseUrl: \(baseUrl: string \| null\)/);
+  assert.match(openRouterProxy, /resolveOpenRouterBaseUrl\(persistedOverride\)/);
+  assert.match(providers, /readPersistedOpenRouterBaseUrl/);
+
   assert.match(providers, /OpenRouter needs OPENROUTER_API_KEY/);
   assert.doesNotMatch(turnShell, /inferenceProvider === "cursor"/);
   assert.match(turnShell, /createProviderPromptSession\(inferenceProvider\)/);

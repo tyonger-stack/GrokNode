@@ -62,6 +62,10 @@ export interface MainEdgeDeps {
 
 function invariant(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 function invoke(target: UnknownRecord, method: string, ...args: unknown[]): unknown { const fn = target[method]; invariant(typeof fn === "function", `Missing main-edge dependency method ${method}.`); return Reflect.apply(fn, target, args); }
+function persistedOpenRouterBaseUrl(settingsStore: UnknownRecord): string | null {
+  const value = invoke(settingsStore, "getOpenRouterBaseUrl");
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
 function req(value: unknown): UnknownRecord { return typeof value === "object" && value != null && !Array.isArray(value) ? value as UnknownRecord : {}; }
 function detectTimeZone(): string | null { const value = Intl.DateTimeFormat().resolvedOptions().timeZone; return value.length > 0 ? value : null; }
 const sleep = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -134,19 +138,31 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     getBoxRuntime: async () => { const mode = invoke(deps.settingsStore, "getBoxRuntime"); invariant(isSandBoxRuntime(mode), "Unknown box runtime."); return { mode, status: await getLocalDockerStatus(String(Reflect.get(deps.settingsStore, "settingsPath"))) }; },
     setBoxRuntime: async (raw) => { const mode = req(raw).mode; invariant(isSandBoxRuntime(mode), "Only the local Docker VM runtime is supported."); const settingsPath = String(Reflect.get(deps.settingsStore, "settingsPath")); invoke(deps.settingsStore, "setBoxRuntime", mode); try { await startLocalDockerBox(settingsPath); } catch (error) { invoke(deps.settingsStore, "setBoxRuntime", "local-docker"); throw error; } invoke(deps.boxRecovery, "restartCoordinator"); return { mode, status: await getLocalDockerStatus(settingsPath) }; },
     getOpenRouterModelOptions: async () => {
-      const baseUrl = resolveOpenRouterBaseUrl();
+      const persistedBaseUrl = persistedOpenRouterBaseUrl(deps.settingsStore);
+      const baseUrl = resolveOpenRouterBaseUrl(persistedBaseUrl);
       const selected = invoke(deps.settingsStore, "getOpenRouterModel");
       const safeSelected = typeof selected === "string" && selected.trim().length > 0 ? selected.trim() : null;
       let models: string[] = [];
       let error: string | null = null;
-      try { models = await listOpenRouterProxyModels(2500); } catch (reason) { error = String((reason as { message?: unknown })?.message ?? reason); }
-      return { baseUrl, proxyMode: isOpenRouterProxyMode(), selected: safeSelected, models, error };
+      try { models = await listOpenRouterProxyModels(2500, persistedBaseUrl); } catch (reason) { error = String((reason as { message?: unknown })?.message ?? reason); }
+      return { baseUrl, baseUrlOverride: persistedBaseUrl, proxyMode: isOpenRouterProxyMode(persistedBaseUrl), selected: safeSelected, models, error };
     },
     setOpenRouterModel: async (raw) => {
       const model = req(raw).model;
       invariant(typeof model === "string" && model.trim().length > 0, "Choose an OpenRouter model.");
       invoke(deps.settingsStore, "setOpenRouterModel", model.trim());
       return { model: model.trim() };
+    },
+    getOpenRouterBaseUrl: async () => {
+      const persisted = persistedOpenRouterBaseUrl(deps.settingsStore);
+      return { baseUrl: resolveOpenRouterBaseUrl(persisted), baseUrlOverride: persisted };
+    },
+    setOpenRouterBaseUrl: async (raw) => {
+      const requested = req(raw).baseUrl;
+      invariant(requested === null || typeof requested === "string", "The TokenHub endpoint must be a string.");
+      invoke(deps.settingsStore, "setOpenRouterBaseUrl", typeof requested === "string" ? requested : undefined);
+      const persisted = persistedOpenRouterBaseUrl(deps.settingsStore);
+      return { baseUrl: resolveOpenRouterBaseUrl(persisted), baseUrlOverride: persisted };
     },
 
     getEgressTunnelEnabled: () => invoke(deps.boxToggleStore, "getEgressTunnelEnabled"),
@@ -162,7 +178,19 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     submitFeedback: (raw) => invoke(deps.shell, "submitFeedback", raw),
     markDeepLinksReady: () => { invoke(deps.shell, "markDeepLinksReady"); },
     getBotTemplatePreview: (raw) => { const { templateId } = req(raw); invariant(typeof templateId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(templateId), "Invalid Bot template id."); return invoke(deps.shell, "getBotTemplatePreview", templateId); },
-    confirmBotTemplateImport: (raw) => { const { previewId } = req(raw); invariant(typeof previewId === "string" && previewId.length > 0 && previewId.length <= 128, "Invalid Bot preview id."); return invoke(deps.shell, "confirmBotTemplateImport", previewId); },
+    getBotTemplateManualPreview: (raw) => { const { templateId, name } = req(raw); invariant(typeof templateId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(templateId), "Invalid Bot template id."); invariant(typeof name === "string" && name.trim().length > 0 && name.trim().length <= 120, "Invalid Bot name."); return invoke(deps.shell, "getBotTemplateManualPreview", templateId, name); },
+    confirmBotTemplateImport: (raw) => {
+      const { previewId, contents } = req(raw);
+      invariant(typeof previewId === "string" && previewId.length > 0 && previewId.length <= 128, "Invalid Bot preview id.");
+      invariant(
+        contents != null
+          && typeof contents === "object"
+          && ["instructions", "memory", "skills", "routines", "integrations"].every((key) => typeof (contents as Record<string, unknown>)[key] === "string")
+          && ((contents as Record<string, string>).instructions?.trim().length ?? 0) > 0,
+        "Invalid manual Bot contents."
+      );
+      return invoke(deps.shell, "confirmBotTemplateImport", previewId, contents);
+    },
     getBoxMigrationStatus: () => invoke(deps.boxRecovery, "readBoxMigrationStatus"),
     forceReconnectGateway: () => { invoke(deps.boxRecovery, "restartCoordinator"); },
     forceRecreateComputer: () => invoke(deps.boxRecovery, "forceRecreateComputer"),

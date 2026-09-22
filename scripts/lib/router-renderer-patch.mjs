@@ -34,13 +34,13 @@ function RBoxRuntime(){const[s,e]=de.useState({mode:"local-docker",status:null,e
 function RRouterOpenRouterModel(provider){
   const[s,e]=de.useState({models:[],selected:null,error:null,busy:!1});
   de.useEffect(()=>{
-    if(provider!=="openrouter"){e({models:[],selected:null,error:null,busy:!1});return()=>{}}
+    if(provider!=="openrouter"){e({models:[],selected:null,baseUrl:null,error:null,busy:!1});return()=>{}}
     let c=!0;
     e(i=>({...i,busy:!0,error:null}));
     window.desktop.agent.getOpenRouterModelOptions().then(i=>{
       if(!c)return;
-      e({models:Array.isArray(i.models)?i.models:[],selected:typeof i.selected==="string"?i.selected:null,error:typeof i.error==="string"&&i.error.length>0?i.error:null,busy:!1});
-    }).catch(i=>{if(c)e({models:[],selected:null,error:String(i?.message??i),busy:!1})});
+      e({models:Array.isArray(i.models)?i.models:[],selected:typeof i.selected==="string"?i.selected:null,baseUrl:typeof i.baseUrl==="string"?i.baseUrl:null,error:typeof i.error==="string"&&i.error.length>0?i.error:null,busy:!1});
+    }).catch(i=>{if(c)e({models:[],selected:null,baseUrl:null,error:String(i?.message??i),busy:!1})});
     return()=>{c=!1};
   },[provider]);
   const t=async i=>{
@@ -48,16 +48,32 @@ function RRouterOpenRouterModel(provider){
     try{await window.desktop.agent.setOpenRouterModel(i);e(o=>({...o,selected:i,busy:!1,error:null}))}
     catch(o){e(n=>({...n,busy:!1,error:String(o?.message??o)}))}
   };
+  const u=async v=>{
+    e(o=>({...o,busy:!0,error:null}));
+    try{
+      const r=await window.desktop.agent.setOpenRouterBaseUrl(v.trim().length>0?v.trim():null);
+      e(o=>({...o,baseUrl:typeof r.baseUrl==="string"?r.baseUrl:null,busy:!1,error:null}));
+      window.desktop.agent.getOpenRouterModelOptions().then(i=>{
+        e({models:Array.isArray(i.models)?i.models:[],selected:typeof i.selected==="string"?i.selected:null,baseUrl:typeof i.baseUrl==="string"?i.baseUrl:null,error:typeof i.error==="string"&&i.error.length>0?i.error:null,busy:!1});
+      }).catch(()=>{});
+    }catch(o){e(n=>({...n,busy:!1,error:String(o?.message??o)}))}
+  };
   de.useEffect(()=>{
     if(provider==="openrouter"&&!s.busy&&s.selected==null&&s.models.length>0)void t(s.models[0]);
   },[provider,s]);
-  return[s,t]
+  return[s,t,u]
+}
+function RRouterEndpointCard({state:s,save:e,busy:t}){
+  const[n,r]=de.useState(s.baseUrl??"");
+  de.useEffect(()=>{r(s.baseUrl??"")},[s.baseUrl]);
+  const i=async()=>{await e(n)};
+  return a.jsx(ie,{description:s.baseUrl?s.baseUrl:"Defaults to the TokenHub cloud endpoint.",label:"API address",variant:"card",children:a.jsxs("div",{className:"sand-9f619 sand-78zum5 sand-6s0dn4 sand-h8yej3",style:{width:360},children:[a.jsx("input",{"aria-label":"TokenHub API address",className:RRouterInputClass,disabled:t,onChange:o=>r(o.currentTarget.value),placeholder:"https://openrouter.ai/api/v1",style:{fontSize:13,height:34,minWidth:0,padding:"0 10px",width:270},type:"text",value:n}),a.jsx(oe,{disabled:t||n.trim()===(s.baseUrl??""),onClick:i,shape:"rectangular",size:"sm",variant:"secondary",children:t?"Saving…":"Save"})]})})
 }
 function RRouterModelCard({state:s,pick:e}){
   const t=s.models.length>0,n=s.selected==null?s.models[0]:s.selected;
   return a.jsx(ie,{description:s.error?s.error:"Models offered by the TokenHub endpoint.",label:"Model",variant:"card",children:t?a.jsx(ye,{"aria-label":"TokenHub model",disabled:s.busy,onValueChange:l=>{if(l!==null)void e(l)},options:s.models.map(l=>({value:l,label:l})),placement:"bottom-end",size:"lg",value:n,variant:"filled"}):a.jsx(se,{as:"span",color:"secondary",size:"sm",children:s.busy?"Loading models…":"No models listed by the endpoint"})});
 }
-function RRouterPanel(){const[s,e]=RRouterState(),[t,n]=RRouterSecrets(),[m,u]=RRouterOpenRouterModel(s.provider),r=RRouterProviders.find(i=>i.value===s.provider)??RRouterProviders[0],i=s.usage?.providers?.[s.provider]??RRouterEmptyUsage,o=r.value==="codex"?"Uses the private ChatGPT login already stored by Codex on this Mac. Requests are made by Grok Bot directly.":r.kind==="local"?"Uses your existing Codex login on this Mac.":r.kind==="key"?"Stored securely with your other Grok Bot secrets.":"Uses the account already connected to Grok Bot.";return a.jsx(Te,{children:a.jsxs("div",{className:k("sand-settings-general","sand-9f619 sand-78zum5 sand-dt5ytf sand-3qzy4x"),children:[a.jsx(re,{title:"Routing",children:a.jsx(ie,{description:r.description,label:"Provider",variant:"card",children:a.jsx(ye,{"aria-label":"Routing provider",onValueChange:l=>{if(l!==null)void e(l)},options:RRouterOptions,placement:"bottom-end",size:"lg",value:s.provider,variant:"filled"})})}),a.jsx(re,{title:"Computer",children:a.jsx(RBoxRuntime,{})}),a.jsx(re,{title:r.kind==="key"?"TokenHub account":"Account",children:a.jsx(ie,{description:o,label:r.kind==="key"?"API key":"Status",variant:"card",children:a.jsx(RRouterCredential,{provider:r,state:s,keys:t,onSaved:n})})}),r.kind==="key"?a.jsx(re,{title:"TokenHub model",children:a.jsx(RRouterModelCard,{state:m,pick:u})}):null,s.error?a.jsx(se,{as:"p",color:"red",size:"sm",children:s.error}):null,a.jsx(re,{title:"Usage for "+r.label,children:a.jsx(RRouterUsageRows,{usage:i})})]})})}
+function RRouterPanel(){const[s,e]=RRouterState(),[t,n]=RRouterSecrets(),[m,u,g]=RRouterOpenRouterModel(s.provider),r=RRouterProviders.find(i=>i.value===s.provider)??RRouterProviders[0],i=s.usage?.providers?.[s.provider]??RRouterEmptyUsage,o=r.value==="codex"?"Uses the private ChatGPT login already stored by Codex on this Mac. Requests are made by Grok Bot directly.":r.kind==="local"?"Uses your existing Codex login on this Mac.":r.kind==="key"?"Stored securely with your other Grok Bot secrets.":"Uses the account already connected to Grok Bot.";return a.jsx(Te,{children:a.jsxs("div",{className:k("sand-settings-general","sand-9f619 sand-78zum5 sand-dt5ytf sand-3qzy4x"),children:[a.jsx(re,{title:"Routing",children:a.jsx(ie,{description:r.description,label:"Provider",variant:"card",children:a.jsx(ye,{"aria-label":"Routing provider",onValueChange:l=>{if(l!==null)void e(l)},options:RRouterOptions,placement:"bottom-end",size:"lg",value:s.provider,variant:"filled"})})}),a.jsx(re,{title:"Computer",children:a.jsx(RBoxRuntime,{})}),a.jsx(re,{title:r.kind==="key"?"TokenHub account":"Account",children:a.jsx(ie,{description:o,label:r.kind==="key"?"API key":"Status",variant:"card",children:a.jsx(RRouterCredential,{provider:r,state:s,keys:t,onSaved:n})})}),r.kind==="key"?a.jsx(re,{title:"TokenHub endpoint",children:a.jsx(RRouterEndpointCard,{state:m,save:g,busy:m.busy})}):null,r.kind==="key"?a.jsx(re,{title:"TokenHub model",children:a.jsx(RRouterModelCard,{state:m,pick:u})}):null,s.error?a.jsx(se,{as:"p",color:"red",size:"sm",children:s.error}):null,a.jsx(re,{title:"Usage for "+r.label,children:a.jsx(RRouterUsageRows,{usage:i})})]})})}
 function RRouterUsageSummary({provider:s,usage:e,current:t,divided:n}){const r=[RRouterNumber(e.requests)+" requests",RRouterNumber(e.inputTokens)+" input",RRouterNumber(e.outputTokens)+" output",RRouterNumber(e.cacheReadTokens+e.cacheWriteTokens)+" cached"].join(" · "),i=t?"Current route":e.lastUsedAt?new Date(e.lastUsedAt).toLocaleString():"Not used yet";return a.jsx(ie,{divided:n,description:r,label:s.label,variant:"card",children:a.jsx(se,{as:"span",color:t?"primary":"secondary",size:"sm",children:i})})}
 function RRouterUsage(){const[s]=RRouterState(),e=RRouterProviders.find(t=>t.value===s.provider)??RRouterProviders[0],t=RRouterProviders.filter(n=>n.value===s.provider||(s.usage?.providers?.[n.value]?.requests??0)>0);return a.jsxs("div",{className:k("sand-usage-section","sand-9f619 sand-78zum5 sand-dt5ytf sand-ou54vl"),children:[a.jsx(re,{title:"Current provider",children:a.jsx(ie,{description:e.description,label:e.label,variant:"card",children:a.jsx(se,{as:"span",color:"secondary",size:"sm",children:"Selected"})})}),a.jsx(re,{title:"Tracked activity",children:a.jsx("div",{children:t.map((n,r)=>a.jsx(RRouterUsageSummary,{provider:n,usage:s.usage?.providers?.[n.value]??RRouterEmptyUsage,current:n.value===s.provider,divided:r>0},n.value))})})]})}
 `;

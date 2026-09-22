@@ -89,6 +89,8 @@ npm run frontend:build  # 构建可读 renderer 重建
    - `isOpenRouterProxyMode()`：base ≠ 官方云即代理模式，无 API key 放行（占位 `local-proxy`）；
    - `resolveOpenRouterModel()`：`SAND_OPENROUTER_MODEL` → **UI 持久化选择（settings.json `openRouterModel`）** → config.toml `openrouter_model` → `openai/gpt-5.2`；
    - **UI 模型下拉**（2026-09-21 新增）：Router 面板 OpenRouter 档出现 Model 卡片，走新桥 `getOpenRouterModelOptions` / `setOpenRouterModel`（main-edge → rpc/main.ts → preload），选中写 settings.json；首次打开自动持久化列表首项。
+   - **UI API 地址输入**（2026-09-23 新增）：Router 面板 TokenHub 档在 API key 之前多出 `API address` 卡片（`RRouterEndpointCard`），走新桥 `getOpenRouterBaseUrl` / `setOpenRouterBaseUrl`，写入 settings.json 的 `openRouterBaseUrl`（存前规范化：trim + 去尾部斜杠；留空即删除该键回退到解析链）。保存后自动重新拉取模型列表。
+     - `resolveOpenRouterBaseUrl(persistedOverride?)` 优先级改为：**settings.json `openRouterBaseUrl`** → `OPENROUTER_BASE_URL` → `~/.codex/config.toml` 的 `openai_base_url` → 官方云。host 侧 `provider-session.ts` 的 `readPersistedOpenRouterBaseUrl()` 与 `extension.ts` 的 `persistedOpenRouterBaseUrl()` 各自读 sand root 下的 settings.json 后传入，所以 UI 改地址对 runtime 立即生效，无需重启。
    - **已打包并部署**到 `/Applications`。
    - **local-docker 关键约束**：host 在容器 `grok-bot-local-vm` 内跑 bundled 代码，Mac 侧源码改动不会热生效。容器内 `127.0.0.1:10100` 无 proxy，必须起 node TCP relay 转发到 `host.docker.internal:10100`（opencodex CORS 只放行 loopback Host）：
      ```sh

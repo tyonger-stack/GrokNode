@@ -90,3 +90,18 @@ test("listOpenRouterProxyModels falls back to catalog slugs when proxy is unreac
     else process.env.OPENROUTER_BASE_URL = previous.openrouterBaseUrl;
   }
 });
+
+test("the persisted endpoint wins over env and codex config", async () => {
+  const mod = await loadModule();
+  withTempCodexHome("openai_base_url = \"http://proxy.local/v1\"", { OPENROUTER_BASE_URL: "http://override.local/v1" }, () => {
+    assert.equal(mod.resolveOpenRouterBaseUrl("http://from-settings.local/v1"), "http://from-settings.local/v1");
+    assert.equal(mod.isOpenRouterProxyMode("http://from-settings.local/v1"), true);
+    assert.equal(mod.resolveOpenRouterTransport("http://from-settings.local/v1").baseUrl, "http://from-settings.local/v1");
+    assert.equal(mod.resolveOpenRouterBaseUrl("  http://padded.local/v1  "), "http://padded.local/v1");
+  });
+  withTempCodexHome("openai_base_url = \"http://proxy.local/v1\"", {}, () => {
+    assert.equal(mod.resolveOpenRouterBaseUrl(null), "http://proxy.local/v1");
+    assert.equal(mod.resolveOpenRouterBaseUrl("   "), "http://proxy.local/v1");
+    assert.equal(mod.isOpenRouterProxyMode(null), true);
+  });
+});

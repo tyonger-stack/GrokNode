@@ -16,12 +16,13 @@ export function readCodexConfigValue(key: string): string | null {
   } catch { return null; }
 }
 
-export function resolveOpenRouterBaseUrl(): string {
-  return process.env.OPENROUTER_BASE_URL?.trim() || readCodexConfigValue("openai_base_url") || OPENROUTER_CLOUD_BASE_URL;
+export function resolveOpenRouterBaseUrl(persistedOverride?: string | null): string {
+  const persisted = persistedOverride?.trim() || null;
+  return persisted || process.env.OPENROUTER_BASE_URL?.trim() || readCodexConfigValue("openai_base_url") || OPENROUTER_CLOUD_BASE_URL;
 }
 
-export function isOpenRouterProxyMode(): boolean {
-  return resolveOpenRouterBaseUrl() !== OPENROUTER_CLOUD_BASE_URL;
+export function isOpenRouterProxyMode(persistedOverride?: string | null): boolean {
+  return resolveOpenRouterBaseUrl(persistedOverride) !== OPENROUTER_CLOUD_BASE_URL;
 }
 
 let _dockerCache: boolean | undefined;
@@ -35,8 +36,8 @@ export function isRunningInDocker(): boolean {
 
 /** When running inside the local Docker box, 127.0.0.1 points at the container, not the Mac.
  *  Rewrite to host.docker.internal and restore the original Host header so the opencodex proxy accepts it. */
-export function resolveOpenRouterTransport(): { baseUrl: string; hostHeader?: string } {
-  const baseUrl = resolveOpenRouterBaseUrl();
+export function resolveOpenRouterTransport(persistedOverride?: string | null): { baseUrl: string; hostHeader?: string } {
+  const baseUrl = resolveOpenRouterBaseUrl(persistedOverride);
   if (!isRunningInDocker()) return { baseUrl };
   try {
     const url = new URL(baseUrl);
@@ -58,8 +59,8 @@ function readCatalogModelSlugs(): string[] {
   } catch { return []; }
 }
 
-export async function listOpenRouterProxyModels(timeoutMs = 2500): Promise<string[]> {
-  const base = resolveOpenRouterBaseUrl().replace(/\/+$/, "");
+export async function listOpenRouterProxyModels(timeoutMs = 2500, persistedOverride?: string | null): Promise<string[]> {
+  const base = resolveOpenRouterBaseUrl(persistedOverride).replace(/\/+$/, "");
   const controller = new AbortController();
   const timer = setTimeout(() => { controller.abort(); }, timeoutMs);
   try {

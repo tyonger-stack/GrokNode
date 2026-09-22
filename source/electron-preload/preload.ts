@@ -150,7 +150,8 @@ export function createDesktopPreloadBridge(options: {
     onDeepLink: (listener: (payload: unknown) => void) => subscribe("deep-link", listener),
     botTemplates: {
       preview: (templateId: string) => edge("getBotTemplatePreview", { templateId }),
-      import: (previewId: string) => edge("confirmBotTemplateImport", { previewId }),
+      previewManual: (templateId: string, name: string) => edge("getBotTemplateManualPreview", { templateId, name }),
+      import: (previewId: string, contents: import("../shared/bot-template.js").BotTemplateManualContents) => edge("confirmBotTemplateImport", { previewId, contents }),
     },
     async deepLinksReady() { await edge("markDeepLinksReady"); },
     getBoxMigrationStatus: () => edge("getBoxMigrationStatus"),
@@ -287,6 +288,8 @@ export function createDesktopPreloadBridge(options: {
       setBoxRuntime: (mode: string) => edge("setBoxRuntime", { mode }),
       getOpenRouterModelOptions: () => edge("getOpenRouterModelOptions"),
       setOpenRouterModel: (model: string) => edge("setOpenRouterModel", { model }),
+      getOpenRouterBaseUrl: () => edge("getOpenRouterBaseUrl"),
+      setOpenRouterBaseUrl: (baseUrl: string | null) => edge("setOpenRouterBaseUrl", { baseUrl }),
       clientPersistence: {
         read: (key: string) => ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.read, { key }),
         async write(key: string, value: string) { await ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.write, { key, value }); },

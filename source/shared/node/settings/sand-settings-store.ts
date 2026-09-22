@@ -31,6 +31,7 @@ export interface SandStoredSettings {
   localToolPermission?: SandLocalToolPermission; localToolPermissionCeiling?: SandLocalToolPermission;
   inferenceProvider?: SandInferenceProvider; inferenceRouterUsage?: SandInferenceRouterUsage;
   openRouterModel?: string;
+ openRouterBaseUrl?: string;
   localMcpServers?: Record<string, McpServerConfig>;
   boxRuntime?: SandBoxRuntime;
   mcpCustomInstructionsAccountScope?: string; pinnedAgentIds?: string[]; sidebarSections?: SidebarSection[];
@@ -46,6 +47,13 @@ function normalizeCustomInstructions(raw: StringMap): StringMap { const normaliz
 function normalizeCustomInstructionsByServerId(raw: StringMap): StringMap { const normalized: StringMap = {}; for (const [id, value] of Object.entries(raw)) if (/^[1-9]\d*$/.test(id)) normalized[id] = clampMcpCustomInstruction(value); return normalized; }
 function normalizeDisabledToolsByServerId(raw: unknown): StringListMap { const normalized: StringListMap = {}; if (typeof raw !== "object" || raw == null || Array.isArray(raw)) return normalized; for (const [id, value] of Object.entries(raw)) { if (!/^[1-9]\d*$/.test(id)) continue; const tools = [...new Set(stringArray(value).filter((name) => name.length > 0))]; if (tools.length > 0) normalized[id] = tools; } return normalized; }
 export function normalizeLocalMcpServers(raw: unknown): Record<string, McpServerConfig> { const normalized: Record<string, McpServerConfig> = {}; if (typeof raw !== "object" || raw == null || Array.isArray(raw)) return normalized; for (const [rawName, value] of Object.entries(raw)) { try { const name = validateServerName(rawName); const config = parseMcpServerConfig(value); if (config != null) normalized[name] = config; } catch {} } return normalized; }
+/** Trims a user-supplied endpoint and drops a trailing slash so comparisons stay stable. */
+export function normalizeOpenRouterBaseUrl(value: string): string {
+  let trimmed = value.trim();
+  while (trimmed.endsWith("/")) trimmed = trimmed.slice(0, -1);
+  return trimmed;
+}
+
 function normalizeInferenceProvider(value: unknown): SandInferenceProvider { return value === "codex" || value === "openrouter" ? value : "openrouter"; }
 function downgradePersistedFast(model: SandAgentModelSelection): SandAgentModelSelection { return { modelId: model.modelId, maxMode: true, parameters: model.parameters.map((parameter) => ({ id: parameter.id, value: parameter.id === "fast" ? "false" : parameter.value })) }; }
 
@@ -78,6 +86,7 @@ function parseSettings(value: unknown): SandStoredSettings | null {
   if (isSandLocalToolPermission(raw.localToolPermissionCeiling)) result.localToolPermissionCeiling = raw.localToolPermissionCeiling;
   result.inferenceProvider = normalizeInferenceProvider(raw.inferenceProvider);
   if (typeof raw.openRouterModel === "string" && raw.openRouterModel.trim().length > 0) result.openRouterModel = raw.openRouterModel.trim();
+ if (typeof raw.openRouterBaseUrl === "string" && raw.openRouterBaseUrl.trim().length > 0) result.openRouterBaseUrl = normalizeOpenRouterBaseUrl(raw.openRouterBaseUrl);
   result.localMcpServers = normalizeLocalMcpServers(raw.localMcpServers);
   if (isSandBoxRuntime(raw.boxRuntime)) result.boxRuntime = raw.boxRuntime;
   if (typeof raw.inferenceRouterUsage === "object" && raw.inferenceRouterUsage != null && !Array.isArray(raw.inferenceRouterUsage)) {
@@ -174,6 +183,8 @@ export class SandSettingsStore {
   getLocalMcpServers(): Record<string, McpServerConfig> { return this.load().localMcpServers ?? {}; }
   setLocalMcpServers(servers: Record<string, McpServerConfig>): void { this.update((s) => ({ ...s, localMcpServers: { ...servers } })); }
   setOpenRouterModel(value?: string): void { this.update((s) => { const { openRouterModel: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed ? { ...rest, openRouterModel: trimmed } : rest; }); }
+ getOpenRouterBaseUrl(): string | undefined { return this.load().openRouterBaseUrl; }
+ setOpenRouterBaseUrl(value?: string): void { this.update((s) => { const { openRouterBaseUrl: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed ? { ...rest, openRouterBaseUrl: normalizeOpenRouterBaseUrl(trimmed) } : rest; }); }
   getInferenceRouterUsage(): SandInferenceRouterUsage { return this.load().inferenceRouterUsage ?? emptySandInferenceRouterUsage(); }
   recordInferenceUsage(provider: SandInferenceProvider, usage: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }): void {
     const safe = (value: number | undefined): number => Number.isFinite(value) && value! >= 0 ? Math.round(value!) : 0;
