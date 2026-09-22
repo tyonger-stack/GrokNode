@@ -90,6 +90,14 @@ OpenRouter/TokenHub 时，Router 页还会出现模型下拉，列出端点提�
 写入本地设置。应用在所有路由会话中保留流式响应、思考状态、表情回应、富文本插件
 提及与 MCP 工具执行。
 
+选择 OpenRouter/TokenHub 时，Router 页还会出现 **API address** 卡片，可以指定任意
+OpenRouter 兼容端点，留空则默认云端端点 `https://openrouter.ai/api/v1`。地址的解析
+顺序为：设置中保存的值 → `OPENROUTER_BASE_URL` 环境变量 → `~/.codex/config.toml` 的
+`openai_base_url`。截图中填入的是本地代理 `http://127.0.0.1:10100/v1`，模型下拉随之
+列出该端点提供的模型：
+
+![选中 TokenHub 的 Router 页：Provider、Local Docker VM 状态、API key 卡片、自定义 API address、模型下拉与本地用量统计](docs/assets/router-tokenhub-settings.png)
+
 Router 页同时显示所选 provider 的本地请求与 token 累计。**Usage & Billing** 也会
 汇总返回用量数据的 provider 的总量。这些数字是活动记录，不是权威的服务商账单。
 
