@@ -56,7 +56,7 @@ test("Always allow persists a Docker VM Shell grant, survives restart, and prese
       hostShell: "enforce",
       boxShell: "off",
       mcp: "enforce",
-      computer: "enforce",
+      computer: "off",
       automationWrite: "off",
       cloudAgent: "enforce",
       subagentLaunch: "enforce",

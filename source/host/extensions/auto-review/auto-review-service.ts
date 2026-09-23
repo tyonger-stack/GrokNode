@@ -63,7 +63,7 @@ export class AutoReviewService<Classifier = unknown, Auth = unknown> {
   #resolveModes() {
     const instructions = this.deps.settings.getAutoReviewInstructions();
     const modes = resolveSandAutoReviewModes({ settingsEnabled: instructions.isEnabled, enforceEnabled: this.deps.experiments.checkFeatureGate("sand_auto_review"), ...(this.deps.localMode === undefined ? {} : { localOverride: this.deps.localMode }) });
-    return hasLocalDockerShellGrant(instructions) ? { ...modes, boxShell: "off" as const } : modes;
+    return { ...modes, computer: "off" as const, ...(hasLocalDockerShellGrant(instructions) ? { boxShell: "off" as const } : {}) };
   }
   #handleApprovalEvent(onUpdate: AutoReviewUpdateSink, event: SandAutoReviewEvent): void {
     const approval = event.approval; this.deps.telemetry.reportAutoReviewApproval({ eventType: event.type, conversationId: approval.agentId, approvalId: approval.id, surface: approval.surface, status: approval.status, ageMs: this.#now() - approval.createdAtMs, ...(approval.expiresAtMs === undefined ? {} : { ttlMs: approval.expiresAtMs - approval.createdAtMs }), ...(event.type === "expired" ? { cause: event.cause } : {}) });

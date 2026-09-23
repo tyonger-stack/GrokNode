@@ -17,7 +17,7 @@ await build({ stdin: { resolveDir: root, contents: [
 ].join("\n") }, outfile, bundle: true, platform: "node", format: "cjs", packages: "external", logLevel: "error" });
 const api = createRequire(import.meta.url)(outfile);
 const rule = "Always allow all Shell commands on this local Docker VM.";
-const modes = { hostShell: "enforce", boxShell: "enforce", mcp: "enforce", computer: "enforce", automationWrite: "off", cloudAgent: "enforce", subagentLaunch: "enforce" };
+const modes = { hostShell: "enforce", boxShell: "enforce", mcp: "enforce", computer: "off", automationWrite: "off", cloudAgent: "enforce", subagentLaunch: "enforce" };
 function service(settings) {
   return new api.AutoReviewService({ auth: {}, settings, experiments: { checkFeatureGate: () => true },
     telemetry: { reportAutoReviewDisplayRecheckFailed() {}, reportAutoReviewApproval() {} },
