@@ -114,7 +114,6 @@ function details(template: BotTemplateRecord): { readonly node: HTMLElement; col
 
 function openPreview(bridge: BotTemplateBridge, templateId: string): { close(): boolean } {
   const dialog = element("dialog", "grok-template");
-  console.info("[bt-trace] openPreview enter", templateId, document.visibilityState, window.innerWidth + "x" + window.innerHeight);
   dialog.setAttribute("aria-label", "导入 Bot");
   const style = element("style", ""); style.textContent = styles;
   const header = element("header", "");
@@ -135,24 +134,11 @@ function openPreview(bridge: BotTemplateBridge, templateId: string): { close(): 
   header.append(back, element("span", "bt-spacer"), share, dismiss);
   dialog.append(style, header, body);
   dialog.addEventListener("cancel", event => { if (pending) event.preventDefault(); });
-  dialog.addEventListener("close", () => { console.info("[bt-trace] dialog close event"); dialog.remove(); }, { once: true });
+  dialog.addEventListener("close", () => { dialog.remove(); }, { once: true });
   document.body.append(dialog);
   dialog.showModal();
-  console.info("[bt-trace] openPreview showModal open=" + dialog.open, document.visibilityState, window.innerWidth + "x" + window.innerHeight);
-  console.info("[bt-trace] post-show connected=" + dialog.isConnected, "open=" + dialog.open, "parent=" + (dialog.parentElement?.tagName ?? "none"), "bodyChildren=" + document.body.childElementCount, location.href);
-  new MutationObserver(mutations => { for (const mutation of mutations) for (const node of mutation.removedNodes) if (node === dialog) console.info("[bt-trace] dialog removed from DOM"); }).observe(document.body, { childList: true });
-  window.setTimeout(() => {
-    const computed = window.getComputedStyle(dialog);
-    const rect = dialog.getBoundingClientRect();
-    console.info("[bt-trace] t3s connected=" + dialog.isConnected, "open=" + dialog.open, "bodyChildren=" + document.body.childElementCount,
-      "display=" + computed.display, "visibility=" + computed.visibility, "opacity=" + computed.opacity, "position=" + computed.position,
-      "z=" + computed.zIndex, "rect=" + Math.round(rect.x) + "," + Math.round(rect.y) + "," + Math.round(rect.width) + "x" + Math.round(rect.height),
-      "bodyClass=" + document.body.className, "htmlClass=" + document.documentElement.className);
-  }, 3000);
-  window.setTimeout(() => console.info("[bt-trace] t12s connected=" + dialog.isConnected, "open=" + dialog.open, "bodyChildren=" + document.body.childElementCount), 12000);
   const render = (snapshot: BotTemplatePreview): void => {
     const template = snapshot.template;
-    console.info("[bt-trace] render", template.name);
     const templateDetails = details(template);
     const hero = element("section", "bt-hero");
     const row = element("div", "bt-title-row");
@@ -183,7 +169,6 @@ function openPreview(bridge: BotTemplateBridge, templateId: string): { close(): 
     );
   };
   const openManual = (reason: string): void => {
-    console.info("[bt-trace] openManual", reason);
     preview = null;
     share.disabled = true;
     const manualRecord: BotTemplateRecord = { templateId, sourceUrl: "https://x.ai/bot/" + encodeURIComponent(templateId), name: "", description: "", author: null, color: null, shape: null };
@@ -253,16 +238,10 @@ function openPreview(bridge: BotTemplateBridge, templateId: string): { close(): 
 export function installBotTemplatePreview(desktop: TemplateDesktop): () => void {
   let active: ReturnType<typeof openPreview> | null = null;
   const unsubscribe = desktop.onDeepLink(value => {
-    console.info("[bt-trace] ext onDeepLink", JSON.stringify(value).slice(0, 120), document.visibilityState, window.innerWidth + "x" + window.innerHeight);
     if (typeof value !== "object" || value === null || !("route" in value) || value.route !== "bot-template"
       || !("templateId" in value) || typeof value.templateId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value.templateId)) return;
     if (active !== null && !active.close()) return;
-    try {
-      active = openPreview(desktop.botTemplates, value.templateId);
-    } catch (error) {
-      console.info("[bt-trace] openPreview threw", error instanceof Error ? error.message : String(error));
-    }
+    active = openPreview(desktop.botTemplates, value.templateId);
   });
-  console.info("[bt-trace] ext installed");
   return () => { unsubscribe(); active?.close(); };
 }

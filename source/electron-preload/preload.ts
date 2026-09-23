@@ -110,7 +110,6 @@ export function createDesktopPreloadBridge(options: {
   const earlyEventListeners: Record<string, Set<(payload: any) => void>> = {};
   const eventsAwaitingFirstSubscriber: Record<string, any[]> = { "deep-link": [], "focus-agent": [] };
   const routeEarlyEvent = (event: string, payload: any): void => {
-    console.info("[bt-trace] preload routeEarlyEvent", event, "listeners=" + (earlyEventListeners[event]?.size ?? 0), document.visibilityState, window.innerWidth + "x" + window.innerHeight);
     const listeners = earlyEventListeners[event];
     if (listeners !== undefined && listeners.size > 0) {
       for (const listener of listeners) listener(payload);
@@ -126,7 +125,6 @@ export function createDesktopPreloadBridge(options: {
     "focus-agent": (payload: any) => routeEarlyEvent("focus-agent", payload),
   });
   const subscribe = (event: string, listener: (payload: any) => void): (() => void) => {
-    console.info("[bt-trace] preload subscribe", event, "queued=" + (eventsAwaitingFirstSubscriber[event]?.length ?? -1));
     if (earlyEventListeners[event] === undefined && eventsAwaitingFirstSubscriber[event] === undefined) {
       return mainEdge.subscribe({ [event]: listener });
     }
