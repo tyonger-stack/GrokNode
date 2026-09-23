@@ -48,6 +48,7 @@ export interface MainWebContents {
     listener: (details: PreventableEvent & { readonly isMainFrame: boolean; readonly url: string }) => void,
   ): void;
   on(event: "did-start-loading", listener: () => void): void;
+  on(event: "did-finish-load", listener: () => void): void;
   on(event: "unresponsive" | "responsive", listener: () => void): void;
 }
 
@@ -156,6 +157,7 @@ export interface ElectronMainDependencies {
     readonly handleArgv: (argv: readonly string[], source: "initial-argv") => void;
     readonly hasPendingActivation: () => boolean;
     readonly markNotReady: () => void;
+    readonly markReady: () => void;
   };
   readonly startup: {
     readonly bootstrapBeforeSingleInstance: () => void;
@@ -338,6 +340,7 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
       details.preventDefault();
     });
     window.webContents.on("did-start-loading", () => deps.deepLinks.markNotReady());
+    window.webContents.on("did-finish-load", () => deps.deepLinks.markReady());
     window.on("closed", () => deps.deepLinks.markNotReady());
     if (env.VITE_DEV_SERVER_URL != null) await window.loadURL(env.VITE_DEV_SERVER_URL);
     else await window.loadFile(deps.rendererHtmlPath);

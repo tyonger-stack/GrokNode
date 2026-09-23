@@ -899,7 +899,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
     createBrowserWindow: (options) => new bindings.native.BrowserWindow(options),
     getAllWindows: () => bindings.native.BrowserWindow.getAllWindows(),
     windowStatePersistence,
-    deepLinks: { extractCandidatesFromArgv: extractDeepLinkCandidatesFromArgv, handleCandidate: (candidate, source) => { deepLinks.handleCandidate(candidate, source); }, handleArgv: (argv, source) => deepLinks.handleArgv(argv, source), hasPendingActivation: () => deepLinks.hasPendingActivation(), markNotReady: () => deepLinks.markNotReady() },
+    deepLinks: { extractCandidatesFromArgv: extractDeepLinkCandidatesFromArgv, handleCandidate: (candidate, source) => { deepLinks.handleCandidate(candidate, source); }, handleArgv: (argv, source) => deepLinks.handleArgv(argv, source), hasPendingActivation: () => deepLinks.hasPendingActivation(), markNotReady: () => deepLinks.markNotReady(), markReady: () => deepLinks.markReady() },
     startup: {
       bootstrapBeforeSingleInstance: () => { hasIsolatedUserData = bindings.startup.bootstrapUserData({ isLabBuild: metadata.sandLab, env }) != null; },
       bootstrapAfterSingleInstance: (isPrimaryInstance) => { dataRootSettlement = bindings.startup.bootstrapDataRoot({ isPrimaryInstance, isLabBuild: metadata.sandLab, hasIsolatedUserData, env }); },
