@@ -94,6 +94,14 @@ function hasDevRestart(env: NodeJS.ProcessEnv): boolean {
   return env.SAND_RESTART_EXIT_CODE != null && env.SAND_RESTART_EXIT_CODE.length > 0;
 }
 
+function commitStagedPayload(paths: unknown, filenames: unknown): { readonly paths: unknown; readonly filenames: unknown } {
+  if (typeof paths === "object" && paths !== null && !Array.isArray(paths)) {
+    const request = paths as { readonly paths?: unknown; readonly filenames?: unknown };
+    return { paths: request.paths, filenames: request.filenames ?? filenames };
+  }
+  return { paths, filenames };
+}
+
 export function createDesktopPreloadBridge(options: {
   readonly ipc: PreloadIpcRenderer;
   readonly webFrame: PreloadWebFrame;
@@ -147,9 +155,9 @@ export function createDesktopPreloadBridge(options: {
     getLinkMetadata: (url: string) => edge("getLinkMetadata", { url }),
     async openExternal(url: string) { await edge("openExternal", { url }); },
     async openCloudAgent(bcId: string) { await edge("openCloudAgent", { bcId }); },
-    stageAttachmentBytes: (filename: string, bytes: Uint8Array) => edge("stageAttachmentBytes", { filename, bytes }),
-    commitStagedAttachments: (paths: readonly string[], filenames: readonly string[]) => edge("commitStagedAttachments", { paths, filenames }),
-    async discardStagedAttachment(path: string) { await edge("discardStagedAttachment", { path }); },
+    stageAttachmentBytes: (filename: string | { readonly filename?: unknown; readonly bytes?: unknown }, bytes?: Uint8Array) => edge("stageAttachmentBytes", typeof filename === "object" && filename !== null ? { filename: filename.filename, bytes: filename.bytes ?? bytes } : { filename, bytes }),
+    commitStagedAttachments: (paths: readonly string[] | { readonly paths?: unknown; readonly filenames?: unknown }, filenames?: readonly string[]) => edge("commitStagedAttachments", commitStagedPayload(paths, filenames)),
+    async discardStagedAttachment(path: string | { readonly path?: unknown }) { await edge("discardStagedAttachment", typeof path === "object" && path !== null ? { path: path.path } : { path }); },
     mcp: {
       list: () => ipc.invoke("sand:mcp-list"),
       effectivePlugins: () => ipc.invoke("sand:mcp-effective-plugins"),

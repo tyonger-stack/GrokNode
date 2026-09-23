@@ -16,10 +16,35 @@ export const choiceOptionSchema = z.object({
   style: widgetActionStyleSchema.optional(),
 });
 
+function tryParseJsonValue(value: string): unknown {
+  const trimmed = value.trim();
+  if (trimmed.length < 2) return value;
+  const first = trimmed[0];
+  if (first !== "{" && first !== "[") return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+// Some providers / proxies occasionally deliver a nested object as a JSON-encoded
+// string (double-encoding), or an option as a bare label string. Coerce those
+// shapes back before validation so a widget question does not fail with
+// "Expected object, received string" and force the model into a text fallback.
+export const choiceOptionInputSchema = z.preprocess((value) => {
+  if (typeof value === "string") {
+    const parsed = tryParseJsonValue(value);
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) return parsed;
+    return { label: value };
+  }
+  return value;
+}, choiceOptionSchema);
+
 export const sandWidgetSchema = z.object({
   prompt: z.string().trim().min(1),
   helpText: z.string().trim().min(1).optional(),
-  options: z.array(choiceOptionSchema).min(1).max(6),
+  options: z.array(choiceOptionInputSchema).min(1).max(6),
   allowCustom: z
     .boolean()
     .optional()
@@ -33,6 +58,15 @@ export const sandWidgetSchema = z.object({
       "When true, this widget auto-dismisses (becomes inert, shows a muted Dismissed state) once the user sends a newer message without answering it. Omit/false to keep the question live and answerable indefinitely. Set true only for low-stakes questions that become moot if the user moves on; keep it off for real decisions you still need answered.",
     ),
 });
+
+// Input-side schema for SendMessage: accepts the strict object shape, plus a
+// JSON-encoded string of that object (double-encoded by some model gateways).
+// Plain non-JSON strings still fail validation, so the model gets a clear error
+// instead of silently dropping the card.
+export const sandWidgetInputSchema = z.preprocess((value) => {
+  if (typeof value === "string") return tryParseJsonValue(value);
+  return value;
+}, sandWidgetSchema);
 
 export type SandWidget = z.infer<typeof sandWidgetSchema>;
 
