@@ -92,11 +92,9 @@ npm run frontend:build  # 构建可读 renderer 重建
    - **UI API 地址输入**（2026-09-23 新增）：Router 面板 TokenHub 档在 API key 之前多出 `API address` 卡片（`RRouterEndpointCard`），走新桥 `getOpenRouterBaseUrl` / `setOpenRouterBaseUrl`，写入 settings.json 的 `openRouterBaseUrl`（存前规范化：trim + 去尾部斜杠；留空即删除该键回退到解析链）。保存后自动重新拉取模型列表。
      - `resolveOpenRouterBaseUrl(persistedOverride?)` 优先级改为：**settings.json `openRouterBaseUrl`** → `OPENROUTER_BASE_URL` → `~/.codex/config.toml` 的 `openai_base_url` → 官方云。host 侧 `provider-session.ts` 的 `readPersistedOpenRouterBaseUrl()` 与 `extension.ts` 的 `persistedOpenRouterBaseUrl()` 各自读 sand root 下的 settings.json 后传入，所以 UI 改地址对 runtime 立即生效，无需重启。
    - **已打包并部署**到 `/Applications`。
-   - **local-docker 关键约束**：host 在容器 `grok-bot-local-vm` 内跑 bundled 代码，Mac 侧源码改动不会热生效。容器内 `127.0.0.1:10100` 无 proxy，必须起 node TCP relay 转发到 `host.docker.internal:10100`（opencodex CORS 只放行 loopback Host）：
-     ```sh
-     docker exec grok-bot-local-vm node -e 'const net=require("net");net.createServer(c=>{const u=net.connect(10100,"host.docker.internal");c.pipe(u);u.pipe(c);u.on("error",()=>c.destroy());c.on("error",()=>u.destroy())}).listen(10100,"127.0.0.1")' &
-     ```
-     重启容器后需重跑。
+   - **local-docker 关键约束**：host 在容器 `grok-bot-local-vm` 内跑 bundled 代码，Mac 侧源码改动不会热生效。
+   - **10100 中继已换代（2026-09-24 实测，旧手册作废）**：手动 node TCP relay（转 `host.docker.internal:10100`）已不再需要，不要再跑。现为平台自带 Python L7 中继 `/tmp/ocx-relay.py`（容器 `127.0.0.1:10100` → Mac `11010` 的 `mac-forwarder.mjs`，带 token 鉴权、SSE 安全），随容器创建自动拉起（PPID 0 守护，实测存活 77 分钟+）。排障只查三处：容器 running → `/proc/net/tcp` 有 `0100007F:2774` 且为 LISTEN → Mac 侧 `curl /v1/models` 200 且 <5s。
+   - **派长任务前先过健康门（2026-09-24 血案）**：容器重建曾导致 00:16 派出的任务静默 14 分钟零推理（transcript 零增长、计数器冻结），00:30 容器就绪后才开跑。长 skill 开工前必须四项全绿：容器 running、中继 LISTEN、代理 200、渲染进程稳定 >5 分钟。检查脚本 `~/.grokbot/health-check.py`（`python3 ~/.grokbot/health-check.py [--repair]`，exit 0=OK / 1=DEGRADED / 2=DOWN）。
    - **模型选择硬约束**：Grok Bot 框架要求模型通过 `send_message` 工具投递文字。不支持 tool_calls 的模型（如 `volcengine-agent-plan/ark-code-latest`）会无限循环重发 prompt。已验证可用：`qianwen/qwen3.8-max`（流式 tool_calls + 参数完整）；`glm-5.3-flash` 调工具但 input 为空。OpenAI 系模型（gpt-6-astra 等）受 Codex 账号 quota cooldown 限制。
 3. **Router provider 后端同步**（与代理无关）— `frontend/src/recovered/features/settings/overlay/router.ts`、`contracts/desktop-bridge.ts`、`tests/router-settings.test.mjs`：新增 `get/setInferenceRouter` 桥接，让 UI 选的 provider 落到后端确认。
 
