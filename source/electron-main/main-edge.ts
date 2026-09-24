@@ -9,8 +9,9 @@ import { reportDesktopEdgeFailure } from "./desktop-edge-failures.js";
 import { isSandInferenceProvider } from "../shared/inference-router.js";
 import { getLocalInferenceCliStatus } from "../shared/node/inference-router-local.js";
 import { isSandBoxRuntime } from "../shared/box-runtime.js";
-import { isOpenRouterProxyMode, listOpenRouterProxyModels, resolveOpenRouterBaseUrl } from "../shared/node/openrouter-proxy.js";
-import { getLocalDockerStatus, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
+import { OPENCODEX_MAC_FORWARDER_PORT, isOpenRouterProxyMode, listOpenRouterProxyModels, probeOpenRouterChannel, resolveOpenRouterBaseUrl } from "../shared/node/openrouter-proxy.js";
+import { mergeOpenRouterChannelStatus, normalizeOpenRouterChannelStatus } from "../shared/openrouter-channel-status.js";
+import { getLocalDockerStatus, probeLocalDockerRelay, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
 
 export const MAIN_EDGE_UNSERVED = "main/unserved-method";
 export const MAIN_EDGE_UPDATE_UNAVAILABLE = "main/update-unavailable";
@@ -65,6 +66,12 @@ function invoke(target: UnknownRecord, method: string, ...args: unknown[]): unkn
 function persistedOpenRouterBaseUrl(settingsStore: UnknownRecord): string | null {
   const value = invoke(settingsStore, "getOpenRouterBaseUrl");
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+function isLocalMacForwarder(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl);
+    return (url.hostname === "127.0.0.1" || url.hostname === "localhost") && url.port === String(OPENCODEX_MAC_FORWARDER_PORT);
+  } catch { return false; }
 }
 function req(value: unknown): UnknownRecord { return typeof value === "object" && value != null && !Array.isArray(value) ? value as UnknownRecord : {}; }
 function detectTimeZone(): string | null { const value = Intl.DateTimeFormat().resolvedOptions().timeZone; return value.length > 0 ? value : null; }
@@ -172,6 +179,21 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       }
       const persisted = persistedOpenRouterBaseUrl(deps.settingsStore);
       return { baseUrl: resolveOpenRouterBaseUrl(persisted), baseUrlOverride: persisted };
+    },
+    getOpenRouterChannelStatus: async () => {
+      const persistedBaseUrl = persistedOpenRouterBaseUrl(deps.settingsStore);
+      const boxRuntime = invoke(deps.settingsStore, "getBoxRuntime");
+      const useContainerRelay = boxRuntime === "local-docker" && isLocalMacForwarder(resolveOpenRouterBaseUrl(persistedBaseUrl));
+      const [modelListResult, hostSettingsResult] = await Promise.allSettled([
+        useContainerRelay ? probeLocalDockerRelay(2500) : probeOpenRouterChannel(2500, persistedBaseUrl),
+        deps.readHostSettingsFromBox(),
+      ]);
+      if (modelListResult.status === "rejected" || modelListResult.value == null) {
+        throw new Error("Unable to probe the TokenHub channel.");
+      }
+      const hostSettings = hostSettingsResult.status === "fulfilled" ? hostSettingsResult.value : null;
+      const chatStatus = normalizeOpenRouterChannelStatus(hostSettings?.openRouterChatStatus);
+      return mergeOpenRouterChannelStatus(chatStatus, modelListResult.value) ?? modelListResult.value;
     },
 
     getEgressTunnelEnabled: () => invoke(deps.boxToggleStore, "getEgressTunnelEnabled"),

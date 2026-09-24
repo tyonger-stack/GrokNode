@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { transform } from "esbuild";
+import { build } from "esbuild";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sharedSourcePath = path.join(repoRoot, "source", "shared", "node", "openrouter-proxy.ts");
@@ -14,9 +14,15 @@ const sharedSourcePath = path.join(repoRoot, "source", "shared", "node", "openro
 const CLOUD = "https://openrouter.ai/api/v1";
 
 async function loadModule() {
-  const { readFile } = await import("node:fs/promises");
-  const source = await readFile(sharedSourcePath, "utf8");
-  const { code: output } = await transform(source, { format: "esm", loader: "ts", target: "es2022" });
+  const result = await build({
+    entryPoints: [sharedSourcePath],
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "node",
+    target: "es2022"
+  });
+  const output = result.outputFiles[0].text;
   return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 }
 
@@ -103,5 +109,22 @@ test("the persisted endpoint wins over env and codex config", async () => {
     assert.equal(mod.resolveOpenRouterBaseUrl(null), "http://proxy.local/v1");
     assert.equal(mod.resolveOpenRouterBaseUrl("   "), "http://proxy.local/v1");
     assert.equal(mod.isOpenRouterProxyMode(null), true);
+  });
+});
+
+test("rewrites the Mac forwarder to the container relay inside Docker", async () => {
+  const mod = await loadModule();
+  assert.deepEqual(mod.resolveOpenRouterTransport("http://127.0.0.1:11010/v1", false), {
+    baseUrl: "http://127.0.0.1:11010/v1",
+  });
+  assert.deepEqual(mod.resolveOpenRouterTransport("http://127.0.0.1:11010/v1", true), {
+    baseUrl: "http://127.0.0.1:10100/v1",
+  });
+  assert.deepEqual(mod.resolveOpenRouterTransport("http://localhost:11010/v1", true), {
+    baseUrl: "http://localhost:10100/v1",
+  });
+  assert.deepEqual(mod.resolveOpenRouterTransport("http://127.0.0.1:10080/v1", true), {
+    baseUrl: "http://host.docker.internal:10080/v1",
+    hostHeader: "127.0.0.1:10080",
   });
 });

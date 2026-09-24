@@ -365,6 +365,7 @@ export interface AgentDesktopBridge {
   getComputerUseModel(): Promise<AgentModelSelection | null>;
   setComputerUseModel(model: AgentModelSelection | null): Promise<AgentModelSelection | null>;
   getAvailableModels(): Promise<unknown>;
+  getOpenRouterChannelStatus(): Promise<unknown>;
   getInferenceRouter(): Promise<unknown>;
   setInferenceRouter(provider: string): Promise<unknown>;
   clientPersistence: {

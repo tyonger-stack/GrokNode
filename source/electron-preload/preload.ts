@@ -328,6 +328,7 @@ export function createDesktopPreloadBridge(options: {
       setOpenRouterModel: (model: string) => edge("setOpenRouterModel", { model }),
       getOpenRouterBaseUrl: () => edge("getOpenRouterBaseUrl"),
       setOpenRouterBaseUrl: (baseUrl: string | null) => edge("setOpenRouterBaseUrl", { baseUrl }),
+      getOpenRouterChannelStatus: () => edge("getOpenRouterChannelStatus"),
       clientPersistence: {
         read: (key: string) => ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.read, { key }),
         async write(key: string, value: string) { await ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.write, { key, value }); },

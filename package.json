@@ -10,6 +10,7 @@
   "scripts": {
     "bootstrap": "node scripts/bootstrap-runtime.mjs",
     "build": "node scripts/build.mjs",
+    "diagnose": "node scripts/diagnose-channel.mjs",
     "check": "npm run typecheck && npm run source:typecheck && npm test",
     "frontend:build": "vite build --config frontend/vite.config.ts",
     "frontend:recover": "node scripts/recover-frontend.mjs",

@@ -75,6 +75,7 @@ export const MAIN_METHOD_TABLE = {
   setOpenRouterModel: { args: "object" },
   getOpenRouterBaseUrl: { args: "none" },
   setOpenRouterBaseUrl: { args: "object" },
+  getOpenRouterChannelStatus: { args: "none" },
   transcribeAudio: { args: "object" },
   reportAgentLoad: { args: "object" },
   reportAccessBlocked: { args: "object" },

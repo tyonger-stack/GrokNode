@@ -8,7 +8,8 @@ import { jsonSchema, streamText, tool, type CoreMessage, type LanguageModelV1, t
 
 import { BasePromptBuilder, BasePromptExecutor } from "../../../packages/chat-inference/base.js";
 import type { SandInferenceProvider } from "../../../shared/inference-router.js";
-import { isOpenRouterProxyMode, readCodexConfigValue, resolveOpenRouterBaseUrl, resolveOpenRouterTransport } from "../../../shared/node/openrouter-proxy.js";
+import { isOpenRouterProxyMode, readCodexConfigValue, resolveOpenRouterTransport } from "../../../shared/node/openrouter-proxy.js";
+import { classifyOpenRouterError, openRouterOkStatus } from "../../../shared/openrouter-channel-status.js";
 import { getSandRootDir } from "../../host-paths.js";
 import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { getBoxSecretsStorePath } from "../secrets/secrets-service.js";
@@ -309,27 +310,75 @@ function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: Rout
 }
 
 const finiteTokenCount = (value: unknown): number => typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+const CHAT_IDLE_TIMEOUT_MS = 60_000;
 
 function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void, signal?: AbortSignal) {
+  const chatStartedAt = Date.now();
+  const chatStatusStore = new SandSettingsStore(join(getSandRootDir(), "settings.json"));
+  let recordedChatStatusSignature = "";
+  function writeChatStatus(status: ReturnType<typeof openRouterOkStatus>): void {
+    const signature = JSON.stringify(status);
+    if (signature === recordedChatStatusSignature) return;
+    recordedChatStatusSignature = signature;
+    try { chatStatusStore.setOpenRouterChatStatus(status); } catch {}
+  }
+  function recordChatError(error: unknown): void {
+    const status = classifyOpenRouterError(error, "chat", chatStartedAt);
+    if (status == null) {
+      recordedChatStatusSignature = "aborted";
+      return;
+    }
+    writeChatStatus(status);
+  }
   const transport = resolveOpenRouterTransport(readPersistedOpenRouterBaseUrl());
   const id = resolveOpenRouterModel();
-  try {
-  } catch {}
   const headers: Record<string, string> = { "HTTP-Referer": "https://github.com/grok-bot-reconstructed", "X-Title": "Grok Bot Reconstructed" };
   if (transport.hostHeader) headers["Host"] = transport.hostHeader;
   let model: LanguageModelV1;
   try {
     model = createOpenAI({ apiKey: openRouterCredential(), baseURL: transport.baseUrl, compatibility: "compatible", name: "openrouter", headers }).chat(id as any);
-  } catch (e: any) {
-    throw e;
+  } catch (error) {
+    recordChatError(error);
+    throw error;
   }
   const tools = toToolSet(definitions, executeTool);
   const result = streamText({ model, system: GROK_ROUTER_SYSTEM_PROMPT, messages: messages as CoreMessage[], ...(signal === undefined ? {} : { abortSignal: signal }), ...(tools === undefined ? {} : { tools }), toolCallStreaming: true, maxSteps: tools === undefined ? 1 : 8 });
+  async function* observedFullStream() {
+    const iterator = result.fullStream[Symbol.asyncIterator]();
+    let pending = iterator.next();
+    try {
+      while (true) {
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        const idleTimeout = new Promise<{ readonly streamTimeout: true }>((resolve) => {
+          timeoutHandle = setTimeout(() => resolve({ streamTimeout: true }), CHAT_IDLE_TIMEOUT_MS);
+        });
+        const outcome = await Promise.race([
+          pending.then((value) => ({ value })),
+          idleTimeout,
+        ]);
+        clearTimeout(timeoutHandle);
+        if ("streamTimeout" in outcome) {
+          recordChatError({ name: "ResponseTimeoutError", code: "ETIMEDOUT", message: `OpenCodex 通道 ${CHAT_IDLE_TIMEOUT_MS / 1000} 秒未返回流式响应。` });
+          continue;
+        }
+        if (outcome.value.done) break;
+        const event = outcome.value.value;
+        if (event.type === "error") recordChatError(event.error);
+        yield event;
+        pending = iterator.next();
+      }
+      writeChatStatus(openRouterOkStatus("chat", chatStartedAt));
+    } catch (error) {
+      recordChatError(error);
+      throw error;
+    }
+  }
+  void result.response.catch(recordChatError);
 
   const usage = result.usage.then(value => ({ promptTokens: finiteTokenCount(value?.promptTokens), completionTokens: finiteTokenCount(value?.completionTokens), totalTokens: finiteTokenCount(value?.totalTokens) || finiteTokenCount(value?.promptTokens) + finiteTokenCount(value?.completionTokens) }));
   const extendedUsage = usage.then(value => ({ inputTokens: value.promptTokens, outputTokens: value.completionTokens, cacheReadTokens: 0, cacheWriteTokens: 0, maxTokens: 0 }));
   if (onUsage != null) void extendedUsage.then(onUsage);
-  return { fullStream: result.fullStream, response: result.response, usage, extendedUsage, providerMetadata: result.providerMetadata, invocationId: Promise.resolve(invocationId) };
+  return { fullStream: observedFullStream(), response: result.response, usage, extendedUsage, providerMetadata: result.providerMetadata, invocationId: Promise.resolve(invocationId) };
 }
 
 class ProviderPromptExecutor extends BasePromptExecutor<ProviderMessage> {

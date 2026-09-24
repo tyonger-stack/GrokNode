@@ -1,4 +1,5 @@
 import { buildBotTemplateRendererExtension } from "./bot-template-renderer-extension.mjs";
+import { buildChannelStatusRendererExtension } from "./channel-status-renderer-extension.mjs";
 import { patchOriginalAutoReviewApproval } from "./auto-review-renderer-patch.mjs";
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -116,6 +117,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     throw new Error(`Expected one original Settings registry and panel chunk, found ${registryCandidates.length}/${panelCandidates.length}.`);
   }
   const botTemplateExtension = await buildBotTemplateRendererExtension();
+  const channelStatusExtension = await buildChannelStatusRendererExtension();
   const approvalName = "view-QqBtBG74.js";
   const approvalTarget = path.join(assetsRoot, approvalName);
   const approvalCandidate = { name: approvalName, target: approvalTarget, source: await readFile(approvalTarget, "utf8") };
@@ -125,7 +127,8 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     ["panel", panelCandidates[0], patchOriginalSettingsPanel],
     ["approval", approvalCandidate, patchOriginalAutoReviewApproval],
   ]) {
-    const patched = transform(candidate.source) + (role === "registry" ? "\n;" + botTemplateExtension : "");
+    const registryExtensions = role === "registry" ? "\n;" + [botTemplateExtension, channelStatusExtension].join("\n;") : "";
+    const patched = transform(candidate.source) + registryExtensions;
     await writeFile(candidate.target, patched);
     changes.push({
       role,
@@ -138,8 +141,8 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     schemaVersion: 1,
     mode: "original-renderer-settings-extension",
     chunks: changes,
-    features: ["settings-router-provider", "settings-local-docker-vm", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow"],
-    transformations: ["settings-registry", "router-panel", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "fail-closed-always-allow"],
+    features: ["settings-router-provider", "settings-local-docker-vm", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light"],
+    transformations: ["settings-registry", "router-panel", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "fail-closed-always-allow"],
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-router-extension.json");
   await writeFile(provenancePath, `${JSON.stringify(record, null, 2)}\n`);

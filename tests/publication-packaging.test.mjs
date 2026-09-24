@@ -37,8 +37,10 @@ test("default packaging keeps the polished checksum-pinned renderer", async () =
 
 test("Router settings and inference packaging expose only local providers", async () => {
   const rendererPatch = await readFile(path.join(repoRoot, "scripts", "lib", "router-renderer-patch.mjs"), "utf8");
+  const channelStatusEntry = await readFile(path.join(repoRoot, "frontend", "src", "extensions", "channel-status-entry.ts"), "utf8");
   const preload = await readFile(path.join(repoRoot, "source", "electron-preload", "preload.ts"), "utf8");
   const mainEdge = await readFile(path.join(repoRoot, "source", "electron-main", "main-edge.ts"), "utf8");
+  const rpcMain = await readFile(path.join(repoRoot, "source", "shared", "rpc", "main.ts"), "utf8");
   const inference = await readFile(path.join(repoRoot, "source", "host", "extensions", "inference", "inference-service.ts"), "utf8");
   const providers = await readFile(path.join(repoRoot, "source", "host", "extensions", "inference", "provider-session.ts"), "utf8");
   const openRouterProxy = await readFile(path.join(repoRoot, "source", "shared", "node", "openrouter-proxy.ts"), "utf8");
@@ -101,4 +103,22 @@ test("Router settings and inference packaging expose only local providers", asyn
   assert.match(coordinator, /listRoutedMcpTools/);
   assert.match(coordinator, /executeRoutedMcpTool/);
   assert.match(mcpBridge, /server\.listen\(0, "127\.0\.0\.1"/);
+  assert.match(preload, /getOpenRouterChannelStatus: \(\) => edge\("getOpenRouterChannelStatus"\)/);
+  assert.match(rpcMain, /getOpenRouterChannelStatus: \{ args: "none" \}/);
+  assert.match(mainEdge, /probeOpenRouterChannel/);
+  assert.match(mainEdge, /mergeOpenRouterChannelStatus/);
+  assert.match(mainEdge, /readHostSettingsFromBox/);
+  assert.match(rendererPatch, /buildChannelStatusRendererExtension/);
+  assert.match(rendererPatch, /channelStatusExtension/);
+  assert.match(rendererPatch, /channel-status-light/);
+  assert.match(rendererPatch, /append-channel-status-light/);
+  assert.match(channelStatusEntry, /sand-openrouter-channel-status/);
+  assert.match(channelStatusEntry, /getOpenRouterChannelStatus/);
+  assert.match(channelStatusEntry, /OpenCodex 通道/);
+  assert.match(channelStatusEntry, /无额度/);
+  assert.match(channelStatusEntry, /限流中/);
+  assert.match(channelStatusEntry, /上游 403/);
+  assert.match(channelStatusEntry, /连接失败/);
+  assert.match(channelStatusEntry, /响应超时/);
+  assert.match(channelStatusEntry, /模型列表异常/);
 });

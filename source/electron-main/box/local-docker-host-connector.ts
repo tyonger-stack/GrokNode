@@ -6,6 +6,8 @@ import { homedir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { classifyOpenRouterError, openRouterOkStatus, type OpenRouterChannelStatus } from "../../shared/openrouter-channel-status.js";
+import { OPENCODEX_CONTAINER_RELAY_PORT } from "../../shared/node/openrouter-proxy.js";
 import type { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
 import type { RecreateResult } from "./box-recreate-commands.js";
 import type { GatewayConnection } from "./gateway-descriptor-cache.js";
@@ -26,7 +28,7 @@ export interface LocalDockerStatus {
   readonly detail: string;
 }
 
-interface CommandResult { readonly ok: boolean; readonly output: string }
+interface CommandResult { readonly ok: boolean; readonly code: number | null; readonly output: string }
 interface LocalHostBundle { readonly path: string; readonly sha256: string; readonly boxExecDaemonPath: string; readonly boxExecDaemonSha256: string }
 
 export interface LocalDockerHostConnector {
@@ -69,9 +71,95 @@ function runDocker(args: readonly string[]): Promise<CommandResult> {
     const append = (chunk: Buffer): void => { output += chunk.toString(); if (output.length > 200_000) output = output.slice(-200_000); };
     child.stdout?.on("data", append);
     child.stderr?.on("data", append);
-    child.once("error", (error) => resolve({ ok: false, output: `${output}\n${error.message}`.trim() }));
-    child.once("close", (code) => resolve({ ok: code === 0, output: output.trim() }));
+    child.once("error", (error) => resolve({ ok: false, code: null, output: `${output}\n${error.message}`.trim() }));
+    child.once("close", (code) => resolve({ ok: code === 0, code, output: output.trim() }));
   });
+}
+
+export interface ParsedLocalDockerRelayOutput {
+  readonly body: string;
+  readonly httpStatus: number | null;
+  readonly elapsedSeconds: number | null;
+}
+
+export function parseLocalDockerRelayOutput(output: string): ParsedLocalDockerRelayOutput {
+  const normalized = output.replace(/\r\n/g, "\n").trimEnd();
+  const matched = /\n(\d{3})\s+(\d+(?:\.\d+)?)\s*$/.exec(normalized);
+  if (matched == null) return { body: normalized, httpStatus: null, elapsedSeconds: null };
+  const elapsedSeconds = Number(matched[2]);
+  return {
+    body: normalized.slice(0, matched.index).trimEnd(),
+    httpStatus: Number(matched[1]),
+    elapsedSeconds: Number.isFinite(elapsedSeconds) && elapsedSeconds >= 0 ? elapsedSeconds : null,
+  };
+}
+
+function relayNetworkError(body: string): Error & { code: string } {
+  const text = body.toLowerCase();
+  if (/timed out|timeout|operation too slow|exit 28/.test(text)) {
+    return Object.assign(new Error("Local Docker relay request timed out."), { code: "ETIMEDOUT" });
+  }
+  if (/connection refused|failed to connect|exit 7/.test(text)) {
+    return Object.assign(new Error("Local Docker relay refused the connection."), { code: "ECONNREFUSED" });
+  }
+  if (/could not resolve host|no address associated|temporary failure in name resolution/.test(text)) {
+    return Object.assign(new Error("Local Docker relay DNS lookup failed."), { code: "ENOTFOUND" });
+  }
+  if (/connection reset|reset by peer/.test(text)) {
+    return Object.assign(new Error("Local Docker relay reset the connection."), { code: "ECONNRESET" });
+  }
+  return Object.assign(new Error("Local Docker relay request failed."), { code: "EHOSTUNREACH" });
+}
+
+function relayHttpErrorRecord(httpStatus: number, body: string): Record<string, unknown> {
+  const detail = body.replace(/\s+/g, " ").trim().slice(0, 300);
+  const lower = detail.toLowerCase();
+  const code = httpStatus === 403
+    ? lower.includes("relay token required")
+      ? "RelayTokenRequired"
+      : "OpenCodexUpstreamForbidden"
+    : undefined;
+  return {
+    name: "OpenRouterChannelError",
+    ...(code == null ? {} : { code }),
+    message: `Local Docker relay returned HTTP ${httpStatus}.` + (detail.length === 0 ? "" : ` Response: ${detail}`),
+    statusCode: httpStatus,
+    responseBody: body,
+  };
+}
+
+export function localDockerRelayStatusFromProbe(result: ParsedLocalDockerRelayOutput, startedAt: number): OpenRouterChannelStatus {
+  let status: OpenRouterChannelStatus;
+  if (result.httpStatus === 200) {
+    try {
+      const parsed = JSON.parse(result.body) as { data?: unknown };
+      if (!Array.isArray(parsed.data) || parsed.data.length === 0) throw new SyntaxError("Local Docker relay returned an empty model list.");
+      const valid = parsed.data.some((model) => typeof model === "object" && model != null && typeof (model as { id?: unknown }).id === "string" && (model as { id: string }).id.trim().length > 0);
+      if (!valid) throw new SyntaxError("Local Docker relay returned model entries without valid ids.");
+      status = openRouterOkStatus("model_list", startedAt, 200);
+    } catch (error) {
+      status = classifyOpenRouterError(error, "model_list", startedAt) ?? openRouterOkStatus("model_list", startedAt);
+    }
+  } else if (result.httpStatus != null && result.httpStatus > 0) {
+    status = classifyOpenRouterError({
+      ...relayHttpErrorRecord(result.httpStatus, result.body),
+    }, "model_list", startedAt) ?? openRouterOkStatus("model_list", startedAt, result.httpStatus);
+  } else {
+    status = classifyOpenRouterError(relayNetworkError(result.body), "model_list", startedAt) ?? openRouterOkStatus("model_list", startedAt);
+  }
+  const latencyMs = result.elapsedSeconds == null ? status.latencyMs : Math.round(result.elapsedSeconds * 1000);
+  return { ...status, latencyMs };
+}
+
+export async function probeLocalDockerRelay(timeoutMs = 2500): Promise<OpenRouterChannelStatus> {
+  const startedAt = Date.now();
+  const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+  const result = await runDocker([
+    "exec", LOCAL_DOCKER_BOX_CONTAINER, "/usr/bin/curl", "-sS", "-m", String(timeoutSeconds),
+    "-w", "\n%{http_code} %{time_total}", `http://127.0.0.1:${OPENCODEX_CONTAINER_RELAY_PORT}/v1/models`,
+  ]);
+  const output = result.ok ? result.output : result.output + "\n[docker-exit " + (result.code ?? "unknown") + "]";
+  return localDockerRelayStatusFromProbe(parseLocalDockerRelayOutput(output), startedAt);
 }
 
 function credentialPath(settingsPath: string): string {

@@ -13,6 +13,7 @@ import { emptySandInferenceRouterUsage, isSandInferenceProvider, type SandInfere
 import { DEFAULT_SAND_BOX_RUNTIME, isSandBoxRuntime, type SandBoxRuntime } from "../../box-runtime.js";
 import { parseMcpServerConfig, type McpServerConfig } from "../mcp/mcp-display-runtime.js";
 import { validateServerName } from "../mcp/mcp-validation.js";
+import { normalizeOpenRouterChannelStatus, type OpenRouterChannelStatus } from "../../openrouter-channel-status.js";
 
 export const SETTINGS_VERSION = 1;
 export const SAND_DOWNGRADE_MAX_FAST_MIGRATION_ID = "downgrade-persisted-max-fast";
@@ -31,7 +32,8 @@ export interface SandStoredSettings {
   localToolPermission?: SandLocalToolPermission; localToolPermissionCeiling?: SandLocalToolPermission;
   inferenceProvider?: SandInferenceProvider; inferenceRouterUsage?: SandInferenceRouterUsage;
   openRouterModel?: string;
- openRouterBaseUrl?: string;
+  openRouterBaseUrl?: string;
+  openRouterChatStatus?: OpenRouterChannelStatus;
   localMcpServers?: Record<string, McpServerConfig>;
   boxRuntime?: SandBoxRuntime;
   mcpCustomInstructionsAccountScope?: string; pinnedAgentIds?: string[]; sidebarSections?: SidebarSection[];
@@ -86,7 +88,9 @@ function parseSettings(value: unknown): SandStoredSettings | null {
   if (isSandLocalToolPermission(raw.localToolPermissionCeiling)) result.localToolPermissionCeiling = raw.localToolPermissionCeiling;
   result.inferenceProvider = normalizeInferenceProvider(raw.inferenceProvider);
   if (typeof raw.openRouterModel === "string" && raw.openRouterModel.trim().length > 0) result.openRouterModel = raw.openRouterModel.trim();
- if (typeof raw.openRouterBaseUrl === "string" && raw.openRouterBaseUrl.trim().length > 0) result.openRouterBaseUrl = normalizeOpenRouterBaseUrl(raw.openRouterBaseUrl);
+  if (typeof raw.openRouterBaseUrl === "string" && raw.openRouterBaseUrl.trim().length > 0) result.openRouterBaseUrl = normalizeOpenRouterBaseUrl(raw.openRouterBaseUrl);
+  const chatStatus = normalizeOpenRouterChannelStatus(raw.openRouterChatStatus);
+  if (chatStatus != null) result.openRouterChatStatus = chatStatus;
   result.localMcpServers = normalizeLocalMcpServers(raw.localMcpServers);
   if (isSandBoxRuntime(raw.boxRuntime)) result.boxRuntime = raw.boxRuntime;
   if (typeof raw.inferenceRouterUsage === "object" && raw.inferenceRouterUsage != null && !Array.isArray(raw.inferenceRouterUsage)) {
@@ -183,8 +187,10 @@ export class SandSettingsStore {
   getLocalMcpServers(): Record<string, McpServerConfig> { return this.load().localMcpServers ?? {}; }
   setLocalMcpServers(servers: Record<string, McpServerConfig>): void { this.update((s) => ({ ...s, localMcpServers: { ...servers } })); }
   setOpenRouterModel(value?: string): void { this.update((s) => { const { openRouterModel: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed ? { ...rest, openRouterModel: trimmed } : rest; }); }
- getOpenRouterBaseUrl(): string | undefined { return this.load().openRouterBaseUrl; }
- setOpenRouterBaseUrl(value?: string): void { this.update((s) => { const { openRouterBaseUrl: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed ? { ...rest, openRouterBaseUrl: normalizeOpenRouterBaseUrl(trimmed) } : rest; }); }
+  getOpenRouterBaseUrl(): string | undefined { return this.load().openRouterBaseUrl; }
+  setOpenRouterBaseUrl(value?: string): void { this.update((s) => { const { openRouterBaseUrl: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed ? { ...rest, openRouterBaseUrl: normalizeOpenRouterBaseUrl(trimmed) } : rest; }); }
+  getOpenRouterChatStatus(): OpenRouterChannelStatus | undefined { return this.load().openRouterChatStatus; }
+  setOpenRouterChatStatus(value: OpenRouterChannelStatus): void { this.update((s) => ({ ...s, openRouterChatStatus: value })); }
   getInferenceRouterUsage(): SandInferenceRouterUsage { return this.load().inferenceRouterUsage ?? emptySandInferenceRouterUsage(); }
   recordInferenceUsage(provider: SandInferenceProvider, usage: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number }): void {
     const safe = (value: number | undefined): number => Number.isFinite(value) && value! >= 0 ? Math.round(value!) : 0;
