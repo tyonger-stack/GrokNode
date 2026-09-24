@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 import { build } from "esbuild";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -39,9 +40,28 @@ test("host stageBytes stores Uint8Array and tolerates ArrayBuffer", async () => 
     assert.equal(await readFile(stored.path, "utf8"), "hi");
     const fromBuffer = await port.stageBytes("b.md", bytes.buffer.slice(0));
     assert.equal(fromBuffer.ok, true);
+    const crossRealmBytes = runInNewContext("new Uint8Array([104, 105])");
+    assert.equal(crossRealmBytes instanceof Uint8Array, false);
+    const crossRealm = await port.stageBytes("cross-realm.md", crossRealmBytes);
+    assert.equal(crossRealm.ok, true);
+    assert.equal(await readFile(crossRealm.path, "utf8"), "hi");
     assert.deepEqual(await port.stageBytes("c.md", [104, 105]), { ok: false, reason: "failed" });
     assert.deepEqual(await port.stageBytes("empty.md", new Uint8Array(0)), { ok: false, reason: "empty" });
     assert.deepEqual(failures, []);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("stageBytes generates an id when no UUID dependency is supplied", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "attach-uuid-"));
+  try {
+    const port = attachApi.createAttachmentEdgePort({
+      getStagingDir: () => dir,
+      byteLimitForName: () => 25 * 1024 * 1024,
+      onEdgeFailure: () => {},
+    });
+    const staged = await port.stageBytes("a.md", new Uint8Array([104, 105]));
+    assert.equal(staged.ok, true);
+    assert.equal(await readFile(staged.path, "utf8"), "hi");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
