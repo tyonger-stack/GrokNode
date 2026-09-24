@@ -151,6 +151,10 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       const model = req(raw).model;
       invariant(typeof model === "string" && model.trim().length > 0, "Choose an OpenRouter model.");
       invoke(deps.settingsStore, "setOpenRouterModel", model.trim());
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try { const applied = await deps.syncHostSettingsToBox({ openRouterModel: model.trim() }); if (applied?.openRouterModel === model.trim()) break; } catch (error) { reportDesktopEdgeFailure("host-settings", "openrouter-model-retry", error); }
+        await (deps.delay ?? sleep)(250 * (attempt + 1));
+      }
       return { model: model.trim() };
     },
     getOpenRouterBaseUrl: async () => {
@@ -161,6 +165,11 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       const requested = req(raw).baseUrl;
       invariant(requested === null || typeof requested === "string", "The TokenHub endpoint must be a string.");
       invoke(deps.settingsStore, "setOpenRouterBaseUrl", typeof requested === "string" ? requested : undefined);
+      const syncedBaseUrl = typeof requested === "string" && requested.trim().length > 0 ? requested.trim() : null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try { const applied = await deps.syncHostSettingsToBox({ openRouterBaseUrl: syncedBaseUrl }); if ((applied?.openRouterBaseUrl ?? null) === syncedBaseUrl) break; } catch (error) { reportDesktopEdgeFailure("host-settings", "openrouter-baseurl-retry", error); }
+        await (deps.delay ?? sleep)(250 * (attempt + 1));
+      }
       const persisted = persistedOpenRouterBaseUrl(deps.settingsStore);
       return { baseUrl: resolveOpenRouterBaseUrl(persisted), baseUrlOverride: persisted };
     },

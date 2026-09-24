@@ -39,6 +39,8 @@ export interface ProductionCoordinatorAuxiliaryPorts {
     | "getLocalToolPermission"
     | "getWebauthnProxyEnabled"
     | "getFeatureFlagOverrides"
+    | "getOpenRouterModel"
+    | "getOpenRouterBaseUrl"
     | "getLocalMcpServers"
     | "pushBoxSecrets"
     | "onHostSettingsTransportConnected"
@@ -127,6 +129,8 @@ export function createProductionCoordinatorAuxiliaryPorts(
       getLocalToolPermission: () => settings.getLocalToolPermission(),
       getWebauthnProxyEnabled: () => settings.getWebauthnProxyEnabled(),
       getFeatureFlagOverrides: () => context.requireExperiments().getFeatureFlagOverridesRecord(),
+      getOpenRouterModel: () => settings.getOpenRouterModel(),
+      getOpenRouterBaseUrl: () => settings.getOpenRouterBaseUrl(),
       getLocalMcpServers: () => settings.getLocalMcpServers(),
       pushBoxSecrets: () => context.secretsStores.pushBoxSecrets.push("resync"),
       onHostSettingsTransportConnected: () => context.hostSettingsFields.onTransportConnected(),

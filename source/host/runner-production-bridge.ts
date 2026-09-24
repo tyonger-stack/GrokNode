@@ -25,6 +25,8 @@ import type { WebFetchToolDependencies } from "../packages/agent/tools/core/web-
 import type { WebSearchToolDependencies } from "../packages/agent/tools/core/web-search.js";
 import type { ShellSmartModeApprovalState } from "../packages/agent/tools/core/shell/create-shell-tool.js";
 import type { RequestContext } from "../packages/proto/generated/agent/v1/request_context_exec_pb.js";
+import type { RemoteExecManager } from "../packages/agent-exec/remote.js";
+import type { ResourceAccessor } from "../packages/agent-exec/resource-provider.js";
 
 export type ProductionTurnCancelThisRun = (reason: {
   readonly intentional: boolean;
@@ -101,9 +103,7 @@ export interface ProductionRunnerRunStepInput {
   readonly createTurnToolInputs: CreateProductionTurnToolInputs;
 }
 
-export interface ProductionTurnResourceAccessor {
-  get(resource: unknown): unknown;
-}
+export type ProductionTurnResourceAccessor = ResourceAccessor<RemoteExecManager>;
 
 export interface ProductionTurnStateHandler {
   readonly [key: string]: unknown;

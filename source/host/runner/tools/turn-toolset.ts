@@ -221,7 +221,10 @@ type StreamingTurnTool = TurnTool & {
   ): Promise<unknown>;
 };
 
-export type TurnToolsetBuildProps = ProductionTurnToolInputs;
+export type TurnToolsetBuildProps = ProductionTurnToolInputs & {
+  readonly mcpTools?: readonly McpToolForMeta[];
+  readonly requestContext?: RequestContext;
+};
 
 export interface TurnToolsetTurnInput {
   /** The exact owner-scoped update relay installed for this prepared turn. */
@@ -1475,7 +1478,11 @@ export function buildTurnTools(
   // A supplied factory alone is not an MCP service and must remain dormant.
   if (
     !host.isBoxScopedSubagent
-    && (props?.mcp !== undefined || dynamicToolRegistry !== undefined)
+    && (
+      props?.mcp !== undefined
+      || (props?.mcpTools?.length ?? 0) > 0
+      || dynamicToolRegistry !== undefined
+    )
   ) {
     const mcpMeta = factories.mcpMeta?.(dynamicToolRegistry);
     if (mcpMeta !== undefined) tools.push(...mcpMeta);

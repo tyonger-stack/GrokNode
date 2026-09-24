@@ -47,8 +47,9 @@ import type {
   TurnBrowserToolFactoryInput,
   TurnCloudAgentToolFactoryInput,
   TurnComputerToolFactoryInput,
-  TurnTaskToolFactoryInput,
+  TurnMcpMetaToolFactoryInput,
   TurnMcpManagementToolFactoryInput,
+  TurnTaskToolFactoryInput,
   TurnReadToolFactoryInput,
   TurnWebFetchToolFactoryInput,
   TurnWebSearchToolFactoryInput,
@@ -80,6 +81,7 @@ import { listenerPlatformsInTrigger } from "./automations/listener-integrations.
 import { resolveSharedRoomBoxToolsEnabled } from "./groups/xuser.js";
 import { boxAgentWindowIndex, boxSupportsMultiWindow } from "./box/box-capabilities.js";
 import { createAutoReviewGate } from "./runner/auto-review-gate.js";
+import { createSandMcpApprovalProvider } from "./runner/sand-auto-review-tool-escalations.js";
 import {
   sandAutoReviewApprovalExpiryPolicy,
   SandAutoReviewController,
@@ -98,6 +100,7 @@ import { createStreamAttempt } from "./runner/stream-attempt.js";
 import {
   createTurnAgentRunStreamInput,
   createTurnAgentStreamStart,
+  type TurnMcpProjectionInput,
   type TurnLocalResourceProjectionInput,
 } from "./runner/turn-agent-composition.js";
 import {
@@ -139,6 +142,12 @@ import {
 } from "./runner/sand-auto-review-classifier-run.js";
 import { SAND_AUTOMATION_WRITE_CLASSIFIER_ERROR_REASON } from "./runner/sand-automation-auto-review.js";
 import { surfaceListenerConnectCards } from "./runner/tools/listener-connect-cards.js";
+import { boundedConnectorTag } from "../shared/observability/connector-auth-telemetry.js";
+import { errorLogTag } from "../shared/errors.js";
+import {
+  mcpErrorClassOf,
+  takeMcpExecErrorClass,
+} from "../shared/node/mcp/mcp-diagnostics.js";
 import {
   buildSandCloudAgentRiskTarget,
   buildSandCloudAgentLifecycleReviewTarget,
@@ -2102,6 +2111,69 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       ...(turnInputs === undefined
         ? {}
         : {
+            createMcpMetaToolInputs: (
+              turn: TurnToolsetTurnInput,
+              props,
+            ): TurnMcpMetaToolFactoryInput => {
+              const suppliedMcpMeta = props.mcp?.mcpMeta ?? turnInputs.mcp?.mcpMeta;
+              if (suppliedMcpMeta !== undefined) {
+                return {
+                  resourceAccessor: props.resourceAccessor,
+                  ...suppliedMcpMeta,
+                };
+              }
+              const mcpMode = turn.autoReviewModes.mcp;
+              return {
+                resourceAccessor: props.resourceAccessor,
+                getMcpTools: () => props.mcpTools ?? turn.mcpTools ?? [],
+                discoveryOptions: { allowInteractiveMcpAuth: false },
+                callOptions: {
+                  allowInteractiveMcpAuth: false,
+                  validateMcpToolDescriptors: true,
+                  smartModeClassifierMode: mcpMode === "enforce",
+                  smartModeClassifierShadowMode: mcpMode === "shadow",
+                  ...(props.requestContext === undefined
+                    ? {}
+                    : {
+                        requestContext: props.requestContext,
+                        ...(props.requestContext.mcpFileSystemOptions === undefined
+                          ? {}
+                          : { mcpFileSystemOptions: props.requestContext.mcpFileSystemOptions }),
+                      }),
+                  ...(autoReviewController === undefined || mcpMode !== "enforce"
+                    ? {}
+                    : {
+                        smartModeApprovalProvider: {
+                          requestApproval: request =>
+                            createSandMcpApprovalProvider({
+                              controller: autoReviewController,
+                              agentId,
+                              getExpiryPolicy: () => sandAutoReviewApprovalExpiryPolicy("turn"),
+                            }).requestApproval({
+                              fingerprint: request.fingerprint,
+                              signal: request.signal,
+                              target: {
+                                blockReason: request.target.blockReason,
+                                serverDisplayName: request.target.serverDisplayName
+                                  ?? request.target.serverName
+                                  ?? request.target.serverIdentifier,
+                                toolName: request.target.toolName,
+                                ...(request.target.mcpArguments === undefined
+                                  ? {}
+                                  : { mcpArguments: request.target.mcpArguments }),
+                                ...(request.target.description === undefined
+                                  ? {}
+                                  : { description: request.target.description }),
+                                ...(request.target.proposedAllowRule === undefined
+                                  ? {}
+                                  : { proposedAllowRule: request.target.proposedAllowRule }),
+                              },
+                            }),
+                        },
+                      }),
+                },
+              };
+            },
             createTaskToolInputs: (turn): TurnTaskToolFactoryInput => ({
               resourceAccessor: turnInputs.resourceAccessor as unknown as TurnTaskToolFactoryInput["resourceAccessor"],
               stateHandler: turnInputs.stateHandler as unknown as TurnTaskToolFactoryInput["stateHandler"],
@@ -2737,6 +2809,71 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 };
               };
               const computerUse = runner.computerUse;
+              const createMcpExecutor = method(mcp.mcp, "createExecutor");
+              const createMcpStateExecutor = method(mcp.mcp, "createStateExecutor");
+              const resolveNeedsAuthSlot = method(mcp.mcp, "resolveNeedsAuthSlot");
+              const mcpForTurn: TurnMcpProjectionInput["mcpForTurn"] | undefined =
+                createMcpExecutor === undefined || createMcpStateExecutor === undefined
+                  ? undefined
+                  : {
+                      createExecutor: (persistImage, spillLargeText, auditIdentity) =>
+                        createMcpExecutor(persistImage, spillLargeText, auditIdentity),
+                      createStateExecutor: () => createMcpStateExecutor(),
+                      ...(resolveNeedsAuthSlot === undefined
+                        ? {}
+                        : {
+                            resolveNeedsAuthSlot: (providerIdentifier: string) =>
+                              resolveNeedsAuthSlot(providerIdentifier),
+                          }),
+                    };
+              const mcpProjection: TurnMcpProjectionInput | undefined = mcpForTurn === undefined
+                ? undefined
+                : {
+                    mcpForTurn,
+                    persistImage: persistImageForTurn,
+                    textSpiller: undefined,
+                    isSubagentRunner: scope.isSubagentRunner,
+                    beginObservation: observation => {
+                      const startedAtMs = Date.now();
+                      return errorClass => {
+                        if (errorClass === undefined) return;
+                        method(telemetry.brain, "reportToolCallError")?.({
+                          conversationId: session.id,
+                          requestId: observation.requestId,
+                          toolName: "CallMcpTool",
+                          toolCallId: observation.toolCallId,
+                          connector: observation.connector,
+                          errorClass,
+                          durationMs: Math.max(0, Date.now() - startedAtMs),
+                        });
+                      };
+                    },
+                    boundedConnectorTag,
+                    mcpErrorClassOf,
+                    takeMcpExecErrorClass,
+                    emitConnectorCard: emission => {
+                      hooks.transport.onUpdate({
+                        type: "send-message",
+                        message: connectorCardEmissionToMessage({
+                          serverId: emission.serverId,
+                          variant: emission.variant,
+                          connector: emission.connector ?? emission.serverId,
+                        }),
+                        timestampMs: Date.now(),
+                      }, cancelThisRun);
+                    },
+                    ...(runOptions.ackToken === undefined
+                      ? {}
+                      : { ackToken: runOptions.ackToken }),
+                    cancelThisRun,
+                    reportDiagnostic: event => {
+                      method(telemetry.logs, "reportHostExtensionDiagnostic")?.({
+                        extension: "mcp",
+                        ...event,
+                      });
+                    },
+                    errorLogTag,
+                  };
               return {
                 subagentSessions: runner.subagents.sessions,
                 createSubagentRunner,
@@ -2762,6 +2899,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 },
                 actionAuditor: projectedActionAuditor,
                 agentId: session.id,
+                ...(mcpProjection === undefined ? {} : { mcp: mcpProjection }),
               };
             },
             blobStore: getAgentBlobStore(

@@ -277,7 +277,8 @@ function codexExecutor(messages: readonly ProviderMessage[], invocationId: strin
       })) {
         if (event.type === "text-delta") { text += event.delta; yield { type: "text-delta" as const, textDelta: event.delta }; continue; }
         if (event.type === "tool-call") { yield { type: "tool-call" as const, toolCallId: event.toolCallId, toolName: event.toolName, args: event.args }; continue; }
-        const basic = { promptTokens: event.usage.inputTokens, completionTokens: event.usage.outputTokens, totalTokens: event.usage.inputTokens + event.usage.outputTokens };
+        const inputTokens = finiteTokenCount(event.usage?.inputTokens), outputTokens = finiteTokenCount(event.usage?.outputTokens);
+        const basic = { promptTokens: inputTokens, completionTokens: outputTokens, totalTokens: inputTokens + outputTokens };
         const extended = { ...event.usage, maxTokens: 0 };
         onUsage?.(event.usage);
         usage.resolve(basic);
@@ -307,6 +308,8 @@ function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: Rout
   return Object.keys(tools).length === 0 ? undefined : tools;
 }
 
+const finiteTokenCount = (value: unknown): number => typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+
 function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void, signal?: AbortSignal) {
   const transport = resolveOpenRouterTransport(readPersistedOpenRouterBaseUrl());
   const id = resolveOpenRouterModel();
@@ -323,9 +326,10 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
   const tools = toToolSet(definitions, executeTool);
   const result = streamText({ model, system: GROK_ROUTER_SYSTEM_PROMPT, messages: messages as CoreMessage[], ...(signal === undefined ? {} : { abortSignal: signal }), ...(tools === undefined ? {} : { tools }), toolCallStreaming: true, maxSteps: tools === undefined ? 1 : 8 });
 
-  const extendedUsage = result.usage.then(value => ({ inputTokens: value.promptTokens, outputTokens: value.completionTokens, cacheReadTokens: 0, cacheWriteTokens: 0, maxTokens: 0 }));
+  const usage = result.usage.then(value => ({ promptTokens: finiteTokenCount(value?.promptTokens), completionTokens: finiteTokenCount(value?.completionTokens), totalTokens: finiteTokenCount(value?.totalTokens) || finiteTokenCount(value?.promptTokens) + finiteTokenCount(value?.completionTokens) }));
+  const extendedUsage = usage.then(value => ({ inputTokens: value.promptTokens, outputTokens: value.completionTokens, cacheReadTokens: 0, cacheWriteTokens: 0, maxTokens: 0 }));
   if (onUsage != null) void extendedUsage.then(onUsage);
-  return { fullStream: result.fullStream, response: result.response, usage: result.usage, extendedUsage, providerMetadata: result.providerMetadata, invocationId: Promise.resolve(invocationId) };
+  return { fullStream: result.fullStream, response: result.response, usage, extendedUsage, providerMetadata: result.providerMetadata, invocationId: Promise.resolve(invocationId) };
 }
 
 class ProviderPromptExecutor extends BasePromptExecutor<ProviderMessage> {

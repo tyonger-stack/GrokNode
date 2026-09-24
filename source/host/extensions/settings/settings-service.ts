@@ -18,6 +18,7 @@ export interface HostSettingsUpdate {
   userTimeZone?: string; userTimeZoneOverride?: string; agentDefaultModel?: SandAgentModelSelection | null; computerUseModel?: SandAgentModelSelection | null;
   autoReviewInstructions?: SandAutoReviewInstructions; localToolPermission?: unknown; webauthnProxyEnabled?: boolean; pinnedAgentIds?: string[];
   sidebarSections?: SidebarSection[]; hasSeenOnboarding?: boolean; featureFlagOverrides?: Record<string, boolean>; inferenceProvider?: unknown;
+  openRouterModel?: string | null; openRouterBaseUrl?: string | null;
 }
 
 export class SettingsService {
@@ -52,6 +53,8 @@ export class SettingsService {
     if (update.sidebarSections !== undefined) this.store.setSidebarSections(update.sidebarSections);
     if (update.hasSeenOnboarding !== undefined) this.store.setHasSeenOnboarding(update.hasSeenOnboarding);
     if (isSandInferenceProvider(update.inferenceProvider)) this.store.setInferenceProvider(update.inferenceProvider);
+    if (update.openRouterModel !== undefined) { if (update.openRouterModel === null || update.openRouterModel.trim().length === 0) this.store.setOpenRouterModel(undefined); else this.store.setOpenRouterModel(update.openRouterModel.trim()); }
+    if (update.openRouterBaseUrl !== undefined) { if (update.openRouterBaseUrl === null || update.openRouterBaseUrl.trim().length === 0) this.store.setOpenRouterBaseUrl(undefined); else this.store.setOpenRouterBaseUrl(update.openRouterBaseUrl.trim()); }
     if (update.featureFlagOverrides !== undefined) for (const listener of [...this.featureFlagOverrideListeners]) listener(update.featureFlagOverrides);
     if (update.computerUseModel === null) this.store.setComputerUseModel(undefined); else if (isSandAgentModelSelection(update.computerUseModel)) this.store.setComputerUseModel(update.computerUseModel);
     const userTimeZone = this.store.getUserTimeZone(); if (userTimeZone !== previousUserTimeZone) for (const listener of [...this.userTimeZoneListeners]) listener(userTimeZone);
