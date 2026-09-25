@@ -252,7 +252,14 @@ test("the packaged Grok Node presents its own app name and coordinator process n
   const main = await readFile(path.join(repoRoot, "source/electron-main/main.ts"), "utf8");
   const launcher = await readFile(path.join(repoRoot, "source/electron-main/coordinator/coordinator-launcher.ts"), "utf8");
   const services = await readFile(path.join(repoRoot, "source/electron-main/main-production-services.ts"), "utf8");
-  assert.match(main, /isGrokNodePackagedApp\(\)\) deps\.app\.setName\?\.\("Grok Node"\)/);
+  // setName must run before the production composition eagerly snapshots
+  // app.getName() for the app menu and the window title.
+  const setNameIndex = main.indexOf('bindings.native.app.setName?.("Grok Node")');
+  const compositionIndex = main.indexOf("const composition = createElectronMainProductionComposition(bindings)");
+  assert.ok(setNameIndex > 0, "packaged Grok Node sets its app name");
+  assert.ok(compositionIndex > setNameIndex, "setName must run before the composition snapshots the app name");
+  assert.doesNotMatch(main, /deps\.app\.setName\?\.\("Grok Node"\)/);
+  assert.match(main, /\/\*[\s\S]*composition eagerly snapshots app\.getName\(\)/);
   assert.match(launcher, /export function resolveCoordinatorServiceName/);
   assert.match(launcher, /serviceName: resolveCoordinatorServiceName\(\)/);
   assert.match(services, /serviceName === resolveCoordinatorServiceName\(\)/);

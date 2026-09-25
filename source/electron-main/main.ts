@@ -242,10 +242,6 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
     ...(deps.appVersion == null ? {} : { appVersion: deps.appVersion }),
   });
   deps.startup.bootstrapBeforeSingleInstance();
-  // CFBundleName stays "Grok Bot" for helper ABI parity, but the packaged Grok
-  // Node.app must present its own name in the app menu, About dialog, window
-  // title and Force Quit so it is distinguishable from the official Grok Bot.
-  if (isGrokNodePackagedApp()) deps.app.setName?.("Grok Node");
 
   deps.app.disableHardwareAcceleration();
   deps.app.commandLine.appendSwitch("no-sandbox");
@@ -450,6 +446,11 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
 }
 
 export function startElectronMainProduction(bindings: ElectronMainProductionBindings): ElectronMainRuntime {
+  // The packaged Grok Node presents its own name in the app menu, About dialog
+  // and window title (CFBundleName stays "Grok Bot" for helper ABI parity).
+  // This must run before the production composition is created, because the
+  // composition eagerly snapshots app.getName() for the menu and window title.
+  if (isGrokNodePackagedApp()) bindings.native.app.setName?.("Grok Node");
   const composition = createElectronMainProductionComposition(bindings);
   const runtime = startElectronMain(composition.dependencies);
   composition.bindRuntime(runtime);

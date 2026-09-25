@@ -47,7 +47,9 @@ export async function capture(command, args, options = {}) {
       stderr += chunk;
     });
     child.once("error", reject);
-    child.once("exit", (code, signal) => {
+    // 'close' (not 'exit') guarantees the piped stdout/stderr streams have
+    // flushed; resolving on 'exit' races and can truncate captured output.
+    child.once("close", (code, signal) => {
       if (code === 0) {
         resolve(stdout.trim());
         return;
