@@ -1,6 +1,9 @@
 import { buildSandPluginDeepLink, isSandDeepLinkPluginId, SAND_PLUGIN_DEEP_LINK_PATH } from "./desktop.js";
+import { GROK_NODE_DEEP_LINK_SCHEME } from "./node/grok-node-identity.js";
 
 export const SAND_DEEP_LINK_SCHEME = "sand"; export const SAND_DEEP_LINK_AUTHORITY = "app"; export const SAND_HTTPS_DEEP_LINK_ORIGIN = "https://cursor.com"; export const SAND_HTTPS_DEEP_LINK_PATH_PREFIX = "/sand/link"; export const SAND_DEEP_LINK_MAX_LENGTH = 2_048;
+/** Custom-protocol schemes this build parses. The official Grok Bot bundle claims `sand`; Grok Node additionally claims and parses `groknode`. */
+export const SAND_DEEP_LINK_PROTOCOL_SCHEMES: readonly string[] = [SAND_DEEP_LINK_SCHEME, GROK_NODE_DEEP_LINK_SCHEME];
 const CUSTOM_INFO_ROUTE_PATH = "/v1/info"; const CUSTOM_OPEN_ROUTE_PATH = "/v1/open"; const HTTPS_INFO_ROUTE_PATH = `${SAND_HTTPS_DEEP_LINK_PATH_PREFIX}${CUSTOM_INFO_ROUTE_PATH}`; const HTTPS_PLUGIN_ADD_ROUTE_PATH = `${SAND_HTTPS_DEEP_LINK_PATH_PREFIX}${SAND_PLUGIN_DEEP_LINK_PATH}`; const HTTPS_OPEN_ROUTE_PATH = `${SAND_HTTPS_DEEP_LINK_PATH_PREFIX}${CUSTOM_OPEN_ROUTE_PATH}`;
 export type SandDeepLink = { readonly version: 1; readonly route: "info"; readonly topic: "deep-links"; readonly source: "protocol" | "https" } | { readonly version: 1; readonly route: "plugin-add"; readonly pluginId: string; readonly source: "protocol" | "https" } | { readonly version: 1; readonly route: "open"; readonly source: "protocol" | "https" };
 export interface ParsedSandDeepLink { readonly link: SandDeepLink | BotTemplateDeepLink; readonly canonicalUrl: string }
@@ -17,9 +20,9 @@ function parseBotTemplateLink(raw: string): ParsedSandDeepLink | null { let url:
 export function parseSandDeepLink(raw: unknown): ParsedSandDeepLink | null {
   if (typeof raw !== "string" || raw.length === 0 || raw.length > SAND_DEEP_LINK_MAX_LENGTH || !isPrintableAscii(raw) || raw.includes("#") || raw.includes("\\") || !hasValidPercentEncoding(raw) || !hasCanonicalPathSection(raw)) return null;
   const botTemplate = parseBotTemplateLink(raw); if (botTemplate != null) return botTemplate;
-  const lower = raw.toLowerCase(); const source = lower.startsWith(`${SAND_DEEP_LINK_SCHEME}:`) ? "protocol" : lower.startsWith("https:") ? "https" : null; if (source == null) return null;
+  const lower = raw.toLowerCase(); const scheme = lower.slice(0, lower.indexOf(":")); const source = SAND_DEEP_LINK_PROTOCOL_SCHEMES.includes(scheme) ? "protocol" : lower.startsWith("https:") ? "https" : null; if (source == null) return null;
   let url: URL; try { url = new URL(raw); } catch { return null; } if (url.username !== "" || url.password !== "" || url.port !== "") return null;
-  if (source === "protocol") { if (url.protocol !== `${SAND_DEEP_LINK_SCHEME}:` || url.host !== SAND_DEEP_LINK_AUTHORITY) return null; if (url.pathname === SAND_PLUGIN_DEEP_LINK_PATH) return parsePluginAddLink(url, source); if (url.pathname === CUSTOM_OPEN_ROUTE_PATH) return parseOpenLink(url, source); if (url.pathname !== CUSTOM_INFO_ROUTE_PATH) return null; }
+  if (source === "protocol") { const protocolScheme = url.protocol.replace(/:$/, ""); if (!SAND_DEEP_LINK_PROTOCOL_SCHEMES.includes(protocolScheme) || url.host !== SAND_DEEP_LINK_AUTHORITY) return null; if (url.pathname === SAND_PLUGIN_DEEP_LINK_PATH) return parsePluginAddLink(url, source); if (url.pathname === CUSTOM_OPEN_ROUTE_PATH) return parseOpenLink(url, source); if (url.pathname !== CUSTOM_INFO_ROUTE_PATH) return null; }
   else { if (url.protocol !== "https:" || url.host !== new URL(SAND_HTTPS_DEEP_LINK_ORIGIN).host) return null; if (url.pathname === HTTPS_PLUGIN_ADD_ROUTE_PATH) return parsePluginAddLink(url, source); if (url.pathname === HTTPS_OPEN_ROUTE_PATH) return parseOpenLink(url, source); if (url.pathname !== HTTPS_INFO_ROUTE_PATH) return null; }
   if (readAllowlistedQuery(url, { topic: ["deep-links"] }) == null) return null; const link: SandDeepLink = { version: 1, route: "info", topic: "deep-links", source }; return { link, canonicalUrl: canonicalSandDeepLinkUrl(link) };
 }

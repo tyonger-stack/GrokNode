@@ -1,6 +1,12 @@
 import { createCoordinatorControlServer } from "./coordinator-control-server.js";
+import { isGrokNodePackagedApp } from "../../shared/node/grok-node-identity.js";
 
 export const COORDINATOR_SERVICE_NAME = "sand-node-agent-coordinator";
+/** Grok Node runs side by side with the official app, so its coordinator utility process carries a distinct name in process metrics and child-process-gone events. */
+export const GROK_NODE_COORDINATOR_SERVICE_NAME = "grok-node-agent-coordinator";
+export function resolveCoordinatorServiceName(execPath: string = process.execPath): string {
+  return isGrokNodePackagedApp(execPath) ? GROK_NODE_COORDINATOR_SERVICE_NAME : COORDINATOR_SERVICE_NAME;
+}
 
 export interface CoordinatorMessagePort {
   postMessage(value: unknown): void;
@@ -47,7 +53,7 @@ export function launchCoordinator(
   dependencies: LaunchCoordinatorDependencies,
 ): CoordinatorLaunchHandle {
   const child = dependencies.fork(dependencies.artifactPath, {
-    serviceName: COORDINATOR_SERVICE_NAME,
+    serviceName: resolveCoordinatorServiceName(),
   });
   const controlChannel = dependencies.createChannel();
   const dataChannel = dependencies.createChannel();

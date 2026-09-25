@@ -47,11 +47,13 @@ const infoPlist = path.join(outputApp, "Contents", "Info.plist");
 await run(SYSTEM_TOOLS.plutil, ["-remove", "ElectronAsarIntegrity", infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleIdentifier", "-string", reconstructedBundleId, infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleDisplayName", "-string", reconstructedName, infoPlist]);
-// The backend currently emits only the `sand` auth/deep-link target. Make the
-// reconstructed bundle's claim explicit and remove inherited aliases such as
-// `grokbot`; the original bundle remains untouched and remains reference-only.
+// The official Grok Bot bundle claims the `sand` and `grokbot` URL schemes. If
+// this fork claimed them too, LaunchServices would deliver every sand:// or
+// grokbot:// link to only one of the two apps, so Grok Node registers its own
+// `groknode` scheme exclusively. The runtime parser still accepts `sand:` and
+// `grokbot:` links delivered via argv or `open -a "Grok Node"`.
 await run(SYSTEM_TOOLS.plutil, ["-remove", "CFBundleURLTypes", infoPlist]);
-await run(SYSTEM_TOOLS.plutil, ["-insert", "CFBundleURLTypes", "-xml", "<array><dict><key>CFBundleTypeRole</key><string>Viewer</string><key>CFBundleURLName</key><string>Grok Bot reconstructed links</string><key>CFBundleURLSchemes</key><array><string>sand</string><string>grokbot</string></array></dict></array>", infoPlist]);
+await run(SYSTEM_TOOLS.plutil, ["-insert", "CFBundleURLTypes", "-xml", "<array><dict><key>CFBundleTypeRole</key><string>Viewer</string><key>CFBundleURLName</key><string>Grok Node links</string><key>CFBundleURLSchemes</key><array><string>groknode</string></array></dict></array>", infoPlist]);
 // Keep CFBundleName/CFBundleExecutable as "Grok Bot": Electron derives the
 // expected nested helper names from it, and this build intentionally reuses the
 // exact ABI-matched 0.18 runtime. CFBundleDisplayName provides the fork's name.

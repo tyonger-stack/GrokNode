@@ -1,6 +1,7 @@
 import { installApplicationMenu, type ApplicationMenuElectronPort } from "./application-menu.js";
 import { reportDesktopEdgeFailure } from "./desktop-edge-failures.js";
 import { createDevToolsGate, createDevToolsMembershipResolver } from "./devtools-gate.js";
+import { isGrokNodePackagedApp } from "../shared/node/grok-node-identity.js";
 import {
   createHostWindowChords,
   type HostInputEvent,
@@ -83,6 +84,7 @@ export interface ElectronMainApp {
   readonly isPackaged: boolean;
   disableHardwareAcceleration(): void;
   readonly commandLine: { readonly appendSwitch: (name: string) => void };
+  setName?(name: string): void;
   requestSingleInstanceLock(): boolean;
   quit(): void;
   isReady(): boolean;
@@ -240,6 +242,10 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
     ...(deps.appVersion == null ? {} : { appVersion: deps.appVersion }),
   });
   deps.startup.bootstrapBeforeSingleInstance();
+  // CFBundleName stays "Grok Bot" for helper ABI parity, but the packaged Grok
+  // Node.app must present its own name in the app menu, About dialog, window
+  // title and Force Quit so it is distinguishable from the official Grok Bot.
+  if (isGrokNodePackagedApp()) deps.app.setName?.("Grok Node");
 
   deps.app.disableHardwareAcceleration();
   deps.app.commandLine.appendSwitch("no-sandbox");

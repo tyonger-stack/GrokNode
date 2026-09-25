@@ -4,12 +4,32 @@ import path from "node:path";
 
 import { extractFile, listPackage, statFile } from "@electron/asar";
 
+import { capture } from "./process.mjs";
+import { SYSTEM_TOOLS } from "./system-tools.mjs";
 import {
   expectedSignatureExcludedMachOHash,
   inspectReconstructedMacShell,
   officialMacReleaseAsarHash,
   officialMacReleaseShellHash,
 } from "./macos-shell-invariant.mjs";
+
+// The packaged fork must claim only its own `groknode` URL scheme: the
+// official Grok Bot bundle owns `sand` and `grokbot`, and a shared claim
+// would make LaunchServices deliver every deep link to just one of the apps.
+export async function verifyReconstructedUrlSchemeIsolation({ reconstructedApp } = {}) {
+  if (typeof reconstructedApp !== "string" || reconstructedApp.length === 0) {
+    throw new TypeError("An explicit reconstructedApp path is required");
+  }
+  const infoPlist = path.join(reconstructedApp, "Contents", "Info.plist");
+  const urlTypes = await capture(SYSTEM_TOOLS.plutil, ["-extract", "CFBundleURLTypes", "xml1", "-o", "-", infoPlist]);
+  if (!/<key>CFBundleURLSchemes<\/key>[\s\S]*<string>groknode<\/string>/.test(urlTypes)) {
+    throw new Error("Reconstructed application has no groknode URL registration");
+  }
+  if (/<string>(?:sand|grokbot)<\/string>/.test(urlTypes)) {
+    throw new Error("Reconstructed application must not claim the official sand/grokbot URL schemes");
+  }
+  return { scheme: "groknode", verdict: "verified-in-packaged-info-plist" };
+}
 
 // Electron and daemon-native payloads are separate runtime domains. Both are
 // unpacked from the ASAR and must remain byte-identical to their staged trees;
@@ -358,6 +378,7 @@ export async function verifyReconstructedMacPackage({ officialApp, reconstructed
   if (invariant.reconstructedHash === officialMacReleaseShellHash) throw new Error("Reconstructed package must not copy the official signed shell");
   if (sha256(officialAsar) !== officialMacReleaseAsarHash) throw new Error("Reconstructed verification received a non-canonical official app.asar reference");
   if (sha256(reconstructedAsar) === officialMacReleaseAsarHash) throw new Error("Reconstructed package must not copy the official app.asar");
+  const urlScheme = await verifyReconstructedUrlSchemeIsolation({ reconstructedApp });
   const runtime = await verifyUnpackedRuntimeManifest({ sourceUnpackedRoot, packagedUnpackedRoot });
-  return { invariant, reconstructedAsarHash: sha256(reconstructedAsar), runtime };
+  return { invariant, urlScheme, reconstructedAsarHash: sha256(reconstructedAsar), runtime };
 }

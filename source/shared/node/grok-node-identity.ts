@@ -18,6 +18,14 @@ export const GROK_NODE_APP_BUNDLE_MARKER = "Grok Node.app";
 export const GROK_NODE_USER_DATA_DIRNAME = "Grok Node";
 export const GROK_NODE_DATA_ROOT_DIRNAME = ".groknode";
 export const GROK_NODE_DOCKER_CONTAINER = "grok-node-local-vm";
+/**
+ * Grok Node's own URL scheme. The official Grok Bot bundle claims `sand` and
+ * `grokbot`; if this fork claimed them too, LaunchServices would route every
+ * link to only one of the two apps. The packaged Grok Node.app therefore
+ * registers `groknode` only, while the parser below still accepts `sand:`
+ * and `grokbot:` links delivered via argv or `open -a`.
+ */
+export const GROK_NODE_DEEP_LINK_SCHEME = "groknode";
 
 export function isGrokNodePackagedApp(execPath: string = process.execPath): boolean {
   return execPath.includes(GROK_NODE_APP_BUNDLE_MARKER);

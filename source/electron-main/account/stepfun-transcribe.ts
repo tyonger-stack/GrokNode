@@ -22,7 +22,10 @@ export interface StepFunAudioFormat {
 }
 
 function persistedSecrets(): Record<string, string> {
-  const candidates = [getBoxSecretsStorePath(), join(homedir(), ".grokbot", "box-secrets.json"), join(homedir(), ".cursor", "sand", "box-secrets.json")];
+  // Grok Node and the reconstructed Grok Bot keep separate sand data roots, so
+  // only this app's own secrets store (and the legacy upstream location) are
+  // consulted; reading a sibling app's box-secrets.json would cross identities.
+  const candidates = [getBoxSecretsStorePath(), join(homedir(), ".cursor", "sand", "box-secrets.json")];
   for (const candidate of candidates) {
   try {
     const parsed = JSON.parse(readFileSync(candidate, "utf8")) as unknown;

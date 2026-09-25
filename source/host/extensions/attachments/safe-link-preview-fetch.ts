@@ -5,11 +5,13 @@ import net from "node:net";
 import { createDeadlinePolicy, realClock } from "../../../internal/scheduling.js";
 import { hasNonPublicHostnameSuffix } from "../../../shared/link-preview-policy.js";
 import { SAND_PRODUCT_HTTP_TOKEN } from "../../../shared/product-name.js";
+import { isGrokNodePackagedApp } from "../../../shared/node/grok-node-identity.js";
 
 export class SandLinkPreviewError extends Error {}
 export const MAX_URL_LENGTH = 2_048;
 export const MAX_REDIRECTS = 5;
-export const LINK_PREVIEW_USER_AGENT = `${SAND_PRODUCT_HTTP_TOKEN}-LinkPreview/1.0`;
+// The packaged Grok Node presents its own product token so link-preview traffic is distinguishable from the official Grok Bot.
+export const LINK_PREVIEW_USER_AGENT = `${isGrokNodePackagedApp() ? "GrokNode" : SAND_PRODUCT_HTTP_TOKEN}-LinkPreview/1.0`;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const LINK_PREVIEW_DNS_DEADLINE = createDeadlinePolicy(realClock, { name: "link-preview-dns-lookup", timeoutMs: 3_000 });
 const LINK_PREVIEW_REQUEST_DEADLINE = createDeadlinePolicy(realClock, { name: "link-preview-request", timeoutMs: 8_000 });

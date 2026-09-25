@@ -259,7 +259,8 @@ if (displayName !== reconstructedName) throw new Error(`Unexpected reconstructed
 const plistText = await capture(SYSTEM_TOOLS.plutil, ["-convert", "xml1", "-o", "-", infoPlist]);
 if (plistText.includes("ElectronAsarIntegrity")) throw new Error("Stale ElectronAsarIntegrity metadata remains in the reconstructed application");
 const urlTypes = await capture(SYSTEM_TOOLS.plutil, ["-extract", "CFBundleURLTypes", "xml1", "-o", "-", infoPlist]);
-if (!/<key>CFBundleURLSchemes<\/key>[\s\S]*<string>sand<\/string>/.test(urlTypes)) throw new Error("Reconstructed application has no sand URL registration");
+if (!/<key>CFBundleURLSchemes<\/key>[\s\S]*<string>groknode<\/string>/.test(urlTypes)) throw new Error("Reconstructed application has no groknode URL registration");
+if (/<string>(?:sand|grokbot)<\/string>/.test(urlTypes)) throw new Error("Reconstructed application must not claim the official sand/grokbot URL schemes; the official Grok Bot bundle owns them");
 
 await run(SYSTEM_TOOLS.codesign, ["--verify", "--deep", "--strict", verifiedApp]);
 const cleanCount = runtimeComposition.filter(({ mode }) => mode === "clean-source").length;

@@ -91,3 +91,107 @@ test("startup, data-root and local-docker wiring reference the Grok Node identit
   assert.match(connector, /LOCAL_DOCKER_DATA_VOLUME/);
   assert.doesNotMatch(connector, /grok-bot-local-vm-workspace/);
 });
+
+test("Grok Node owns the groknode URL scheme while the parser stays scheme-tolerant", async () => {
+  const identityBundle = await bundle("source/shared/node/grok-node-identity.ts", "grok-node-scheme-");
+  try {
+    assert.equal(identityBundle.module.GROK_NODE_DEEP_LINK_SCHEME, "groknode");
+  } finally {
+    await identityBundle.dispose();
+  }
+  const loaded = await bundle("source/shared/deep-link.ts", "grok-node-deep-link-");
+  try {
+    const { parseSandDeepLink, SAND_DEEP_LINK_PROTOCOL_SCHEMES } = loaded.module;
+    assert.deepEqual([...SAND_DEEP_LINK_PROTOCOL_SCHEMES].sort(), ["groknode", "sand"]);
+    // Grok Node's own scheme parses every custom-protocol route.
+    const open = parseSandDeepLink("groknode://app/v1/open");
+    assert.equal(open?.link.route, "open");
+    const info = parseSandDeepLink("groknode://app/v1/info?topic=deep-links");
+    assert.equal(info?.link.route, "info");
+    // Canonical URLs stay on the ecosystem `sand` scheme so shared links keep working.
+    assert.equal(open?.canonicalUrl, "sand://app/v1/open");
+    // The official schemes keep parsing when delivered via argv or `open -a`.
+    assert.equal(parseSandDeepLink("sand://app/v1/open")?.link.route, "open");
+    assert.equal(parseSandDeepLink("grokbot://app/v1/bot-template?id=_jOdbfkB16zxu7MRcmReE")?.link.route, "bot-template");
+    assert.equal(parseSandDeepLink("https://x.ai/bot/_jOdbfkB16zxu7MRcmReE")?.link.route, "bot-template");
+    // Unrelated schemes still fail closed.
+    assert.equal(parseSandDeepLink("grokbot://app/v1/unknown"), null);
+    assert.equal(parseSandDeepLink("other://app/v1/open"), null);
+  } finally {
+    await loaded.dispose();
+  }
+});
+
+test("argv deep-link extraction accepts the groknode scheme", async () => {
+  const loaded = await bundle("source/electron-main/deep-link/deep-link-controller.ts", "grok-node-argv-");
+  try {
+    const candidates = loaded.module.extractDeepLinkCandidatesFromArgv([
+      "/Applications/Grok Node.app/Contents/MacOS/Grok Bot",
+      "groknode://app/v1/open",
+      "sand://app/v1/open",
+      "grokbot://app/v1/bot-template?id=_jOdbfkB16zxu7MRcmReE",
+      "https://x.ai/bot/_jOdbfkB16zxu7MRcmReE",
+      "--enable-features=X",
+    ]);
+    assert.deepEqual(candidates, [
+      "groknode://app/v1/open",
+      "sand://app/v1/open",
+      "grokbot://app/v1/bot-template?id=_jOdbfkB16zxu7MRcmReE",
+      "https://x.ai/bot/_jOdbfkB16zxu7MRcmReE",
+    ]);
+  } finally {
+    await loaded.dispose();
+  }
+});
+
+test("the packaged app claims only groknode and never the official schemes", async () => {
+  const packageMacos = await readFile(path.join(repoRoot, "scripts/package-macos.mjs"), "utf8");
+  const verify = await readFile(path.join(repoRoot, "scripts/verify.mjs"), "utf8");
+  const packageVerification = await readFile(path.join(repoRoot, "scripts/lib/macos-package-verification.mjs"), "utf8");
+  assert.match(packageMacos, /CFBundleURLName<\/key><string>Grok Node links<\/string>/);
+  assert.match(packageMacos, /<array><string>groknode<\/string><\/array>/);
+  assert.doesNotMatch(packageMacos, /Grok Bot reconstructed links/);
+  assert.match(verify, /<string>groknode<\\\/string>/);
+  assert.match(verify, /must not claim the official sand\/grokbot URL schemes/);
+  assert.match(packageVerification, /export async function verifyReconstructedUrlSchemeIsolation/);
+  assert.match(packageVerification, /verifyReconstructedUrlSchemeIsolation\(\{ reconstructedApp \}\)/);
+});
+
+test("the channel diagnostic resolves the Mac settings file from the app's own data root", async () => {
+  const { resolveMacSettingsPath } = await import(pathToFileURL(path.join(repoRoot, "scripts/diagnose-channel.mjs")).href);
+  assert.equal(
+    resolveMacSettingsPath("grok-node-local-vm", {}),
+    path.join(os.homedir(), ".groknode", "settings.json"),
+  );
+  assert.equal(
+    resolveMacSettingsPath("grok-bot-local-vm", {}),
+    path.join(os.homedir(), ".grokbot", "settings.json"),
+  );
+  assert.equal(resolveMacSettingsPath("grok-node-local-vm", { SAND_DATA_ROOT: "/tmp/grok-node-root" }), "/tmp/grok-node-root/settings.json");
+  const diagnose = await readFile(path.join(repoRoot, "scripts/diagnose-channel.mjs"), "utf8");
+  assert.doesNotMatch(diagnose, /join\(homedir\(\), "\.grokbot", "settings\.json"\)/);
+});
+
+test("StepFun secrets no longer fall back to a sibling app's data root", async () => {
+  const stepfun = await readFile(path.join(repoRoot, "source/electron-main/account/stepfun-transcribe.ts"), "utf8");
+  assert.doesNotMatch(stepfun, /"\.grokbot", "box-secrets\.json"/);
+  assert.match(stepfun, /getBoxSecretsStorePath\(\)/);
+});
+
+test("the packaged Grok Node presents its own app name and coordinator process name", async () => {
+  const main = await readFile(path.join(repoRoot, "source/electron-main/main.ts"), "utf8");
+  const launcher = await readFile(path.join(repoRoot, "source/electron-main/coordinator/coordinator-launcher.ts"), "utf8");
+  const services = await readFile(path.join(repoRoot, "source/electron-main/main-production-services.ts"), "utf8");
+  assert.match(main, /isGrokNodePackagedApp\(\)\) deps\.app\.setName\?\.\("Grok Node"\)/);
+  assert.match(launcher, /export function resolveCoordinatorServiceName/);
+  assert.match(launcher, /serviceName: resolveCoordinatorServiceName\(\)/);
+  assert.match(services, /serviceName === resolveCoordinatorServiceName\(\)/);
+  assert.doesNotMatch(services, /=== COORDINATOR_SERVICE_NAME/);
+  const loaded = await bundle("source/electron-main/coordinator/coordinator-launcher.ts", "grok-node-coordinator-");
+  try {
+    assert.equal(loaded.module.resolveCoordinatorServiceName("/Applications/Grok Node.app/Contents/MacOS/Grok Bot"), "grok-node-agent-coordinator");
+    assert.equal(loaded.module.resolveCoordinatorServiceName("/Applications/Grok Bot.app/Contents/MacOS/Grok Bot"), "sand-node-agent-coordinator");
+  } finally {
+    await loaded.dispose();
+  }
+});

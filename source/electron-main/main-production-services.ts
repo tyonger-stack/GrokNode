@@ -24,7 +24,7 @@ import { installLocalExecLifecycleReporter } from "./local-exec/local-exec-lifec
 import { createDesktopEventLoopTelemetry, desktopEventLoopPressureMetadata } from "./telemetry/desktop-event-loop-telemetry.js";
 import { wireDesktopUncleanExitSettlement } from "./telemetry/desktop-unclean-exit-wiring.js";
 import { settleUncleanExitOnSessionEnd } from "./telemetry/desktop-unclean-exit-telemetry.js";
-import { COORDINATOR_SERVICE_NAME } from "./coordinator/coordinator-launcher.js";
+import { resolveCoordinatorServiceName } from "./coordinator/coordinator-launcher.js";
 import { createWindowChromeEdgePort, type WindowChromeBrowserWindow } from "./window-chrome.js";
 import { createProductionWindowBroadcaster } from "./window-broadcast.js";
 import type { SandUpdateService } from "./update/sand-update-service.js";
@@ -531,7 +531,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
       installDesktopChildGoneTelemetry({
         app: bindings.native.app,
         report: desktopLifecycle.reportDesktopRendererLifecycle,
-        isCoordinatorService: (serviceName) => serviceName === COORDINATOR_SERVICE_NAME,
+        isCoordinatorService: (serviceName) => serviceName === resolveCoordinatorServiceName(),
       });
       sessionDeathSettlement = wireDesktopUncleanExitSettlement({
         app: bindings.native.app,

@@ -4,8 +4,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+const GROK_NODE_CONTAINER_NAME = "grok-node-local-vm";
 let CONTAINER_NAME = "grok-bot-local-vm";
-const KNOWN_CONTAINER_NAMES = ["grok-node-local-vm", "grok-bot-local-vm"];
+const KNOWN_CONTAINER_NAMES = [GROK_NODE_CONTAINER_NAME, "grok-bot-local-vm"];
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const MAC_FORWARDER_URL = "http://127.0.0.1:11010/v1";
 const CONTAINER_RELAY_URL = "http://127.0.0.1:10100/v1";
@@ -294,8 +295,21 @@ function routingSettings(raw) {
   };
 }
 
+/**
+ * Resolve the Mac-side settings.json for the app being diagnosed. Grok Node and
+ * the reconstructed Grok Bot keep separate sand data roots, so the container
+ * name (or an explicit SAND_DATA_ROOT) decides which settings file to read;
+ * reading the wrong root silently reports the other app's configuration.
+ */
+export function resolveMacSettingsPath(containerName = CONTAINER_NAME, env = process.env) {
+  const override = env.SAND_DATA_ROOT?.trim();
+  if (override) return join(override, "settings.json");
+  const dataRootDirname = containerName === GROK_NODE_CONTAINER_NAME ? ".groknode" : ".grokbot";
+  return join(homedir(), dataRootDirname, "settings.json");
+}
+
 async function settingsConsistencyCheck(dockerBinary, containerRunning) {
-  const macSettingsPath = join(homedir(), ".grokbot", "settings.json");
+  const macSettingsPath = resolveMacSettingsPath();
   const macSettings = routingSettings(readJsonObject(macSettingsPath));
   if (!containerRunning) {
     return check("settings", "设置一致性", "down", "容器未运行，无法读取容器侧设置", { macSettingsPath, macSettings });
@@ -335,12 +349,12 @@ function printHuman(result) {
 }
 
 async function main() {
-  const macSettingsPath = join(homedir(), ".grokbot", "settings.json");
+  const dockerBinary = resolveDockerBinary();
+  CONTAINER_NAME = await resolveContainerName(dockerBinary);
+  const macSettingsPath = resolveMacSettingsPath();
   const macSettings = readJsonObject(macSettingsPath);
   const baseUrl = resolveBaseUrl(macSettings);
   const useLocalForwarder = isLocalMacForwarder(baseUrl);
-  const dockerBinary = resolveDockerBinary();
-  CONTAINER_NAME = await resolveContainerName(dockerBinary);
   const container = await containerCheck(dockerBinary);
   const containerRunning = container.data?.running === true;
   const checks = [
@@ -364,4 +378,6 @@ async function main() {
   process.exitCode = result.exitCode;
 }
 
-void main();
+// Only run the diagnostic when executed directly, so tests can import the pure
+// helpers above without probing docker or exiting the process.
+if (process.argv[1]?.endsWith("diagnose-channel.mjs")) void main();
