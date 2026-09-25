@@ -8,12 +8,10 @@ match what the tree actually contains.
 Use this for the About description:
 
 ```text
-Unofficial source-oriented reconstruction of the shipped Grok Bot 0.18.0 macOS app into readable TypeScript, plus an inference router for Codex and OpenRouter, an optional local Docker sandbox, and local usage tracking. Research only; not affiliated with Anysphere.
+基于公开发布的 Grok Bot 0.18.0 macOS 应用的非官方源码级重建，产出可读 TypeScript，附带 Codex 与 OpenRouter 两档推理路由、使用本地 Docker 沙箱与本地用量统计。仅限研究用途。
 ```
 
-That is 265 characters, comfortably under the limit. The current live description is
-`Unofficial source-oriented reconstruction and extension of Grok Bot 0.18.0 for
-macOS`, which is accurate but says nothing about what the repository adds.
+That is 116 characters, comfortably under the limit. This is the live description.
 
 ## Topics
 
