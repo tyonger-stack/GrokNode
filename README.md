@@ -120,13 +120,13 @@ box 运行时目前只有一个选项：本地 Docker VM，也是默认值。Gro
 - 在 coordinator 连接之前先通过校验；并且
 - 通过同一套设置生命周期停止或替换。
 
-容器名为 `grok-bot-local-vm`。应用代码引用的镜像标签是
+容器名为 `grok-node-local-vm`。应用代码引用的镜像标签是
 `public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest`；2026-09-24
 已验证的镜像版本为 git-sha `12c7367`，不可变 digest 为
 `sha256:f9dff5cd254d9fac936f33754b8950e50443bacffdf0fdc61cf5b23d72a82856`。复现或排障时
 可以使用 `public.ecr.aws/k0i0n2g5/cursorenvironments/universal@sha256:f9dff5cd254d9fac936f33754b8950e50443bacffdf0fdc61cf5b23d72a82856`
 锁定该版本；`sand-box-latest` 标签之后可能继续指向更新的镜像。OrbStack 把容器发布为域名
-`grok-bot-local-vm.orb.local`。六个端口转发到宿主机的回环地址：
+`grok-node-local-vm.orb.local`。六个端口转发到宿主机的回环地址：
 
 | 宿主端口 | 用途 |
 | --- | --- |
