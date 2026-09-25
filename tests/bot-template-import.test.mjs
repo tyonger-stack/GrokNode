@@ -14,9 +14,9 @@ async function load(entry, name) {
   return import(pathToFileURL(outfile).href + "?" + Date.now());
 }
 
-test("bot template links parse for the x.ai page and grokbot protocol", async () => {
+test("bot template links parse for the x.ai page and both bot protocols", async () => {
   const deepLinks = await load("source/shared/deep-link.ts", "bot-template-deep-links");
-  for (const [url, source] of [["https://x.ai/bot/_jOdbfkB16zxu7MRcmReE", "https"], ["grokbot://app/v1/bot-template?id=_jOdbfkB16zxu7MRcmReE", "protocol"]]) {
+  for (const [url, source] of [["https://x.ai/bot/_jOdbfkB16zxu7MRcmReE", "https"], ["grokbot://app/v1/bot-template?id=_jOdbfkB16zxu7MRcmReE", "protocol"], ["groknode://app/v1/bot-template?id=_jOdbfkB16zxu7MRcmReE", "protocol"]]) {
     const parsed = deepLinks.parseSandDeepLink(url);
     assert.equal(parsed?.link.route, "bot-template");
     assert.equal(parsed?.link.templateId, "_jOdbfkB16zxu7MRcmReE");

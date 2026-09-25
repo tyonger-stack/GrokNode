@@ -8,7 +8,7 @@ import {
 } from "./lib/config.mjs";
 import { buildFidelityReconstructedAsar } from "./clean-build.mjs";
 import { signAppBundleAdHoc } from "./lib/codesign.mjs";
-import { verifyOfficialMacReference, verifyReconstructedMacPackage } from "./lib/macos-package-verification.mjs";
+import { officialGrokBotAppInstalled, verifyOfficialMacReference, verifyReconstructedMacPackage } from "./lib/macos-package-verification.mjs";
 import { run } from "./lib/process.mjs";
 import { SYSTEM_TOOLS } from "./lib/system-tools.mjs";
 
@@ -47,13 +47,18 @@ const infoPlist = path.join(outputApp, "Contents", "Info.plist");
 await run(SYSTEM_TOOLS.plutil, ["-remove", "ElectronAsarIntegrity", infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleIdentifier", "-string", reconstructedBundleId, infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleDisplayName", "-string", reconstructedName, infoPlist]);
-// The official Grok Bot bundle claims the `sand` and `grokbot` URL schemes. If
-// this fork claimed them too, LaunchServices would deliver every sand:// or
-// grokbot:// link to only one of the two apps, so Grok Node registers its own
-// `groknode` scheme exclusively. The runtime parser still accepts `sand:` and
-// `grokbot:` links delivered via argv or `open -a "Grok Node"`.
+// The official Grok Bot bundle owns the `sand` and `grokbot` URL schemes. When
+// it is installed, Grok Node registers only its own `groknode` scheme so
+// LaunchServices keeps routing sand:// and grokbot:// links to the official
+// app; when it is absent, Grok Node additionally claims `grokbot` so x.ai
+// share buttons keep working on machines without the official app. The
+// runtime parser accepts both protocols either way.
+const officialInstalled = await officialGrokBotAppInstalled();
+const urlSchemes = ["groknode", ...(officialInstalled ? [] : ["grokbot"])];
+const urlSchemesXml = urlSchemes.map((scheme) => `<string>${scheme}</string>`).join("");
 await run(SYSTEM_TOOLS.plutil, ["-remove", "CFBundleURLTypes", infoPlist]);
-await run(SYSTEM_TOOLS.plutil, ["-insert", "CFBundleURLTypes", "-xml", "<array><dict><key>CFBundleTypeRole</key><string>Viewer</string><key>CFBundleURLName</key><string>Grok Node links</string><key>CFBundleURLSchemes</key><array><string>groknode</string></array></dict></array>", infoPlist]);
+await run(SYSTEM_TOOLS.plutil, ["-insert", "CFBundleURLTypes", "-xml", `<array><dict><key>CFBundleTypeRole</key><string>Viewer</string><key>CFBundleURLName</key><string>Grok Node links</string><key>CFBundleURLSchemes</key><array>${urlSchemesXml}</array></dict></array>`, infoPlist]);
+console.log(`Registered URL schemes: ${urlSchemes.join(", ")} (official Grok Bot ${officialInstalled ? "installed" : "not installed"})`);
 // Keep CFBundleName/CFBundleExecutable as "Grok Bot": Electron derives the
 // expected nested helper names from it, and this build intentionally reuses the
 // exact ABI-matched 0.18 runtime. CFBundleDisplayName provides the fork's name.

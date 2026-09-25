@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { build } from "esbuild";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -114,6 +114,13 @@ test("Grok Node owns the groknode URL scheme while the parser stays scheme-toler
     assert.equal(parseSandDeepLink("sand://app/v1/open")?.link.route, "open");
     assert.equal(parseSandDeepLink("grokbot://app/v1/bot-template?id=_jOdbfkB16zxu7MRcmReE")?.link.route, "bot-template");
     assert.equal(parseSandDeepLink("https://x.ai/bot/_jOdbfkB16zxu7MRcmReE")?.link.route, "bot-template");
+    // Grok Node's own scheme also accepts bot-template links; the canonical URL
+    // stays on the ecosystem grokbot:// form so both schemes dedupe together.
+    const gnTemplate = parseSandDeepLink("groknode://app/v1/bot-template?id=_jOdbfkB16zxu7MRcmReE");
+    assert.equal(gnTemplate?.link.route, "bot-template");
+    assert.equal(gnTemplate?.link.templateId, "_jOdbfkB16zxu7MRcmReE");
+    assert.equal(gnTemplate?.link.source, "protocol");
+    assert.equal(gnTemplate?.canonicalUrl, "grokbot://app/v1/bot-template?id=_jOdbfkB16zxu7MRcmReE");
     // Unrelated schemes still fail closed.
     assert.equal(parseSandDeepLink("grokbot://app/v1/unknown"), null);
     assert.equal(parseSandDeepLink("other://app/v1/open"), null);
@@ -144,17 +151,80 @@ test("argv deep-link extraction accepts the groknode scheme", async () => {
   }
 });
 
-test("the packaged app claims only groknode and never the official schemes", async () => {
+test("the packaged app claims groknode always and grokbot only without the official app", async () => {
   const packageMacos = await readFile(path.join(repoRoot, "scripts/package-macos.mjs"), "utf8");
   const verify = await readFile(path.join(repoRoot, "scripts/verify.mjs"), "utf8");
   const packageVerification = await readFile(path.join(repoRoot, "scripts/lib/macos-package-verification.mjs"), "utf8");
   assert.match(packageMacos, /CFBundleURLName<\/key><string>Grok Node links<\/string>/);
-  assert.match(packageMacos, /<array><string>groknode<\/string><\/array>/);
+  assert.match(packageMacos, /officialGrokBotAppInstalled\(\)/);
+  assert.match(packageMacos, /\["groknode", \.\.\.\(officialInstalled \? \[\] : \["grokbot"\]\)\]/);
   assert.doesNotMatch(packageMacos, /Grok Bot reconstructed links/);
-  assert.match(verify, /<string>groknode<\\\/string>/);
-  assert.match(verify, /must not claim the official sand\/grokbot URL schemes/);
+  assert.match(verify, /verifyReconstructedUrlSchemeIsolation\(\{ reconstructedApp: verifiedApp \}\)/);
   assert.match(packageVerification, /export async function verifyReconstructedUrlSchemeIsolation/);
-  assert.match(packageVerification, /verifyReconstructedUrlSchemeIsolation\(\{ reconstructedApp \}\)/);
+  assert.match(packageVerification, /export async function officialGrokBotAppInstalled/);
+  assert.match(packageVerification, /const official = officialInstalled \?\? await officialGrokBotAppInstalled\(\)/);
+  assert.match(packageVerification, /claimsGrokbot && official/);
+  assert.match(packageVerification, /must not claim the official grokbot URL scheme while the official Grok Bot is installed/);
+  assert.match(packageVerification, /must not claim the official sand URL scheme/);
+});
+
+test("the URL scheme gate adapts to the official Grok Bot's presence", { skip: process.platform !== "darwin" }, async () => {
+  const verification = await import(pathToFileURL(path.join(repoRoot, "scripts/lib/macos-package-verification.mjs")).href);
+  const plistWithSchemes = (schemes) => [
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">",
+    "<plist version=\"1.0\"><dict><key>CFBundleURLTypes</key><array><dict><key>CFBundleURLSchemes</key><array>",
+    ...schemes.map((scheme) => `<string>${scheme}</string>`),
+    "</array></dict></array></dict></plist>",
+  ].join("");
+  const plistWithBundleId = (bundleId) => [
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">",
+    `<plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>${bundleId}</string></dict></plist>`,
+  ].join("");
+  const temp = await mkdtemp(path.join(os.tmpdir(), "grok-node-scheme-gate-"));
+  const makeApp = async (root, name, contents) => {
+    const appDir = path.join(root, name);
+    await mkdir(path.join(appDir, "Contents"), { recursive: true });
+    await writeFile(path.join(appDir, "Contents", "Info.plist"), contents);
+    return appDir;
+  };
+  try {
+    // A groknode-only claim passes in both machine states.
+    const grokNodeOnly = await makeApp(temp, "Grok Node.app", plistWithSchemes(["groknode"]));
+    assert.equal((await verification.verifyReconstructedUrlSchemeIsolation({ reconstructedApp: grokNodeOnly, officialInstalled: true })).scheme, "groknode");
+    assert.equal((await verification.verifyReconstructedUrlSchemeIsolation({ reconstructedApp: grokNodeOnly, officialInstalled: false })).scheme, "groknode");
+    // grokbot is claimable only while the official Grok Bot is absent.
+    const grokNodeBoth = await makeApp(temp, "Grok Node Both.app", plistWithSchemes(["groknode", "grokbot"]));
+    assert.equal((await verification.verifyReconstructedUrlSchemeIsolation({ reconstructedApp: grokNodeBoth, officialInstalled: false })).scheme, "groknode+grokbot");
+    await assert.rejects(
+      verification.verifyReconstructedUrlSchemeIsolation({ reconstructedApp: grokNodeBoth, officialInstalled: true }),
+      /must not claim the official grokbot URL scheme while the official Grok Bot is installed/,
+    );
+    // sand is never claimable and groknode is always required.
+    await assert.rejects(
+      verification.verifyReconstructedUrlSchemeIsolation({ reconstructedApp: await makeApp(temp, "Grok Node Sand.app", plistWithSchemes(["groknode", "sand"])), officialInstalled: false }),
+      /must not claim the official sand URL scheme/,
+    );
+    await assert.rejects(
+      verification.verifyReconstructedUrlSchemeIsolation({ reconstructedApp: await makeApp(temp, "Grok Node None.app", plistWithSchemes(["grokbot"])), officialInstalled: false }),
+      /has no groknode URL registration/,
+    );
+    // Official detection scans both Applications roots and requires the official bundle id.
+    const homeDir = path.join(temp, "home");
+    const sysDir = path.join(temp, "sys");
+    await mkdir(path.join(homeDir, "Applications"), { recursive: true });
+    await mkdir(sysDir, { recursive: true });
+    assert.equal(await verification.officialGrokBotAppInstalled(homeDir, sysDir), false);
+    await makeApp(sysDir, "Grok Bot.app", plistWithBundleId("com.anysphere.sand"));
+    assert.equal(await verification.officialGrokBotAppInstalled(homeDir, sysDir), true);
+    await makeApp(sysDir, "Grok Bot.app", plistWithBundleId("com.example.other"));
+    assert.equal(await verification.officialGrokBotAppInstalled(homeDir, sysDir), false);
+    // This machine has the official Grok Bot installed.
+    assert.equal(await verification.officialGrokBotAppInstalled(), true);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
 });
 
 test("the channel diagnostic resolves the Mac settings file from the app's own data root", async () => {

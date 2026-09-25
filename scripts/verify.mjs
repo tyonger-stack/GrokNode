@@ -13,6 +13,7 @@ import {
   upstreamAsarSha256,
 } from "./lib/config.mjs";
 import { prepareReconstructedElectronMainArtifactFallback } from "./lib/build-asar.mjs";
+import { verifyReconstructedUrlSchemeIsolation } from "./lib/macos-package-verification.mjs";
 import { resolvePackagedAppArtifacts } from "./lib/packaged-app.mjs";
 import { capture, run } from "./lib/process.mjs";
 import { SYSTEM_TOOLS } from "./lib/system-tools.mjs";
@@ -258,9 +259,9 @@ const displayName = await capture(SYSTEM_TOOLS.plutil, ["-extract", "CFBundleDis
 if (displayName !== reconstructedName) throw new Error(`Unexpected reconstructed display name: ${displayName}`);
 const plistText = await capture(SYSTEM_TOOLS.plutil, ["-convert", "xml1", "-o", "-", infoPlist]);
 if (plistText.includes("ElectronAsarIntegrity")) throw new Error("Stale ElectronAsarIntegrity metadata remains in the reconstructed application");
-const urlTypes = await capture(SYSTEM_TOOLS.plutil, ["-extract", "CFBundleURLTypes", "xml1", "-o", "-", infoPlist]);
-if (!/<key>CFBundleURLSchemes<\/key>[\s\S]*<string>groknode<\/string>/.test(urlTypes)) throw new Error("Reconstructed application has no groknode URL registration");
-if (/<string>(?:sand|grokbot)<\/string>/.test(urlTypes)) throw new Error("Reconstructed application must not claim the official sand/grokbot URL schemes; the official Grok Bot bundle owns them");
+// groknode is always required; `sand` is never claimable; `grokbot` is only
+// claimable while the official Grok Bot is not installed on this machine.
+await verifyReconstructedUrlSchemeIsolation({ reconstructedApp: verifiedApp });
 
 await run(SYSTEM_TOOLS.codesign, ["--verify", "--deep", "--strict", verifiedApp]);
 const cleanCount = runtimeComposition.filter(({ mode }) => mode === "clean-source").length;

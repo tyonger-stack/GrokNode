@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 
 import { extractFile, listPackage, statFile } from "@electron/asar";
@@ -13,10 +14,27 @@ import {
   officialMacReleaseShellHash,
 } from "./macos-shell-invariant.mjs";
 
-// The packaged fork must claim only its own `groknode` URL scheme: the
-// official Grok Bot bundle owns `sand` and `grokbot`, and a shared claim
-// would make LaunchServices deliver every deep link to just one of the apps.
-export async function verifyReconstructedUrlSchemeIsolation({ reconstructedApp } = {}) {
+// The packaged fork must always claim its own `groknode` URL scheme. The
+// official Grok Bot bundle owns `sand` (never claimable) and `grokbot`. When
+// the official app is installed on this machine, claiming `grokbot` would make
+// LaunchServices route every grokbot:// link to just one of the two apps, so
+// Grok Node must not claim it; when the official app is absent, Grok Node may
+// additionally claim `grokbot` so x.ai share buttons keep working unchanged.
+export async function officialGrokBotAppInstalled(homeDir = homedir(), systemApplicationsDir = "/Applications") {
+  const candidates = [path.join(systemApplicationsDir, "Grok Bot.app"), path.join(homeDir, "Applications", "Grok Bot.app")];
+  for (const appPath of candidates) {
+    try {
+      const infoPlist = path.join(appPath, "Contents", "Info.plist");
+      const bundleId = await capture(SYSTEM_TOOLS.plutil, ["-extract", "CFBundleIdentifier", "raw", infoPlist]);
+      if (bundleId === "com.anysphere.sand") return true;
+    } catch {
+      // Absent or unreadable: this candidate is not an installed official app.
+    }
+  }
+  return false;
+}
+
+export async function verifyReconstructedUrlSchemeIsolation({ reconstructedApp, officialInstalled } = {}) {
   if (typeof reconstructedApp !== "string" || reconstructedApp.length === 0) {
     throw new TypeError("An explicit reconstructedApp path is required");
   }
@@ -25,10 +43,19 @@ export async function verifyReconstructedUrlSchemeIsolation({ reconstructedApp }
   if (!/<key>CFBundleURLSchemes<\/key>[\s\S]*<string>groknode<\/string>/.test(urlTypes)) {
     throw new Error("Reconstructed application has no groknode URL registration");
   }
-  if (/<string>(?:sand|grokbot)<\/string>/.test(urlTypes)) {
-    throw new Error("Reconstructed application must not claim the official sand/grokbot URL schemes");
+  if (/<string>sand<\/string>/.test(urlTypes)) {
+    throw new Error("Reconstructed application must not claim the official sand URL scheme");
   }
-  return { scheme: "groknode", verdict: "verified-in-packaged-info-plist" };
+  const claimsGrokbot = /<string>grokbot<\/string>/.test(urlTypes);
+  const official = officialInstalled ?? await officialGrokBotAppInstalled();
+  if (claimsGrokbot && official) {
+    throw new Error("Reconstructed application must not claim the official grokbot URL scheme while the official Grok Bot is installed");
+  }
+  return {
+    scheme: claimsGrokbot ? "groknode+grokbot" : "groknode",
+    officialGrokBotInstalled: official,
+    verdict: "verified-in-packaged-info-plist",
+  };
 }
 
 // Electron and daemon-native payloads are separate runtime domains. Both are
