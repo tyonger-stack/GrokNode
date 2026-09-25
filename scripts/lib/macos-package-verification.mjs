@@ -20,6 +20,19 @@ import {
 // LaunchServices route every grokbot:// link to just one of the two apps, so
 // Grok Node must not claim it; when the official app is absent, Grok Node may
 // additionally claim `grokbot` so x.ai share buttons keep working unchanged.
+// Distribution escape hatch for the grokbot claim decision. `auto` (default)
+// claims grokbot only when the official Grok Bot is absent from this machine;
+// `always`/`never` pin the claim for packages built for other machines, where
+// the build machine's state must not decide the target's LaunchServices claim.
+export function resolveGrokbotClaimMode(rawValue) {
+  if (rawValue == null || rawValue.trim() === "") return "auto";
+  const mode = rawValue.trim().toLowerCase();
+  if (mode !== "auto" && mode !== "always" && mode !== "never") {
+    throw new Error("GROK_NODE_CLAIM_GROKBOT must be one of: auto, always, never.");
+  }
+  return mode;
+}
+
 export async function officialGrokBotAppInstalled(homeDir = homedir(), systemApplicationsDir = "/Applications") {
   const candidates = [path.join(systemApplicationsDir, "Grok Bot.app"), path.join(homeDir, "Applications", "Grok Bot.app")];
   for (const appPath of candidates) {
@@ -34,7 +47,7 @@ export async function officialGrokBotAppInstalled(homeDir = homedir(), systemApp
   return false;
 }
 
-export async function verifyReconstructedUrlSchemeIsolation({ reconstructedApp, officialInstalled } = {}) {
+export async function verifyReconstructedUrlSchemeIsolation({ reconstructedApp, officialInstalled, allowGrokbotClaim = false } = {}) {
   if (typeof reconstructedApp !== "string" || reconstructedApp.length === 0) {
     throw new TypeError("An explicit reconstructedApp path is required");
   }
@@ -48,8 +61,8 @@ export async function verifyReconstructedUrlSchemeIsolation({ reconstructedApp, 
   }
   const claimsGrokbot = /<string>grokbot<\/string>/.test(urlTypes);
   const official = officialInstalled ?? await officialGrokBotAppInstalled();
-  if (claimsGrokbot && official) {
-    throw new Error("Reconstructed application must not claim the official grokbot URL scheme while the official Grok Bot is installed");
+  if (claimsGrokbot && official && !allowGrokbotClaim) {
+    throw new Error("Reconstructed application must not claim the official grokbot URL scheme while the official Grok Bot is installed; rebuild with GROK_NODE_CLAIM_GROKBOT=never, or deploy a =always build only on machines without the official app");
   }
   return {
     scheme: claimsGrokbot ? "groknode+grokbot" : "groknode",
@@ -383,7 +396,7 @@ export async function verifyUnpackedRuntimeManifest({ sourceUnpackedRoot, packag
   return { platform, arch, nodeFileCount: manifest.nodeFiles.length, runtimeFileCount: source.size, manifestSha256: sha256(sourceManifestBytes) };
 }
 
-export async function verifyReconstructedMacPackage({ officialApp, reconstructedApp, sourceUnpackedRoot, packagedUnpackedRoot } = {}) {
+export async function verifyReconstructedMacPackage({ officialApp, reconstructedApp, sourceUnpackedRoot, packagedUnpackedRoot, urlSchemeOptions } = {}) {
   if ([officialApp, reconstructedApp, sourceUnpackedRoot, packagedUnpackedRoot].some(value => typeof value !== "string" || value.length === 0)) {
     throw new TypeError("Explicit officialApp, reconstructedApp, sourceUnpackedRoot, and packagedUnpackedRoot paths are required");
   }
@@ -405,7 +418,7 @@ export async function verifyReconstructedMacPackage({ officialApp, reconstructed
   if (invariant.reconstructedHash === officialMacReleaseShellHash) throw new Error("Reconstructed package must not copy the official signed shell");
   if (sha256(officialAsar) !== officialMacReleaseAsarHash) throw new Error("Reconstructed verification received a non-canonical official app.asar reference");
   if (sha256(reconstructedAsar) === officialMacReleaseAsarHash) throw new Error("Reconstructed package must not copy the official app.asar");
-  const urlScheme = await verifyReconstructedUrlSchemeIsolation({ reconstructedApp });
+  const urlScheme = await verifyReconstructedUrlSchemeIsolation({ reconstructedApp, ...(urlSchemeOptions ?? {}) });
   const runtime = await verifyUnpackedRuntimeManifest({ sourceUnpackedRoot, packagedUnpackedRoot });
   return { invariant, urlScheme, reconstructedAsarHash: sha256(reconstructedAsar), runtime };
 }

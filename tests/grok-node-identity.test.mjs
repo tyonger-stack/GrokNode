@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build, transform } from "esbuild";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -155,17 +155,25 @@ test("the packaged app claims groknode always and grokbot only without the offic
   const packageMacos = await readFile(path.join(repoRoot, "scripts/package-macos.mjs"), "utf8");
   const verify = await readFile(path.join(repoRoot, "scripts/verify.mjs"), "utf8");
   const packageVerification = await readFile(path.join(repoRoot, "scripts/lib/macos-package-verification.mjs"), "utf8");
+  const verification = await import(pathToFileURL(path.join(repoRoot, "scripts/lib/macos-package-verification.mjs")).href);
   assert.match(packageMacos, /CFBundleURLName<\/key><string>Grok Node links<\/string>/);
-  assert.match(packageMacos, /officialGrokBotAppInstalled\(\)/);
-  assert.match(packageMacos, /\["groknode", \.\.\.\(officialInstalled \? \[\] : \["grokbot"\]\)\]/);
+  assert.match(packageMacos, /resolveGrokbotClaimMode\(process\.env\.GROK_NODE_CLAIM_GROKBOT\)/);
+  assert.match(packageMacos, /claimMode === "always" \|\| \(claimMode === "auto" && !officialInstalled\)/);
   assert.doesNotMatch(packageMacos, /Grok Bot reconstructed links/);
   assert.match(verify, /verifyReconstructedUrlSchemeIsolation\(\{ reconstructedApp: verifiedApp \}\)/);
   assert.match(packageVerification, /export async function verifyReconstructedUrlSchemeIsolation/);
   assert.match(packageVerification, /export async function officialGrokBotAppInstalled/);
+  assert.match(packageVerification, /export function resolveGrokbotClaimMode/);
   assert.match(packageVerification, /const official = officialInstalled \?\? await officialGrokBotAppInstalled\(\)/);
-  assert.match(packageVerification, /claimsGrokbot && official/);
-  assert.match(packageVerification, /must not claim the official grokbot URL scheme while the official Grok Bot is installed/);
+  assert.match(packageVerification, /claimsGrokbot && official && !allowGrokbotClaim/);
   assert.match(packageVerification, /must not claim the official sand URL scheme/);
+  assert.match(packageVerification, /urlSchemeOptions \?\? \{\}/);
+  // The claim-mode override is a pure function, so it is covered cross-platform.
+  assert.equal(verification.resolveGrokbotClaimMode(undefined), "auto");
+  assert.equal(verification.resolveGrokbotClaimMode(""), "auto");
+  assert.equal(verification.resolveGrokbotClaimMode(" ALWAYS "), "always");
+  assert.equal(verification.resolveGrokbotClaimMode("never"), "never");
+  assert.throws(() => verification.resolveGrokbotClaimMode("sometimes"), /GROK_NODE_CLAIM_GROKBOT must be one of/);
 });
 
 test("the URL scheme gate adapts to the official Grok Bot's presence", { skip: process.platform !== "darwin" }, async () => {
@@ -201,6 +209,9 @@ test("the URL scheme gate adapts to the official Grok Bot's presence", { skip: p
       verification.verifyReconstructedUrlSchemeIsolation({ reconstructedApp: grokNodeBoth, officialInstalled: true }),
       /must not claim the official grokbot URL scheme while the official Grok Bot is installed/,
     );
+    // An explicit distribution build (GROK_NODE_CLAIM_GROKBOT=always) may claim
+    // grokbot even while the official app is installed on the build machine.
+    assert.equal((await verification.verifyReconstructedUrlSchemeIsolation({ reconstructedApp: grokNodeBoth, officialInstalled: true, allowGrokbotClaim: true })).scheme, "groknode+grokbot");
     // sand is never claimable and groknode is always required.
     await assert.rejects(
       verification.verifyReconstructedUrlSchemeIsolation({ reconstructedApp: await makeApp(temp, "Grok Node Sand.app", plistWithSchemes(["groknode", "sand"])), officialInstalled: false }),
@@ -220,8 +231,10 @@ test("the URL scheme gate adapts to the official Grok Bot's presence", { skip: p
     assert.equal(await verification.officialGrokBotAppInstalled(homeDir, sysDir), true);
     await makeApp(sysDir, "Grok Bot.app", plistWithBundleId("com.example.other"));
     assert.equal(await verification.officialGrokBotAppInstalled(homeDir, sysDir), false);
-    // This machine has the official Grok Bot installed.
-    assert.equal(await verification.officialGrokBotAppInstalled(), true);
+    // Real-machine detection stays environment-independent: it returns a
+    // boolean on any host, regardless of whether this machine happens to have
+    // the official app installed (CI runners do not).
+    assert.equal(typeof (await verification.officialGrokBotAppInstalled()), "boolean");
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
@@ -252,14 +265,35 @@ test("the packaged Grok Node presents its own app name and coordinator process n
   const main = await readFile(path.join(repoRoot, "source/electron-main/main.ts"), "utf8");
   const launcher = await readFile(path.join(repoRoot, "source/electron-main/coordinator/coordinator-launcher.ts"), "utf8");
   const services = await readFile(path.join(repoRoot, "source/electron-main/main-production-services.ts"), "utf8");
-  // setName must run before the production composition eagerly snapshots
-  // app.getName() for the app menu and the window title.
-  const setNameIndex = main.indexOf('bindings.native.app.setName?.("Grok Node")');
-  const compositionIndex = main.indexOf("const composition = createElectronMainProductionComposition(bindings)");
-  assert.ok(setNameIndex > 0, "packaged Grok Node sets its app name");
-  assert.ok(compositionIndex > setNameIndex, "setName must run before the composition snapshots the app name");
+  // AST-level ordering: inside startElectronMainProduction, the
+  // setName("Grok Node") call must execute before
+  // createElectronMainProductionComposition, which eagerly snapshots
+  // app.getName() for the app menu and window title. Parsing the transpiled
+  // module keeps the assertion immune to comment edits and identifier renames.
+  const { parse } = await import("acorn");
+  const { full: walkFull } = await import("acorn-walk");
+  const { code } = await transform(main, { loader: "ts", format: "esm", target: "es2022" });
+  const program = parse(code, { ecmaVersion: "latest", sourceType: "module" });
+  let entry = null;
+  walkFull(program, (node) => {
+    if (node.type === "FunctionDeclaration" && node.id?.name === "startElectronMainProduction") entry = node;
+  });
+  assert.ok(entry != null, "startElectronMainProduction exists");
+  const statementOf = { setName: -1, composition: -1 };
+  entry.body.body.forEach((statement, index) => {
+    walkFull(statement, (node) => {
+      if (node.type !== "CallExpression") return;
+      const callee = node.callee;
+      const calleeName = callee.type === "MemberExpression"
+        ? (callee.property?.name ?? callee.property?.value ?? null)
+        : callee.type === "Identifier" ? callee.name : null;
+      if (calleeName === "setName" && node.arguments.some((argument) => argument.type === "Literal" && argument.value === "Grok Node")) statementOf.setName = index;
+      if (calleeName === "createElectronMainProductionComposition") statementOf.composition = index;
+    });
+  });
+  assert.ok(statementOf.setName >= 0, "packaged Grok Node sets its app name inside startElectronMainProduction");
+  assert.ok(statementOf.composition > statementOf.setName, "setName must run before the composition snapshots the app name");
   assert.doesNotMatch(main, /deps\.app\.setName\?\.\("Grok Node"\)/);
-  assert.match(main, /\/\*[\s\S]*composition eagerly snapshots app\.getName\(\)/);
   assert.match(launcher, /export function resolveCoordinatorServiceName/);
   assert.match(launcher, /serviceName: resolveCoordinatorServiceName\(\)/);
   assert.match(services, /serviceName === resolveCoordinatorServiceName\(\)/);

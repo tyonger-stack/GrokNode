@@ -8,7 +8,7 @@ import {
 } from "./lib/config.mjs";
 import { buildFidelityReconstructedAsar } from "./clean-build.mjs";
 import { signAppBundleAdHoc } from "./lib/codesign.mjs";
-import { officialGrokBotAppInstalled, verifyOfficialMacReference, verifyReconstructedMacPackage } from "./lib/macos-package-verification.mjs";
+import { officialGrokBotAppInstalled, resolveGrokbotClaimMode, verifyOfficialMacReference, verifyReconstructedMacPackage } from "./lib/macos-package-verification.mjs";
 import { run } from "./lib/process.mjs";
 import { SYSTEM_TOOLS } from "./lib/system-tools.mjs";
 
@@ -51,14 +51,21 @@ await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleDisplayName", "-string", re
 // it is installed, Grok Node registers only its own `groknode` scheme so
 // LaunchServices keeps routing sand:// and grokbot:// links to the official
 // app; when it is absent, Grok Node additionally claims `grokbot` so x.ai
-// share buttons keep working on machines without the official app. The
+// share buttons keep working on machines without the official app. The claim
+// is a package-time snapshot of this machine; GROK_NODE_CLAIM_GROKBOT=
+// auto|always|never pins it for packages distributed to other machines. The
 // runtime parser accepts both protocols either way.
+const claimMode = resolveGrokbotClaimMode(process.env.GROK_NODE_CLAIM_GROKBOT);
 const officialInstalled = await officialGrokBotAppInstalled();
-const urlSchemes = ["groknode", ...(officialInstalled ? [] : ["grokbot"])];
+const claimsGrokbot = claimMode === "always" || (claimMode === "auto" && !officialInstalled);
+if (claimsGrokbot && officialInstalled) {
+  console.warn("GROK_NODE_CLAIM_GROKBOT: this package claims grokbot while the official Grok Bot is installed on this machine; deploy it only on machines without the official app.");
+}
+const urlSchemes = ["groknode", ...(claimsGrokbot ? ["grokbot"] : [])];
 const urlSchemesXml = urlSchemes.map((scheme) => `<string>${scheme}</string>`).join("");
 await run(SYSTEM_TOOLS.plutil, ["-remove", "CFBundleURLTypes", infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-insert", "CFBundleURLTypes", "-xml", `<array><dict><key>CFBundleTypeRole</key><string>Viewer</string><key>CFBundleURLName</key><string>Grok Node links</string><key>CFBundleURLSchemes</key><array>${urlSchemesXml}</array></dict></array>`, infoPlist]);
-console.log(`Registered URL schemes: ${urlSchemes.join(", ")} (official Grok Bot ${officialInstalled ? "installed" : "not installed"})`);
+console.log(`Registered URL schemes: ${urlSchemes.join(", ")} (claim mode: ${claimMode}, official Grok Bot ${officialInstalled ? "installed" : "not installed"})`);
 // Keep CFBundleName/CFBundleExecutable as "Grok Bot": Electron derives the
 // expected nested helper names from it, and this build intentionally reuses the
 // exact ABI-matched 0.18 runtime. CFBundleDisplayName provides the fork's name.
@@ -79,6 +86,7 @@ const verification = await verifyReconstructedMacPackage({
   reconstructedApp: outputApp,
   sourceUnpackedRoot: builtAsarUnpacked,
   packagedUnpackedRoot: packagedUnpacked,
+  urlSchemeOptions: { allowGrokbotClaim: claimMode === "always" },
 });
 
 console.log(`Packaged application: ${outputApp} (${verification.runtime.nodeFileCount} native manifest entries, ${verification.runtime.runtimeFileCount} unpacked runtime files)`);

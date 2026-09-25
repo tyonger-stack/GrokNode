@@ -25,3 +25,19 @@ jobs:
         run: npm run frontend:build
       - name: Verify a fresh clean-history export is lossless
         run: npm run publication:check
+  # The URL-scheme and app-identity gates spawn macOS plutil, so the ubuntu
+  # job skips them; this job runs the identity test file (including the
+  # darwin-only scheme-gate branches) on a real macOS runner.
+  check-darwin:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.5.0
+          cache: npm
+      - name: Install the locked dependency graph
+        run: npm ci --no-audit --no-fund
+      - name: Run the identity and scheme-gate tests
+        run: node --test tests/grok-node-identity.test.mjs

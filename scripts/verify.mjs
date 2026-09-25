@@ -261,6 +261,9 @@ const plistText = await capture(SYSTEM_TOOLS.plutil, ["-convert", "xml1", "-o", 
 if (plistText.includes("ElectronAsarIntegrity")) throw new Error("Stale ElectronAsarIntegrity metadata remains in the reconstructed application");
 // groknode is always required; `sand` is never claimable; `grokbot` is only
 // claimable while the official Grok Bot is not installed on this machine.
+// Packages built with GROK_NODE_CLAIM_GROKBOT=always for distribution fail
+// this standalone gate here by design: deploy them only on machines without
+// the official app.
 await verifyReconstructedUrlSchemeIsolation({ reconstructedApp: verifiedApp });
 
 await run(SYSTEM_TOOLS.codesign, ["--verify", "--deep", "--strict", verifiedApp]);
