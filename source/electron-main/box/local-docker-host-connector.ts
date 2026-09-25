@@ -7,13 +7,16 @@ import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { classifyOpenRouterError, openRouterOkStatus, type OpenRouterChannelStatus } from "../../shared/openrouter-channel-status.js";
-import { OPENCODEX_CONTAINER_RELAY_PORT } from "../../shared/node/openrouter-proxy.js";
+import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_CONTAINER_RELAY_PORT } from "../../shared/node/openrouter-proxy.js";
+import { GROK_NODE_DOCKER_CONTAINER, isGrokNodePackagedApp } from "../../shared/node/grok-node-identity.js";
 import type { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
 import type { RecreateResult } from "./box-recreate-commands.js";
 import type { GatewayConnection } from "./gateway-descriptor-cache.js";
 
 export const LOCAL_DOCKER_BOX_IMAGE = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest";
-export const LOCAL_DOCKER_BOX_CONTAINER = "grok-bot-local-vm";
+export const LOCAL_DOCKER_BOX_CONTAINER = isGrokNodePackagedApp() ? GROK_NODE_DOCKER_CONTAINER : "grok-bot-local-vm";
+export const LOCAL_DOCKER_WORKSPACE_VOLUME = `${LOCAL_DOCKER_BOX_CONTAINER}-workspace`;
+export const LOCAL_DOCKER_DATA_VOLUME = `${LOCAL_DOCKER_BOX_CONTAINER}-data`;
 export const LOCAL_DOCKER_GATEWAY_URL = "http://127.0.0.1:1340";
 export const LOCAL_DOCKER_OWNER_LABEL = "com.grok-bot.local-vm=1";
 export const LOCAL_DOCKER_SCHEMA_VERSION = "6";
@@ -151,7 +154,7 @@ export function localDockerRelayStatusFromProbe(result: ParsedLocalDockerRelayOu
   return { ...status, latencyMs };
 }
 
-export async function probeLocalDockerRelay(timeoutMs = 2500): Promise<OpenRouterChannelStatus> {
+export async function probeLocalDockerRelay(timeoutMs = OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS): Promise<OpenRouterChannelStatus> {
   const startedAt = Date.now();
   const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
   const result = await runDocker([
@@ -294,7 +297,7 @@ async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnec
       "--env", "SAND_SUPERVISOR_ENABLED=1", "--env", "SAND_BOX_AUTO_UPDATE=0", "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1", "--env", "SAND_TREE_SITTER_NODE_DEPS=/home/box/deps", "--env", "NODE_PATH=/home/box/deps", "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0", "--env", "SAND_HOST_PORT=1340", "--env", `SAND_GATEWAY_TOKEN=${token}`,
       "--publish", "127.0.0.1:1337:1337", "--publish", "127.0.0.1:1339:1339", "--publish", "127.0.0.1:1340:1340",
       "--publish", "127.0.0.1:6080:6080", "--publish", "127.0.0.1:6081:6081", "--publish", "127.0.0.1:8790:8790",
-      "--volume", "grok-bot-local-vm-workspace:/workspace", "--volume", "grok-bot-local-vm-data:/home/box/sand-data",
+      "--volume", `${LOCAL_DOCKER_WORKSPACE_VOLUME}:/workspace`, "--volume", `${LOCAL_DOCKER_DATA_VOLUME}:/home/box/sand-data`,
       "--mount", `type=bind,src=${hostBundle.path},dst=/home/box/sand-host/host-main.cjs,readonly`,
       "--mount", `type=bind,src=${dirname(hostBundle.boxExecDaemonPath)},dst=/home/box/box-exec-daemon,readonly`,
       ...authMounts,

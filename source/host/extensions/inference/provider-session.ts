@@ -10,6 +10,7 @@ import { BasePromptBuilder, BasePromptExecutor } from "../../../packages/chat-in
 import type { SandInferenceProvider } from "../../../shared/inference-router.js";
 import { isOpenRouterProxyMode, readCodexConfigValue, resolveOpenRouterTransport } from "../../../shared/node/openrouter-proxy.js";
 import { classifyOpenRouterError, openRouterOkStatus } from "../../../shared/openrouter-channel-status.js";
+import { DEFAULT_FIRST_TOKEN_STALL_DEADLINE_MS, resolveFirstTokenStallDeadlineMs } from "../../runner/transient-stream-error.js";
 import { getSandRootDir } from "../../host-paths.js";
 import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { getBoxSecretsStorePath } from "../secrets/secrets-service.js";
@@ -218,14 +219,14 @@ function configuredCodexReasoningEffort(): "minimal" | "low" | "medium" | "high"
 function stripSchemaArtifacts(value: unknown): unknown {
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map(stripSchemaArtifacts);
-  const { $schema: _schema, default: _default, definitions: _definitions, markdownDescription: _markdown, additionalProperties: _additional, ...rest } = value as Record<string, unknown>;
+  const { $schema: _schema, default: _default, definitions: _definitions, markdownDescription: _markdown, ...rest } = value as Record<string, unknown>;
   const result: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(rest)) result[key] = stripSchemaArtifacts(child);
   return result;
 }
 
 // Host tools carry Zod schemas; serialized raw they reach the endpoint as its internals and draw an opaque server_error, so convert them to JSON Schema.
-function toToolWireParameters(parameters: unknown): unknown {
+export function toToolWireParameters(parameters: unknown): unknown {
   if (parameters == null || typeof parameters !== "object") return parameters;
   if ("~standard" in parameters || "_def" in parameters) {
     try {
@@ -310,7 +311,7 @@ function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: Rout
 }
 
 const finiteTokenCount = (value: unknown): number => typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
-const CHAT_IDLE_TIMEOUT_MS = 60_000;
+const CHAT_IDLE_TIMEOUT_MS = resolveFirstTokenStallDeadlineMs() || DEFAULT_FIRST_TOKEN_STALL_DEADLINE_MS;
 
 function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void, signal?: AbortSignal) {
   const chatStartedAt = Date.now();

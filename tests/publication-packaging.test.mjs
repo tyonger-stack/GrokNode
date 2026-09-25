@@ -83,7 +83,7 @@ test("Router settings and inference packaging expose only local providers", asyn
   assert.match(rendererPatch, /desktop\.agent\.setOpenRouterModel\(i\)/);
   assert.match(mainEdge, /invoke\(deps\.settingsStore, "setOpenRouterModel", model\.trim\(\)\)/);
   assert.match(mainEdge, /persistedOpenRouterBaseUrl\(deps\.settingsStore\)/);
-  assert.match(mainEdge, /listOpenRouterProxyModels\(2500, persistedBaseUrl\)/);
+  assert.match(mainEdge, /listOpenRouterProxyModels\(OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, persistedBaseUrl\)/);
   assert.match(mainEdge, /isOpenRouterProxyMode\(persistedBaseUrl\)/);
   assert.match(rendererPatch, /RRouterEndpointCard/);
   assert.match(rendererPatch, /TokenHub API address/);

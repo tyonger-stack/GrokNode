@@ -89,3 +89,16 @@ test("the openrouter toolset also converts Zod parameters before they reach the 
   assert.ok(!("~standard" in converted));
 });
 
+test("OpenRouter tool parameters keep closed object schemas required by Muse Spark", async () => {
+  const { z } = await import("zod");
+  const provider = await loadModule(
+    "source/host/extensions/inference/provider-session.ts",
+    "codex-tool-parameters-provider.mjs",
+  );
+  const schema = provider.toToolWireParameters(z.object({
+    content: z.string(),
+    nested: z.object({ value: z.string() }),
+  }));
+  assert.equal(schema.additionalProperties, false);
+  assert.equal(schema.properties.nested.additionalProperties, false);
+});

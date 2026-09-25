@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { getSandVariant } from "../shared/node/sand-variant.js";
+import { getGrokNodeProductionRootDir, isGrokNodePackagedApp } from "../shared/node/grok-node-identity.js";
 import { isPathWithin } from "../shared/node/paths.js";
 import { findSystemErrno } from "../shared/system-errno.js";
 
@@ -68,6 +69,7 @@ export function getSandRootDir(homeDir = homedir()): string {
   if (override != null) return override;
   const userDataDir = resolveSandUserDataDir([], process.env);
   if (userDataDir != null) return join(userDataDir, SAND_DATA_DIRNAME);
+  if (isGrokNodePackagedApp()) return getGrokNodeProductionRootDir(homeDir);
   const variant = getSandVariant();
   return variant === "sand" ? getSandProductionRootDir(homeDir) : join(homeDir, ".cursor", variant);
 }

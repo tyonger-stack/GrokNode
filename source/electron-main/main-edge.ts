@@ -9,7 +9,7 @@ import { reportDesktopEdgeFailure } from "./desktop-edge-failures.js";
 import { isSandInferenceProvider } from "../shared/inference-router.js";
 import { getLocalInferenceCliStatus } from "../shared/node/inference-router-local.js";
 import { isSandBoxRuntime } from "../shared/box-runtime.js";
-import { OPENCODEX_MAC_FORWARDER_PORT, isOpenRouterProxyMode, listOpenRouterProxyModels, probeOpenRouterChannel, resolveOpenRouterBaseUrl } from "../shared/node/openrouter-proxy.js";
+import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_MAC_FORWARDER_PORT, isOpenRouterProxyMode, listOpenRouterProxyModels, probeOpenRouterChannel, resolveOpenRouterBaseUrl } from "../shared/node/openrouter-proxy.js";
 import { mergeOpenRouterChannelStatus, normalizeOpenRouterChannelStatus } from "../shared/openrouter-channel-status.js";
 import { getLocalDockerStatus, probeLocalDockerRelay, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
 
@@ -151,7 +151,7 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       const safeSelected = typeof selected === "string" && selected.trim().length > 0 ? selected.trim() : null;
       let models: string[] = [];
       let error: string | null = null;
-      try { models = await listOpenRouterProxyModels(2500, persistedBaseUrl); } catch (reason) { error = String((reason as { message?: unknown })?.message ?? reason); }
+      try { models = await listOpenRouterProxyModels(OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, persistedBaseUrl); } catch (reason) { error = String((reason as { message?: unknown })?.message ?? reason); }
       return { baseUrl, baseUrlOverride: persistedBaseUrl, proxyMode: isOpenRouterProxyMode(persistedBaseUrl), selected: safeSelected, models, error };
     },
     setOpenRouterModel: async (raw) => {
@@ -185,7 +185,7 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       const boxRuntime = invoke(deps.settingsStore, "getBoxRuntime");
       const useContainerRelay = boxRuntime === "local-docker" && isLocalMacForwarder(resolveOpenRouterBaseUrl(persistedBaseUrl));
       const [modelListResult, hostSettingsResult] = await Promise.allSettled([
-        useContainerRelay ? probeLocalDockerRelay(2500) : probeOpenRouterChannel(2500, persistedBaseUrl),
+        useContainerRelay ? probeLocalDockerRelay(OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS) : probeOpenRouterChannel(OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, persistedBaseUrl),
         deps.readHostSettingsFromBox(),
       ]);
       if (modelListResult.status === "rejected" || modelListResult.value == null) {

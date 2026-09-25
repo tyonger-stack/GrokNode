@@ -4,11 +4,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const CONTAINER_NAME = "grok-bot-local-vm";
+let CONTAINER_NAME = "grok-bot-local-vm";
+const KNOWN_CONTAINER_NAMES = ["grok-node-local-vm", "grok-bot-local-vm"];
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const MAC_FORWARDER_URL = "http://127.0.0.1:11010/v1";
 const CONTAINER_RELAY_URL = "http://127.0.0.1:10100/v1";
-const MODEL_LIST_TIMEOUT_MS = 5_000;
+// A healthy `/models` answers at ~5.1s p99 because opencodex refreshes every enabled provider first.
+const MODEL_LIST_TIMEOUT_MS = 12_000;
 const STABLE_RENDERER_MS = 5 * 60_000;
 
 const jsonMode = process.argv.includes("--json");
@@ -32,6 +34,14 @@ function resolveDockerBinary() {
     "/Applications/Docker.app/Contents/Resources/bin/docker",
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? "docker";
+}
+
+async function resolveContainerName(dockerBinary) {
+  for (const name of KNOWN_CONTAINER_NAMES) {
+    const probed = await runCommand(dockerBinary, ["inspect", "-f", "{{.Name}}", name]);
+    if (probed.ok) return name;
+  }
+  return KNOWN_CONTAINER_NAMES[0];
 }
 
 function readJsonObject(filePath) {
@@ -330,6 +340,7 @@ async function main() {
   const baseUrl = resolveBaseUrl(macSettings);
   const useLocalForwarder = isLocalMacForwarder(baseUrl);
   const dockerBinary = resolveDockerBinary();
+  CONTAINER_NAME = await resolveContainerName(dockerBinary);
   const container = await containerCheck(dockerBinary);
   const containerRunning = container.data?.running === true;
   const checks = [

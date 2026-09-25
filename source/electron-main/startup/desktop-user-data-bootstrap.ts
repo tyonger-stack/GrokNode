@@ -1,9 +1,15 @@
+import { homedir } from "node:os";
 import {
   resolveSandDataRootOverride,
   resolveSandUserDataDir,
   SAND_DATA_ROOT_ENV,
   SAND_USER_DATA_DIR_ENV,
 } from "../../host/host-paths.js";
+import {
+  getGrokNodeProductionRootDir,
+  getGrokNodeUserDataDir,
+  isGrokNodePackagedApp,
+} from "../../shared/node/grok-node-identity.js";
 import { applyStartupDataRootMigration, resolveExistingSandProductionRootDir, type DataRootSettlement } from "./startup-data-root-migration.js";
 
 export const STRANDED_USER_DATA_REASONS = new Set([
@@ -50,6 +56,15 @@ export function bootstrapDesktopUserData(options: DesktopUserDataBootstrapOption
     options.app.setPath("sessionData", isolatedUserDataDir);
     console.log(`[sand] using isolated user-data dir: ${isolatedUserDataDir}`);
     return isolatedUserDataDir;
+  }
+  if (isGrokNodePackagedApp()) {
+    const userDataDir = getGrokNodeUserDataDir(options.app.getPath("appData"));
+    const dataRoot = resolveSandDataRootOverride(env) ?? getGrokNodeProductionRootDir(homedir());
+    env[SAND_DATA_ROOT_ENV] = dataRoot;
+    options.app.setPath("userData", userDataDir);
+    options.app.setPath("sessionData", userDataDir);
+    console.log(`[sand] using Grok Node identity: user-data ${userDataDir}, data-root ${dataRoot}`);
+    return userDataDir;
   }
   const settlement: { readonly route: "unchanged"; readonly reason: "nonwindows" } = { route: "unchanged", reason: "nonwindows" };
   if (STRANDED_USER_DATA_REASONS.has(settlement.reason)) {

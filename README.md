@@ -43,6 +43,10 @@ coordinator、本地执行、协议与渲染层各边界的可读 TypeScript 实
 - 原始与打过补丁的渲染器分块哈希都被记录并接受校验；并且
 - 成品应用使用独立的 bundle identifier（`com.anysphere.sand.reconstructed`）和
   ad-hoc 签名。
+  运行时身份同样独立：Electron 用户目录（`~/Library/Application Support/Grok Node`）、
+  数据根（`~/.groknode`）与本地 Docker 容器（`grok-node-local-vm`），因此可与官方版
+  Grok Bot 同时运行。显式环境变量（`SAND_DATA_ROOT` / `SAND_USER_DATA_DIR`）仍优先于
+  这些默认值。
 
 机器上已安装的 upstream 应用永远不会被覆盖。
 

@@ -1,3 +1,5 @@
+<!-- Parent: ../AGENTS.md -->
+
 # AGENTS.md — Grok Bot 0.18 重建版
 
 给 AI 协作者的项目速查。改动前先读，避免重复踩坑。
@@ -97,6 +99,7 @@ npm run frontend:build  # 构建可读 renderer 重建
    - **派长任务前先过健康门（2026-09-24 血案）**：容器重建曾导致 00:16 派出的任务静默 14 分钟零推理（transcript 零增长、计数器冻结），00:30 容器就绪后才开跑。长 skill 开工前必须四项全绿：容器 running、中继 LISTEN、代理 200、渲染进程稳定 >5 分钟。检查脚本 `~/.grokbot/health-check.py`（`python3 ~/.grokbot/health-check.py [--repair]`，exit 0=OK / 1=DEGRADED / 2=DOWN）。
    - **模型选择硬约束**：Grok Bot 框架要求模型通过 `send_message` 工具投递文字。不支持 tool_calls 的模型（如 `volcengine-agent-plan/ark-code-latest`）会无限循环重发 prompt。已验证可用：`qianwen/qwen3.8-max`（流式 tool_calls + 参数完整）；`glm-5.3-flash` 调工具但 input 为空。OpenAI 系模型（gpt-6-astra 等）受 Codex 账号 quota cooldown 限制。
 3. **Router provider 后端同步**（与代理无关）— `frontend/src/recovered/features/settings/overlay/router.ts`、`contracts/desktop-bridge.ts`、`tests/router-settings.test.mjs`：新增 `get/setInferenceRouter` 桥接，让 UI 选的 provider 落到后端确认。
+4. **Grok Node 独立身份（一期，已打包部署）** — 与官方版双开：`source/shared/node/grok-node-identity.ts`（唯一决策点，可执行路径含 `Grok Node.app` 才生效；dev/fidelity/容器内/测试 runner 保持老身份）；`startup/desktop-user-data-bootstrap.ts`（默认 userData `~/Library/Application Support/Grok Node` + `SAND_DATA_ROOT=~/.groknode`，跑在单实例锁之前）；`host/host-paths.ts`（`getSandRootDir` 默认 `~/.groknode`）；`box/local-docker-host-connector.ts`（容器/volume 改名 `grok-node-local-vm*`，端口不动）；`scripts/diagnose-channel.mjs`（探测两个容器名）；`tests/grok-node-identity.test.mjs`（2 用例）。**刻意没碰**：宿主端口、Helper Bundle ID、URL Scheme（二期才评估）。
 
 **验证状态（2026-09-21 实测）**：`source:typecheck` ✅ · `typecheck` ✅ · `npm test` **19/19** ✅（比基线 18 多 1 条新用例）。**未重新 `npm run package`** → 已安装的 `/Applications` app 不包含第 2、3 条线。
 

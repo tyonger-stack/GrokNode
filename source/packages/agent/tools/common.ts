@@ -77,9 +77,18 @@ export function truncateOutput(output: string, maxLength = CHAR_HARD_LIMIT, fron
 function stripSchemaArtifacts(value: unknown): unknown {
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map(stripSchemaArtifacts);
-  const { $schema: _schema, default: _default, definitions: _definitions, markdownDescription: _markdown, additionalProperties: _additional, ...rest } = value as Record<string, unknown>;
+  // additionalProperties is load-bearing: strict OpenAI-compatible endpoints
+  // (e.g. muse-spark via the local proxy) reject every object node that does
+  // not declare additionalProperties:false, so only presentation-layer keys go here.
+  const { $schema: _schema, default: _default, definitions: _definitions, markdownDescription: _markdown, ...rest } = value as Record<string, unknown>;
   const result: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(rest)) result[key] = stripSchemaArtifacts(child);
+  // z.record() converts to additionalProperties:<value-schema>, which the same
+  // strict endpoints reject (they only accept false). The runtime args are still
+  // validated by zod on the host side; the wire schema just describes the shape.
+  if (result.type === "object" && "additionalProperties" in result && result.additionalProperties !== false) {
+    result.additionalProperties = false;
+  }
   return result;
 }
 

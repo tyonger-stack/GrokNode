@@ -7,6 +7,8 @@ import { classifyOpenRouterError, openRouterOkStatus, type OpenRouterChannelStat
 export const OPENROUTER_CLOUD_BASE_URL = "https://openrouter.ai/api/v1";
 export const OPENCODEX_MAC_FORWARDER_PORT = 11010;
 export const OPENCODEX_CONTAINER_RELAY_PORT = 10100;
+/** Healthy `/models` answers at ~5.1s p99 and ~8.1s p99.9 because `ocx` refreshes every enabled provider first. */
+export const OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS = 10_000;
 
 function codexHome(): string {
   return process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
@@ -66,7 +68,7 @@ function readCatalogModelSlugs(): string[] {
   } catch { return []; }
 }
 
-export async function listOpenRouterProxyModels(timeoutMs = 2500, persistedOverride?: string | null): Promise<string[]> {
+export async function listOpenRouterProxyModels(timeoutMs = OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, persistedOverride?: string | null): Promise<string[]> {
   const base = resolveOpenRouterTransport(persistedOverride).baseUrl.replace(/\/+$/, "");
   const controller = new AbortController();
   const timer = setTimeout(() => { controller.abort(); }, timeoutMs);
@@ -87,7 +89,7 @@ export async function listOpenRouterProxyModels(timeoutMs = 2500, persistedOverr
   }
 }
 
-export async function probeOpenRouterChannel(timeoutMs = 2500, persistedOverride?: string | null): Promise<OpenRouterChannelStatus> {
+export async function probeOpenRouterChannel(timeoutMs = OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, persistedOverride?: string | null): Promise<OpenRouterChannelStatus> {
   const startedAt = Date.now();
   const transport = resolveOpenRouterTransport(persistedOverride);
   const base = transport.baseUrl.replace(/\/+$/, "");
