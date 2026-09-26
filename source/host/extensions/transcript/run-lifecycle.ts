@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   areAgentActivitiesEqual,
   type SandAgentActivity,
@@ -11,6 +13,7 @@ import {
   type ActivityUpdate,
   type NamedActivityHoldState,
 } from "../../sand-activity.js";
+import { describeAgentRunError } from "./agent-run-error.js";
 import { SandRunScheduler, type RunLane } from "./run-scheduler.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
 
@@ -25,6 +28,23 @@ export function envPositiveInt(name: string, fallback: number): number {
 }
 export const RUN_WATCHDOG_DEFAULT_MS = 120_000;
 export const RUN_WATCHDOG_GRACE_DEFAULT_MS = 30_000;
+
+// Real bot-turn sources only: bookkeeping reruns (ack-redrive, spend_guard, ...)
+// must not raise user-facing failure notices.
+const TURN_FAILURE_NOTICE_SOURCES = new Set([
+  "turn",
+  "group",
+  "automation",
+  "connector",
+  "agent",
+  "subagent-revival",
+  "shell-revival",
+  "background_followup",
+  "handoff-resume",
+  "upgrade-resume",
+  "kickstart",
+  "event",
+]);
 
 export class RunLifecycle {
   readonly inFlightRunCounts = new Map<any, number>();
@@ -149,6 +169,39 @@ export class RunLifecycle {
     });
   }
 
+  appendTurnFailureNotice(agentId: string, source: string, error: unknown): void {
+    try {
+      const sessions = this.tm.sessions as
+        | { activeSession?: { id?: string }; liveSessions?: Map<string, any> }
+        | undefined;
+      const active = sessions?.activeSession;
+      const session =
+        active?.id === agentId ? active : sessions?.liveSessions?.get(agentId);
+      if (session == null) return;
+      const description = describeAgentRunError(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      const notice = {
+        kind: "notice",
+        id: "notice-turn-failure-" + randomUUID(),
+        text:
+          "This turn ended without a reply (source: " +
+          source +
+          "; error: " +
+          description +
+          "). Send a message to run it again.",
+        timestampMs: Date.now(),
+      };
+      if (active?.id === agentId) this.tm.appendEntry(notice);
+      else {
+        session.db?.appendTranscriptEntry?.(notice);
+        void this.tm.roster?.emitAgentUpdate(agentId);
+      }
+    } catch {
+      // best-effort: a broken notice must never mask the original turn failure
+    }
+  }
+
   enqueueExclusiveRun(
     agentId: string,
     task: () => Promise<void>,
@@ -159,12 +212,19 @@ export class RunLifecycle {
       ackToken?: string;
     },
   ): Promise<void> {
+    const guardedTask = TURN_FAILURE_NOTICE_SOURCES.has(options.source)
+      ? () =>
+          task().catch((error: unknown) => {
+            this.appendTurnFailureNotice(agentId, options.source, error);
+            throw error;
+          })
+      : task;
     if (this.runScheduler != null)
-      return this.runScheduler.enqueue(agentId, task, options);
+      return this.runScheduler.enqueue(agentId, guardedTask, options);
     const previous = this.runChains.get(agentId) ?? Promise.resolve();
     const result = previous.then(() => {
       this.tm.sendPipeline.sendAttachmentBatchIds.delete(agentId);
-      return task();
+      return guardedTask();
     });
     this.runChains.set(
       agentId,
