@@ -44,6 +44,15 @@ const RUN_ONCE = process.env.RUN_ONCE === "1";
 const MACOS_NOTIFY = process.env.MACOS_NOTIFY !== "0";
 const ALERT_COMMAND = process.env.ALERT_COMMAND || "";
 const CONTAINER_TIMEOUT_MS = Number(process.env.CONTAINER_TIMEOUT_MS ?? "20000");
+// Clickable notifications: terminal-notifier opens the alerts log on click.
+// Bare `osascript display notification` posts get attributed to Script
+// Editor, whose click action only opens a blank untitled document — no way
+// through to the details. Resolved once at startup; osascript stays as the
+// fallback when the binary is absent.
+const NOTIFIER_BIN = [
+  "/opt/homebrew/bin/terminal-notifier",
+  "/usr/local/bin/terminal-notifier",
+].find((candidate) => fs.existsSync(candidate));
 
 const state = loadState();
 const nameCache = new Map();
@@ -230,6 +239,31 @@ function checkForwarderLiveness(now) {
   });
 }
 
+function osascriptNotify(message) {
+  execFile("osascript", ["-e", `display notification "${message.replace(/["\\]/g, "")}" with title "GrokNode watchdog"`], { timeout: 5000 }, () => {});
+}
+
+function notifyMacOS(message) {
+  // macOS 26 denies terminal-notifier's permission request outright (tested:
+  // exit 3), so osascript stays the working sender and every notification
+  // carries the details path in its body - Notification Center shows the full
+  // text even when the banner truncates. If terminal-notifier is ever
+  // permitted, its -open makes the click jump straight to the alerts log.
+  const withPointer = `${message}\n详情: ${ALERTS_LOG}`;
+  if (NOTIFIER_BIN) {
+    execFile(
+      NOTIFIER_BIN,
+      ["-title", "GrokNode watchdog", "-message", withPointer, "-group", "groknode.watchdog", "-open", `file://${ALERTS_LOG}`],
+      { timeout: 5000 },
+      (error) => {
+        if (error) osascriptNotify(withPointer);
+      },
+    );
+    return;
+  }
+  osascriptNotify(withPointer);
+}
+
 function alert(key, message, fields = {}) {
   const now = Date.now();
   if (now - (state.lastAlert[key] ?? 0) < ALERT_COOLDOWN_MS) return;
@@ -237,9 +271,7 @@ function alert(key, message, fields = {}) {
   const line = `${new Date(now).toISOString()} [${key}] ${message}`;
   console.log(`ALERT ${line}`);
   try { fs.appendFileSync(ALERTS_LOG, line + "\n"); } catch { /* non-fatal */ }
-  if (MACOS_NOTIFY) {
-    execFile("osascript", ["-e", `display notification "${message.replace(/["\\]/g, "")}" with title "GrokNode watchdog"`], { timeout: 5000 }, () => {});
-  }
+  if (MACOS_NOTIFY) notifyMacOS(message);
   if (ALERT_COMMAND) {
     const command = ALERT_COMMAND
       .replaceAll("{message}", JSON.stringify(message))
