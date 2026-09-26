@@ -267,6 +267,7 @@ export const MAIN_I18N_PAIRS = [
   ["No emoji found", "未找到表情符号", "quWMra", "FULL"],
   ["No links in this chat yet", "此聊天中还没有链接", "I+JyrD", "FULL"],
   ["No matching Bots", "没有匹配的 Bot", "12i8o8", "FULL"],
+  ["No messages yet", "还没有消息", "+52YnJ", "PANEL"],
   ["No results", "无结果", "Ev2r9A", "FULL"],
   ["Not now", "暂不", "PBxg/E", "FULL"],
   ["Not signed in", "未登录", "95+rix", "FULL"],
@@ -520,7 +521,6 @@ export const MAIN_I18N_GAPS = [
   ["Channel Digest", "zero-pattern-hit"],
   ["Chief of Staff", "zero-pattern-hit"],
   ["ClickUp", "identity-noop"],
-  ["Cloud agent", "zero-pattern-hit"],
   ["Coding", "zero-pattern-hit"],
   ["Competitor Watcher", "zero-pattern-hit"],
   ["Connected", "zero-pattern-hit"],
@@ -571,7 +571,6 @@ export const MAIN_I18N_GAPS = [
   ["Negotiator", "zero-pattern-hit"],
   ["Network connection failed. Please check your internet connection.", "zero-pattern-hit"],
   ["Night Shift", "zero-pattern-hit"],
-  ["No messages yet", "zero-pattern-hit"],
   ["No microphone found. Please connect a microphone and try again.", "zero-pattern-hit"],
   ["None", "zero-pattern-hit"],
   ["Nooks", "identity-noop"],
@@ -724,6 +723,12 @@ export const MAIN_I18N_ANCHORED = [
     note: "permission-tri-state-resolver",
     anchor: "function XGn(n){switch(n){case\"never\":return\"Never allow\";case\"always\":return\"Always allow\";case\"ask\":return\"Ask every time\"}}",
     replacement: "function XGn(n){switch(n){case\"never\":return(RLocT(\"Never allow\",\"从不允许\"));case\"always\":return(RLocT(\"Always allow\",\"始终允许\"));case\"ask\":return(RLocT(\"Ask every time\",\"每次询问\"))}}",
+  },
+  {
+    id: "006KCk",
+    note: "cloud-agent-kind-label",
+    anchor: "case\"cloud-agent\":return\"Cloud agent\"",
+    replacement: "case\"cloud-agent\":return(RLocT(\"Cloud agent\",\"云端智能体\"))",
   },
 ];
 

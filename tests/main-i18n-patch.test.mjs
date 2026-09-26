@@ -23,6 +23,7 @@ function baseSource() {
   rows.push("y=s?" + JSON.stringify("Cancel") + ":z;");
   rows.push("d={46:" + JSON.stringify("Delete") + "};");
   rows.push("function XGn(n){switch(n){case\"never\":return\"Never allow\";case\"always\":return\"Always allow\";case\"ask\":return\"Ask every time\"}}");
+  rows.push("function _3n(n){switch(n){case\"subagent\":return\"Subagent\";case\"shell\":return\"Shell\";case\"cloud-agent\":return\"Cloud agent\"}}");
   return rows.join(NL);
 }
 
@@ -30,10 +31,12 @@ test("main-i18n patch appends prelude and branches every pair literal", async ()
   const { patched, applied, anchored } = patchOriginalMainI18n(baseSource());
   assert.equal(applied.length, MAIN_I18N_PAIRS.length);
   for (const row of applied) assert.ok(row.hits >= 1, "pair must hit at least once: " + row.en);
-  assert.equal(anchored.length, 1, "permission tri-state resolver must anchor");
+  assert.equal(anchored.length, 2, "both whole-block anchors must apply");
   assert.ok(patched.includes("从不允许"), "XGn never-arm must branch to wvd4WD wording");
   assert.ok(patched.includes("每次询问"), "XGn ask-arm must branch to 6CTZeX wording");
   assert.ok(!patched.includes('return"Never allow"'), "raw XGn never-arm must be gone");
+  assert.ok(patched.includes("云端智能体"), "cloud-agent arm must branch to 006KCk wording");
+  assert.ok(!patched.includes('return"Cloud agent"'), "raw cloud-agent arm must be gone");
   assert.ok(patched.includes("function RLocFromPref("), "locale resolver must be appended");
   assert.ok(patched.includes("function RLocT("), "branch helper must be appended");
   assert.ok(patched.includes("location.reload"), "language flip must reload the renderer");
@@ -65,7 +68,7 @@ test("main-i18n pair table is 0.59.1-sourced, mode-shaped and gap-disjoint", asy
     seen.add(en);
     assert.ok(id.length >= 5 && id.length <= 8, "unexpected id shape: " + id);
     for (const ch of id) assert.ok(idChars.includes(ch), "unexpected id char in " + id);
-    assert.ok(mode === "FULL" || mode === "PROP" || mode === "PROP_COLON", "unexpected mode: " + mode);
+    assert.ok(mode === "FULL" || mode === "PROP" || mode === "PROP_COLON" || mode === "PANEL", "unexpected mode: " + mode);
   }
   assert.ok(MAIN_I18N_PAIRS.length >= 300, "pair table must cover the main surface");
   for (const [gap] of MAIN_I18N_GAPS) assert.ok(!seen.has(gap), "gap listed as pair: " + gap);
