@@ -541,6 +541,8 @@ const TELEMETRY_DOMAIN_BY_METHOD: Record<CoordinatorMethod, string> = {
   getAgentAutomations: "automations", listAllAutomations: "automations",
   setAgentAutomationEnabled: "automations", createAgentAutomation: "automations",
   updateAgentAutomation: "automations", deleteAgentAutomation: "automations", runAgentAutomationNow: "automations",
+  runAgentWebhookAutomation: "automations",
+  getAutomationWebhookCredential: "automations",
   isAgentNetworkEnabled: "capabilities", isGlobalSearchEnabled: "capabilities",
   getSharingState: "sharing", createRoomFromAgent: "sharing", createRoomInvite: "sharing",
   joinSharedRoom: "sharing", respondToRoomJoinRequest: "sharing", createSharedRoom: "sharing",

@@ -29,6 +29,7 @@ type ExistingMainRpcCoreDeps = Pick<MainEdgeWiringDeps,
   | "clearLocalToolApprovals"
   | "experiments"
   | "getComputerUseModelOverride"
+  | "getAutomationWebhookCredential"
 >;
 
 type MainRpcResolverDeps = Omit<MainEdgeWiringDeps,
@@ -72,6 +73,13 @@ export function createElectronProductionMainRpcBinding(
         readThemeController: () => {
           try {
             return context.settings.getThemeController() as unknown as ReturnType<MainEdgeWiringDeps["readThemeController"]>;
+          } catch {
+            return null;
+          }
+        },
+        readLanguageController: () => {
+          try {
+            return context.settings.getLanguageController() as unknown as ReturnType<MainEdgeWiringDeps["readLanguageController"]>;
           } catch {
             return null;
           }
@@ -171,6 +179,12 @@ function createExistingMainRpcCoreDeps(
     startRpcTraceWindow: () => context.requireExperiments().startRpcTraceWindow(),
   };
   const getComputerUseModelOverride = () => context.requireExperiments().getComputerUseModelOverride();
+  const getAutomationWebhookCredential = requireFunction(
+    supplied.getAutomationWebhookCredential === undefined
+      ? ((automationId: string) => context.coordinatorLegs.legs.getAutomationWebhookCredential!({ automationId }) as Promise<unknown>)
+      : supplied.getAutomationWebhookCredential,
+    "mainRpc.getAutomationWebhookCredential",
+  );
   const syncHostSettingsToBox = requireFunction(
     supplied.syncHostSettingsToBox === undefined
       ? context.coordinatorResync?.pushHostSettings
@@ -204,6 +218,7 @@ function createExistingMainRpcCoreDeps(
     clearLocalToolApprovals,
     experiments,
     getComputerUseModelOverride,
+    getAutomationWebhookCredential,
     syncHostSettingsToBox,
     broadcast,
     platform,

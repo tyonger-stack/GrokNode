@@ -12,7 +12,7 @@ export const OPERATIONS = {
     forget: "drop a fact by its EXACT recorded text (fact, same scope/project). Pair with a write for the corrected version.",
   },
   routine: {
-    create: "save a standing order (name, prompt, and either schedule or trigger). prompt is what you do each time it fires, written to your future self.",
+    create: "save a standing order (name, prompt, and either schedule or trigger). prompt is what you do each time it fires, written to your future self. A webhook trigger ({ \"type\": \"webhook\" }) wakes you when its URL is POSTed with the routine's key; the save reply gives the URL and where the key lives.",
     update: "rewrite an existing one in place (id, plus any of name/prompt/schedule/trigger/enabled you mean to change). Omitted fields keep their current values; it keeps its history.",
     pause: "(id) disarm one the user wants back later.",
     resume: "(id) rearm a paused one.",
@@ -67,6 +67,9 @@ const cronTriggerSchema = z.object({
   type: z.literal("cron"),
   schedule: z.string().trim().min(1).describe(`A 5-field cron expression in the user's local time ("0 7 * * *"), or a shorthand (@hourly/@daily/@weekly/@monthly, "@every 30m"). An hour with no minute takes the current minute off the <timestamp>: asked at 1:32, "daily at 2" is "32 2 * * *".`),
 });
+const webhookTriggerSchema = z.object({
+  type: z.literal("webhook"),
+}).describe("Fires when the routine's webhook URL is POSTed with the key stored next to its automation.json. The saved reply gives the URL; never paste the key into chat.");
 const slackTriggerSchema = z.object({
   type: z.literal("slack"),
   channel: z.string().trim().min(1).describe('A channel ("#eng"), a DM ("@dana"), or "*" for anywhere.'),
@@ -118,15 +121,15 @@ const pagerdutyTriggerSchema = z.object({
   event: z.object({ case: z.enum(PAGERDUTY_EVENT_CASES).describe("Which PagerDuty incident event fires the routine.") }).describe("The PagerDuty event to watch."),
   serviceIds: z.array(z.string()).optional().describe("Optional service ID filter. Empty or absent means any PagerDuty service."),
 });
-const triggerMemberSchema = z.discriminatedUnion("type", [cronTriggerSchema, slackTriggerSchema, githubTriggerSchema, microsoftTeamsTriggerSchema, linearTriggerSchema, sentryTriggerSchema, pagerdutyTriggerSchema]);
+const triggerMemberSchema = z.discriminatedUnion("type", [cronTriggerSchema, webhookTriggerSchema, slackTriggerSchema, githubTriggerSchema, microsoftTeamsTriggerSchema, linearTriggerSchema, sentryTriggerSchema, pagerdutyTriggerSchema]);
 const triggerSchema = z.union([
   z.discriminatedUnion("type", [
-    cronTriggerSchema, slackTriggerSchema, githubTriggerSchema, microsoftTeamsTriggerSchema,
+    cronTriggerSchema, webhookTriggerSchema, slackTriggerSchema, githubTriggerSchema, microsoftTeamsTriggerSchema,
     linearTriggerSchema, sentryTriggerSchema, pagerdutyTriggerSchema,
     z.object({ type: z.literal("group"), listeners: z.array(triggerMemberSchema).min(1).describe("Any one of these fires the same prompt; cron members and listeners mix freely.") }),
   ]),
   z.array(triggerMemberSchema).min(1).describe("Bare-array shorthand for the group form: any one member fires the prompt."),
-]).describe("What fires the routine. Prefer an event listener (Slack, GitHub, Microsoft Teams, Linear, Sentry, PagerDuty) over polling on a cron when the event you care about is one of the listed shapes; never pass both this and the schedule argument.");
+]).describe("What fires the routine. Prefer an event listener (Slack, GitHub, Microsoft Teams, Linear, Sentry, PagerDuty) over polling on a cron when the event you care about is one of the listed shapes; a webhook trigger fires when its URL is called. Never pass both this and the schedule argument.");
 
 export const sandUpdateStateParameters = z.object({
   target: z.enum(TARGETS as [SandStateTarget, ...SandStateTarget[]]).describe("Which part of your own state to change."),

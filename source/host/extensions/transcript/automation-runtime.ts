@@ -5,6 +5,9 @@ import {
   type AutomationSpec,
 } from "../../automations/automation.js";
 import { stableAutomationId } from "../../automations/automation-id.js";
+import { buildWebhookUrl, readWebhookKey, resolveWebhookListenerPort, verifyWebhookKey } from "../../automations/webhook-credentials.js";
+import { triggerHasWebhookMember } from "../../../shared/automations.js";
+import { dirname } from "node:path";
 import {
   compileCronMatcher,
   computeNextRunAt,
@@ -81,6 +84,16 @@ function summarizeSchedule(
     firesOnWeekend,
     firesOvernight,
   };
+}
+
+/** The pinned upstream routines editor has no vocabulary for webhook triggers, so any save from that
+ *  UI (or a fallback commit it performs) would silently replace the stored webhook trigger with a
+ *  default schedule. Keep the existing webhook trigger on UI-originated updates — only the agent
+ *  (via update_state) may change a webhook routine's fire condition. */
+function preserveWebhookTrigger(existing: AutomationRecord | null, spec: AutomationSpec): AutomationSpec {
+  return existing != null && triggerHasWebhookMember(existing.trigger) && !triggerHasWebhookMember(spec.trigger)
+    ? { ...spec, trigger: existing.trigger }
+    : spec;
 }
 
 export class AutomationRuntime {
@@ -406,18 +419,23 @@ export class AutomationRuntime {
     automationId: string,
     spec: AutomationSpec,
   ): Promise<AutomationRecord[]> {
+    const active = this.tm.sessions.activeSession;
+    const existing = active?.id === agentId
+      ? active.automations.get(automationId) ?? null
+      : ((await this.tm.sessionStore.listAgentAutomations(agentId)).find((entry: AutomationRecord) => entry.id === automationId) ?? null);
+    const guardedSpec = preserveWebhookTrigger(existing, spec);
     try {
       return await this.enqueueAutomationMutation({
         agentId,
         activeMutation: (active) => {
-          active.automations.update(automationId, spec);
+          active.automations.update(automationId, guardedSpec);
           return active.automations.list().slice(0, AUTOMATION_UI_LIMIT);
         },
         inactiveMutation: () =>
           this.tm.sessionStore.updateAgentAutomation(
             agentId,
             automationId,
-            spec,
+            guardedSpec,
           ),
       });
     } finally {
@@ -456,6 +474,52 @@ export class AutomationRuntime {
           ) ?? null);
     if (automation != null)
       await this.fireAutomation({ agentId, automation, trigger: "manual" });
+  }
+  /** Local webhook wake: validate the presented Bearer key against the routine's stored credential, then fire the routine as an event wake carrying the POST payload. */
+  async runAgentWebhookAutomation(args: {
+    readonly agentId: string;
+    readonly automationId: string;
+    readonly key: string;
+    readonly payload?: Record<string, unknown>;
+  }): Promise<{ readonly ok: boolean; readonly status: number; readonly message?: string }> {
+    const active = this.tm.sessions.activeSession;
+    const automation =
+      active?.id === args.agentId
+        ? active.automations.get(args.automationId)
+        : ((await this.tm.sessionStore.listAgentAutomations(args.agentId)).find(
+            (entry: AutomationRecord) => entry.id === args.automationId,
+          ) ?? null);
+    if (automation == null)
+      return { ok: false, status: 404, message: "no routine with that folder exists" };
+    if (!triggerHasWebhookMember(automation.trigger))
+      return { ok: false, status: 404, message: "routine is not webhook-triggered" };
+    const storedKey = await readWebhookKey(dirname(automation.filePath));
+    if (!verifyWebhookKey(storedKey, args.key))
+      return { ok: false, status: 401, message: "invalid webhook key" };
+    void this.runAutomationForEvent(args.agentId, automation, {
+      source: "webhook",
+      ...(args.payload ?? {}),
+    }).catch((error: unknown) => console.error("[webhook-automation] wake failed", error));
+    return { ok: true, status: 202 };
+  }
+  /** Read-only credential lookup for the renderer's webhook copy blocks: resolve the routine (active session first, global scan fallback), read its stored key, and assemble the wake URL. */
+  async getAutomationWebhookCredential(automationId: string): Promise<{ readonly agentId: string; readonly automationId: string; readonly url: string; readonly key: string } | null> {
+    const active = this.tm.sessions.activeSession;
+    const fromActive = active?.automations.get(automationId) ?? null;
+    const resolved = fromActive != null
+      ? { agentId: active?.id as string, automation: fromActive }
+      : ((await this.tm.sessionStore.listAllAutomations() as { agentId: string; automation: AutomationRecord }[]).find(
+          (entry: { agentId: string; automation: AutomationRecord }) => entry.automation.id === automationId,
+        ) ?? null);
+    if (resolved == null || !triggerHasWebhookMember(resolved.automation.trigger)) return null;
+    const key = await readWebhookKey(dirname(resolved.automation.filePath));
+    if (key == null) return null;
+    const routineFolder = dirname(resolved.automation.filePath);
+    const agentAutomationsDir = dirname(routineFolder);
+    // filePath = <sandRoot>/agents/<agentId>/automations/<id>/automation.json — the sand root is three dirnames above the automations dir.
+    const sandRoot = dirname(dirname(dirname(agentAutomationsDir)));
+    const port = resolveWebhookListenerPort(sandRoot);
+    return { agentId: resolved.agentId, automationId, url: buildWebhookUrl(resolved.agentId, automationId, port), key };
   }
   runServerScheduledAutomation(args: {
     agentId: string;

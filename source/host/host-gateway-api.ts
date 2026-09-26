@@ -454,6 +454,15 @@ export function createHostGatewayApi(
         args.automationId
       );
     },
+    runAgentWebhookAutomation: (args: any) =>
+      method(manager, "runAgentWebhookAutomation")({
+        agentId: args.agentId,
+        automationId: args.automationId,
+        key: args.key,
+        payload: args.payload,
+      }),
+    getAutomationWebhookCredential: (args: any) =>
+      method(manager, "getAutomationWebhookCredential")(args.automationId),
     broadcastToAgents: async (args: any) => {
       markActive("user_action");
       const result = await method(manager, "broadcastToAgents")(

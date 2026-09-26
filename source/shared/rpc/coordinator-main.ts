@@ -17,7 +17,9 @@ export const COORDINATOR_MAIN_METHOD_TABLE = {
   getConversationOutline: { args: "object" },
   getSubagents: { args: "object" },
   setDevGatewayOffline: { args: "object" },
-  setGatewayPaused: { args: "object" }
+  setGatewayPaused: { args: "object" },
+  runAgentWebhookAutomation: { args: "object" },
+  getAutomationWebhookCredential: { args: "object" }
 } as const;
 
 export type CoordinatorMainMethod = keyof typeof COORDINATOR_MAIN_METHOD_TABLE;

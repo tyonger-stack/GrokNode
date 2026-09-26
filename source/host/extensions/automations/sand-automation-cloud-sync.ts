@@ -31,6 +31,7 @@ import {
   isGithubCiEventKind,
   triggerCronSchedules,
   triggerEventTriggers,
+  triggerHasWebhookMember,
   triggerListeners,
   type AutomationTrigger,
   type EventTrigger,
@@ -53,6 +54,7 @@ export interface ScheduledCloudAutomation {
 }
 
 export function isServerSchedulable(automation: { readonly trigger: AutomationTrigger }): boolean {
+  if (triggerHasWebhookMember(automation.trigger)) return false;
   return !triggerListeners(automation.trigger).some(
     (listener) => listener.type === "slack" && listener.channel.startsWith("@"),
   );
@@ -289,6 +291,7 @@ function listenerCloudTriggers(listeners: readonly EventTrigger[]): BackendCloud
 }
 
 export function cloudTriggers(trigger: AutomationTrigger, timeZone?: string | undefined): BackendCloudTrigger[] | null {
+  if (triggerHasWebhookMember(trigger)) return null;
   if (triggerListeners(trigger).some((listener) => listener.type === "slack" && listener.channel.startsWith("@"))) return null;
   return [
     ...triggerCronSchedules(trigger).map((schedule) => cronCloudTrigger({ schedule, timeZone })),

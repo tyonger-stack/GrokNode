@@ -4,7 +4,8 @@ import { isSafeFolderId } from "../../storage/folder-id.js";
 import { normalizeMemoryContent } from "../../runner/sand-memory.js";
 import { serializeWorkflowFile } from "../../../shared/workflow-model.js";
 import { describeTrigger } from "../../../shared/automation-schedule.js";
-import type { AutomationTrigger } from "../../../shared/automations.js";
+import { triggerHasWebhookMember, type AutomationTrigger } from "../../../shared/automations.js";
+import { buildWebhookUrl, deleteWebhookCredential, generateWebhookKey, resolveWebhookListenerPort, webhookCredentialExists, webhookCredentialPath, writeWebhookCredential } from "../../automations/webhook-credentials.js";
 import { CANONICAL_AVATAR_FILENAME, invalidateAvatarDataUrlCache, listConventionalAvatarFilenames, sniffAvatarMimeType } from "../../agents/agent-avatar.js";
 import { isBoxRootPath } from "../../box/box-transfer.js";
 import { FileMemoryStore, getProjectDir, getProjectMemoryShardDir, getUserMemoryShardDir, projectDirExists, type MemoryKind } from "./memory-service.js";
@@ -38,6 +39,17 @@ function shardFor(deps: AgentStateDeps, scope: "agent" | "user" | "project", pro
 }
 function remember(store: MemoryPort, content: string, tier: "profile" | "note" | "log", at: number, label: string): StateWriteResult { const record = store.addMemory(tier === "note" ? `${MEMORY_NOTE_PREFIX}${content.trim()}` : content, at, tier === "profile" ? "profile" : "log"); return record == null ? fail(`nothing was saved to ${label} — the fact was empty or already recorded. Grep the memory folder to see what is already there.`) : ok(`Remembered in ${label} (${tier}): ${record.content}`); }
 function describeAutomation(value: ReturnType<AutomationPort["upsert"]>, verb: string): StateWriteResult { return value == null ? fail("the routine could not be saved — check that the name and instruction are non-empty and the trigger is valid.") : ok(`${verb} routine "${value.name}" (folder ${value.id}) — ${describeTrigger(value.trigger)}${value.isEnabled ? "" : ", paused"}.`); }
+/** Webhook routines keep their key in webhook.json next to the routine's automation.json: mint on first webhook save, drop it when the trigger stops being a webhook, and tell the agent where both live — never the key itself. */
+async function applyWebhookCredential(deps: AgentStateDeps, value: { id: string; trigger: AutomationTrigger }, message: string, now: () => number): Promise<StateWriteResult> {
+  const folder = join(deps.agentDir, "automations", value.id);
+  if (!triggerHasWebhookMember(value.trigger)) {
+    if (webhookCredentialExists(folder)) await deleteWebhookCredential(folder);
+    return ok(message);
+  }
+  if (!webhookCredentialExists(folder)) await writeWebhookCredential(folder, generateWebhookKey(), now());
+  const url = buildWebhookUrl(deps.agentId, value.id, resolveWebhookListenerPort(deps.sandRoot));
+  return ok(`${message}\nWebhook: POST ${url} with header "Authorization: Bearer <key>" — the key is saved in ${webhookCredentialPath(folder)} (read it with Read when you embed it into a page or client; never paste the key into chat).`);
+}
 const avatarExtension = (mime: string): string | null => ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "image/svg+xml": "svg" })[mime] ?? null;
 
 export function createSandAgentState(deps: AgentStateDeps) {
@@ -45,10 +57,10 @@ export function createSandAgentState(deps: AgentStateDeps) {
   return {
     async writeMemory({ content, tier, scope = "agent", project }: { content: string; tier: "profile" | "note" | "log"; scope?: "agent" | "user" | "project"; project?: string }) { const shard = shardFor(deps, scope, project); return "ok" in shard ? shard : remember(shard.store, content, tier, now(), shard.label); },
     async removeMemory({ content, scope = "agent", project }: { content: string; scope?: "agent" | "user" | "project"; project?: string }) { const shard = shardFor(deps, scope, project); if ("ok" in shard) return shard; return shard.store.removeMemoryByContent(content) ? ok(`Forgot from ${shard.label}: ${normalizeMemoryContent(content)}`) : fail(`no fact with exactly that text is recorded in ${shard.label}. Read or grep the folder for the exact wording first.`); },
-    async createAutomation({ spec }: { spec: unknown }) { return describeAutomation(deps.automations.upsert(spec, now()), "Saved"); },
-    async updateAutomation({ id, spec }: { id: string; spec: unknown }) { const updated = deps.automations.update(id, spec); return updated == null ? fail(`no routine with folder "${id}" exists, or the new fields were invalid.`) : describeAutomation(updated, "Updated"); },
+    async createAutomation({ spec }: { spec: unknown }) { const value = deps.automations.upsert(spec, now()); const described = describeAutomation(value, "Saved"); return value == null || !described.ok ? described : applyWebhookCredential(deps, value, described.message, now); },
+    async updateAutomation({ id, spec }: { id: string; spec: unknown }) { const updated = deps.automations.update(id, spec); return updated == null ? fail(`no routine with folder "${id}" exists, or the new fields were invalid.`) : applyWebhookCredential(deps, updated, describeAutomation(updated, "Updated").message, now); },
     async setAutomationEnabled({ id, isEnabled }: { id: string; isEnabled: boolean }) { const value = deps.automations.setEnabled(id, isEnabled); return value == null ? fail(`no routine with folder "${id}" exists.`) : ok(`${isEnabled ? "Resumed" : "Paused"} routine "${value.name}" (folder ${value.id}).`); },
-    async deleteAutomation({ id }: { id: string }) { const name = deps.automations.get(id)?.name ?? id; return deps.automations.remove(id) ? ok(`Deleted routine "${name}" (folder ${id}).`) : fail(`no routine with folder "${id}" exists.`); },
+    async deleteAutomation({ id }: { id: string }) { const name = deps.automations.get(id)?.name ?? id; if (!deps.automations.remove(id)) return fail(`no routine with folder "${id}" exists.`); await deleteWebhookCredential(join(deps.agentDir, "automations", id)).catch(() => undefined); return ok(`Deleted routine "${name}" (folder ${id}).`); },
     async writeWorkflow(args: { id?: string; name: string; description?: string; body: string }) { const spec = { name: args.name, description: args.description ?? "", body: args.body, trigger: null }, value = args.id == null ? deps.workflows.create(spec) : deps.workflows.update(args.id, spec); return value == null ? fail(args.id == null ? "the workflow could not be saved — a name and a non-empty body are both required." : `no workflow with id "${args.id}" exists, or the new fields were invalid. Cursor-managed skills cannot be edited.`) : ok(`${args.id == null ? "Saved" : "Updated"} workflow "${value.name}" (id ${value.id}).`); },
     async deleteWorkflow({ id }: { id: string }) { return deps.workflows.remove(id) ? ok(`Deleted workflow ${id}.`) : fail(`no workflow with id "${id}" exists, or it is a Cursor-managed skill, which cannot be deleted.`); },
     async updateProfile(args: { name?: string; description?: string }) { if (args.name === undefined && args.description === undefined) return fail("nothing to change — pass at least one of name or description."); if (args.name !== undefined && blank(args.name)) return fail("a blank name is not allowed."); const current = deps.readProfile() ?? {}; deps.writeProfile({ ...current, ...(args.name === undefined ? {} : { name: args.name.trim() }), ...(args.description === undefined ? {} : { description: args.description.trim() }) }); return ok(`Updated your ${[args.name !== undefined ? "name" : "", args.description !== undefined ? "description" : ""].filter(Boolean).join(", ")}.`); },

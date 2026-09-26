@@ -178,7 +178,9 @@ export const COORDINATOR_METHOD_TABLE = {
   createAgentAutomation: { args: "object", reply: "array" },
   updateAgentAutomation: { args: "object", reply: "array" },
   deleteAgentAutomation: { args: "object", reply: "array" },
-  runAgentAutomationNow: { args: "object", reply: "void" }
+  runAgentAutomationNow: { args: "object", reply: "void" },
+  runAgentWebhookAutomation: { args: "object", reply: "record" },
+  getAutomationWebhookCredential: { args: "object", reply: "record-or-null" }
 } as const;
 
 export type CoordinatorMethod = keyof typeof COORDINATOR_METHOD_TABLE;
