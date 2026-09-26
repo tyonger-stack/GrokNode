@@ -7,6 +7,38 @@ import { classifyOpenRouterError, openRouterOkStatus, type OpenRouterChannelStat
 export const OPENROUTER_CLOUD_BASE_URL = "https://openrouter.ai/api/v1";
 export const OPENCODEX_MAC_FORWARDER_PORT = 11010;
 export const OPENCODEX_CONTAINER_RELAY_PORT = 10100;
+
+/**
+ * Reasoning-effort ladder offered by Settings → Router → Model → Effort.
+ * Wire values match the Codex ladder (`low`/`medium`/`high`/`xhigh`/`max`) so an
+ * OpenAI-compatible upstream (including the local opencodex relay) reads them
+ * without a mapping table. `undefined` (never set) means "omit the field" — the
+ * endpoint then applies its own per-model default, which is the pre-existing
+ * behavior and must stay the default so models that reject `reasoning_effort`
+ * keep working.
+ */
+export const OPENROUTER_REASONING_EFFORTS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "Extra high" },
+  { value: "max", label: "Max" }
+] as const;
+
+export type OpenRouterReasoningEffort = (typeof OPENROUTER_REASONING_EFFORTS)[number]["value"];
+
+const OPENROUTER_REASONING_EFFORT_VALUES = new Set<string>(OPENROUTER_REASONING_EFFORTS.map((entry) => entry.value));
+
+export function isOpenRouterReasoningEffort(value: unknown): value is OpenRouterReasoningEffort {
+  return typeof value === "string" && OPENROUTER_REASONING_EFFORT_VALUES.has(value);
+}
+
+/** Accepts wire values only; blank/unknown degrades to `null` (omit the field). */
+export function normalizeOpenRouterReasoningEffort(value: unknown): OpenRouterReasoningEffort | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return isOpenRouterReasoningEffort(trimmed) ? trimmed : null;
+}
 /** Healthy `/models` answers at ~5.1s p99 and ~8.1s p99.9 because `ocx` refreshes every enabled provider first. */
 export const OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS = 10_000;
 

@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 
 import { DEFAULT_SAND_THEME_PREFERENCE, isSandThemePreference, type SandThemePreference } from "../../desktop.js";
 import { SAND_DISABLED_NOTIFICATION_CONFIG } from "../../host-settings.js";
+import { DEFAULT_LANGUAGE_PREFERENCE, isLanguagePreference, type LanguagePreference } from "../i18n/locale.js";
 import { SAND_DEFAULT_LOCAL_TOOL_PERMISSION, isSandLocalToolPermission, resolveSandLocalToolPermission, type SandLocalToolPermission } from "../../local-tool-permission.js";
 import { clampMcpCustomInstruction, getDefaultMcpCustomInstruction } from "../../mcp-custom-instructions.js";
 import { DEFAULT_SAND_AUTO_REVIEW_INSTRUCTIONS, normalizeSandAutoReviewInstructions, type SandAutoReviewInstructions } from "../../sand-auto-review-instructions.js";
@@ -14,11 +15,18 @@ import { DEFAULT_SAND_BOX_RUNTIME, isSandBoxRuntime, type SandBoxRuntime } from 
 import { parseMcpServerConfig, type McpServerConfig } from "../mcp/mcp-display-runtime.js";
 import { validateServerName } from "../mcp/mcp-validation.js";
 import { normalizeOpenRouterChannelStatus, type OpenRouterChannelStatus } from "../../openrouter-channel-status.js";
+import { normalizeOpenRouterReasoningEffort, type OpenRouterReasoningEffort } from "../openrouter-proxy.js";
 
 export const SETTINGS_VERSION = 1;
 export const SAND_DOWNGRADE_MAX_FAST_MIGRATION_ID = "downgrade-persisted-max-fast";
 export const SAND_LOCAL_ONLY_ROUTING_MIGRATION_ID = "local-only-routing-v1";
 export const SAND_SETTINGS_MIGRATION_IDS = [SAND_DOWNGRADE_MAX_FAST_MIGRATION_ID, SAND_LOCAL_ONLY_ROUTING_MIGRATION_ID] as const;
+
+/** Default loopback port for the local webhook-automation listener (used by routines with a { type: "webhook" } trigger). */
+export const DEFAULT_WEBHOOK_LISTENER_PORT = 17901;
+function parseWebhookListenerPort(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 65535 ? value : undefined;
+}
 
 type StringMap = Record<string, string>;
 type StringListMap = Record<string, string[]>;
@@ -26,13 +34,16 @@ export interface SandStoredSettings {
   version: 1; mcpBoxServers: string[]; autoUpdateWhenIdleOptIn: boolean; egressTunnelEnabled: boolean; webauthnProxyEnabled: boolean;
   mcpCustomInstructions: StringMap; mcpCustomInstructionsByServerId: StringMap; mcpDisabledToolsByServerId: StringListMap;
   conciergeConsent: "unset" | "allowed" | "denied"; settingsMigrations: string[];
-  hasSeenOnboarding?: boolean; hasSeenOnboardingAccountScope?: string; updateTrackOverride?: SandUpdateTrack; themePreference?: SandThemePreference;
+  hasSeenOnboarding?: boolean; hasSeenOnboardingAccountScope?: string; updateTrackOverride?: SandUpdateTrack; themePreference?: SandThemePreference; languagePreference?: LanguagePreference;
   agentDefaultModel?: SandAgentModelSelection; computerUseModel?: SandAgentModelSelection; notifications?: Record<string, unknown>;
   userTimeZone?: string; userTimeZoneOverride?: string; autoReviewInstructions?: SandAutoReviewInstructions;
   localToolPermission?: SandLocalToolPermission; localToolPermissionCeiling?: SandLocalToolPermission;
   inferenceProvider?: SandInferenceProvider; inferenceRouterUsage?: SandInferenceRouterUsage;
   openRouterModel?: string;
   openRouterBaseUrl?: string;
+  /** Reasoning effort for TokenHub chat requests; unset means "omit the field" so the endpoint default applies. */
+  openRouterEffort?: OpenRouterReasoningEffort;
+  webhookListenerPort?: number;
   openRouterChatStatus?: OpenRouterChannelStatus;
   localMcpServers?: Record<string, McpServerConfig>;
   boxRuntime?: SandBoxRuntime;
@@ -79,6 +90,7 @@ function parseSettings(value: unknown): SandStoredSettings | null {
   if (typeof raw.hasSeenOnboardingAccountScope === "string" && raw.hasSeenOnboardingAccountScope.length > 0) result.hasSeenOnboardingAccountScope = raw.hasSeenOnboardingAccountScope;
   if (isSandUpdateTrack(raw.updateTrackOverride)) result.updateTrackOverride = raw.updateTrackOverride;
   if (isSandThemePreference(raw.themePreference)) result.themePreference = raw.themePreference;
+  if (isLanguagePreference(raw.languagePreference)) result.languagePreference = raw.languagePreference;
   if (isSandAgentModelSelection(raw.agentDefaultModel)) result.agentDefaultModel = raw.agentDefaultModel;
   if (isSandAgentModelSelection(raw.computerUseModel)) result.computerUseModel = raw.computerUseModel;
   if (typeof raw.notifications === "object" && raw.notifications != null && !Array.isArray(raw.notifications)) result.notifications = raw.notifications as Record<string, unknown>;
@@ -89,6 +101,11 @@ function parseSettings(value: unknown): SandStoredSettings | null {
   result.inferenceProvider = normalizeInferenceProvider(raw.inferenceProvider);
   if (typeof raw.openRouterModel === "string" && raw.openRouterModel.trim().length > 0) result.openRouterModel = raw.openRouterModel.trim();
   if (typeof raw.openRouterBaseUrl === "string" && raw.openRouterBaseUrl.trim().length > 0) result.openRouterBaseUrl = normalizeOpenRouterBaseUrl(raw.openRouterBaseUrl);
+  {
+    const effort = normalizeOpenRouterReasoningEffort(raw.openRouterEffort);
+    if (effort != null) result.openRouterEffort = effort;
+  }
+  { const webhookListenerPort = parseWebhookListenerPort(raw.webhookListenerPort); if (webhookListenerPort !== undefined) result.webhookListenerPort = webhookListenerPort; }
   const chatStatus = normalizeOpenRouterChannelStatus(raw.openRouterChatStatus);
   if (chatStatus != null) result.openRouterChatStatus = chatStatus;
   result.localMcpServers = normalizeLocalMcpServers(raw.localMcpServers);
@@ -138,6 +155,8 @@ export class SandSettingsStore {
   setAutoUpdateWhenIdleOptIn(value: boolean): void { this.update((s) => ({ ...s, autoUpdateWhenIdleOptIn: value })); }
   getThemePreference(): SandThemePreference { return this.load().themePreference ?? DEFAULT_SAND_THEME_PREFERENCE; }
   setThemePreference(value: SandThemePreference): void { this.update((s) => ({ ...s, themePreference: value })); }
+  getLanguagePreference(): LanguagePreference { const stored = this.load().languagePreference; return stored ?? DEFAULT_LANGUAGE_PREFERENCE; }
+  setLanguagePreference(value: LanguagePreference): void { this.update((s) => ({ ...s, languagePreference: value })); }
   getBoxRuntime(): SandBoxRuntime { return this.load().boxRuntime ?? DEFAULT_SAND_BOX_RUNTIME; }
   setBoxRuntime(value: SandBoxRuntime): void { this.update((s) => ({ ...s, boxRuntime: value })); }
   getEgressTunnelEnabled(): boolean { return this.load().egressTunnelEnabled; }
@@ -189,6 +208,10 @@ export class SandSettingsStore {
   setOpenRouterModel(value?: string): void { this.update((s) => { const { openRouterModel: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed ? { ...rest, openRouterModel: trimmed } : rest; }); }
   getOpenRouterBaseUrl(): string | undefined { return this.load().openRouterBaseUrl; }
   setOpenRouterBaseUrl(value?: string): void { this.update((s) => { const { openRouterBaseUrl: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed ? { ...rest, openRouterBaseUrl: normalizeOpenRouterBaseUrl(trimmed) } : rest; }); }
+  getOpenRouterEffort(): OpenRouterReasoningEffort | undefined { return this.load().openRouterEffort; }
+  setOpenRouterEffort(value?: string | null): void { this.update((s) => { const { openRouterEffort: _old, ...rest } = s; const effort = normalizeOpenRouterReasoningEffort(value); return effort == null ? rest : { ...rest, openRouterEffort: effort }; }); }
+  getWebhookListenerPort(): number | undefined { return this.load().webhookListenerPort; }
+  setWebhookListenerPort(value?: number): void { this.update((s) => { const { webhookListenerPort: _old, ...rest } = s; const port = parseWebhookListenerPort(value); return port === undefined ? rest : { ...rest, webhookListenerPort: port }; }); }
   getOpenRouterChatStatus(): OpenRouterChannelStatus | undefined { return this.load().openRouterChatStatus; }
   setOpenRouterChatStatus(value: OpenRouterChannelStatus): void { this.update((s) => ({ ...s, openRouterChatStatus: value })); }
   getInferenceRouterUsage(): SandInferenceRouterUsage { return this.load().inferenceRouterUsage ?? emptySandInferenceRouterUsage(); }

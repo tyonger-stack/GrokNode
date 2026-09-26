@@ -2,6 +2,7 @@ import { isSandAgentModelSelection, resolveComputerUseModelSelection } from "../
 import { normalizeSandAutoReviewInstructions } from "../shared/sand-auto-review-instructions.js";
 import { isSandLocalToolAction, normalizeSandLocalToolPermission } from "../shared/local-tool-permission.js";
 import { isSandThemePreference } from "../shared/desktop.js";
+import { isLanguagePreference } from "../shared/node/i18n/locale.js";
 import { isSandUpdateTrack } from "../shared/update-track.js";
 import { isValidIanaTimeZone } from "../shared/timezone.js";
 import { sandWebauthnProxyMirroredEnablement } from "../shared/webauthn-proxy-availability.js";
@@ -9,13 +10,14 @@ import { reportDesktopEdgeFailure } from "./desktop-edge-failures.js";
 import { isSandInferenceProvider } from "../shared/inference-router.js";
 import { getLocalInferenceCliStatus } from "../shared/node/inference-router-local.js";
 import { isSandBoxRuntime } from "../shared/box-runtime.js";
-import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_MAC_FORWARDER_PORT, isOpenRouterProxyMode, listOpenRouterProxyModels, probeOpenRouterChannel, resolveOpenRouterBaseUrl } from "../shared/node/openrouter-proxy.js";
+import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_MAC_FORWARDER_PORT, OPENROUTER_REASONING_EFFORTS, isOpenRouterProxyMode, listOpenRouterProxyModels, normalizeOpenRouterReasoningEffort, probeOpenRouterChannel, resolveOpenRouterBaseUrl } from "../shared/node/openrouter-proxy.js";
 import { mergeOpenRouterChannelStatus, normalizeOpenRouterChannelStatus } from "../shared/openrouter-channel-status.js";
 import { getLocalDockerStatus, probeLocalDockerRelay, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
 
 export const MAIN_EDGE_UNSERVED = "main/unserved-method";
 export const MAIN_EDGE_UPDATE_UNAVAILABLE = "main/update-unavailable";
 export const MAIN_EDGE_THEME_UNAVAILABLE = "main/theme-unavailable";
+export const MAIN_EDGE_LANGUAGE_UNAVAILABLE = "main/language-unavailable";
 export const MAIN_EDGE_EGRESS_TUNNEL_UNAVAILABLE = "main/egress-tunnel-unavailable";
 
 type UnknownRecord = Record<string, unknown>;
@@ -36,6 +38,7 @@ export class SandHostSettingsUnreachableError extends Error {}
 export interface MainEdgeDeps {
   readonly readLiveUpdateService: () => UnknownRecord | null;
   readonly readThemeController: () => UnknownRecord | null;
+  readonly readLanguageController: () => UnknownRecord | null;
   readonly readEgressTunnelController: () => UnknownRecord | null;
   readonly settingsStore: UnknownRecord;
   readonly agentPrefsStore: UnknownRecord;
@@ -56,6 +59,8 @@ export interface MainEdgeDeps {
   readonly emitEgressTunnelChanged: (enabled: boolean) => void;
   readonly emitWebauthnProxyChanged: (enabled: boolean) => void;
   readonly ensureTranscriptionManager: () => Promise<UnknownRecord>;
+  /** Resolves a webhook routine's wake URL and stored key through the coordinator; null when the routine is not webhook-triggered. */
+  readonly getAutomationWebhookCredential: (automationId: string) => Promise<unknown>;
   readonly platform: NodeJS.Platform;
   readonly delay?: (milliseconds: number) => Promise<void>;
   readonly detectTimeZone?: () => string | null | undefined;
@@ -82,6 +87,7 @@ export const unserved = (): never => { throw new EdgeCallFailure({ code: MAIN_ED
 function required(read: () => UnknownRecord | null, code: string, detail: string): UnknownRecord { const value = read(); if (value == null) throw new EdgeCallFailure({ code, detail }); return value; }
 function updateService(deps: MainEdgeDeps) { return required(deps.readLiveUpdateService, MAIN_EDGE_UPDATE_UNAVAILABLE, "The update service is not running."); }
 function themeController(deps: MainEdgeDeps) { return required(deps.readThemeController, MAIN_EDGE_THEME_UNAVAILABLE, "The theme controller is not running."); }
+function languageController(deps: MainEdgeDeps) { return required(deps.readLanguageController, MAIN_EDGE_LANGUAGE_UNAVAILABLE, "The language controller is not running."); }
 function egressController(deps: MainEdgeDeps) { return required(deps.readEgressTunnelController, MAIN_EDGE_EGRESS_TUNNEL_UNAVAILABLE, "The egress tunnel controller is not running."); }
 async function echo(deps: MainEdgeDeps, field: string, value: unknown, label: string): Promise<unknown> { const result = await deps.syncHostSettingsToBox({ [field]: value }); if (result == null) throw new SandHostSettingsUnreachableError(`Couldn't reach the computer to save ${label}.`); return result[field] ?? null; }
 function computerUseModel(deps: MainEdgeDeps): unknown { const stored = invoke(deps.agentPrefsStore, "getComputerUseModel"); const override = deps.getComputerUseModelOverride(); return resolveComputerUseModelSelection({ ...(isSandAgentModelSelection(stored) ? { storedModel: stored } : {}), ...(isSandAgentModelSelection(override) ? { overrideModel: override } : {}) }) ?? null; }
@@ -131,6 +137,8 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
 
     getThemeState: () => invoke(themeController(deps), "getState"),
     setThemePreference: (raw) => { const controller = themeController(deps); const preference = req(raw).preference; return isSandThemePreference(preference) ? invoke(controller, "setPreference", preference) : invoke(controller, "getState"); },
+    getLanguageState: () => invoke(languageController(deps), "getState"),
+    setLanguagePreference: (raw) => { const controller = languageController(deps); const preference = req(raw).preference; return isLanguagePreference(preference) ? invoke(controller, "setPreference", preference) : invoke(controller, "getState"); },
     getAgentDefaultModel: async () => { const settings = await deps.readHostSettingsFromBox(); invoke(deps.agentPrefsStore, "setAgentDefaultModel", settings.agentDefaultModel); return settings.agentDefaultModel ?? null; },
     setAgentDefaultModel: async (raw) => { const model = parseAgentModel(req(raw).model, false); if (model == null) return invoke(deps.agentPrefsStore, "getAgentDefaultModel") ?? null; const result = await deps.syncHostSettingsToBox({ agentDefaultModel: model }); if (result == null) throw new SandHostSettingsUnreachableError("Couldn't reach the computer to save the default model."); invoke(deps.agentPrefsStore, "setAgentDefaultModel", result.agentDefaultModel); return result.agentDefaultModel ?? null; },
     getComputerUseModel: () => computerUseModel(deps),
@@ -180,6 +188,24 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       const persisted = persistedOpenRouterBaseUrl(deps.settingsStore);
       return { baseUrl: resolveOpenRouterBaseUrl(persisted), baseUrlOverride: persisted };
     },
+    getOpenRouterEffort: async () => {
+      const effort = normalizeOpenRouterReasoningEffort(invoke(deps.settingsStore, "getOpenRouterEffort"));
+      return { effort, options: OPENROUTER_REASONING_EFFORTS.map((entry) => ({ value: entry.value, label: entry.label })) };
+    },
+    setOpenRouterEffort: async (raw) => {
+      const requested = req(raw).effort;
+      invariant(requested === null || typeof requested === "string", "The reasoning effort must be a string.");
+      const effort = normalizeOpenRouterReasoningEffort(requested);
+      if (typeof requested === "string" && requested.trim().length > 0) {
+        invariant(effort != null, "Unsupported reasoning effort.");
+      }
+      invoke(deps.settingsStore, "setOpenRouterEffort", typeof requested === "string" ? requested : null);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try { const applied = await deps.syncHostSettingsToBox({ openRouterEffort: effort }); if ((applied?.openRouterEffort ?? null) === effort) break; } catch (error) { reportDesktopEdgeFailure("host-settings", "openrouter-effort-retry", error); }
+        await (deps.delay ?? sleep)(250 * (attempt + 1));
+      }
+      return { effort };
+    },
     getOpenRouterChannelStatus: async () => {
       const persistedBaseUrl = persistedOpenRouterBaseUrl(deps.settingsStore);
       const boxRuntime = invoke(deps.settingsStore, "getBoxRuntime");
@@ -194,6 +220,11 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       const hostSettings = hostSettingsResult.status === "fulfilled" ? hostSettingsResult.value : null;
       const chatStatus = normalizeOpenRouterChannelStatus(hostSettings?.openRouterChatStatus);
       return mergeOpenRouterChannelStatus(chatStatus, modelListResult.value) ?? modelListResult.value;
+    },
+    getAutomationWebhookCredential: async (raw) => {
+      const automationId = req(raw).automationId;
+      invariant(typeof automationId === "string" && automationId.length > 0, "A routine folder id is required.");
+      return deps.getAutomationWebhookCredential(automationId);
     },
 
     getEgressTunnelEnabled: () => invoke(deps.boxToggleStore, "getEgressTunnelEnabled"),

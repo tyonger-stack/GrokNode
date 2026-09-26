@@ -115,6 +115,18 @@ export function resolveOpenRouterModel(): string {
   return process.env.SAND_OPENROUTER_MODEL?.trim() || readPersistedOpenRouterModel() || readCodexConfigValue("openrouter_model") || "openai/gpt-5.2";
 }
 
+/** Reasoning effort chosen in Settings → Router → Model → Effort. `null` omits the field so the endpoint default applies. */
+function readPersistedOpenRouterEffort(): string | null {
+  try {
+    const stored = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getOpenRouterEffort();
+    return typeof stored === "string" && stored.trim().length > 0 ? stored.trim() : null;
+  } catch { return null; }
+}
+
+export function resolveOpenRouterEffort(): string | null {
+  return process.env.SAND_OPENROUTER_EFFORT?.trim() || readPersistedOpenRouterEffort();
+}
+
 function openRouterCredential(): string {
   const value = process.env.OPENROUTER_API_KEY?.trim() || persistedSecrets().OPENROUTER_API_KEY?.trim();
   if (value != null && value.length > 0) return value;
@@ -225,9 +237,89 @@ function stripSchemaArtifacts(value: unknown): unknown {
   return result;
 }
 
+// Strict function-calling normalization for the OpenAI-compatible channel: every
+// object node must declare additionalProperties:false and list all declared
+// properties in required (some strict backends reject anything else with a 400,
+// e.g. muse-spark via the local proxy). Applied at this single egress so both
+// zod-built tools and pass-through MCP inputSchemas are covered. Non-strict
+// backends accept the result as plain JSON Schema. Runtime args are still
+// validated by zod on the host side; this only describes the shape to the model.
+function resolveInternalRef(root: unknown, ref: string): unknown {
+  if (!ref.startsWith("#/")) return undefined;
+  let node: unknown = root;
+  for (const raw of ref.slice(2).split("/")) {
+    const key = raw.replace(/~1/g, "/").replace(/~0/g, "~");
+    if (node == null || typeof node !== "object") return undefined;
+    node = Array.isArray(node)
+      ? ( /^\d+$/.test(key) ? node[Number(key)] : undefined )
+      : (node as Record<string, unknown>)[key];
+  }
+  return node;
+}
+
+export function normalizeStrictToolSchema(value: unknown, root?: unknown, seen?: Set<string>): unknown {
+  // AI SDK jsonSchema() wrappers carry the real schema under .jsonSchema while
+  // internal $refs resolve relative to that inner schema, so descend first and
+  // let the inner object become the ref owner.
+  if (value != null && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if (record.jsonSchema != null && typeof record.jsonSchema === "object" && record.type === undefined && record.$ref === undefined) {
+      return { ...record, jsonSchema: normalizeStrictToolSchema(record.jsonSchema) };
+    }
+  }
+  const owner = root ?? value;
+  const active = seen ?? new Set<string>();
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map((child) => normalizeStrictToolSchema(child, owner, active));
+  const record = value as Record<string, unknown>;
+  // zod-to-json-schema emits internal relative $refs (e.g. z.array of a
+  // discriminatedUnion points at its sibling branch). Strict backends do not
+  // resolve $ref, so inline the target. Cyclic refs are left as-is.
+  if (typeof record.$ref === "string") {
+    const ref = record.$ref;
+    if (active.has(ref)) return value;
+    const target = resolveInternalRef(owner, ref);
+    if (target == null || typeof target !== "object") return value;
+    active.add(ref);
+    try {
+      const inlined = normalizeStrictToolSchema(target, owner, active);
+      if (inlined == null || typeof inlined !== "object" || Array.isArray(inlined)) return value;
+      const { $ref: _dropped, ...siblings } = record;
+      return { ...(inlined as Record<string, unknown>), ...siblings };
+    } finally {
+      active.delete(ref);
+    }
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(record)) result[key] = normalizeStrictToolSchema(child, owner, active);
+  if (result.type === "object") {
+    // Bare object nodes (e.g. pass-through MCP inputSchemas) carry no
+    // additionalProperties key at all; strict backends reject those too.
+    if (result.additionalProperties !== false) result.additionalProperties = false;
+    // Record-shaped leftovers (z.record with the value schema dropped) have no
+    // properties key; strict backends require one, even if empty.
+    if (result.properties == null) result.properties = {};
+    const properties: Record<string, unknown> | null = typeof result.properties === "object" && result.properties !== null && !Array.isArray(result.properties)
+      ? result.properties as Record<string, unknown>
+      : null;
+    if (properties !== null) {
+      const declared = Object.keys(properties);
+      // A null/non-list required (emitted for empty z.object({})) is also
+      // rejected; rebuild it from the declared properties.
+      const required = Array.isArray(result.required) ? result.required.filter((entry): entry is string => typeof entry === "string") : [];
+      const missing = declared.filter((key) => !required.includes(key));
+      if (missing.length > 0 || !Array.isArray(result.required)) result.required = [...required, ...missing];
+    }
+  }
+  return result;
+}
+
 // Host tools carry Zod schemas; serialized raw they reach the endpoint as its internals and draw an opaque server_error, so convert them to JSON Schema.
 export function toToolWireParameters(parameters: unknown): unknown {
   if (parameters == null || typeof parameters !== "object") return parameters;
+  if (isRecord(parameters) && parameters.type === undefined && parameters.$ref === undefined && isRecord(parameters.jsonSchema)) {
+    return parameters.jsonSchema;
+  }
   if ("~standard" in parameters || "_def" in parameters) {
     try {
       return stripSchemaArtifacts(zodToJsonSchema(parameters as never, { target: "openApi3" }));
@@ -302,7 +394,7 @@ function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: Rout
     if (parameters == null) continue;
     const routedTool: any = {
       ...(typeof definition.description === "string" ? { description: definition.description } : {}),
-      parameters: jsonSchema(toToolWireParameters(parameters) as Parameters<typeof jsonSchema>[0]),
+      parameters: jsonSchema(normalizeStrictToolSchema(toToolWireParameters(parameters)) as Parameters<typeof jsonSchema>[0]),
     };
     if (executeTool != null) routedTool.execute = async (args: unknown, options: { toolCallId: string }) => await executeTool(definition, args, options.toolCallId);
     tools[definition.name] = tool(routedTool);
@@ -336,8 +428,15 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
   const headers: Record<string, string> = { "HTTP-Referer": "https://github.com/grok-bot-reconstructed", "X-Title": "Grok Bot Reconstructed" };
   if (transport.hostHeader) headers["Host"] = transport.hostHeader;
   let model: LanguageModelV1;
+  const effort = resolveOpenRouterEffort();
   try {
-    model = createOpenAI({ apiKey: openRouterCredential(), baseURL: transport.baseUrl, compatibility: "compatible", name: "openrouter", headers }).chat(id as any);
+    // The effort has to go through the model settings, not `providerOptions`: the bundled
+    // @ai-sdk/openai reads `providerMetadata.openai.reasoningEffort` (namespace hard-coded to
+    // "openai", not this provider's `name`), while ai@4.3 hands the model `providerOptions` —
+    // so the providerOptions channel silently drops it. `chat(id, { reasoningEffort })` lands on
+    // `this.settings.reasoningEffort`, which is read unconditionally.
+    model = createOpenAI({ apiKey: openRouterCredential(), baseURL: transport.baseUrl, compatibility: "compatible", name: "openrouter", headers })
+      .chat(id as any, effort === null ? undefined : ({ reasoningEffort: effort } as any));
   } catch (error) {
     recordChatError(error);
     throw error;

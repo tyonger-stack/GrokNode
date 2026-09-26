@@ -75,6 +75,7 @@ export function createDesktopTelemetryBridge(ipc: PreloadIpcRenderer): Record<ke
 export interface PrimaryPreloadInitialState {
   readonly experimentSnapshot: unknown;
   readonly themeState: unknown;
+  readonly languageState: unknown;
   readonly egressTunnelEnabled: boolean;
   readonly webauthnProxyEnabled: boolean;
   readonly egressTunnelStatus: unknown;
@@ -84,6 +85,7 @@ export function readPrimaryPreloadInitialState(ipc: PreloadIpcRenderer): Primary
   return {
     experimentSnapshot: ipc.sendSync("sand:experiments-snapshot-sync"),
     themeState: ipc.sendSync("sand:theme-get-sync"),
+    languageState: ipc.sendSync("sand:language-get-sync"),
     egressTunnelEnabled: ipc.sendSync("sand:egress-tunnel-get-sync") === true,
     webauthnProxyEnabled: ipc.sendSync("sand:webauthn-proxy-get-sync") === true,
     egressTunnelStatus: ipc.sendSync("sand:egress-tunnel-status-get-sync"),
@@ -304,6 +306,12 @@ export function createDesktopPreloadBridge(options: {
       set: (preference: unknown) => edge("setThemePreference", { preference }),
       onChanged: (listener: (payload: unknown) => void) => subscribe("theme-changed", listener),
     },
+    language: {
+      initial: initialState.languageState,
+      get: () => edge("getLanguageState"),
+      set: (preference: unknown) => edge("setLanguagePreference", { preference }),
+      onChanged: (listener: (payload: unknown) => void) => subscribe("language-changed", listener),
+    },
     secrets: {
       list: () => ipc.invoke("sand:secrets-list"),
       reveal: (key: string) => ipc.invoke("sand:secrets-reveal", { key }),
@@ -328,7 +336,10 @@ export function createDesktopPreloadBridge(options: {
       setOpenRouterModel: (model: string) => edge("setOpenRouterModel", { model }),
       getOpenRouterBaseUrl: () => edge("getOpenRouterBaseUrl"),
       setOpenRouterBaseUrl: (baseUrl: string | null) => edge("setOpenRouterBaseUrl", { baseUrl }),
+      getOpenRouterEffort: () => edge("getOpenRouterEffort"),
+      setOpenRouterEffort: (effort: string | null) => edge("setOpenRouterEffort", { effort }),
       getOpenRouterChannelStatus: () => edge("getOpenRouterChannelStatus"),
+      getAutomationWebhookCredential: (automationId: string) => edge("getAutomationWebhookCredential", { automationId }),
       clientPersistence: {
         read: (key: string) => ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.read, { key }),
         async write(key: string, value: string) { await ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.write, { key, value }); },

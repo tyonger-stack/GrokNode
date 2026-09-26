@@ -86,8 +86,26 @@ function stripSchemaArtifacts(value: unknown): unknown {
   // z.record() converts to additionalProperties:<value-schema>, which the same
   // strict endpoints reject (they only accept false). The runtime args are still
   // validated by zod on the host side; the wire schema just describes the shape.
-  if (result.type === "object" && "additionalProperties" in result && result.additionalProperties !== false) {
-    result.additionalProperties = false;
+  if (result.type === "object") {
+    if (result.additionalProperties !== false) {
+      result.additionalProperties = false;
+    }
+    // Record-shaped leftovers (z.record with the value schema dropped) have no
+    // properties key; strict backends require one, even if empty. A null
+    // required (emitted for empty z.object({})) is rebuilt from properties.
+    if (result.properties == null) result.properties = {};
+    const properties: Record<string, unknown> | null = typeof result.properties === "object" && result.properties !== null && !Array.isArray(result.properties)
+      ? result.properties as Record<string, unknown>
+      : null;
+    // Strict function-calling also requires every declared property to be listed
+    // in required (optional fields included). Non-strict backends accept the
+    // fuller required list as plain JSON Schema, so normalize unconditionally.
+    if (properties !== null) {
+      const declared = Object.keys(properties);
+      const required = Array.isArray(result.required) ? result.required.filter((entry): entry is string => typeof entry === "string") : [];
+      const missing = declared.filter((key) => !required.includes(key));
+      if (missing.length > 0 || !Array.isArray(result.required)) result.required = [...required, ...missing];
+    }
   }
   return result;
 }

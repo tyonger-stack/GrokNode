@@ -16,6 +16,18 @@ export interface ThemeState {
   resolved: "light" | "dark";
 }
 
+/**
+ * Renderer-side mirror of `source/shared/node/i18n/locale.ts`. Kept here so
+ * the frontend tsconfig does not need to widen its include scope just to read
+ * the locale type set; the production preload still ships the canonical
+ * source-side module to main/preload.
+ */
+export type LanguagePreference = "follow-system" | "en" | "zh-CN";
+export interface LanguageState {
+  preference: LanguagePreference;
+  resolved: "en" | "zh-CN";
+}
+
 export type CursorAuthStatus =
   | { kind: "logged-out"; errorMessage?: string }
   | { kind: "logging-in" }
@@ -366,6 +378,7 @@ export interface AgentDesktopBridge {
   setComputerUseModel(model: AgentModelSelection | null): Promise<AgentModelSelection | null>;
   getAvailableModels(): Promise<unknown>;
   getOpenRouterChannelStatus(): Promise<unknown>;
+  getAutomationWebhookCredential(automationId: string): Promise<{ agentId: string; automationId: string; url: string; key: string } | null>;
   getInferenceRouter(): Promise<unknown>;
   setInferenceRouter(provider: string): Promise<unknown>;
   clientPersistence: {
@@ -448,6 +461,12 @@ export interface DesktopBridge {
     get(): Promise<ThemeState>;
     set(preference: ThemePreference): Promise<ThemeState>;
     onChanged(listener: BridgeListener<ThemeState>): Unsubscribe;
+  };
+  readonly language: {
+    readonly initial: LanguageState;
+    get(): Promise<LanguageState>;
+    set(preference: LanguagePreference): Promise<LanguageState>;
+    onChanged(listener: BridgeListener<LanguageState>): Unsubscribe;
   };
   readonly secrets: {
     list(): Promise<SecretsSnapshot>;
