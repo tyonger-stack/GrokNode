@@ -16,6 +16,7 @@ export type SettingsNoticeOperation =
   | "settings-account"
   | "settings-auto-review"
   | "settings-theme"
+  | "settings-language"
   | "settings-local-tool-permission"
   | "settings-security-key"
   | "settings-time-zone"

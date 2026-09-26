@@ -1,11 +1,12 @@
 import { ProductionRenderer } from "./production/ProductionRenderer";
 import { acquireProductionRendererRuntime, mountProductionRenderer, requireProductionRendererMount } from "./production/bootstrap";
+import { LocaleProvider } from "./i18n/LocaleProvider";
 import { PRODUCTION_RENDERER_GAPS } from "./production/evidence";
 import { RootShellErrorBoundary } from "./recovered/features/window-chrome/root-shell-state";
 
 const mount = requireProductionRendererMount(document.getElementById("root"));
 const runtime = acquireProductionRendererRuntime(window);
-mountProductionRenderer(mount, <RootShellErrorBoundary><ProductionRenderer {...runtime} /></RootShellErrorBoundary>);
+mountProductionRenderer(mount, <RootShellErrorBoundary><LocaleProvider bridge={runtime.bridge}><ProductionRenderer {...runtime} /></LocaleProvider></RootShellErrorBoundary>);
 
 const reportHealth = async () => {
   const health = {

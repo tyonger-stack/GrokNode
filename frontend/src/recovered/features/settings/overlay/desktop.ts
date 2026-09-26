@@ -6,6 +6,8 @@ import type {
   DesktopBridge,
   DesktopTimeZoneState,
   DesktopUpdateStatus,
+  LanguagePreference,
+  LanguageState,
   ThemePreference,
   ThemeState,
   Unsubscribe
@@ -28,6 +30,7 @@ export interface SettingsDesktopSnapshot {
   accountError: string | null;
   autoReview: AutoReviewSettings;
   theme: ThemePreference;
+  language: LanguagePreference;
   timeZone: DesktopTimeZoneState;
   localToolPermission: LocalToolPermissionState;
   securityKeyEnabled: boolean;
@@ -49,6 +52,7 @@ export interface SettingsDesktopSubscriptions {
   account?(status: CursorAuthStatus): void;
   securityKey?(enabled: boolean): void;
   theme?(state: ThemeState): void;
+  language?(state: LanguageState): void;
   update?(status: DesktopUpdateStatus): void;
   experiments?(snapshot: unknown): void;
   egressTunnel?(enabled: boolean): void;
@@ -150,12 +154,13 @@ export function cursorAuthErrorMessage(reason: unknown): string {
 
 export async function loadSettingsDesktopSnapshot(bridge: DesktopBridge, coordinatorClient?: Pick<ProductionCoordinatorClient, "isEgressTunnelAvailable">): Promise<SettingsDesktopSnapshot> {
   const experimentSnapshot = loadExperimentSnapshot(bridge);
-  const [status, avatar, autoReview, theme, timeZone, localToolPermission, securityKeyEnabled, update, usageResult, resolvedExperimentSnapshot, egressTunnel] = await Promise.all([
+  const [status, avatar, autoReview, theme, language, timeZone, localToolPermission, securityKeyEnabled, update, usageResult, resolvedExperimentSnapshot, egressTunnel] = await Promise.all([
     bridge.account.getStatus(),
     // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#L133195-L133204
     bridge.account.getAvatar().catch(() => null),
     bridge.autoReviewInstructions.get().catch(() => defaultAutoReviewSettings()),
     bridge.theme.get(),
+    bridge.language.get(),
     bridge.timeZone.get(),
     Promise.all([
       bridge.localToolPermission.get().then(normalizeLocalToolPermission, () => "ask" as const),
@@ -180,6 +185,7 @@ export async function loadSettingsDesktopSnapshot(bridge: DesktopBridge, coordin
     accountError: status.kind === "logged-out" ? status.errorMessage ?? null : null,
     autoReview,
     theme: theme.preference,
+    language: language.preference,
     timeZone,
     localToolPermission,
     securityKeyEnabled,
@@ -201,6 +207,10 @@ export function setTimeZoneOverride(bridge: DesktopBridge, timeZone: string | nu
 
 export function setThemePreference(bridge: DesktopBridge, theme: ThemePreference): Promise<ThemeState> {
   return bridge.theme.set(theme);
+}
+
+export function setLanguagePreference(bridge: DesktopBridge, preference: LanguagePreference): Promise<LanguageState> {
+  return bridge.language.set(preference);
 }
 
 export async function setLocalToolPermission(bridge: DesktopBridge, permission: LocalToolPermission): Promise<LocalToolPermission> {
@@ -299,6 +309,7 @@ export function subscribeToSettingsDesktop(
     handlers.account == null ? null : bridge.account.onStatusChanged(handlers.account),
     handlers.securityKey == null ? null : bridge.foreverBox.webauthnProxy.onChanged(handlers.securityKey),
     handlers.theme == null ? null : bridge.theme.onChanged(handlers.theme),
+    handlers.language == null ? null : bridge.language.onChanged(handlers.language),
     handlers.update == null ? null : bridge.update.onStatusEvent(handlers.update),
     handlers.experiments == null ? null : bridge.experiments.onChanged(handlers.experiments),
     handlers.egressTunnel == null ? null : bridge.foreverBox.egressTunnel.onChanged(handlers.egressTunnel),

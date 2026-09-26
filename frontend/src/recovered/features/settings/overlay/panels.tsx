@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import type { CursorUsageSummary, CursorUsageUpgradeAction, DesktopTimeZoneState } from "../../../contracts/desktop-bridge";
+import { useIntl } from "react-intl";
+import type { CursorUsageSummary, CursorUsageUpgradeAction, DesktopTimeZoneState, LanguagePreference } from "../../../contracts/desktop-bridge";
 import { egressTunnelStatusDescription, type EgressTunnelStatus, type UpdateStatus, type UpdateTrack } from "./updates";
 // @evidence src/app/dist/renderer/assets/index-BlqerJhg.js#L1
 import { INTERNAL_RELEASE_TRACK_CONFIG_URL, UPDATE_TRACK_LABELS, updateStatusMessage } from "./updates";
@@ -21,6 +22,10 @@ export type AccountState =
 export interface GeneralSettingsPanelProps {
   theme: "system" | "light" | "dark";
   onThemeChange(theme: "system" | "light" | "dark"): void | Promise<unknown>;
+  language?: {
+    preference: LanguagePreference;
+    onChange(preference: LanguagePreference): void | Promise<unknown>;
+  };
   timeZone?: { state: DesktopTimeZoneState; onChange(timeZone: string | null): void | Promise<DesktopTimeZoneState> };
   localToolPermission?: { state: LocalToolPermissionState; onChange(permission: LocalToolPermission): void | Promise<LocalToolPermission> };
   securityKey?: { enabled: boolean; platform: NodeJS.Platform; onChange(enabled: boolean): void | Promise<boolean> };
@@ -66,20 +71,52 @@ export interface ThemePreferencePickerProps {
 }
 
 export function ThemePreferencePicker({ value, disabled = false, onChange }: ThemePreferencePickerProps) {
+  const intl = useIntl();
+  const options: { value: GeneralSettingsPanelProps["theme"]; label: string }[] = [
+    { value: "system", label: intl.formatMessage({ id: "settings.appearance.theme.system" }) },
+    { value: "light", label: intl.formatMessage({ id: "settings.appearance.theme.light" }) },
+    { value: "dark", label: intl.formatMessage({ id: "settings.appearance.theme.dark" }) }
+  ];
   return <SandSelect
-    ariaLabel="Theme"
+    ariaLabel={intl.formatMessage({ id: "settings.appearance.theme" })}
     className="ui-select-trigger"
     disabled={disabled}
     menuSize="md"
     onValueChange={onChange}
-    options={THEME_PREFERENCE_OPTIONS}
+    options={options}
     placement="bottom-end"
     value={value}
   />;
 }
 
-export function GeneralSettingsPanel({ theme, onThemeChange, timeZone, localToolPermission, securityKey, autoReview }: GeneralSettingsPanelProps) {
+export interface LanguagePreferencePickerProps {
+  value: LanguagePreference;
+  disabled?: boolean;
+  onChange(value: LanguagePreference): void;
+}
+
+export function LanguagePreferencePicker({ value, disabled = false, onChange }: LanguagePreferencePickerProps) {
+  const intl = useIntl();
+  const options: { value: LanguagePreference; label: string }[] = [
+    { value: "follow-system", label: intl.formatMessage({ id: "settings.appearance.language.followSystem" }) },
+    { value: "en", label: intl.formatMessage({ id: "settings.appearance.language.english" }) },
+    { value: "zh-CN", label: intl.formatMessage({ id: "settings.appearance.language.simplifiedChinese" }) }
+  ];
+  return <SandSelect
+    ariaLabel={intl.formatMessage({ id: "settings.appearance.language" })}
+    className="ui-select-trigger"
+    disabled={disabled}
+    menuSize="md"
+    onValueChange={onChange}
+    options={options}
+    placement="bottom-end"
+    value={value}
+  />;
+}
+
+export function GeneralSettingsPanel({ theme, onThemeChange, language, timeZone, localToolPermission, securityKey, autoReview }: GeneralSettingsPanelProps) {
   const [themePending, setThemePending] = useState(false);
+  const [languagePending, setLanguagePending] = useState(false);
   const handleThemeChange = (nextTheme: GeneralSettingsPanelProps["theme"]) => {
     if (themePending) return;
     setThemePending(true);
@@ -88,14 +125,27 @@ export function GeneralSettingsPanel({ theme, onThemeChange, timeZone, localTool
       .catch(() => undefined)
       .finally(() => setThemePending(false));
   };
+  const handleLanguageChange = (nextLanguage: LanguagePreference) => {
+    if (languagePending || language == null) return;
+    setLanguagePending(true);
+    void Promise.resolve()
+      .then(() => language.onChange(nextLanguage))
+      .catch(() => undefined)
+      .finally(() => setLanguagePending(false));
+  };
 
+  const intl = useIntl();
   return (
     <div className="sand-settings-general">
-      <SettingsGroup title="Appearance">
+      <SettingsGroup title={intl.formatMessage({ id: "settings.appearance.title" })}>
         <label>
-          <span>Theme</span>
+          <span>{intl.formatMessage({ id: "settings.appearance.theme" })}</span>
           <ThemePreferencePicker disabled={themePending} onChange={handleThemeChange} value={theme} />
         </label>
+        {language != null ? <label>
+          <span>{intl.formatMessage({ id: "settings.appearance.language" })}</span>
+          <LanguagePreferencePicker disabled={languagePending} onChange={handleLanguageChange} value={language.preference} />
+        </label> : null}
       </SettingsGroup>
       {timeZone || localToolPermission || autoReview ? <SettingsGroup title="Agent">
         {timeZone ? <TimeZoneSettingsPanel {...timeZone} /> : null}

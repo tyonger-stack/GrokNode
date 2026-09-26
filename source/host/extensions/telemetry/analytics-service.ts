@@ -65,7 +65,7 @@ export function withAutomationRunAnalytics<T extends TelemetryService>(
     return (...args: Parameters<Method>): ReturnType<Method> =>
       telemetry[name](...args) as ReturnType<Method>;
   };
-  const reportAutomationRun = telemetry.reportAutomationRun as unknown as (
+  const reportAutomationRun = telemetry.reportAutomationRun.bind(telemetry) as unknown as (
     report: AutomationRunAnalyticsReport,
   ) => unknown;
 

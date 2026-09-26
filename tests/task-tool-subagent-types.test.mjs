@@ -72,7 +72,7 @@ const props = {
 };
 
 test("Task tool exposes computerUse and browserUse dispatch types when the box is available", async () => {
-  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-toolset-probe.mjs");
+  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-tool-subagent-types-probe.mjs");
   const { builtinSubagentConfigs } = await bundleAndImport([subagentModule], "subagent-configs-probe.mjs");
   const tools = buildTurnTools(host, { autoReviewModes, subagentConfigs: builtinSubagentConfigs(true) }, props).getAllTools();
   const task = tools.find((tool) => tool.name === "Task");
@@ -83,7 +83,7 @@ test("Task tool exposes computerUse and browserUse dispatch types when the box i
 });
 
 test("an empty subagent config list leaves Task without computerUse (regression guard)", async () => {
-  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-toolset-probe.mjs");
+  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-tool-subagent-types-probe.mjs");
   const tools = buildTurnTools(host, { autoReviewModes, subagentConfigs: [] }, props).getAllTools();
   const task = tools.find((tool) => tool.name === "Task");
   assert.ok(task !== undefined, "Task tool must still be registered");
@@ -93,7 +93,7 @@ test("an empty subagent config list leaves Task without computerUse (regression 
 
 
 test("a computerUse subagent toolset offers Computer when the host supplies the factory", async () => {
-  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-toolset-probe.mjs");
+  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-tool-subagent-types-probe.mjs");
   const { builtinSubagentConfigs } = await bundleAndImport([subagentModule], "subagent-configs-probe.mjs");
   const desktopHost = {
     ...host,
@@ -111,7 +111,7 @@ test("a computerUse subagent toolset offers Computer when the host supplies the 
 });
 
 test("a browserUse subagent toolset offers the browser tools when the host supplies the factory", async () => {
-  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-toolset-probe.mjs");
+  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-tool-subagent-types-probe.mjs");
   const { builtinSubagentConfigs } = await bundleAndImport([subagentModule], "subagent-configs-probe.mjs");
   const desktopHost = {
     ...host,
@@ -129,7 +129,7 @@ test("a browserUse subagent toolset offers the browser tools when the host suppl
 });
 
 test("the main agent toolset offers the standalone Screenshot tool when the host supplies the factory", async () => {
-  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-toolset-probe.mjs");
+  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-tool-subagent-types-probe.mjs");
   const desktopHost = {
     ...host,
     isSubagentRunner: false,
@@ -145,7 +145,7 @@ test("the main agent toolset offers the standalone Screenshot tool when the host
 });
 
 test("a non-computer subagent toolset stays without the Computer tool (regression guard)", async () => {
-  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-toolset-probe.mjs");
+  const { buildTurnTools } = await bundleAndImport([toolsetModule], "task-tool-subagent-types-probe.mjs");
   const { builtinSubagentConfigs } = await bundleAndImport([subagentModule], "subagent-configs-probe.mjs");
   const desktopHost = {
     ...host,

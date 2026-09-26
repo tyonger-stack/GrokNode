@@ -38,6 +38,7 @@ test("default packaging keeps the polished checksum-pinned renderer", async () =
 test("Router settings and inference packaging expose only local providers", async () => {
   const rendererPatch = await readFile(path.join(repoRoot, "scripts", "lib", "router-renderer-patch.mjs"), "utf8");
   const channelStatusEntry = await readFile(path.join(repoRoot, "frontend", "src", "extensions", "channel-status-entry.ts"), "utf8");
+  const webhookCredentialEntry = await readFile(path.join(repoRoot, "frontend", "src", "extensions", "webhook-credential-entry.ts"), "utf8");
   const preload = await readFile(path.join(repoRoot, "source", "electron-preload", "preload.ts"), "utf8");
   const mainEdge = await readFile(path.join(repoRoot, "source", "electron-main", "main-edge.ts"), "utf8");
   const rpcMain = await readFile(path.join(repoRoot, "source", "shared", "rpc", "main.ts"), "utf8");
@@ -73,7 +74,8 @@ test("Router settings and inference packaging expose only local providers", asyn
   assert.doesNotMatch(providers, /queryClaude|claude-code|resolveClaudeCodeCliPath/);
   assert.match(codexDirect, /store: false/);
   assert.match(codexDirect, /type: "function_call_output"/);
-  assert.match(providers, /parameters: jsonSchema\(toToolWireParameters\(parameters\)/);
+  assert.match(providers, /parameters: jsonSchema\(normalizeStrictToolSchema\(toToolWireParameters\(parameters\)\)/);
+  assert.match(providers, /export function normalizeStrictToolSchema/);
   assert.match(providers, /You are Grok Bot, a warm, concise desktop assistant/);
   assert.match(providers, /recordRoutedUsage\(provider, usage\)/);
   assert.match(openRouterProxy, /https:\/\/openrouter\.ai\/api\/v1/);
@@ -121,4 +123,19 @@ test("Router settings and inference packaging expose only local providers", asyn
   assert.match(channelStatusEntry, /连接失败/);
   assert.match(channelStatusEntry, /响应超时/);
   assert.match(channelStatusEntry, /模型列表异常/);
+  assert.match(rendererPatch, /buildWebhookCredentialRendererExtension/);
+  assert.match(rendererPatch, /webhookCredentialExtension/);
+  assert.match(rendererPatch, /webhook-credential-copy/);
+  assert.match(rendererPatch, /append-webhook-credential-copy/);
+  assert.match(rendererPatch, /guard-webhook-trigger-form/);
+  assert.match(rendererPatch, /W0n\(n\)\.map\(Vgn\)\.filter\(e=>e!=null\)/);
+  assert.match(rendererPatch, /n\.type==="webhook"\?\[\]:\[n\]/);
+  assert.match(preload, /getAutomationWebhookCredential: \(automationId: string\) => edge\("getAutomationWebhookCredential"/);
+  assert.match(rpcMain, /getAutomationWebhookCredential: \{ args: "object" \}/);
+  assert.match(mainEdge, /deps\.getAutomationWebhookCredential\(automationId\)/);
+  assert.match(webhookCredentialEntry, /sand-webhook-credential/);
+  assert.match(webhookCredentialEntry, /sand-webhook-trigger/);
+  assert.match(webhookCredentialEntry, /getAutomationWebhookCredential/);
+  assert.match(webhookCredentialEntry, /host\.docker\.internal/);
+  assert.match(webhookCredentialEntry, /Authorization: Bearer/);
 });

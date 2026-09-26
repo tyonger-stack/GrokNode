@@ -51,6 +51,7 @@ export interface DevWiringDependencies {
   clearHasSeenOnboarding(): void;
   emitForceOnboarding(): void;
   readonly themeController: DevThemeController;
+  readonly languageController: { getState(): unknown };
   broadcast(channel: string, payload: unknown): void;
   emitDevBoxRebuild(): void;
   onControlServerBindError?(port: number, error: Error): void;

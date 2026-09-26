@@ -34,6 +34,7 @@ import {
   SandThemeController,
   type NativeThemePort,
 } from "./prefs/theme-controller.js";
+import { SandLanguageController } from "./prefs/language-controller.js";
 import {
   DesktopSecretStore,
   SECRETS_FILENAME,
@@ -115,11 +116,12 @@ export interface ElectronNotificationsProviderPorts {
     }): DesktopNotificationPort;
     isSupported(): boolean;
   };
-  readonly app: { setBadgeCount(count: number): unknown };
+  readonly app: { setBadgeCount(count: number): unknown; getPreferredSystemLanguages?(): readonly string[] };
 }
 
 export interface ElectronStartupProviderPorts {
   readonly app: DesktopBootstrapApp & {
+    getPreferredSystemLanguages?(): readonly string[];
     isInApplicationsFolder(): boolean;
     moveToApplicationsFolder(): boolean;
     relaunch(options: { readonly args: readonly string[] }): void;
@@ -248,11 +250,17 @@ export function createProductionSettingsBinding(
       created = true;
       const settingsStore = new SandSettingsStore(join(resolveRoot(), "settings.json"));
       let themeController: SandThemeController | undefined;
+      let languageController: SandLanguageController | undefined;
       let disposed = false;
       const requireThemeController = (): SandThemeController => {
         if (disposed) throw new Error("Electron production settings service is disposed.");
         if (themeController == null) throw new Error("Electron production theme controller was used before initialization.");
         return themeController;
+      };
+      const requireLanguageController = (): SandLanguageController => {
+        if (disposed) throw new Error("Electron production settings service is disposed.");
+        if (languageController == null) throw new Error("Electron production language controller was used before initialization.");
+        return languageController;
       };
       return {
         settingsStore,
@@ -269,11 +277,19 @@ export function createProductionSettingsBinding(
         getThemeBackgroundColor(): string {
           return requireThemeController().getWindowBackgroundColor();
         },
+        initializeLanguage(): void {
+          if (disposed) throw new Error("Electron production settings service is disposed.");
+          if (languageController != null) return;
+          languageController = new SandLanguageController(settingsStore, args.emitLanguageChanged);
+        },
+        getLanguageController: requireLanguageController,
         dispose(): void {
           if (disposed) return;
           disposed = true;
           themeController?.dispose();
           themeController = undefined;
+          languageController?.dispose();
+          languageController = undefined;
         },
       };
     },
@@ -422,6 +438,10 @@ export function createProductionNotificationsBinding(
         isSupported: () => ports.Notification.isSupported(),
         createNotification: (options) => new ports.Notification(options),
         openAgent: (agentId) => context.requireMainEdge().emit("focus-agent", { id: agentId }),
+        language: {
+          getPreference: () => context.settings.settingsStore.getLanguagePreference(),
+          systemTags: ports.app.getPreferredSystemLanguages?.() ?? [],
+        },
       });
       const dockBadge = new SandDockBadgeManager({
         setBadgeCount: (count) => { ports.app.setBadgeCount(count); },
@@ -510,6 +530,7 @@ export function createProductionStartupBinding(
       argv,
       env,
       app: ports.app,
+      language: { systemTags: ports.app.getPreferredSystemLanguages?.() ?? [] },
       dialog: ports.dialog,
       readDiscovery: ports.readDiscovery ?? (() => readLocalExecDaemonDiscovery()),
       isDaemonProcess: ports.isDaemonProcess ?? ((pid, discovery) => isLocalExecDaemonProcess(pid, discovery.entryRealpath, discovery.generationToken)),

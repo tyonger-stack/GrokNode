@@ -5,6 +5,7 @@ import {
   type NotificationAgent,
   type NotificationTransition,
 } from "../../shared/os-notification.js";
+import { desktopMessages, resolveDesktopLocale, type DesktopLanguageSource } from "../i18n/desktop-messages.js";
 
 export interface DesktopNotificationPort {
   on(event: "click", listener: () => void): void;
@@ -32,6 +33,7 @@ export class SandOsNotificationManager {
     readonly isSupported: () => boolean;
     readonly createNotification: (options: { readonly title: string; readonly body: string; readonly silent: boolean; readonly urgency: "critical" | "normal" }) => DesktopNotificationPort;
     readonly openAgent: (agentId: string) => void;
+    readonly language?: DesktopLanguageSource;
     readonly now?: () => number;
   }) {}
 
@@ -79,7 +81,8 @@ export class SandOsNotificationManager {
   }
 
   private show(transition: NotificationTransition): void {
-    const { title, body } = buildNotificationContent(transition);
+    const copy = desktopMessages(resolveDesktopLocale(this.deps.language)).notification;
+    const { title, body } = buildNotificationContent(transition, copy);
     const notification = this.deps.createNotification({ title, body, silent: transition.kind === "agent-done", urgency: transition.kind === "agent-needs-input" ? "critical" : "normal" });
     notification.on("click", () => this.focusAgent(transition.agentId));
     notification.once("close", () => this.active.delete(notification));

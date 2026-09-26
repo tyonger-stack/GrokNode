@@ -16,6 +16,7 @@ import type { ProductionServiceContext } from "../main-production-services.js";
 import { requireFunction } from "./provider-guards.js";
 
 export interface ElectronAvatarImageCompositionPorts {
+  readonly app: { getPreferredSystemLanguages?(): readonly string[] };
   readonly BrowserWindow: new(options: { readonly show: false }) => unknown;
   readonly dialog: {
     showOpenDialog(window: unknown, options: AvatarImageDialogOptions): Promise<{ canceled: boolean; filePaths: readonly string[] }>;
@@ -63,6 +64,10 @@ export function createProductionAvatarImagesAdapter(
     create(context) {
       let generator: ReturnType<typeof createCursorGenerateImageService> | undefined;
       const deps: AvatarImageDeps = {
+        language: {
+          getPreference: () => context.settings.settingsStore.getLanguagePreference(),
+          systemTags: ports.electron.app?.getPreferredSystemLanguages?.() ?? [],
+        },
         getMainWindow: () => context.getMainWindow() ?? null,
         createHiddenWindow: (options) => new ports.electron.BrowserWindow(options),
         showOpenDialog: (window, options) => ports.electron.dialog.showOpenDialog(window, options),

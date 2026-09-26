@@ -1,6 +1,7 @@
 import type { DataRootSettlement } from "./startup-data-root-migration.js";
 import { retireIdleLegacyDaemon } from "./legacy-daemon-retirement.js";
 import { moveToApplicationsFolderIfNeeded } from "./move-to-applications-folder.js";
+import { desktopMessages, resolveDesktopLocale, type DesktopLanguageSource } from "../i18n/desktop-messages.js";
 
 export type StartupDisposition = "continue-bootstrap" | "stop-bootstrap";
 
@@ -24,6 +25,7 @@ export interface StartupMoveCheckDependencies {
   isProcessAlive(pid: number): boolean;
   reportFailure?(surface: string, operation: string, error: unknown): void;
   reportFailureClass?(surface: string, operation: string, reason: string): void;
+  readonly language?: DesktopLanguageSource;
 }
 
 export interface StartupMoveCheckArgs {
@@ -62,6 +64,7 @@ export async function runStartupMoveCheck(
   }
   if (daemonDisposition === "stop-bootstrap") return "stop-bootstrap";
 
+  const copy = desktopMessages(resolveDesktopLocale(deps.language)).move;
   const moveDisposition = await moveToApplicationsFolderIfNeeded({
     platform: deps.platform ?? process.platform,
     isLabBuild: args.isLabBuild,
@@ -69,10 +72,10 @@ export async function runStartupMoveCheck(
     confirmMove: async () => {
       const result = await deps.dialog.showMessageBox({
         type: "question",
-        title: "Move Grok Bot to Applications",
-        message: "Move Grok Bot to the Applications folder?",
-        detail: "Grok Bot cannot install updates from its current location. It will reopen after moving.",
-        buttons: ["Move to Applications", "Not Now"],
+        title: copy.title,
+        message: copy.message,
+        detail: copy.detail,
+        buttons: [copy.moveButton, copy.laterButton],
         defaultId: 0,
         cancelId: 1,
       });
@@ -82,10 +85,10 @@ export async function runStartupMoveCheck(
       deps.reportFailure?.("startup", "move-to-applications", error);
       await deps.dialog.showMessageBox({
         type: "error",
-        title: "Couldn't Move Grok Bot",
-        message: "Grok Bot couldn't move to Applications",
-        detail: "Move Grok Bot to the Applications folder manually, then reopen Grok Bot",
-        buttons: ["OK"],
+        title: copy.errorTitle,
+        message: copy.errorMessage,
+        detail: copy.errorDetail,
+        buttons: [copy.okButton],
         defaultId: 0,
       });
     },

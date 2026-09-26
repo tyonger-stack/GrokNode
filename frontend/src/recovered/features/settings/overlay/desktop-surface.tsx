@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 // @evidence src/app/dist/renderer/assets/index-BlqerJhg.js#byteOffset=36041 (released Settings Retry copy)
 import type { ProductionCoordinatorClient } from "../../../../production/coordinator-client";
 // @evidence src/app/dist/renderer/assets/index-BlqerJhg.js#L1
-import type { DesktopBridge, DesktopUpdateStatus, ThemePreference } from "../../../contracts/desktop-bridge";
+import type { DesktopBridge, DesktopUpdateStatus, LanguagePreference, ThemePreference } from "../../../contracts/desktop-bridge";
 import {
   accountStateFromCursorStatus,
   installUpdate,
@@ -13,6 +13,7 @@ import {
   runUsageUpgradeAction,
   runUsageUpgradeActionAndRefresh,
   saveAutoReviewSettings,
+  setLanguagePreference,
   setLocalToolPermission,
   setSecurityKeyEnabled,
   setEgressTunnelEnabled,
@@ -95,6 +96,7 @@ export function SettingsDesktopSurface({ bridge, coordinatorClient = null, initi
           refreshEgressAvailability();
         },
         theme: (state) => setSnapshot((current) => current == null ? current : { ...current, theme: state.preference }),
+        language: (state) => setSnapshot((current) => current == null ? current : { ...current, language: state.preference }),
         update: (update) => setSnapshot((current) => current == null ? current : { ...current, update }),
         securityKey: updateSecurityKey,
         experiments: (experimentSnapshot) => setSnapshot((current) => current == null ? current : {
@@ -165,6 +167,7 @@ export function SettingsDesktopSurface({ bridge, coordinatorClient = null, initi
 
   const updateSnapshot = (update: DesktopUpdateStatus) => setSnapshot((current) => current == null ? current : { ...current, update });
   const updateTheme = (theme: ThemePreference) => setSnapshot((current) => current == null ? current : { ...current, theme });
+  const updateLanguage = (preference: LanguagePreference) => setSnapshot((current) => current == null ? current : { ...current, language: preference });
   const updateTimeZone = (timeZone: SettingsDesktopSnapshot["timeZone"]) => setSnapshot((current) => current == null ? current : { ...current, timeZone });
   const updateLocalToolPermission = (permission: SettingsDesktopSnapshot["localToolPermission"]["permission"]) => setSnapshot((current) => current == null ? current : {
     ...current,
@@ -206,6 +209,10 @@ export function SettingsDesktopSurface({ bridge, coordinatorClient = null, initi
               onChange: (settings) => mutate(() => saveAutoReviewSettings(bridge, settings), "settings-auto-review", updateAutoReview)
             }}
             onThemeChange={(theme) => mutate(() => setThemePreference(bridge, theme), "settings-theme", (state) => updateTheme(state.preference))}
+            language={{
+              preference: snapshot.language,
+              onChange: (preference) => mutate(() => setLanguagePreference(bridge, preference), "settings-language", (state) => updateLanguage(state.preference))
+            }}
             localToolPermission={{
               state: snapshot.localToolPermission,
               onChange: (permission) => mutate(() => setLocalToolPermission(bridge, permission), "settings-local-tool-permission", updateLocalToolPermission)

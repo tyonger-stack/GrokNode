@@ -65,6 +65,7 @@ export function createProductionSettingsIpcRegistrar(): ProductionIpcRegistrar {
       ipcMain: ipc,
       settingsStore: context.settings.settingsStore,
       themeController: context.settings.getThemeController(),
+      languageController: context.settings.getLanguageController(),
       egressTunnelController: context.requireEgressTunnelController(),
     });
   };

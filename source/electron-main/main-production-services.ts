@@ -16,6 +16,8 @@ import type { BotTemplateManualContents, BotTemplatePreview } from "../shared/bo
 import { resolveAttachProdBoxPreferred } from "./dev/dev-attach-prod-box.js";
 import { resolveSandMainWindowPreload } from "./dev/dev-capability.js";
 import type { SandThemeController, SandThemeState } from "./prefs/theme-controller.js";
+import type { SandLanguageController, SandLanguageState } from "./prefs/language-controller.js";
+import type { DesktopLanguageSource } from "./i18n/desktop-messages.js";
 import type { DataRootSettlement } from "./startup/startup-data-root-migration.js";
 import { createDesktopStartupTracker } from "./telemetry/desktop-startup-telemetry.js";
 import { createDesktopLifecycleReporter, type TelemetryLevel, type TelemetryMetadata } from "./telemetry/desktop-lifecycle-telemetry.js";
@@ -45,6 +47,7 @@ import { registerProductionTelemetryIpc } from "./telemetry/production-telemetry
 import type { SecureStorageCodec } from "./secrets/secret-store.js";
 import { recordLocalToolApproval as persistLocalToolApproval, clearLocalToolApprovals as clearPersistedLocalToolApprovals } from "../host/local-exec/local-tool-approvals.js";
 import type { SandSettingsStore } from "../shared/node/settings/sand-settings-store.js";
+import { startWebhookAutomationListener, type WebhookWakeOutcome } from "./webhook-automation-listener.js";
 import type {
   ElectronMainDependencies,
   ElectronMainApp,
@@ -182,7 +185,9 @@ export interface ProductionAccountService extends ProductionDisposable {
 export interface ProductionSettingsService extends ProductionDisposable {
   readonly settingsStore: SandSettingsStore;
   initializeTheme(): void;
+  initializeLanguage(): void;
   getThemeController(): SandThemeController;
+  getLanguageController(): SandLanguageController;
   getThemeBackgroundColor(): string;
 }
 export interface ProductionExperimentsService extends ProductionDisposable {
@@ -397,7 +402,7 @@ export interface ProductionAccountLifecycle {
 export interface ElectronProductionServiceFactories {
   initializeSecureStorage(): void;
   getMachineId(): Promise<string>;
-  createSettings(args: { readonly native: ElectronProductionNativeBindings; readonly resources: ElectronProductionResources; readonly env: NodeJS.ProcessEnv; readonly emitThemeChanged: (state: SandThemeState) => void }): ProductionSettingsService;
+  createSettings(args: { readonly native: ElectronProductionNativeBindings; readonly resources: ElectronProductionResources; readonly env: NodeJS.ProcessEnv; readonly emitThemeChanged: (state: SandThemeState) => void; readonly emitLanguageChanged: (state: SandLanguageState) => void }): ProductionSettingsService;
   createAttachments(context: Omit<ProductionServiceContext, "attachments" | "avatarImages" | "localAccount" | "ensureTranscriptionManager">): unknown;
   createAvatarImages(context: Omit<ProductionServiceContext, "attachments" | "avatarImages" | "localAccount" | "ensureTranscriptionManager">): unknown;
   createLocalAccount(context: Omit<ProductionServiceContext, "attachments" | "avatarImages" | "localAccount" | "ensureTranscriptionManager">): unknown;
@@ -414,7 +419,7 @@ export interface ElectronProductionServiceFactories {
   createCoordinator(context: ProductionServiceContext): Promise<ProductionCoordinatorService> | ProductionCoordinatorService;
   registerIpc(context: ProductionServiceContext): ProductionDisposable;
   /** Artifact-order process-lifetime registration after the application menu. */
-  registerImageContextMenu?(deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void }): void;
+  registerImageContextMenu?(deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void; readonly language?: DesktopLanguageSource }): void;
   killLocalExecDaemon?(): Promise<void>;
   onWindowCreated?(window: MainBrowserWindow, context: ProductionServiceContext): void;
 }
@@ -492,6 +497,14 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
     requireValue(mainEdge, "main-edge").emit("deep-link", parsed.link);
   }, focusWindow, log: (message) => console.log(`[sand] ${message}`) });
   const track = <T extends ProductionDisposable>(value: T): T => { disposables.push(value); return value; };
+  const webhookAutomationListener = track(startWebhookAutomationListener({
+    forwarder: {
+      runAgentWebhookAutomation: (args) => coordinatorLegs.legs.runAgentWebhookAutomation!(args) as Promise<WebhookWakeOutcome>,
+    },
+    onBindError: (port, error) => bindings.reportFailure("webhook-automation", "listener", error instanceof Error ? error : new Error(String(error))),
+    log: (message) => console.log(`[sand] ${message}`),
+  }));
+  void webhookAutomationListener;
   const requireDisposable = <T extends ProductionDisposable>(value: T, name: string): T => { if (value == null || typeof value.dispose !== "function") throw new Error(`Electron production service ${name} did not provide dispose().`); return value; };
   const disposeOnce = async (value: ProductionDisposable | undefined): Promise<void> => {
     if (value == null || disposedValues.has(value)) return;
@@ -523,6 +536,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
       resources,
       env,
       emitThemeChanged: (state) => requireValue(mainEdge, "main-edge").emit("theme-changed", state),
+      emitLanguageChanged: (state) => requireValue(mainEdge, "main-edge").emit("language-changed", state),
     }), "settings"));
   };
   const initializeServices = (options?: ElectronMainServicesInitializationOptions): Promise<ElectronMainServices> => initialization ??= (async () => {
@@ -777,6 +791,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
       requireValue(clientPauseControl, "client-pause").reapplyAfterCoordinatorLaunch();
       boxRecovery.start();
       requireValue(settings, "settings").initializeTheme();
+      requireValue(settings, "settings").initializeLanguage();
       boxVisibilityTracker.noteAccountSlot(desktopStructuredLogAccountSlot(await account.getStatus()));
       if (options?.routeHostInput != null) {
         vncTrust = requireValue(context, "context").createVncTrust(options.routeHostInput);
@@ -822,6 +837,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
         clearHasSeenOnboarding: () => requireValue(settings, "settings").settingsStore.clearHasSeenOnboarding(),
         emitForceOnboarding: () => requireValue(mainEdge, "main-edge").emit("force-onboarding", {}),
         themeController: requireValue(settings, "settings").getThemeController(),
+        languageController: requireValue(settings, "settings").getLanguageController(),
         broadcast,
         emitDevBoxRebuild: () => requireValue(mainEdge, "main-edge").emit("dev-box-rebuild", { type: "start" }),
         onControlServerBindError: (port, error) => bindings.reportFailure("dev-controls", `bind:${port}`, error),
@@ -831,10 +847,15 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
         getDevToolsMembershipStatus: () => account!.getStatus(),
         subscribeDevToolsMembership: (listener) => account!.subscribe(listener),
         getThemeBackgroundColor: () => settings!.getThemeBackgroundColor(),
+        getLanguageController: () => settings!.getLanguageController(),
         openExternalUrl: async (value) => { const url = bindings.parseAllowedExternalUrl(value); if (url != null) await mcp!.openExternalUrl(url); },
         registerImageContextMenu: () => bindings.services.registerImageContextMenu?.({
           openExternalUrl: async (value) => { const url = bindings.parseAllowedExternalUrl(value); if (url != null) await mcp!.openExternalUrl(url); },
           onEdgeFailure: (failure) => telemetry?.telemetry.reportImageEdgeFailure?.(failure),
+          language: {
+            getPreference: () => settings!.getLanguageController().getState().preference,
+            systemTags: bindings.native.app.getPreferredSystemLanguages?.() ?? [],
+          },
         }),
         configureVncTrust: () => vncTrust?.configureBoxVncSession(),
         hardenVncWebviewAttach: (contents) => vncTrust?.hardenWebviewAttach(contents),

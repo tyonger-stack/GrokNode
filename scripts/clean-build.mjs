@@ -36,6 +36,10 @@ import {
   electronMainBindingProvenancePath,
 } from "./electron-main-production-activation.mjs";
 import { applyOriginalRendererRouterPatch } from "./lib/router-renderer-patch.mjs";
+import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patch.mjs";
+import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs";
+import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
+import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -271,6 +275,10 @@ export async function buildFidelityReconstructedAsar({
   const clean = await attachCompositionAudit(prepared);
   await overlayCleanDistribution(clean.outputRoot, { stageRoot, composition: clean.buildManifest.runtimeComposition });
   await applyOriginalRendererRouterPatch({ stageRoot });
+  await applyOriginalRendererSettingsI18n({ stageRoot });
+  await applyOriginalRendererMainI18n({ stageRoot });
+  await applyOriginalRendererExtraI18n({ stageRoot });
+  await applyOriginalRendererLanguagePatch({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);

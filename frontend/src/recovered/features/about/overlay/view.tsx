@@ -75,8 +75,8 @@ export function AboutDialog({ bridge, labels, onClose, initialStatus = null }: A
       <div>
         <img alt="" className={ABOUT_ICON_CLASS} draggable={false} height={APP_ICON_SIZE_PX} src={APP_ICON_URL} width={APP_ICON_SIZE_PX} />
         <div className={ABOUT_HEADING_ROW_CLASS}>
-          <h2>{labels.title}</h2>
-          {status == null ? null : <p>{`Version ${status.currentVersion} (built by Bennett)`}</p>}
+          <h2>Grok Node</h2>
+          {status == null ? null : <p>基于 Grok Bot Version 0.18.0 重建</p>}
         </div>
         <small>{labels.copyright}</small>
       </div>

@@ -1,4 +1,5 @@
 import { installApplicationMenu, type ApplicationMenuElectronPort } from "./application-menu.js";
+import { resolveLocale, type LanguagePreference, type SupportedLocale } from "../shared/node/i18n/locale.js";
 import { reportDesktopEdgeFailure } from "./desktop-edge-failures.js";
 import { createDevToolsGate, createDevToolsMembershipResolver } from "./devtools-gate.js";
 import { isGrokNodePackagedApp } from "../shared/node/grok-node-identity.js";
@@ -89,6 +90,8 @@ export interface ElectronMainApp {
   quit(): void;
   isReady(): boolean;
   whenReady(): Promise<unknown>;
+  /** macOS preferred languages. May be unavailable on some test ports. */
+  getPreferredSystemLanguages?(): readonly string[];
   on(event: "second-instance", listener: (event: unknown, argv: readonly string[]) => void): void;
   on(event: "open-url", listener: (event: PreventableEvent, url: string) => void): void;
   on(event: "activate" | "window-all-closed", listener: () => void): void;
@@ -116,6 +119,10 @@ export interface ElectronMainServices {
   }>;
   readonly subscribeDevToolsMembership: (listener: () => void) => () => void;
   readonly getThemeBackgroundColor: () => string;
+  readonly getLanguageController: () => {
+    getState(): { readonly preference: LanguagePreference };
+    subscribe(listener: (state: { readonly preference: LanguagePreference }) => void): () => void;
+  };
   readonly openExternalUrl: (url: string) => Promise<unknown>;
   readonly configureVncTrust?: () => void;
   readonly hardenVncWebviewAttach?: (contents: MainWebContents) => void;
@@ -396,6 +403,11 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
       services.subscribeDevToolsMembership(() => void membership.refresh());
       void membership.refresh();
 
+      const resolveMenuLocale = (): SupportedLocale => {
+        const preference = services?.getLanguageController().getState().preference ?? "follow-system";
+        const systemTags = deps.app.getPreferredSystemLanguages?.() ?? [];
+        return resolveLocale(preference, systemTags);
+      };
       const installMenu = (): void =>
         installApplicationMenu(
           {
@@ -403,6 +415,7 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
             canUseDevTools: devToolsGate.isAllowed,
             emitOpenAbout: () => services?.mainEdge.emit("open-about", {}),
             emitOpenFeedback: () => services?.mainEdge.emit("open-feedback", {}),
+            locale: resolveMenuLocale(),
             platform,
           },
           deps.menu,
@@ -410,6 +423,7 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
       installMenu();
       services.registerImageContextMenu?.();
       devToolsGate.subscribe(installMenu);
+      services?.getLanguageController().subscribe(installMenu);
 
       deps.startup.markPhase("window");
       isMainWindowCreationReady = true;

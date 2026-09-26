@@ -47,6 +47,15 @@ const infoPlist = path.join(outputApp, "Contents", "Info.plist");
 await run(SYSTEM_TOOLS.plutil, ["-remove", "ElectronAsarIntegrity", infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleIdentifier", "-string", reconstructedBundleId, infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleDisplayName", "-string", reconstructedName, infoPlist]);
+// Hint macOS that this app's resources are localized primarily for Simplified
+// Chinese so it auto-translates built-in menu roles (`editMenu`, `windowMenu`,
+// `help`, `services`, `hide`, …) when the user is on a Chinese-locale Mac.
+// Matches the behaviour of the official Grok Bot 0.58 app, which renders its
+// own labels in the user's primary language without an explicit
+// `CFBundleDevelopmentRegion` entry but still picks up NSPrincipalClass+Menu
+// localisation. Without this hint macOS may treat the app as English-only on
+// mixed-locale machines and skip the system role translations.
+await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleDevelopmentRegion", "-string", "zh-Hans", infoPlist]);
 // The official Grok Bot bundle owns the `sand` and `grokbot` URL schemes. When
 // it is installed, Grok Node registers only its own `groknode` scheme so
 // LaunchServices keeps routing sand:// and grokbot:// links to the official

@@ -22,7 +22,7 @@ export interface ProductionAttachmentGatewayPorts {
 }
 
 export interface ElectronAttachmentGatewayCompositionPorts {
-  readonly app: { getPath(name: "userData" | "downloads"): string };
+  readonly app: { getPath(name: "userData" | "downloads"): string; getPreferredSystemLanguages?(): readonly string[] };
   readonly BrowserWindow: new(options: { readonly show: false }) => unknown;
   readonly dialog: {
     showSaveDialog(window: unknown, options: { readonly defaultPath: string }): Promise<{ readonly canceled: boolean; readonly filePath?: string }>;
@@ -89,6 +89,10 @@ export function createProductionAttachmentGatewayBinding(
       const legs = context.coordinatorLegs.legs as unknown as AttachmentLegs;
       return {
         legs,
+        language: {
+          getPreference: () => context.settings.settingsStore.getLanguagePreference(),
+          systemTags: electron.app.getPreferredSystemLanguages?.() ?? [],
+        },
         getMainWindow: context.getMainWindow,
         onEdgeFailure: (failure) => {
           context.readTelemetry()?.telemetry.reportAttachmentEdgeFailure?.(failure);

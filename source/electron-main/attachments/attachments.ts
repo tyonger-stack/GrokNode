@@ -3,6 +3,7 @@ import { open, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 
 import { posixPathFromFileUrl } from "../../shared/node/paths.js";
+import { desktopMessages, resolveDesktopLocale, type DesktopLanguageSource } from "../i18n/desktop-messages.js";
 
 export const GATEWAY_READ_CHUNK_BYTES = 4 * 1024 * 1024;
 export const LINK_PREVIEW_PHOTO_MAX_DIMENSION = 1280;
@@ -44,6 +45,7 @@ export interface AttachmentEdgeDeps {
   readonly showSaveDialog: (window: unknown | null, options: { defaultPath: string }) => Promise<{ canceled: boolean; filePath?: string }>;
   readonly createHiddenWindow: (options: { readonly show: false }) => unknown;
   readonly showErrorMessage: (window: unknown | null, options: { type: "error"; title: string; message: string }) => Promise<void>;
+  readonly language?: DesktopLanguageSource;
   readonly now?: () => number;
   readonly randomUUID?: () => string;
 }
@@ -73,7 +75,8 @@ export function createAttachmentEdgePort(deps: AttachmentEdgeDeps) {
     } catch (error) { report("read-bytes", error); return null; }
     return offset < totalSize ? null : { kind: "bytes", bytes: new Uint8Array(buffer) };
   };
-  const failDownload = async (reason: string): Promise<false> => { deps.onEdgeFailure({ leg: "download", errorClass: reason }); try { await deps.showErrorMessage(deps.getMainWindow(), { type: "error", title: "Save File", message: "Couldn't save this file" }); } catch (error) { report("download", error); } return false; };
+  const copy = desktopMessages(resolveDesktopLocale(deps.language)).attachments;
+  const failDownload = async (reason: string): Promise<false> => { deps.onEdgeFailure({ leg: "download", errorClass: reason }); try { await deps.showErrorMessage(deps.getMainWindow(), { type: "error", title: copy.errorTitle, message: copy.errorMessage }); } catch (error) { report("download", error); } return false; };
 
   return {
     async resolveMedia(source: unknown) {
