@@ -15,11 +15,12 @@
   relay-run.sh           # forwarder 启动脚本（TOKEN/BIND/PORT）
   mac-forwarder.mjs      # 本目录 L1 的部署副本
   turn-watchdog.mjs      # 本目录 L2 的部署副本
+  container-relay.py     # 容器侧中继的源头副本（480s 空闲超时）
   forwarder.log          # 推理流量真相源：每行 = 一次 bot 推理
   watchdog-*.log/json    # 看门的输出与状态
 ```
 
-容器侧 `container-relay.py`（容器 10100 → Mac 11010）由 `box-watch.sh` 独立守护，与本目录解耦。
+容器侧副本在 `/tmp/ocx-relay.py`（容器 10100 → Mac 11010），**容器重建会被还原**成 120s 空闲超时的旧版——那会把在 forwarder 队列里排了 ~100s 的请求整 120s 掐断（forwarder.log 里表现为精确 +120s 的 `client disconnected`，2026-09-26 晚实证 28 例）。重建后跑一次 `container-relay-push.sh` 即可回推 480s 版并重启、探活。
 
 ## forwarder：行为契约与新增
 
@@ -51,10 +52,12 @@
 | 检查 | 信号 | 阈值 |
 | --- | --- | --- |
 | 挂起的推理 | forwarder.log `started id=X` 无配对 `-> ... id=X` | `INFLIGHT_STALL_MS` 默认 10 分钟 |
-| 卡死的 bot 回合 | host log 出现 `spawned worker for agent <id>` 且该 agent transcript 无写入 | `TRANSCRIPT_STALL_MS` 默认 20 分钟（窗口 `SPAWN_WINDOW_MS` 30 分钟） |
+| 卡死的 bot 回合 | host log 出现 `spawned worker for agent <id>` 后该 agent transcript **零写入**（容错 `SPAWN_READ_LAG_MS` 默认 3 分钟轮询延迟；一旦 transcript 有写入即视为健康，停止追踪） | `TRANSCRIPT_STALL_MS` 默认 10 分钟，**从 spawn 起算**（窗口 `SPAWN_WINDOW_MS` 30 分钟） |
 | 中继死亡 | 探活 `127.0.0.1:11010/v1/models`（带 token） | 非 200 / 超时即告警 |
 
 告警去向：`watchdog-alerts.log`（永远）→ macOS 通知（`MACOS_NOTIFY=1` 默认开）→ `ALERT_COMMAND`（默认空；配置后以 `/bin/zsh -c` 执行，占位符 `{message}` `{agent}` `{name}` 会替换为带引号的 JSON 字符串，可接 `lark-cli` 发飞书）。同一 key 冷却 30 分钟。
+
+**静默必须从 spawn 起算，不能从上次 transcript 写入起算**（2026-09-26 误报风暴的教训）：例行任务唤醒一个空闲 bot 时，“距上次写入”可能包含几小时的空闲时间，旧算法把它当成卡死时长，导致每个正常完成后的 bot 都被误报「卡死 67 分钟」。新语义只看“这个回合派出后有没有产出”。
 
 **已知边界**：watchdog 只对"自己看着出生"的回合告警（首次启动时 state 从零开始，不回放历史）；给卡死 bot 自动注入恢复消息需要目标 bot 先建 `watch-resume` webhook 例行任务（v2，见 DESIGN.md），v1 一律只告警。
 
@@ -69,6 +72,12 @@ cp ~/.grokbot/ocx-relay/com.groknode.turn-watchdog.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.groknode.turn-watchdog.plist
 # 若此前手动拉起过 watchdog，先杀掉再装 launchd，避免双实例：
 pkill -f "ocx-relay/turn-watchdog.mjs"
+```
+
+容器重建后（`docker ps` 里 Up 时间归零）补一刀：
+
+```sh
+tools/ocx-relay/container-relay-push.sh   # 回推 480s 中继并重启、探活
 ```
 
 回滚：`deploy.sh` 打印的 `.bak-<ts>` 覆盖回 `mac-forwarder.mjs` 后重启即可；watchdog 直接 `launchctl bootout`。
