@@ -28,7 +28,12 @@ const MAX_QUEUE = Math.max(0, Number(process.env.MAX_QUEUE ?? "8"));
 const QUEUE_TIMEOUT_MS = Math.max(1, Number(process.env.QUEUE_TIMEOUT_MS ?? "120000"));
 const RETRY_429 = Math.max(0, Number(process.env.RETRY_429 ?? "2"));
 const RETRY_MAX_DELAY_MS = Math.max(1, Number(process.env.RETRY_MAX_DELAY_MS ?? "30000"));
-const UPSTREAM_IDLE_TIMEOUT_MS = Number(process.env.UPSTREAM_IDLE_TIMEOUT_MS ?? "300000");
+const UPSTREAM_IDLE_TIMEOUT_MS = Number(process.env.UPSTREAM_IDLE_TIMEOUT_MS ?? "180000");
+// Hard ceiling on the WHOLE request lifetime (queue + retries + stream).
+// The idle timeout cannot catch a trickle-hang (upstream emitting keepalive
+// bytes forever without ever completing), which live traffic hit on
+// 2026-09-26: id=e18e7b72 stayed in flight 74+ minutes and leaked a slot.
+const UPSTREAM_MAX_TOTAL_MS = Number(process.env.UPSTREAM_MAX_TOTAL_MS ?? "600000");
 const BODY_BUFFER_LIMIT = Number(process.env.BODY_BUFFER_LIMIT ?? String(64 * 1024 * 1024));
 
 const CHAT_PATH = "/v1/chat/completions";
@@ -71,6 +76,7 @@ export function startForwarder(config) {
     bind, port, upstreamHost, upstreamPort, token, log,
     maxConcurrency, maxQueue, queueTimeoutMs, retry429, retryMaxDelayMs,
     idleTimeoutMs, bodyBufferLimit,
+    upstreamMaxTotalMs = 600000,
   } = config;
 
   const pool = { active: 0, queue: [] };
@@ -145,6 +151,7 @@ export function startForwarder(config) {
       entry.clientGone = true;
       if (entry.queueTimer) clearTimeout(entry.queueTimer);
       if (entry.sleepTimer) clearTimeout(entry.sleepTimer);
+      if (entry.totalTimer) clearTimeout(entry.totalTimer);
       const queuedIndex = pool.queue.indexOf(entry);
       if (queuedIndex >= 0) { pool.queue.splice(queuedIndex, 1); return; }
       if (entry.upstream) entry.upstream.destroy(new Error("client disconnected"));
@@ -205,6 +212,11 @@ export function startForwarder(config) {
   function dispatch(entry) {
     const queuedMs = entry.queuedAt ? Date.now() - entry.queuedAt : 0;
     log(`${new Date().toISOString()} POST ${entry.url} started id=${entry.id} try=${entry.tries} queued=${queuedMs}ms`);
+    entry.totalTimer = setTimeout(() => {
+      if (entry.finished || entry.released) return;
+      entry.upstream?.destroy(new Error(`upstream total deadline ${upstreamMaxTotalMs}ms exceeded`));
+    }, upstreamMaxTotalMs);
+    entry.totalTimer.unref?.();
     const upstream = http.request(
       { host: upstreamHost, port: upstreamPort, method: entry.method, path: entry.url, headers: entry.headers },
       (upRes) => {
@@ -219,11 +231,13 @@ export function startForwarder(config) {
           }, delay);
           return;
         }
-        entry.upstream = null;
+        // Keep the request referenced during streaming: the total deadline and
+        // the client-close path must both be able to destroy a mid-stream hang.
         const status = upRes.statusCode || 502;
         upRes.on("end", () => {
           if (entry.finished) return;
           entry.finished = true;
+          if (entry.totalTimer) clearTimeout(entry.totalTimer);
           log(`${new Date().toISOString()} POST ${entry.url} -> ${status} ${Date.now() - entry.started}ms queued=${queuedMs}ms try=${entry.tries} id=${entry.id}`);
           releaseSlot(entry);
         });
@@ -238,6 +252,7 @@ export function startForwarder(config) {
     entry.upstream = upstream;
     upstream.on("error", (e) => {
       if (entry.released) return;
+      if (entry.totalTimer) clearTimeout(entry.totalTimer);
       log(`${new Date().toISOString()} POST ${entry.url} upstream-error id=${entry.id} ${e.message}`);
       safeRespond(entry.clientRes, 502, { "content-type": "application/json" }, JSON.stringify({ error: "upstream error", message: e.message }));
       releaseSlot(entry);
@@ -250,7 +265,7 @@ export function startForwarder(config) {
 
   server.listen(port, bind, () => {
     const address = server.address();
-    log(`${new Date().toISOString()} relay listening on ${address.address}:${address.port} -> ${upstreamHost}:${upstreamPort} (chat slots=${maxConcurrency} queue=${maxQueue} queue-timeout=${queueTimeoutMs}ms retry=${retry429})`);
+    log(`${new Date().toISOString()} relay listening on ${address.address}:${address.port} -> ${upstreamHost}:${upstreamPort} (chat slots=${maxConcurrency} queue=${maxQueue} queue-timeout=${queueTimeoutMs}ms retry=${retry429} idle=${idleTimeoutMs}ms total=${upstreamMaxTotalMs}ms)`);
   });
   return { server, pool };
 }
@@ -271,6 +286,7 @@ if (isMain) {
     retry429: RETRY_429,
     retryMaxDelayMs: RETRY_MAX_DELAY_MS,
     idleTimeoutMs: UPSTREAM_IDLE_TIMEOUT_MS,
+    upstreamMaxTotalMs: UPSTREAM_MAX_TOTAL_MS,
     bodyBufferLimit: BODY_BUFFER_LIMIT,
     log: (line) => console.log(line),
   });

@@ -307,3 +307,70 @@ test("a client abort frees its slot for the next request", async () => {
     upstream.server.close();
   }
 });
+
+test("aborts a trickle-hung stream at the total deadline and frees the slot", async () => {
+  const upstream = await startMockUpstream(async (req, res) => {
+    // Headers arrive at once, then keepalive bytes forever, never completing:
+    // the failure mode live traffic hit as id=e18e7b72 (74+ min in flight).
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    const trickle = setInterval(() => {
+      try { res.write(": keepalive\n\n"); } catch { }
+    }, 40);
+    res.on("close", () => clearInterval(trickle));
+  });
+  const relay = await startRelay(upstream.port, { idleTimeoutMs: 0, upstreamMaxTotalMs: 250, maxConcurrency: 1 });
+  try {
+    const startedAt = Date.now();
+    const res = await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: CHAT_BODY });
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed < 1500, `trickle-hang terminated after ${elapsed}ms; total deadline did not fire`);
+    assert.ok([200, 502].includes(res.status), `unexpected status ${res.status}`);
+    assert.ok(relay.logs.some((line) => line.includes("upstream total deadline")), "total deadline was not logged");
+
+    // the slot must be free: a follower request completes normally
+    upstream.server.close();
+    const follower = await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: CHAT_BODY });
+    assert.equal(follower.status, 502, "follower should fail fast against the closed mock upstream instead of hanging");
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
+test("a mid-stream client abort frees its slot for the next request", async () => {
+  let seen = 0;
+  const upstream = await startMockUpstream(async (req, res) => {
+    seen += 1;
+    if (seen === 1) {
+      // headers + keepalive bytes forever: the client must be able to leave
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      const trickle = setInterval(() => {
+        try { res.write(": keepalive\n\n"); } catch { }
+      }, 30);
+      res.on("close", () => clearInterval(trickle));
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end('{"ok":true}');
+  });
+  const relay = await startRelay(upstream.port, { maxConcurrency: 1, idleTimeoutMs: 0, upstreamMaxTotalMs: 30000 });
+  try {
+    const stream = http.request(
+      { host: "127.0.0.1", port: relay.port, method: "POST", path: "/v1/chat/completions", headers: { "x-relay-token": TOKEN, "content-length": Buffer.byteLength(CHAT_BODY) } },
+      () => {},
+    );
+    stream.end(CHAT_BODY);
+    stream.on("error", () => { /* aborted socket resets */ });
+    await sleep(120); // response headers are streaming by now
+    stream.destroy();
+
+    const startedAt = Date.now();
+    const follower = await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: CHAT_BODY });
+    const elapsed = Date.now() - startedAt;
+    assert.equal(follower.status, 200);
+    assert.ok(elapsed < 1500, `follower took ${elapsed}ms; mid-stream abort did not free its slot`);
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
