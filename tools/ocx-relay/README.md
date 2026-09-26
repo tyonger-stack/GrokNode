@@ -67,6 +67,8 @@ RUN_ONCE=1 node ~/.grokbot/ocx-relay/turn-watchdog.mjs   # 看门自检
 # launchd 常驻（AI 沙箱 bootstrap 不了 launchd，须用户本机执行）：
 cp ~/.grokbot/ocx-relay/com.groknode.turn-watchdog.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.groknode.turn-watchdog.plist
+# 若此前手动拉起过 watchdog，先杀掉再装 launchd，避免双实例：
+pkill -f "ocx-relay/turn-watchdog.mjs"
 ```
 
 回滚：`deploy.sh` 打印的 `.bak-<ts>` 覆盖回 `mac-forwarder.mjs` 后重启即可；watchdog 直接 `launchctl bootout`。
