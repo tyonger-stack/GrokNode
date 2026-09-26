@@ -11,6 +11,7 @@ import {
   type PromptExecutor,
 } from "./send-message-reminder-middleware.js";
 import { createStartOfTurnAckReminderMiddleware } from "./start-of-turn-ack-reminder-middleware.js";
+import type { RetryPolicy } from "./transient-stream-error.js";
 import { SimplePromptToolExecutor } from "../../packages/agent/tool-stream-executor.js";
 import {
   createShellWatchGeneratedStateProjection,
@@ -333,6 +334,8 @@ export interface TurnRunOptions {
   readonly replyContext?: unknown;
   readonly hidden?: boolean;
   readonly isSilenceAllowed?: boolean;
+  /** Consumed by the stream-attempt retry boundary once wired. */
+  readonly transientStreamRetry?: RetryPolicy;
   readonly autoReviewEpoch?: "continue" | "new";
   readonly lineage?: {
     readonly parentRequestId: string;

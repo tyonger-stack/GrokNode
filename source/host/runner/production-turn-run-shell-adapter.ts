@@ -18,6 +18,8 @@ import {
   type TurnRunShellHost,
   type TurnStreamCallbacks,
 } from "./turn-run-shell.js";
+import { createStreamAttempt, type StreamAttemptHost } from "./stream-attempt.js";
+import type { RetryPolicy } from "./transient-stream-error.js";
 import type {
   TurnCheckpoint,
   TurnSession,
@@ -37,6 +39,7 @@ export interface ProductionTurnRunShellPreparedTurn extends PreparedTurn {
   >;
   readonly runContext: Context;
   readonly disposeRunContext: () => void;
+  readonly runOptions: TurnRunOptions;
   readonly updateRelay: {
     callbacks?: TurnStreamCallbacks;
     prepared?: ProductionTurnRunShellPreparedTurn;
@@ -288,6 +291,7 @@ export function createProductionTurnRunShellAdapter(
           productionInput,
           runContext: linked.context,
           disposeRunContext: linked.dispose,
+          runOptions: options,
           updateRelay,
         };
         updateRelay.prepared = result;
@@ -309,24 +313,112 @@ export function createProductionTurnRunShellAdapter(
       if (owned === undefined) {
         throw new TypeError("production turn prepared owner is not bound");
       }
-      owned.updateRelay.callbacks = callbacks;
-      const stream = createTurnAgentStreamStart({
-        agent: owned.productionOwner.built,
-        baseState: owned.baseState,
-        action: owned.productionInput.action,
-        privacyMode: owned.productionOwner.runContext.privacyMode,
-        mcpTools: owned.productionInput.mcpTools,
-      });
-      const finalState = await stream.startStream(
-        owned.runContext,
-        undefined,
-        async (
-          _checkpointContext: Context,
-          checkpoint: ConversationStateStructureMessage,
-        ) => {
-          await callbacks.persistCheckpoint(checkpoint);
+      // Zero-output tracking feeds the retry engine (stream-attempt.ts): a
+      // turn that produced no visible output may be replayed wholesale;
+      // anything that already streamed settles as-is. A reaction counts as
+      // output - the turn did something visible even without text.
+      const outputProduced = { value: false };
+      const markOutput = (): void => {
+        outputProduced.value = true;
+      };
+      owned.updateRelay.callbacks = {
+        ...callbacks,
+        collectText: (delta) => {
+          markOutput();
+          callbacks.collectText(delta);
         },
-      );
+        collectSendMessage: () => {
+          markOutput();
+          callbacks.collectSendMessage();
+        },
+        collectReaction: () => {
+          markOutput();
+          callbacks.collectReaction();
+        },
+        collectAgentMessage: (message) => {
+          markOutput();
+          callbacks.collectAgentMessage(message);
+        },
+      };
+      // The dormant retry/checkpoint boundary (stream-attempt.ts) wired at its
+      // intended join point. Per-attempt contexts are children of the run
+      // context, so a user stop still cancels everything while an engine-level
+      // first-token stall only cancels the current attempt. resumeFrom is
+      // forwarded by identity - the agent layer owns resume semantics.
+      const deadlineHooks: {
+        disarm?: (() => void) | undefined;
+        reset?: (() => void) | undefined;
+      } = {};
+      const attemptHost: StreamAttemptHost<
+        Context,
+        ConversationStateStructureMessage,
+        ConversationStateStructureMessage
+      > = {
+        ctx: {
+          get canceled() {
+            return owned.runContext.canceled;
+          },
+          withCancel: () => owned.runContext.withCancel(),
+        },
+        hidden: owned.runOptions.hidden === true,
+        ...(owned.runOptions.transientStreamRetry === undefined
+          ? {}
+          : { transientStreamRetry: owned.runOptions.transientStreamRetry }),
+        setStreamOutputProduced: (value) => {
+          outputProduced.value = value;
+        },
+        getStreamOutputProduced: () => outputProduced.value,
+        persistCheckpoint: async (_checkpointContext, checkpoint, accepted) => {
+          await callbacks.persistCheckpoint(checkpoint);
+          accepted(checkpoint);
+        },
+        startStream: (streamContext, resumeFrom, persist) =>
+          createTurnAgentStreamStart({
+            agent: owned.productionOwner.built,
+            baseState: owned.baseState,
+            action: owned.productionInput.action,
+            privacyMode: owned.productionOwner.runContext.privacyMode,
+            mcpTools: owned.productionInput.mcpTools,
+          }).startStream(streamContext, resumeFrom, persist),
+        createDeadlineTimer: (callback, deadlineMs) => {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const restart = (): void => {
+            if (timer !== undefined) clearTimeout(timer);
+            timer = setTimeout(callback, deadlineMs);
+          };
+          restart();
+          return {
+            cancel: () => {
+              if (timer !== undefined) clearTimeout(timer);
+            },
+            restart,
+          };
+        },
+        setDeadlineHooks: (disarm, reset) => {
+          deadlineHooks.disarm = disarm;
+          deadlineHooks.reset = reset;
+        },
+        clearDeadlineHookIf: (disarm, reset) => {
+          if (deadlineHooks.disarm === disarm && deadlineHooks.reset === reset) {
+            deadlineHooks.disarm = undefined;
+            deadlineHooks.reset = undefined;
+          }
+        },
+        setTraceAttributes: () => {},
+        emitRetrying: () => {
+          // trackRetryingFromUpdate picks this up for the roster's retrying
+          // display state; handled as part of the normal update flow.
+          input.emitUpdate({ type: "retrying" });
+        },
+        reportTurnRetry: () => {
+          // Telemetry sink (runner.setTurnRetryHandler) lives on the runner,
+          // which owns this shell - not reachable from here without an extra
+          // wiring hop. The retrying update plus the forwarder log keep the
+          // observability floor until that hop is added.
+        },
+      };
+      const attempt = createStreamAttempt(attemptHost);
+      const finalState = await attempt.run();
       owned.productionOwner.runContext.commitDiskPressureReminder();
       return finalState;
     },
