@@ -99,7 +99,10 @@ function checkInflightStalls(now) {
     if (line.includes(" started ")) {
       const ts = Date.parse(line.slice(0, line.indexOf("Z") + 1));
       if (Number.isFinite(ts)) startedAt.set(id, ts);
-    } else if (line.includes(" -> ")) {
+    } else if (line.includes(" retry ")) {
+      // re-dispatch of the same id; still in flight, keep the original start
+    } else {
+      // any other terminal line for this id (-> code, upstream-error, ...)
       finished.add(id);
     }
   }
