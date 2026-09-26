@@ -37,6 +37,7 @@
 | `source/shared/` | 共享契约、settings、协议、provider 辅助 |
 | `source/packages/` | 33 个内聚包：agent-*、chat-inference(-proto)、hooks-*、mcp-*、cursor-config/plugins、proto 等 |
 | `source/box-exec-daemon/`、`local-exec-daemon/` | 沙箱内执行守护 / 本地执行守护 |
+| `tools/ocx-relay/` | **运行环境运维件（不进 app 包）**：Mac 侧推理中继 `mac-forwarder.mjs`（有界并发队列 + 429 首字节前重试；容器 bot → opencodex 的唯一推理通道）与 `turn-watchdog.mjs`（僵尸回合 / 挂起推理 / 中继死亡告警）。运行时部署在 `~/.grokbot/ocx-relay/`，`deploy.sh` 负责复制备份；日志契约与排障口诀见该目录 [README](tools/ocx-relay/README.md) |
 | `frontend/` | 可读 React 重建与设计工作区。**渲染器基线仍是上游产物**，`frontend/` 不是像素级替代 |
 | `scripts/` | bootstrap、编译、renderer 补丁、打包、签名、校验 |
 | `tests/` | 发布与 router 回归（8 个 `.test.mjs`） |
