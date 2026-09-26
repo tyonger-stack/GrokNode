@@ -131,15 +131,45 @@ function replaceExactlyOnce(source, before, after, label) {
   return source.slice(0, first) + after + source.slice(first + before.length);
 }
 
-// About overlay: the upstream 0.58 renderer chunk already localises the dialog to "Grok Node"
-// + `基于Grok Bot Version ${s.currentVersion} 重建`, but our build reports a patch-suffix
-// version (0.18.0-reconstructed.1). Pin the visible line to the upstream base version 0.18.0
-// so the rebuilt copy reads exactly as documented.
-const ABOUT_VERSION_BEFORE = '`基于Grok Bot Version ${s.currentVersion} 重建`';
-const ABOUT_VERSION_AFTER = '"基于Grok Bot Version 0.18.0 重建"';
+// About overlay: pin the dialog title and version line to the rebuilt copy identity.
+// The upstream 0.58 chunk ships one of two dialects depending on which payload was
+// hydrated at bootstrap time:
+//   (1) Chinese-localised:   title "Grok Node" + version line
+//                            `基于Grok Bot Version ${s.currentVersion} 重建`
+//   (2) English-original:    title "Grok Bot" (Gt.Title children) + version line
+//                            children:`Version ${s.currentVersion}`
+// Both must collapse to the pinned title (Grok Node) + pinned version line so the
+// About dialog reads exactly as documented regardless of which payload variant the
+// build consumed. NOTE: replaceExactlyOnce throws when the anchor is absent, so the
+// registry step applies whichever dialect is present and reports the choice in the
+// provenance record.
+const ABOUT_TITLE_ZH_BEFORE = 'children:"Grok Node"';
+const ABOUT_TITLE_EN_BEFORE = 'children:"Grok Bot"';
+const ABOUT_TITLE_AFTER = 'children:"Grok Node"';
+const ABOUT_VERSION_ZH_BEFORE = 'children:`基于Grok Bot Version ${s.currentVersion} 重建`';
+const ABOUT_VERSION_EN_BEFORE = 'children:`Version ${s.currentVersion}`';
+const ABOUT_VERSION_AFTER = 'children:`基于Grok Bot Version 0.18.0 重建`';
+
+export function patchOriginalAboutTitle(source) {
+  // The chunk carries three "Grok Bot" title-like literals (two non-About surfaces + the
+  // About dialog title). Anchor the replacement on the About-specific Gt.Title call so
+  // only that one is rewritten.
+  const aboutTitleBefore = 'Gt.Title,{style:Ut.heading2,children:"Grok Bot"}';
+  const aboutTitleAfter = `Gt.Title,{style:Ut.heading2,${ABOUT_TITLE_AFTER}}`;
+  return replaceExactlyOnce(source, aboutTitleBefore, aboutTitleAfter, "about title");
+}
 
 export function patchOriginalAboutVersionLine(source) {
-  return replaceExactlyOnce(source, ABOUT_VERSION_BEFORE, ABOUT_VERSION_AFTER, "about version line");
+  if (source.includes(ABOUT_VERSION_ZH_BEFORE)) {
+    return replaceExactlyOnce(source, ABOUT_VERSION_ZH_BEFORE, ABOUT_VERSION_AFTER, "about version line (zh)");
+  }
+  return replaceExactlyOnce(source, ABOUT_VERSION_EN_BEFORE, ABOUT_VERSION_AFTER, "about version line (en)");
+}
+
+export function aboutVersionDialect(source) {
+  if (source.includes(ABOUT_VERSION_ZH_BEFORE)) return "zh";
+  if (source.includes(ABOUT_VERSION_EN_BEFORE)) return "en";
+  return null;
 }
 
 export function patchOriginalSettingsRegistry(source) {
@@ -192,7 +222,6 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const approvalTarget = path.join(assetsRoot, approvalName);
   const approvalCandidate = { name: approvalName, target: approvalTarget, source: await readFile(approvalTarget, "utf8") };
   const changes = [];
-  const ABOUT_VERSION_ANCHOR = ABOUT_VERSION_BEFORE;
   for (const [role, candidate, transform] of [
     ["registry", registryCandidates[0], (source) => patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source))],
     ["panel", panelCandidates[0], patchOriginalSettingsPanel],
@@ -200,12 +229,17 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   ]) {
     const registryExtensions = role === "registry" ? "\n;" + [botTemplateExtension, channelStatusExtension, pluginsDockExtension, webhookCredentialExtension].join("\n;") : "";
     let patched = transform(candidate.source) + registryExtensions;
-    // Pin the About overlay version line to the upstream base version (0.18.0) regardless
-    // of which chunk the upstream About dialog lives in. About lives in the registry chunk
-    // (the same chunk the Settings registry patch already touches), so this is a single
-    // string replacement applied to that chunk only.
-    if (role === "registry" && patched.includes(ABOUT_VERSION_BEFORE)) {
+    let aboutVersionDialectUsed = null;
+    if (role === "registry") {
+      // Fail closed: the registry chunk MUST carry one of the two known About dialects.
+      // Silent pass-through previously shipped an un-pinned version line.
+      const dialect = aboutVersionDialect(patched);
+      if (dialect == null) throw new Error("Original renderer about version line anchor is missing: neither zh nor en dialect found.");
       patched = patchOriginalAboutVersionLine(patched);
+      // Pin the About title too (en-original chunk ships "Grok Bot"; the zh-localised
+      // chunk already ships "Grok Node" so this is a no-op for that dialect).
+      patched = patchOriginalAboutTitle(patched);
+      aboutVersionDialectUsed = dialect;
     }
     await writeFile(candidate.target, patched);
     changes.push({
@@ -213,14 +247,15 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
       path: `dist/renderer/assets/${candidate.name}`,
       original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256(candidate.source) },
       patched: { bytes: Buffer.byteLength(patched), sha256: sha256(patched) },
+      ...(aboutVersionDialectUsed == null ? {} : { aboutVersionDialect: aboutVersionDialectUsed }),
     });
   }
   const record = {
     schemaVersion: 1,
     mode: "original-renderer-settings-extension",
     chunks: changes,
-    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-version-pinned", "webhook-credential-copy"],
-    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "fail-closed-always-allow"],
+    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy"],
+    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "fail-closed-always-allow"],
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-router-extension.json");
   await writeFile(provenancePath, `${JSON.stringify(record, null, 2)}\n`);

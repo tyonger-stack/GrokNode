@@ -114,6 +114,24 @@ test("Router settings and inference packaging expose only local providers", asyn
   assert.match(rendererPatch, /channelStatusExtension/);
   assert.match(rendererPatch, /channel-status-light/);
   assert.match(rendererPatch, /append-channel-status-light/);
+  assert.match(rendererPatch, /buildPluginsDockRendererExtension/);
+  assert.match(rendererPatch, /pluginsDockExtension/);
+  assert.match(rendererPatch, /plugins-footer-dock/);
+  assert.match(rendererPatch, /append-plugins-footer-dock/);
+  // About overlay: the pinned title + version line must survive whichever upstream
+  // payload dialect (zh-localised or en-original) the bootstrap hydrated. The patch
+  // applies the present dialect and records the choice in the provenance; a missing
+  // anchor is a hard build failure, never a silent pass-through.
+  assert.match(rendererPatch, /patchOriginalAboutTitle/);
+  assert.match(rendererPatch, /about-title-pinned/);
+  assert.match(rendererPatch, /pin-about-title/);
+  assert.match(rendererPatch, /patchOriginalAboutVersionLine/);
+  assert.match(rendererPatch, /aboutVersionDialect/);
+  assert.match(rendererPatch, /ABOUT_VERSION_ZH_BEFORE/);
+  assert.match(rendererPatch, /ABOUT_VERSION_EN_BEFORE/);
+  assert.match(rendererPatch, /about-version-pinned/);
+  assert.match(rendererPatch, /pin-about-version-line/);
+  assert.match(rendererPatch, /neither zh nor en dialect found/);
   assert.match(channelStatusEntry, /sand-openrouter-channel-status/);
   assert.match(channelStatusEntry, /getOpenRouterChannelStatus/);
   assert.match(channelStatusEntry, /OpenCodex 通道/);
