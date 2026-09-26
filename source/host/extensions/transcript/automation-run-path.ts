@@ -374,6 +374,11 @@ export class AutomationRunPath {
               args.trigger,
               description,
             );
+            this.tm.runLifecycle.appendTurnFailureNotice(
+              session.id,
+              "automation",
+              error,
+            );
             telemetryOutcome = "error";
           } finally {
             if (telemetryOutcome === "ok")
