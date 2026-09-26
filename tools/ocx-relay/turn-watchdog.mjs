@@ -97,6 +97,16 @@ function checkInflightStalls(now) {
   const startedAt = new Map();
   const finished = new Set();
   for (const line of tail.split("\n")) {
+    if (line.includes("relay listening")) {
+      // Forwarder (re)start: every request still marked in-flight belonged to
+      // the previous process, which died without ever logging their terminal
+      // lines (the 2026-09-26 22:17 restart left started-only entries that
+      // re-alerted forever). Those terminal lines will never appear - drop
+      // the ghosts instead of tracking them.
+      startedAt.clear();
+      finished.clear();
+      continue;
+    }
     const idMatch = line.match(/\bid=([0-9a-f]{8})\b/);
     if (!idMatch) continue;
     const id = idMatch[1];
