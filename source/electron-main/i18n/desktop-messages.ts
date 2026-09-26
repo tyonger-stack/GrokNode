@@ -29,16 +29,16 @@ function resolveSystemLocaleMirror(systemTags: readonly string[]): SupportedLoca
 /**
  * User-visible main-process copy in English + Simplified Chinese.
  *
- * Every Chinese row is byte-sourced from the installed Grok Bot 0.58.0 macOS
+ * Every Chinese row is byte-sourced from the installed Grok Bot 0.59.1 macOS
  * app (bundle com.anysphere.sand), whose main bundle resolves the same
  * message IDs at runtime (dist/electron-main/main-core.cjs, dt._ catalogs).
- * Each row cites its 0.58 message ID so it can be re-checked against that
+ * Each row cites its 0.59.1 message ID so it can be re-checked against that
  * bundle. Nothing here is authored translation.
  *
  * Surfaces covered: the move-to-Applications startup dialog, the avatar
  * open dialog, the attachment download error, and the OS-notification
  * fallback bodies. The notification titles stay English: they interpolate
- * agent names and 0.58 ships no template for them.
+ * agent names and neither 0.58 nor 0.59.1 ships a template for them.
  */
 export interface DesktopLanguageSource {
   readonly getPreference?: () => LanguagePreference;
@@ -186,7 +186,7 @@ const ZH_CN: DesktopMessages = {
   },
 };
 
-// 0.58 main-catalog message IDs backing the ZH rows above, in field order:
+// 0.59.1 main-catalog message IDs backing the ZH rows above, in field order:
 // move: cl1wFU XIG+80 Ztywec WfbkKQ 3/XRac K4NRRh 2pfw/p hDgwB3 zga9sT
 // avatar: Bvll0Q an5hVd cwHmX1 O9LjcE
 // attachments: bBmHTz jpRhoK

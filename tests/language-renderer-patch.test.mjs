@@ -38,7 +38,7 @@ test("language patch anchors against the upstream Settings panel chunk", async (
     assert.ok(patched.includes("r=a.jsx(RLangSection,{})"), "Sa slot must render the new section");
     assert.ok(patched.includes("window.desktop?.language"), "patched section must read window.desktop.language");
     assert.ok(patched.includes('"follow-system"') && patched.includes('"en"') && patched.includes('"zh-CN"'), "patched section must list the three locales");
-    // Row title + Follow System localise with the resolved locale (0.58 parity);
+    // Row title + Follow System localise with the resolved locale (0.59.1 parity);
     // explicit locales keep their endonyms in both locales.
     assert.ok(patched.includes('"语言"'), "patched section must include the zh-CN row title");
     assert.ok(patched.includes('"跟随系统"'), "patched section must include the zh-CN Follow System label");

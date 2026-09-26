@@ -4,7 +4,7 @@ import path from "node:path";
 
 // Main-surface runtime Chinese translation for the upstream 0.18 renderer.
 //
-// Evidence (all strings below are byte-sourced from the installed Grok Bot 0.58.0
+// Evidence (all strings below are byte-sourced from the installed Grok Bot 0.59.1 (re-verified 2026-09-26; five rows cite 0.58 IDs retired in 0.59.1 - ZDIydz nfEdoc mW8qA2 pTn35w 8J32PY - kept because the 0.18 UI still shows those strings)
 // macOS app, bundle com.anysphere.sand, and verified against its running UI):
 //   * English source catalog: dist/renderer/assets/index.eager-app-B8lDj1qR.js
 //     (<id>/<en> entries, 2568 total).

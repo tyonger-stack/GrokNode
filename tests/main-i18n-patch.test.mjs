@@ -33,7 +33,7 @@ test("main-i18n patch appends prelude and branches every pair literal", async ()
   assert.ok(patched.includes("function RLocT("), "branch helper must be appended");
   assert.ok(patched.includes("location.reload"), "language flip must reload the renderer");
   assert.ok(patched.includes("sand.navigateBack"), "discovery anchor must survive");
-  assert.ok(patched.includes('(RLocT("General","通用"))'), "General must branch to 0.58 wording");
+  assert.ok(patched.includes('(RLocT("General","通用"))'), "General must branch to 0.59.1 wording");
   const prelude = patched.slice(patched.indexOf("function RLocFromPref("));
   assert.ok(!prelude.includes("(RLocT("), "prelude itself must not contain branch calls");
 });
@@ -49,7 +49,7 @@ test("main-i18n patch is fail-closed when a pair anchor is missing", async () =>
   assert.throws(() => patchOriginalMainI18n("const anchor=sand.navigateBack;"), /has no anchor/);
 });
 
-test("main-i18n pair table is 0.58-sourced, mode-shaped and gap-disjoint", async () => {
+test("main-i18n pair table is 0.59.1-sourced, mode-shaped and gap-disjoint", async () => {
   const idChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-";
   const seen = new Set();
   for (const [en, zh, id, mode] of MAIN_I18N_PAIRS) {

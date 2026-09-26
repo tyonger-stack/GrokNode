@@ -37,7 +37,7 @@ test("settings-i18n patch inserts prelude and branches every pair literal", asyn
     patched.includes("l=a.jsx(pa,{}),r=null,i=a.jsx(oa,{}),o=a.jsx(va,{})"),
     "Sa slot must stay untouched so the language patch still applies after",
   );
-  assert.ok(patched.includes('(RLocT("Appearance","外观"))'), "Appearance must branch to 0.58 wording");
+  assert.ok(patched.includes('(RLocT("Appearance","外观"))'), "Appearance must branch to 0.59.1 wording");
   assert.ok(!patched.includes('title:"Appearance"'), "raw Appearance title must be gone");
   assert.ok(
     patched.includes("(RLocT(" + JSON.stringify("You're up to date") + "," + JSON.stringify("已是最新版本") + "))"),
@@ -52,7 +52,7 @@ test("settings-i18n patch is fail-closed when a pair anchor is missing", async (
   assert.throws(() => patchOriginalSettingsI18n("const x=1;"), /Settings anchor is missing/);
 });
 
-test("settings-i18n pair table is 0.58-sourced and gap-disjoint", async () => {
+test("settings-i18n pair table is 0.59.1-sourced and gap-disjoint", async () => {
   const idChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-";
   const seen = new Set();
   for (const [en, zh, id] of SETTINGS_I18N_PAIRS) {

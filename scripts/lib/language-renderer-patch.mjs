@@ -22,9 +22,9 @@ const PA_ANCHOR = "function pa(){";
 const SA_SLOT_BEFORE = "l=a.jsx(pa,{}),r=null,i=a.jsx(oa,{}),o=a.jsx(va,{})";
 const SA_SLOT_AFTER = "l=a.jsx(pa,{}),r=a.jsx(RLangSection,{}),i=a.jsx(oa,{}),o=a.jsx(va,{})";
 
-// Labels follow Grok Bot 0.58's Settings → General → Language row: the row
+// Labels follow Grok Bot 0.59.1's Settings → General → Language row: the row
 // title and the "Follow System" option localise with the resolved locale
-// (0.58 chunk-settings catalog: vXIe7J "Language"/"语言",
+// (0.59.1 chunk-settings catalog: vXIe7J "Language"/"语言",
 // Ea4oxV "Follow System"/"跟随系统"), while the explicit locales keep their
 // endonyms ("English" / "简体中文") in both locales. Only en + zh-CN ship,
 // so the resolver below mirrors `resolveSystemLocale` for those two tags.

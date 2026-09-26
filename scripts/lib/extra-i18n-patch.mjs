@@ -4,7 +4,7 @@ import path from "node:path";
 
 // Extra-surface runtime Chinese translation for the upstream 0.18 renderer.
 //
-// Evidence: same 0.58 sources as the Settings/main patches (eager-app EN
+// Evidence: same 0.59.1 sources as the Settings/main patches (eager-app EN
 // catalog + five zh-CN locale chunks; per-pair 0.58 message IDs cited).
 // Covers 14 lazy chunks: plugin marketplace, cloud-agent/PR views, email +
 // slack composers, auto-review approval dialog, question dialog, connector

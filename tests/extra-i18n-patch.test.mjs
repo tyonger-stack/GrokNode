@@ -42,7 +42,7 @@ test("extra-i18n patch is fail-closed when a pair anchor is missing", async () =
   assert.throws(() => patchExtraFile("const probe=syn-anchor;", entry), /has no anchor/);
 });
 
-test("extra-i18n tables are 0.58-sourced, mode-shaped and gap-disjoint", async () => {
+test("extra-i18n tables are 0.59.1-sourced, mode-shaped and gap-disjoint", async () => {
   const idChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-";
   let total = 0;
   assert.ok(EXTRA_I18N_FILES.length >= 10, "must cover the extra surfaces");

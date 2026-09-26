@@ -46,7 +46,7 @@ function atPath(value, path) {
   return path.split(".").reduce((node, key) => node[key], value);
 }
 
-test("desktop messages carry en + zh-CN for every leaf with a cited 0.58 id", async () => {
+test("desktop messages carry en + zh-CN for every leaf with a cited 0.59.1 id", async () => {
   const mod = await loadTsModule("source/electron-main/i18n/desktop-messages.ts");
   const enLeaves = leaves(mod.desktopMessages("en"), "", []);
   const zhLeaves = leaves(mod.desktopMessages("zh-CN"), "", []);
@@ -58,7 +58,7 @@ test("desktop messages carry en + zh-CN for every leaf with a cited 0.58 id", as
     assert.ok(en.length > 0, "en empty: " + leaf);
     assert.ok(zh.length > 0, "zh empty: " + leaf);
     const id = mod.DESKTOP_MESSAGE_IDS[leaf];
-    assert.ok(typeof id === "string" && id.length >= 5, "missing 0.58 id: " + leaf);
+    assert.ok(typeof id === "string" && id.length >= 5, "missing 0.59.1 id: " + leaf);
     for (const ch of id) assert.ok(idChars.includes(ch), "bad id char: " + id);
   }
   assert.equal(Object.keys(mod.DESKTOP_MESSAGE_IDS).length, enLeaves.length, "every leaf needs an id");
@@ -82,7 +82,7 @@ test("desktop locale mirror stays in lock-step with the canonical source", async
   }
 });
 
-test("desktop message zh rows match the 0.58 reference wording", async () => {
+test("desktop message zh rows match the 0.59.1 reference wording", async () => {
   const mod = await loadTsModule("source/electron-main/i18n/desktop-messages.ts");
   const zh = mod.desktopMessages("zh-CN");
   assert.equal(zh.move.title, "将 Grok Bot 移到“应用程序”文件夹");
