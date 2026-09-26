@@ -1,5 +1,9 @@
 import { installApplicationMenu, type ApplicationMenuElectronPort } from "./application-menu.js";
 import { resolveLocale, type LanguagePreference, type SupportedLocale } from "../shared/node/i18n/locale.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { getSandRootDir } from "../host/host-paths.js";
+import { applyChromiumLocaleFromPreference } from "./prefs/chromium-locale.js";
 import { reportDesktopEdgeFailure } from "./desktop-edge-failures.js";
 import { createDevToolsGate, createDevToolsMembershipResolver } from "./devtools-gate.js";
 import { isGrokNodePackagedApp } from "../shared/node/grok-node-identity.js";
@@ -84,7 +88,7 @@ export interface MainBrowserWindow extends WindowStatePersistenceWindow {
 export interface ElectronMainApp {
   readonly isPackaged: boolean;
   disableHardwareAcceleration(): void;
-  readonly commandLine: { readonly appendSwitch: (name: string) => void };
+  readonly commandLine: { readonly appendSwitch: (name: string, value?: string) => void };
   setName?(name: string): void;
   requestSingleInstanceLock(): boolean;
   quit(): void;
@@ -253,6 +257,15 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
   deps.app.disableHardwareAcceleration();
   deps.app.commandLine.appendSwitch("no-sandbox");
   deps.app.commandLine.appendSwitch("disable-gpu");
+  try {
+    applyChromiumLocaleFromPreference({
+      appendSwitch: (name, value) => deps.app.commandLine.appendSwitch(name, value),
+      readFile: (path) => readFileSync(path, "utf8"),
+      settingsPath: join(getSandRootDir(), "settings.json"),
+    });
+  } catch {
+    // Locale sync must never break startup; Chromium falls back to the OS language.
+  }
 
   const isPrimaryInstance = !deps.app.isPackaged || deps.app.requestSingleInstanceLock();
   if (!isPrimaryInstance) deps.app.quit();

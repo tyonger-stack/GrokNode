@@ -11,9 +11,11 @@ export interface SandLanguageState {
 
 /**
  * Bridges the persisted language preference to renderer + main-process
- * subscribers. Unlike theme, language has no native OS sink we need to sync
- * to (Electron 42 has no `app.setLocale`), so the controller is a thin
- * wrapper around the settings store with broadcast plumbing.
+ * subscribers. The controller itself stays a thin wrapper around the settings
+ * store with broadcast plumbing; the Chromium UI locale (`--lang` switch for
+ * context menus and other native strings) is synced separately at startup
+ * from the same store, see chromium-locale.ts (this Electron version has no
+ * `app.setLocale`).
  */
 export class SandLanguageController {
   readonly #settingsStore: SandLanguageSettingsStore;
