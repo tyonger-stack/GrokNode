@@ -1,6 +1,13 @@
-import { createHash } from "node:crypto";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+import {
+  NL,
+  RUNTIME_LINES,
+  applyAnchored,
+  applyPair,
+  sha256Hex,
+} from "./i18n-patch-engine.mjs";
 
 // Main-surface runtime Chinese translation for the upstream 0.18 renderer.
 //
@@ -34,6 +41,10 @@ import path from "node:path";
 // Runtime model: shared with the Settings patch (RLocFromPref/RLocT, reload
 // on locale flip). Both preludes are file-local; the two target chunks never
 // share scope.
+// Match shapes come from the shared engine (scripts/lib/i18n-patch-engine.mjs)
+// and are span-aware: single-quoted containers, template text and comments
+// never match. The permission tri-state resolver (switch-case returns) is
+// handled whole-block by MAIN_I18N_ANCHORED (exact-once, fail-closed).
 
 export const MAIN_I18N_PAIRS = [
   ["About", "关于", "uyJsf6", "FULL"],
@@ -674,11 +685,9 @@ export const MAIN_I18N_GAPS = [
   ["Clear", "zero-pattern-hit"],
   ["Welcome to Grok Bot", "zero-pattern-hit"],
   ["Link", "zero-pattern-hit"],
-  ["Ask every time", "zero-pattern-hit"],
   ["Settings · Appearance", "zero-pattern-hit"],
   ["Click Again to Confirm", "zero-pattern-hit"],
   ["Your computer is on the latest version", "zero-pattern-hit"],
-  ["Never allow", "zero-pattern-hit"],
   ["Unassigned", "zero-pattern-hit"],
   ["Authentication required", "zero-pattern-hit"],
   ["Error", "manual-drop:sentry-envelope-type-tag"],
@@ -686,85 +695,7 @@ export const MAIN_I18N_GAPS = [
 
 const DISCOVERY_ANCHOR = "sand.navigateBack";
 
-const DISPLAY_PROPS = [
-  "aria-label", "confirmLabel", "cancelLabel", "pendingLabel", "idleLabel",
-  "submitLabel", "subtitle", "description", "children", "label", "title",
-  "content", "placeholder", "text", "header", "caption", "message",
-];
-
-const NL = String.fromCharCode(10);
-
-const RUNTIME_LINES = [
-  'function RLocFromPref(pref){',
-  'if(pref==="zh-CN")return "zh-CN";',
-  'if(pref==="en")return "en";',
-  'try{',
-  'var tags=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language];',
-  'for(var i=0;i<tags.length;i++){var t=String(tags[i]||"").trim().toLowerCase();',
-  'if(t==="zh"||t.indexOf("zh-")===0)return "zh-CN";',
-  'if(t==="en"||t.indexOf("en-")===0)return "en";}',
-  '}catch(_e){}',
-  'return "en";}',
-  'function RLocBoot(){try{var s=window.desktop&&window.desktop.language;var p=s&&s.initial&&s.initial.preference;return RLocFromPref(p);}catch(_e){}return "en";}',
-  'function RLocT(en,zh){return RLocBoot()==="zh-CN"?zh:en;}',
-  'try{(function(){var s=window.desktop&&window.desktop.language;if(!s||typeof s.onChanged!=="function")return;var boot=RLocBoot();s.onChanged(function(st){var loc=RLocFromPref(st&&st.preference);if(loc!==boot){try{location.reload();}catch(_e){}}});})();}catch(_e){}'
-];
-
 const RUNTIME_PRELUDE = NL + RUNTIME_LINES.join(NL) + NL;
-
-function sha256(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-function isIdentifierChar(ch) {
-  return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch === "_" || ch === "$";
-}
-
-function replaceAllCounted(source, search, replacement) {
-  const hits = source.split(search).length - 1;
-  return { patched: source.split(search).join(replacement), hits };
-}
-
-function applyPair(source, en, zh, mode) {
-  const search = JSON.stringify(en);
-  const replacement = "(RLocT(" + JSON.stringify(en) + "," + JSON.stringify(zh) + "))";
-  let patched = source;
-  let hits = 0;
-  const take = (result) => { patched = result.patched; hits += result.hits; };
-  for (const prop of DISPLAY_PROPS) {
-    if (mode === "PROP" || mode === "PROP_COLON" || mode === "FULL") {
-      take(replaceAllCounted(patched, prop + ":" + search, prop + ":" + replacement));
-    }
-  }
-  if (mode === "FULL") {
-    take(replaceAllCounted(patched, "?" + search, "?" + replacement));
-    take(replaceAllCounted(patched, "Error(" + search, "Error(" + replacement));
-    take(replaceAllCounted(patched, "oTe(" + search, "oTe(" + replacement));
-  }
-  if (mode === "FULL" || mode === "PROP_COLON") {
-    let cursor = 0;
-    let out = "";
-    let colonHits = 0;
-    const needle = ":" + search;
-    while (true) {
-      const idx = patched.indexOf(needle, cursor);
-      if (idx < 0) break;
-      const prev = idx > 0 ? patched[idx - 1] : "";
-      if (!isIdentifierChar(prev)) {
-        out += patched.slice(cursor, idx) + ":" + replacement;
-        colonHits += 1;
-      } else {
-        out += patched.slice(cursor, idx + needle.length);
-      }
-      cursor = idx + needle.length;
-    }
-    out += patched.slice(cursor);
-    patched = out;
-    hits += colonHits;
-  }
-  if (hits === 0) throw new Error("Main i18n pair has no anchor in the renderer chunk: " + en);
-  return { patched, hits };
-}
 
 export function patchOriginalMainI18n(source) {
   let patched = source + RUNTIME_PRELUDE;
@@ -774,8 +705,27 @@ export function patchOriginalMainI18n(source) {
     patched = result.patched;
     applied.push({ en, id, mode, hits: result.hits });
   }
-  return { patched, applied };
+  const anchored = [];
+  for (const entry of MAIN_I18N_ANCHORED) {
+    patched = applyAnchored(patched, entry.anchor, entry.replacement);
+    anchored.push({ id: entry.id, note: entry.note });
+  }
+  return { patched, applied, anchored };
 }
+
+// Whole-block replacements for copy the pair shapes cannot express.
+// The permission tri-state resolver returns its labels from switch-case
+// arms (no display-prop, ternary, throw or expression-colon shape matches),
+// so the whole function is anchored byte-exact (fail-closed exact-once).
+// All three zh forms are byte-sourced from the 0.59.1 catalog IDs cited.
+export const MAIN_I18N_ANCHORED = [
+  {
+    id: "wvd4WD/NoKBgy/6CTZeX",
+    note: "permission-tri-state-resolver",
+    anchor: "function XGn(n){switch(n){case\"never\":return\"Never allow\";case\"always\":return\"Always allow\";case\"ask\":return\"Ask every time\"}}",
+    replacement: "function XGn(n){switch(n){case\"never\":return(RLocT(\"Never allow\",\"从不允许\"));case\"always\":return(RLocT(\"Always allow\",\"始终允许\"));case\"ask\":return(RLocT(\"Ask every time\",\"每次询问\"))}}",
+  },
+];
 
 export async function applyOriginalRendererMainI18n({ stageRoot }) {
   const assetsRoot = path.join(stageRoot, "dist", "renderer", "assets");
@@ -792,7 +742,7 @@ export async function applyOriginalRendererMainI18n({ stageRoot }) {
     throw new Error("Expected one main shell chunk for main-i18n patch, found " + candidates.length + ".");
   }
   const candidate = candidates[0];
-  const { patched, applied } = patchOriginalMainI18n(candidate.source);
+  const { patched, applied, anchored } = patchOriginalMainI18n(candidate.source);
   await writeFile(candidate.target, patched);
   const totalReplacements = applied.reduce((sum, row) => sum + row.hits, 0);
   const record = {
@@ -801,13 +751,14 @@ export async function applyOriginalRendererMainI18n({ stageRoot }) {
     chunks: [{
       role: "main-shell",
       path: "dist/renderer/assets/" + candidate.name,
-      original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256(candidate.source) },
-      patched: { bytes: Buffer.byteLength(patched), sha256: sha256(patched) },
+      original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256Hex(candidate.source) },
+      patched: { bytes: Buffer.byteLength(patched), sha256: sha256Hex(patched) },
       pairsApplied: applied.length,
       totalReplacements,
+      anchoredApplied: anchored,
     }],
     features: ["main-shell-chinese"],
-    transformations: ["main-i18n-prelude-append", "main-i18n-pattern-branches"],
+    transformations: ["main-i18n-prelude-append", "main-i18n-pattern-branches", "main-i18n-anchored-blocks"],
     gaps: MAIN_I18N_GAPS,
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-main-i18n-extension.json");

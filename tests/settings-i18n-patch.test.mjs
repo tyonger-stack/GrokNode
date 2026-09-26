@@ -13,6 +13,7 @@ import {
 } from "../scripts/lib/settings-i18n-patch.mjs";
 
 const NL = String.fromCharCode(10);
+const BT = String.fromCharCode(96);
 
 // Synthetic upstream Settings panel slice. Every pair EN literal is embedded
 // once as a title attribute so the test proves each row applies; the pa
@@ -22,13 +23,19 @@ function baseSource() {
   const rows = SETTINGS_I18N_PAIRS.map((pair) => "x({title:" + JSON.stringify(pair[0]) + "})");
   rows.unshift("function pa(){return a.jsx(re,{})}");
   rows.push("l=a.jsx(pa,{}),r=null,i=a.jsx(oa,{}),o=a.jsx(va,{})");
+  rows.push("f=e!=null?" + BT + "Auto-detect (${ze(e)})" + BT + ":" + JSON.stringify("Auto-detect"));
+  rows.push("a.jsx(Le,{children:'Write one short, natural-language rule for each action. \"Ask first\" takes priority if rules conflict.'})");
   return rows.join(NL);
 }
 
 test("settings-i18n patch inserts prelude and branches every pair literal", async () => {
-  const { patched, applied } = patchOriginalSettingsI18n(baseSource());
+  const { patched, applied, anchored } = patchOriginalSettingsI18n(baseSource());
   assert.equal(applied.length, SETTINGS_I18N_PAIRS.length);
-  for (const row of applied) assert.equal(row.hits, 1, "pair must hit exactly once in fixture: " + row.en);
+  for (const row of applied) assert.ok(row.hits >= 1, "pair must hit at least once in fixture: " + row.en);
+  assert.equal(anchored.length, 2, "both whole-block anchors must apply");
+  assert.ok(patched.includes("自动检测（"), "tz combo must branch to the 0.59.1 fullwidth-paren form");
+  assert.ok(patched.includes("规则冲突时，“先询问”优先。"), "rule-hint container must branch to NFRGrQ wording");
+  assert.ok(!patched.includes("children:'Write one short"), "raw single-quoted rule-hint container must be gone");
   assert.ok(patched.includes("function RLocFromPref("), "locale resolver must be inserted");
   assert.ok(patched.includes("function RLocT("), "branch helper must be inserted");
   assert.ok(patched.includes("location.reload"), "language flip must reload the renderer");
@@ -98,4 +105,18 @@ test("settings-i18n stage application rejects ambiguous chunks", async () => {
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
+});
+
+test("settings skips inner container quotes but branches the dropdown value", async () => {
+  const container = "'Rule one. \"Ask first\" takes priority over the rest.'";
+  const rows = SETTINGS_I18N_PAIRS.map((pair) => "x({title:" + JSON.stringify(pair[0]) + "})");
+  rows.unshift("function pa(){return a.jsx(re,{})}");
+  rows.push("a.jsx(Le,{children:" + container + "})");
+  rows.push("f=e!=null?" + BT + "Auto-detect (${ze(e)})" + BT + ":" + JSON.stringify("Auto-detect"));
+  rows.push("a.jsx(Le,{children:'Write one short, natural-language rule for each action. \"Ask first\" takes priority if rules conflict.'})");
+  const { patched, applied } = patchOriginalSettingsI18n(rows.join(NL));
+  assert.equal(applied.length, SETTINGS_I18N_PAIRS.length);
+  const ask = applied.find((row) => row.en === "Ask first");
+  assert.equal(ask.hits, 1, "only the dropdown value may branch, never the container quote");
+  assert.ok(patched.includes(container), "single-quoted container must stay byte-identical");
 });

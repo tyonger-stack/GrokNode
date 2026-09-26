@@ -1,4 +1,9 @@
-import { createHash } from "node:crypto";
+import {
+  NL,
+  RUNTIME_LINES,
+  applyPair,
+  sha256Hex,
+} from "./i18n-patch-engine.mjs";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -303,85 +308,7 @@ export const EXTRA_I18N_FILES = [
 ];
 
 
-const DISPLAY_PROPS = [
-  "aria-label", "confirmLabel", "cancelLabel", "pendingLabel", "idleLabel",
-  "submitLabel", "subtitle", "description", "children", "label", "title",
-  "content", "placeholder", "text", "header", "caption", "message",
-];
-
-const NL = String.fromCharCode(10);
-
-const RUNTIME_LINES = [
-  'function RLocFromPref(pref){',
-  'if(pref==="zh-CN")return "zh-CN";',
-  'if(pref==="en")return "en";',
-  'try{',
-  'var tags=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language];',
-  'for(var i=0;i<tags.length;i++){var t=String(tags[i]||"").trim().toLowerCase();',
-  'if(t==="zh"||t.indexOf("zh-")===0)return "zh-CN";',
-  'if(t==="en"||t.indexOf("en-")===0)return "en";}',
-  '}catch(_e){}',
-  'return "en";}',
-  'function RLocBoot(){try{var s=window.desktop&&window.desktop.language;var p=s&&s.initial&&s.initial.preference;return RLocFromPref(p);}catch(_e){}return "en";}',
-  'function RLocT(en,zh){return RLocBoot()==="zh-CN"?zh:en;}',
-  'try{(function(){var s=window.desktop&&window.desktop.language;if(!s||typeof s.onChanged!=="function")return;var boot=RLocBoot();s.onChanged(function(st){var loc=RLocFromPref(st&&st.preference);if(loc!==boot){try{location.reload();}catch(_e){}}});})();}catch(_e){}'
-];
-
 const RUNTIME_PRELUDE = NL + RUNTIME_LINES.join(NL) + NL;
-
-function sha256(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-function isIdentifierChar(ch) {
-  return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch === "_" || ch === "$";
-}
-
-function replaceAllCounted(source, search, replacement) {
-  const hits = source.split(search).length - 1;
-  return { patched: source.split(search).join(replacement), hits };
-}
-
-function applyPair(source, en, zh, mode) {
-  const search = JSON.stringify(en);
-  const replacement = "(RLocT(" + JSON.stringify(en) + "," + JSON.stringify(zh) + "))";
-  let patched = source;
-  let hits = 0;
-  const take = (result) => { patched = result.patched; hits += result.hits; };
-  for (const prop of DISPLAY_PROPS) {
-    if (mode === "PROP" || mode === "PROP_COLON" || mode === "FULL") {
-      take(replaceAllCounted(patched, prop + ":" + search, prop + ":" + replacement));
-    }
-  }
-  if (mode === "FULL") {
-    take(replaceAllCounted(patched, "?" + search, "?" + replacement));
-    take(replaceAllCounted(patched, "Error(" + search, "Error(" + replacement));
-    take(replaceAllCounted(patched, "oTe(" + search, "oTe(" + replacement));
-  }
-  if (mode === "FULL" || mode === "PROP_COLON") {
-    let cursor = 0;
-    let out = "";
-    let colonHits = 0;
-    const needle = ":" + search;
-    while (true) {
-      const idx = patched.indexOf(needle, cursor);
-      if (idx < 0) break;
-      const prev = idx > 0 ? patched[idx - 1] : "";
-      if (!isIdentifierChar(prev)) {
-        out += patched.slice(cursor, idx) + ":" + replacement;
-        colonHits += 1;
-      } else {
-        out += patched.slice(cursor, idx + needle.length);
-      }
-      cursor = idx + needle.length;
-    }
-    out += patched.slice(cursor);
-    patched = out;
-    hits += colonHits;
-  }
-  if (hits === 0) throw new Error("Extra i18n pair has no anchor in the renderer chunk: " + en);
-  return { patched, hits };
-}
 
 export function patchExtraFile(source, entry) {
   let patched = source + RUNTIME_PRELUDE;
@@ -429,8 +356,8 @@ export async function applyOriginalRendererExtraI18n({ stageRoot }) {
       role: "extra-surface",
       expectedFile: entry.file,
       path: "dist/renderer/assets/" + candidate.name,
-      original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256(candidate.source) },
-      patched: { bytes: Buffer.byteLength(patched), sha256: sha256(patched) },
+      original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256Hex(candidate.source) },
+      patched: { bytes: Buffer.byteLength(patched), sha256: sha256Hex(patched) },
       pairsApplied: applied.length,
       totalReplacements: applied.reduce((sum, row) => sum + row.hits, 0),
     });

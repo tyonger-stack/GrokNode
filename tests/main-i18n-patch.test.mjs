@@ -22,13 +22,18 @@ function baseSource() {
   rows.unshift("const anchor=sand.navigateBack;");
   rows.push("y=s?" + JSON.stringify("Cancel") + ":z;");
   rows.push("d={46:" + JSON.stringify("Delete") + "};");
+  rows.push("function XGn(n){switch(n){case\"never\":return\"Never allow\";case\"always\":return\"Always allow\";case\"ask\":return\"Ask every time\"}}");
   return rows.join(NL);
 }
 
 test("main-i18n patch appends prelude and branches every pair literal", async () => {
-  const { patched, applied } = patchOriginalMainI18n(baseSource());
+  const { patched, applied, anchored } = patchOriginalMainI18n(baseSource());
   assert.equal(applied.length, MAIN_I18N_PAIRS.length);
   for (const row of applied) assert.ok(row.hits >= 1, "pair must hit at least once: " + row.en);
+  assert.equal(anchored.length, 1, "permission tri-state resolver must anchor");
+  assert.ok(patched.includes("从不允许"), "XGn never-arm must branch to wvd4WD wording");
+  assert.ok(patched.includes("每次询问"), "XGn ask-arm must branch to 6CTZeX wording");
+  assert.ok(!patched.includes('return"Never allow"'), "raw XGn never-arm must be gone");
   assert.ok(patched.includes("function RLocFromPref("), "locale resolver must be appended");
   assert.ok(patched.includes("function RLocT("), "branch helper must be appended");
   assert.ok(patched.includes("location.reload"), "language flip must reload the renderer");
