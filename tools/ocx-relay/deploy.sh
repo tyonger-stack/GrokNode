@@ -9,7 +9,7 @@ DST="$HOME/.grokbot/ocx-relay"
 TS=$(date +%Y%m%d-%H%M%S)
 
 mkdir -p "$DST"
-for f in mac-forwarder.mjs turn-watchdog.mjs; do
+for f in mac-forwarder.mjs turn-watchdog.mjs container-relay.py; do
   if [ -f "$DST/$f" ]; then
     cp "$DST/$f" "$DST/$f.bak-$TS"
     echo "backed up: $DST/$f.bak-$TS"
@@ -33,7 +33,10 @@ Watchdog one-shot self-test:
 
 Watchdog install (user must run; AI sandboxes cannot bootstrap launchd):
   cp "$HOME/.grokbot/ocx-relay/com.groknode.turn-watchdog.plist" ~/Library/LaunchAgents/
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.groknode.turn-watchdog.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.groknode.turn-watchdog.plist
+
+After a container rebuild (docker ps Up time reset), re-push the 480s relay:
+  tools/ocx-relay/container-relay-push.sh
 
 Rollback: copy the .bak-$TS file back over mac-forwarder.mjs and restart.
 EOF
