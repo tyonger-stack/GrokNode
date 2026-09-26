@@ -7,8 +7,11 @@
 //      `POST ... -> <code> ... id=X` completion: an inference request is
 //      hanging at the upstream.
 //   2. container host log vs transcripts — a `spawned worker for agent <id>`
-//      line seen recently while that agent's transcript has not been written
-//      for TRANSCRIPT_STALL_MS: the bot's turn started but produced nothing.
+//      line seen recently while that agent's transcript has had NO write since
+//      the spawn sighting (tolerating polling lag): the dispatched turn has
+//      produced nothing for TRANSCRIPT_STALL_MS. Silence is measured from the
+//      spawn, never from the previous turn's last write — idle time between
+//      turns must not read as a stall.
 //
 // Alerts go to watchdog-alerts.log, optionally to macOS notifications and to
 // ALERT_COMMAND (a shell template with {agent} {name} {message} placeholders,
@@ -32,8 +35,9 @@ const AGENT_ROOT = process.env.AGENT_ROOT || "/home/box/sand-data/agents";
 
 const INTERVAL_MS = Number(process.env.WATCH_INTERVAL_MS ?? "120000");
 const INFLIGHT_STALL_MS = Number(process.env.INFLIGHT_STALL_MS ?? "600000");
-const TRANSCRIPT_STALL_MS = Number(process.env.TRANSCRIPT_STALL_MS ?? "1200000");
+const TRANSCRIPT_STALL_MS = Number(process.env.TRANSCRIPT_STALL_MS ?? "600000");
 const SPAWN_WINDOW_MS = Number(process.env.SPAWN_WINDOW_MS ?? "1800000");
+const SPAWN_READ_LAG_MS = Number(process.env.SPAWN_READ_LAG_MS ?? "180000");
 const ALERT_COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS ?? "1800000");
 const LOG_TAIL_BYTES = Number(process.env.LOG_TAIL_BYTES ?? String(256 * 1024));
 const RUN_ONCE = process.env.RUN_ONCE === "1";
@@ -157,10 +161,22 @@ async function checkStalledTurns(now) {
     }
     const mtime = mtimes.get(agentId);
     if (mtime === undefined) continue;
-    const silentFor = now - mtime;
-    if (silentFor >= TRANSCRIPT_STALL_MS) {
+    // The dispatched turn produced output: its transcript write landed at or
+    // after the spawn sighting (within the polling-lag tolerance). Healthy —
+    // stop tracking so a completed turn followed by idle time never alerts.
+    if (mtime >= seenAt - SPAWN_READ_LAG_MS) {
+      delete state.lastSpawnSeen[agentId];
+      continue;
+    }
+    // Stall: the turn dispatched at seenAt has produced NOTHING for
+    // TRANSCRIPT_STALL_MS, measured from the spawn sighting. v1 measured
+    // silence from the previous transcript write, which is usually idle time
+    // BEFORE the turn — that made every routine wake-up on an idle bot look
+    // like a 60+ minute stall (the 2026-09-26 false-alarm storm).
+    const turnAge = now - seenAt;
+    if (turnAge >= TRANSCRIPT_STALL_MS) {
       const name = await agentName(agentId);
-      alert(`stall:${agentId}`, `bot「${name}」(${agentId.slice(0, 8)}) 疑似卡死：回合已派出但 transcript 已 ${Math.round(silentFor / 60000)} 分钟无写入（最后活动 ${new Date(mtime).toLocaleString()}）。`, { agent: agentId, name });
+      alert(`stall:${agentId}`, `bot「${name}」(${agentId.slice(0, 8)}) 疑似卡死：回合派出后 ${Math.round(turnAge / 60000)} 分钟 transcript 零写入（该 bot 最后一次写入 ${new Date(mtime).toLocaleString()}，早于本回合派出）。`, { agent: agentId, name });
     }
   }
 }
