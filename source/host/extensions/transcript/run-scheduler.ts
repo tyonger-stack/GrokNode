@@ -34,6 +34,10 @@ export interface SchedulerOptions {
   watchdogMs: number;
   watchdogGraceMs: number;
   interruptWedgedRun(agentId: string): boolean;
+  /** When the active run is legitimately paused for the user (confirmation
+   * card, selection), waiting is not a stall: the watchdog defers instead of
+   * interrupting. Mirrors OpenMausBot's turn-watchdog waiting exemption. */
+  isAwaitingUserSelection?(agentId: string): boolean;
   telemetry: {
     onAccepted(event: Record<string, any>): void;
     onDequeued(event: Record<string, any>): void;
@@ -317,6 +321,27 @@ export class SandRunScheduler {
     if (active == null || head == null || waited == null) return;
     if (waited < this.options.watchdogMs) {
       this.armWatchdog(agentId, queue);
+      return;
+    }
+    if (this.options.isAwaitingUserSelection?.(agentId) === true) {
+      // The active run is paused for the user (confirmation card, selection).
+      // Waiting is not a stall: re-arm a fresh window instead of interrupting,
+      // and keep emitting telemetry so the deferral stays auditable.
+      this.options.telemetry.onWatchdog({
+        agentId,
+        stage: "deferred_awaiting_user",
+        activeLane: active.item.lane,
+        activeSource: active.item.source,
+        activeRuntimeMs: this.clock.now() - active.startedAtMs,
+        waitingUserAgeMs: this.clock.now() - head.enqueuedAtMs,
+      });
+      queue.watchdogTimer = this.clock.schedule(
+        this.options.watchdogMs,
+        () => {
+          delete queue.watchdogTimer;
+          this.onWatchdogFired(agentId, queue);
+        },
+      );
       return;
     }
     let interrupted = false;

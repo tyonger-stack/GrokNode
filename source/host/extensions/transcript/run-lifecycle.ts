@@ -75,6 +75,8 @@ export class RunLifecycle {
           ),
           interruptWedgedRun: (agentId) =>
             this.tm.runnerRegistry.interruptWedgedRunForWatchdog(agentId),
+          isAwaitingUserSelection: (agentId) =>
+            this.tm.runnerRegistry.isAwaitingUserSelection(agentId),
           telemetry: {
             onAccepted: (event) =>
               this.tm.telemetry.reportQueueAccepted({
