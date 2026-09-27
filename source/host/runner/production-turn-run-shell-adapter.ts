@@ -410,11 +410,10 @@ export function createProductionTurnRunShellAdapter(
           // display state; handled as part of the normal update flow.
           input.emitUpdate({ type: "retrying" });
         },
-        reportTurnRetry: () => {
-          // Telemetry sink (runner.setTurnRetryHandler) lives on the runner,
-          // which owns this shell - not reachable from here without an extra
-          // wiring hop. The retrying update plus the forwarder log keep the
-          // observability floor until that hop is added.
+        reportTurnRetry: (info) => {
+          // Mirror the runner's turn-retry telemetry path (runner-registry
+          // setTurnRetryHandler) over the update flow this shell can reach.
+          input.emitUpdate({ type: "turn-retry", ...info });
         },
       };
       const attempt = createStreamAttempt(attemptHost);

@@ -14,6 +14,8 @@ import {
   type NamedActivityHoldState,
 } from "../../sand-activity.js";
 import { describeAgentRunError } from "./agent-run-error.js";
+import { isTurnInterruptedFailure } from "./turn-runtime.js";
+import { ToolRepeatDetector } from "./tool-repeat-detector.js";
 import { SandRunScheduler, type RunLane } from "./run-scheduler.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
 
@@ -46,6 +48,12 @@ const TURN_FAILURE_NOTICE_SOURCES = new Set([
   "event",
 ]);
 
+/** Tool name for the detector: falls back to the update id when the name is
+ * absent so sparse tool streams still count. */
+function toolCallKey(toolCall: { name?: string }): string {
+  return toolCall.name ?? "unknown-tool";
+}
+
 export class RunLifecycle {
   readonly inFlightRunCounts = new Map<any, number>();
   readonly runWindowStartedAt = new Map<any, number>();
@@ -55,6 +63,9 @@ export class RunLifecycle {
   readonly runScheduler: SandRunScheduler | null;
   readonly composingMessageSessionIds = new Set<string>();
   readonly retryingSessionIds = new Set<string>();
+  /** Observes tool-call loops per session (OpenMausBot RepeatDetector
+   * equivalent). Observes only - a suspect hit never interrupts the turn. */
+  readonly toolRepeatDetector = new ToolRepeatDetector();
   readonly sessionActivities = new Map<string, SandAgentActivity>();
   readonly sessionActivityHolds = new Map<string, NamedActivityHoldState>();
   readonly lastRequestIdBySession = new Map<string, string>();
@@ -180,6 +191,11 @@ export class RunLifecycle {
       const session =
         active?.id === agentId ? active : sessions?.liveSessions?.get(agentId);
       if (session == null) return;
+      // A turn the user (or the system) interrupted must never come back as a
+      // failure notice. Interrupts arrive as thrown aborts or as abort-ish
+      // reasons, not as clean returns, so filter them here rather than
+      // enumerating every interrupt call site.
+      if (isTurnInterruptedFailure(error)) return;
       const description = describeAgentRunError(
         error instanceof Error ? error : new Error(String(error)),
       );
@@ -194,9 +210,23 @@ export class RunLifecycle {
           "). Send a message to run it again.",
         timestampMs: Date.now(),
       };
-      if (active?.id === agentId) this.tm.appendEntry(notice);
-      else {
+      // The notice kind renders in the live roster, but journal/jsonl lines
+      // only accept the legacy message envelope - mirror an equivalent
+      // assistant text entry so the failure stays visible to the turn
+      // watchdog and any transcript reader (no transcript-mirror plumbing).
+      const journalMirror = {
+        kind: "message" as const,
+        role: "assistant" as const,
+        content: "⚠️ " + notice.text,
+        id: notice.id + "-journal",
+        timestampMs: notice.timestampMs,
+      };
+      if (active?.id === agentId) {
+        this.tm.appendEntry(notice);
+        this.tm.appendEntry(journalMirror);
+      } else {
         session.db?.appendTranscriptEntry?.(notice);
+        session.db?.appendTranscriptEntry?.(journalMirror);
         void this.tm.roster?.emitAgentUpdate(agentId);
       }
     } catch {
@@ -418,6 +448,16 @@ export class RunLifecycle {
       )
         return;
       this.setSessionRetrying(session.id, true);
+    } else if (update.type === "turn-retry") {
+      // Reaches the same sink the runner's own retry path uses: attempt,
+      // outcome and pacing flow into turn-retry telemetry without a new API.
+      const { type, ...info } = update as { type: string } & Record<string, unknown>;
+      try {
+        this.tm.telemetry.reportTurnRetry({
+          conversationId: session.id,
+          ...info,
+        });
+      } catch {}
     } else if (
       [
         "text-delta",
@@ -428,7 +468,33 @@ export class RunLifecycle {
       ].includes(update.type)
     )
       this.setSessionRetrying(session.id, false);
+    const toolCall = update as {
+      type: string;
+      name?: string;
+      status?: string;
+      args?: unknown;
+    };
+    if (update.type === "tool-call" && toolCall.status === "completed") {
+      const suspect = this.toolRepeatDetector.record(
+        session.id,
+        toolCallKey(toolCall),
+        toolCall.args,
+      );
+      if (suspect != null) {
+        try {
+          this.tm.telemetry.reportTurnRetry({
+            conversationId: session.id,
+            outcome: "loop_suspected",
+            attempt: suspect.count,
+            maxAttempts: suspect.threshold,
+            toolName: toolCall.name,
+          });
+        } catch {}
+      }
+    }
+    if (update.type === "turn-ended") this.toolRepeatDetector.settle(session.id);
   }
+
   setSessionActivity(
     sessionId: string,
     activity: SandAgentActivity | undefined,
