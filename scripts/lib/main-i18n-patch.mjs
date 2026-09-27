@@ -482,6 +482,7 @@ export const MAIN_I18N_061_PAIRS = [
 // These 0.18-only labels have no counterpart in the installed 0.61.0
 // English catalog. The user explicitly authorized direct translations.
 export const MAIN_I18N_LOCAL_PAIRS = [
+  ["Booting up the computer", "正在启动电脑", "FULL"],
   ["View agent settings", "查看智能体设置", "PROP"],
   ["Agent settings", "智能体设置", "PROP"],
   ["Create Routine", "创建例行任务", "PROP"],
