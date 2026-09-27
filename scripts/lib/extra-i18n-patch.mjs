@@ -315,24 +315,6 @@ export const EXTRA_I18N_FILES = [
     gaps: [
     ],
   },
-  {
-    // About/usage panel: client update toggle, usage summary and computer
-    // routing status. 0.61 zh-CN catalog IDs cited per row.
-    file: "index-BlqerJhg.js",
-    anchors: ["showing the last known values", "Automatically update your client"],
-    pairs: [
-      ["Automatically update your client while you're away.", "在你离开时自动更新客户端", "4vprnG", "PROP"],
-      ["Couldn’t load usage.", "无法加载用量", "QtkApk", "PROP"],
-      ["Couldn’t refresh usage — showing the last known values.", "无法刷新用量，正在显示最近一次已知数据", "hCwN14", "PROP"],
-      ["Enabled, but not routing yet — waiting for Grok Bot's computer to connect with egress enabled.", "已启用但尚未转发，正在等待 Grok Bot 的电脑在启用出站的情况下接入", "kxkRej", "PANEL"],
-      ["No included usage available on your plan right now.", "你的计划目前没有可用的附带用量", "e5AdX2", "PANEL"],
-      ["Not available.", "不可用", "0BvlbM", "FULL"],
-      ["Security keys from Grok Bot's computer aren't supported on this platform yet.", "此平台暂不支持来自 Grok Bot 电脑的安全密钥", "TmxDiI", "FULL"],
-    ],
-    gaps: [
-      ["connecting", "zero-pattern-hit"],
-    ],
-  },
 ];
 
 
