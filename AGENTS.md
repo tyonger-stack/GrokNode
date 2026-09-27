@@ -133,7 +133,17 @@ npm run frontend:build  # 构建可读 renderer 重建
 - feishu ingress 用 macOS CommonCrypto（`ctypes.CDLL("/usr/lib/libSystem.B.dylib")`），**macOS-only**，在 ubuntu runner 必失败。
 - 模型可用性变了：`qianwen/qwen3.8-max` 月度配额已耗尽（`Throttling.AllocationQuota`，0.039s 返回）；`zai/glm-5.3-flash` 实测 tool_calls 参数完整（`{"city":"北京"}`）。**本文件早前记的「glm-5.3-flash 调工具但 input 为空」已不复现**，选模型前先实测。
 
-**未结（bot 稳定性主线）**：2026-09-28 01:56 实测——中继最后一次真实 bot 推理是 `2026-09-27T12:29:29Z`，此后 5.5 小时只有 2 分钟一次的 `/v1/models` 探针、**零推理请求**；watchdog 持续报「回合派出后 10 分钟 transcript 零写入」，bot 名单在轮换（指挥官 / 行业研究分析师v4 / Notion 记录员 / Gmail 助手），最后写入都停在 09-27 17:12。**模型假设已被 A/B 证伪**，watchdog 是 notify-only（`turn-watchdog.mjs:2` 明说不碰 bot），所以"清理卡死 bot"解决不了"没有新回合"。下一步查容器内 host 的回合派发与推理调用之间那一段。
+**bot 稳定性根因（2026-09-28 定位并修复）**：症状是中继 5.5 小时零推理、watchdog 持续报「派出后 10 分钟 transcript 零写入」、bot 名单轮换、容器内 `active workers` 从 4 堆到 8。**根因不在模型、也不在 forwarder**：容器内 L7 中继的 `RELAY_UPSTREAM_HOST` 仍指向 **192.168.3.52**（Mac 换地址前的旧 IP，当前 en0 是 192.168.5.216）。该地址 TCP 0.01s 连上但**一个字节都不回**，于是 host 侧 AI SDK 报 `model provider did not start responding within 150s/300s`，worker 卡死不释放，新回合排在后面——"卡死 bot"只是这个链条的末端症状。
+
+- 判定手法：host 日志 `/tmp/sand-host.log` 看回合是否在派发 → forwarder 日志看请求是否到达 → 容器内对比 `/proc/<relay-pid>/environ` 的上游地址与 `ifconfig` 的实际接口。**Mac 侧健康探针走的是 Mac 自己的 10100，绕开了容器这一跳，所以它一直报绿——这就是这个 bug 能潜伏数小时的原因。**
+- 修复：`RELAY_UPSTREAM_HOST="$(ipconfig getifaddr en0)" tools/ocx-relay/container-relay-push.sh`。修复后 forwarder 立即出现连续 200（15–55s，队列 17–28s），host 出现 `AGENT_REQUEST_END`，watchdog 告警停止。
+- **Mac 的地址是 DHCP 的，会再变。容器重建后平台会用它自己那份配置再拉一次中继，每次重建都要重跑上面这条命令。**
+
+**这次连带修掉的三个脚本缺陷**（`container-relay-push.sh`，此前该脚本从未真正生效过）：
+
+1. `docker exec` **缺 `-i`**：stdin 不转发，`sh -s` 读到空脚本、exit 0、零输出。480s 的文件复制进去了，但进程一直沿用旧环境。**"容器重建后重推"这一步历史上一直是空操作。**
+2. 容器侧脚本在**未加引号的 heredoc** 里，`$pid`/`$tok`/`$uhost` 在宿主展开，等于把环境变量清空。
+3. 末尾探针**不带 `x-relay-token`**，拿到 403 也会读成"通了"；且上游地址无条件继承旧进程的值。
 
 ## 提交规范
 
