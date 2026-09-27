@@ -96,6 +96,37 @@ function preserveWebhookTrigger(existing: AutomationRecord | null, spec: Automat
     : spec;
 }
 
+/**
+ * The wake prompt's webhook block is parsed by `source:`, `text` and `idempotencyKey`, so those three
+ * keys are owned here. A sender is free to send its own `source` (the Mac bridge sends `feishu-p2p`) and
+ * to name the body field whatever it likes, so the raw payload is nested under `data` instead of spread
+ * over the reserved keys — otherwise the body is silently dropped from the agent's wake.
+ */
+export interface WebhookRequestMeta {
+  readonly deliveryId?: string;
+  readonly eventName?: string;
+  readonly contentType?: string;
+  readonly userAgent?: string;
+}
+
+function normalizeWebhookEventPayload(payload: Record<string, unknown> | undefined, meta: WebhookRequestMeta = {}): Record<string, unknown> {
+  const raw = payload ?? {};
+  const text = [raw.text, raw.content, raw.message].find((value): value is string => typeof value === "string" && value.length > 0) ?? "";
+  const idempotencyKey = [meta.deliveryId, raw.idempotencyKey, raw.message_id, raw.id].find((value): value is string => typeof value === "string" && value.length > 0);
+  const eventMeta: Record<string, unknown> = { receivedAt: Date.now() };
+  if (meta.deliveryId !== undefined) eventMeta.deliveryId = meta.deliveryId;
+  if (meta.eventName !== undefined) eventMeta.eventName = meta.eventName;
+  if (meta.contentType !== undefined) eventMeta.contentType = meta.contentType;
+  if (meta.userAgent !== undefined) eventMeta.userAgent = meta.userAgent;
+  return {
+    source: "webhook",
+    text,
+    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    data: { ...raw },
+    meta: eventMeta,
+  };
+}
+
 export class AutomationRuntime {
   watchedAutomations: any;
   readonly lastKnownAutomations = new Map<
@@ -481,6 +512,10 @@ export class AutomationRuntime {
     readonly automationId: string;
     readonly key: string;
     readonly payload?: Record<string, unknown>;
+    readonly deliveryId?: string;
+    readonly eventName?: string;
+    readonly contentType?: string;
+    readonly userAgent?: string;
   }): Promise<{ readonly ok: boolean; readonly status: number; readonly message?: string }> {
     const active = this.tm.sessions.activeSession;
     const automation =
@@ -496,21 +531,36 @@ export class AutomationRuntime {
     const storedKey = await readWebhookKey(dirname(automation.filePath));
     if (!verifyWebhookKey(storedKey, args.key))
       return { ok: false, status: 401, message: "invalid webhook key" };
+    if (automation.isEnabled !== true)
+      return { ok: false, status: 409, message: "routine is paused" };
     void this.runAutomationForEvent(args.agentId, automation, {
-      source: "webhook",
-      ...(args.payload ?? {}),
+      ...normalizeWebhookEventPayload(args.payload, {
+        ...(args.deliveryId === undefined ? {} : { deliveryId: args.deliveryId }),
+        ...(args.eventName === undefined ? {} : { eventName: args.eventName }),
+        ...(args.contentType === undefined ? {} : { contentType: args.contentType }),
+        ...(args.userAgent === undefined ? {} : { userAgent: args.userAgent }),
+      }),
     }).catch((error: unknown) => console.error("[webhook-automation] wake failed", error));
     return { ok: true, status: 202 };
   }
-  /** Read-only credential lookup for the renderer's webhook copy blocks: resolve the routine (active session first, global scan fallback), read its stored key, and assemble the wake URL. */
-  async getAutomationWebhookCredential(automationId: string): Promise<{ readonly agentId: string; readonly automationId: string; readonly url: string; readonly key: string } | null> {
+  /**
+   * Read-only credential lookup for the renderer's webhook copy blocks. Scoped by agent because routine
+   * folders are only unique per agent: two agents can both own a `same-routine`, and answering from a
+   * global scan would hand one bot's webhook key to another. The one-argument form is kept for the
+   * unscoped caller and now refuses rather than guessing which agent was meant.
+   */
+  async getAutomationWebhookCredential(agentId: string, automationId?: string): Promise<{ readonly agentId: string; readonly automationId: string; readonly url: string; readonly key: string } | null> {
+    if (automationId === undefined) return null;
     const active = this.tm.sessions.activeSession;
-    const fromActive = active?.automations.get(automationId) ?? null;
+    const fromActive = active?.id === agentId ? active.automations.get(automationId) ?? null : null;
+    const fromStore = fromActive == null
+      ? (await this.tm.sessionStore.listAgentAutomations(agentId)).find(
+          (entry: AutomationRecord) => entry.id === automationId,
+        ) ?? null
+      : null;
     const resolved = fromActive != null
-      ? { agentId: active?.id as string, automation: fromActive }
-      : ((await this.tm.sessionStore.listAllAutomations() as { agentId: string; automation: AutomationRecord }[]).find(
-          (entry: { agentId: string; automation: AutomationRecord }) => entry.automation.id === automationId,
-        ) ?? null);
+      ? { agentId, automation: fromActive }
+      : fromStore == null ? null : { agentId, automation: fromStore };
     if (resolved == null || !triggerHasWebhookMember(resolved.automation.trigger)) return null;
     const key = await readWebhookKey(dirname(resolved.automation.filePath));
     if (key == null) return null;

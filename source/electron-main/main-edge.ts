@@ -59,8 +59,8 @@ export interface MainEdgeDeps {
   readonly emitEgressTunnelChanged: (enabled: boolean) => void;
   readonly emitWebauthnProxyChanged: (enabled: boolean) => void;
   readonly ensureTranscriptionManager: () => Promise<UnknownRecord>;
-  /** Resolves a webhook routine's wake URL and stored key through the coordinator; null when the routine is not webhook-triggered. */
-  readonly getAutomationWebhookCredential: (automationId: string) => Promise<unknown>;
+    /** Resolves a webhook routine's wake URL and stored key through the coordinator; null when the routine is not webhook-triggered. */
+    readonly getAutomationWebhookCredential: (agentId: string, automationId: string) => Promise<unknown>;
   readonly platform: NodeJS.Platform;
   readonly delay?: (milliseconds: number) => Promise<void>;
   readonly detectTimeZone?: () => string | null | undefined;
@@ -222,9 +222,11 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       return mergeOpenRouterChannelStatus(chatStatus, modelListResult.value) ?? modelListResult.value;
     },
     getAutomationWebhookCredential: async (raw) => {
+      const agentId = req(raw).id;
       const automationId = req(raw).automationId;
+      invariant(typeof agentId === "string" && agentId.length > 0, "An agent id is required.");
       invariant(typeof automationId === "string" && automationId.length > 0, "A routine folder id is required.");
-      return deps.getAutomationWebhookCredential(automationId);
+      return deps.getAutomationWebhookCredential(agentId, automationId);
     },
 
     getEgressTunnelEnabled: () => invoke(deps.boxToggleStore, "getEgressTunnelEnabled"),
