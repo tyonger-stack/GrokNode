@@ -239,6 +239,42 @@ function checkForwarderLiveness(now) {
   });
 }
 
+// Container hop liveness. The probe above proves the Mac-side forwarder still
+// answers, but every bot turn crosses 127.0.0.1:10100 inside the box first,
+// and that hop can die on its own: on 2026-09-28 the container relay still
+// dialled a Mac address the network had moved on from, so the request left the
+// box, was swallowed, and the Mac probe stayed green while every bot sat
+// frozen for five and a half hours. Nothing here touches a bot — it only
+// reports, consistent with the notify-only contract.
+async function checkContainerRelayLiveness(now) {
+  let token = "";
+  try { token = fs.readFileSync(path.join(RELAY_DIR, "token"), "utf8").trim(); } catch { /* probe unauthenticated */ }
+  const auth = token
+    ? ` -H 'x-relay-token: ${token.replace(/'/g, "'\\''")}'`
+    : "";
+  let code = "";
+  try {
+    code = (await execInContainer(
+      `curl -s -o /dev/null -w '%{http_code}' --max-time 10${auth} http://127.0.0.1:10100/v1/models`,
+    )).trim();
+  } catch (e) {
+    alert(
+      "container-relay-down",
+      `容器内 10100 探活失败（${e.message}）——bot 回合会在这一跳被吞掉。`
+        + `若容器本身已停，先看容器；否则重跑 tools/ocx-relay/container-relay-push.sh 并传入当前 Mac 地址。`,
+    );
+    return;
+  }
+  if (code !== "200") {
+    alert(
+      "container-relay-down",
+      `容器内 10100 探活异常（HTTP ${code || "无响应"}，${new Date(now).toLocaleTimeString()}）——`
+        + `Mac 侧 11010 仍通，但 bot 回合会卡在这一跳。重跑 tools/ocx-relay/container-relay-push.sh `
+        + `并传入当前 Mac 地址：RELAY_UPSTREAM_HOST="$(ipconfig getifaddr en0)"`,
+    );
+  }
+}
+
 function osascriptNotify(message) {
   execFile("osascript", ["-e", `display notification "${message.replace(/["\\]/g, "")}" with title "GrokNode watchdog"`], { timeout: 5000 }, () => {});
 }
@@ -286,6 +322,7 @@ async function runOnce() {
   try { checkInflightStalls(now); } catch (e) { console.log(`checkInflightStalls failed: ${e.message}`); }
   try { await checkStalledTurns(now); } catch (e) { console.log(`checkStalledTurns failed: ${e.message}`); }
   await checkForwarderLiveness(now);
+  try { await checkContainerRelayLiveness(now); } catch (e) { console.log(`checkContainerRelayLiveness failed: ${e.message}`); }
   saveState();
 }
 
