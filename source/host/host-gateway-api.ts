@@ -460,9 +460,13 @@ export function createHostGatewayApi(
         automationId: args.automationId,
         key: args.key,
         payload: args.payload,
+        ...(args.deliveryId === undefined ? {} : { deliveryId: args.deliveryId }),
+        ...(args.eventName === undefined ? {} : { eventName: args.eventName }),
+        ...(args.contentType === undefined ? {} : { contentType: args.contentType }),
+        ...(args.userAgent === undefined ? {} : { userAgent: args.userAgent }),
       }),
     getAutomationWebhookCredential: (args: any) =>
-      method(manager, "getAutomationWebhookCredential")(args.automationId),
+      method(manager, "getAutomationWebhookCredential")(args.id, args.automationId),
     broadcastToAgents: async (args: any) => {
       markActive("user_action");
       const result = await method(manager, "broadcastToAgents")(

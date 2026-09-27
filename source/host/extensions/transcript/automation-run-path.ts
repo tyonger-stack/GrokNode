@@ -143,6 +143,28 @@ export class AutomationRunPath {
       const isGroup = this.tm.groupChat.isGroupSession(session);
       const runner = isGroup ? null : this.tm.runnerRegistry.getRunner(session);
       let spendGuardReminder: string | undefined;
+      const currentAutomation = session.automations.get(args.automation.id);
+      if (isBackgroundAutomationTrigger(args.trigger) && currentAutomation == null) {
+        this.eventFires.reportFireDropped({
+          agentId: args.agentId,
+          trigger: args.trigger,
+          reason: "automation_deleted_before_run",
+          ...(args.runUuid === undefined ? {} : { runUuid: args.runUuid }),
+        });
+        return undefined;
+      }
+      if (
+        isBackgroundAutomationTrigger(args.trigger) &&
+        currentAutomation?.isEnabled !== true
+      ) {
+        this.eventFires.reportFireDropped({
+          agentId: args.agentId,
+          trigger: args.trigger,
+          reason: "routine_paused_before_run",
+          ...(args.runUuid === undefined ? {} : { runUuid: args.runUuid }),
+        });
+        return undefined;
+      }
       if (!isGroup && isBackgroundAutomationTrigger(args.trigger)) {
         const guard = await this.spendGuard.apply(session, args.automation);
         if (guard.paused) {
@@ -257,15 +279,14 @@ export class AutomationRunPath {
               );
               telemetryOutcome = "ok";
             } else if (runner != null) {
-              const currentAutomation =
-                session.automations.get(args.automation.id) ?? args.automation;
-              for (const notice of routineNoticesToRaise(currentAutomation))
+              const effectiveAutomation = currentAutomation ?? args.automation;
+              for (const notice of routineNoticesToRaise(effectiveAutomation))
                 session.automations.markNoticeRaised(
                   args.automation.id,
                   notice.id,
                 );
               const result = await runner.run(
-                `${buildAutomationWakePrompt(currentAutomation, { timeZone: this.tm.sessionStore.getUserTimeZone(), ...(isEventFire ? { events: eventBatch } : {}), ...(args.trigger === "manual" ? { trigger: "manual" as const } : {}) })}${spendGuardReminder == null ? "" : `\n\n${spendGuardReminder}`}`,
+                `${buildAutomationWakePrompt(effectiveAutomation, { timeZone: this.tm.sessionStore.getUserTimeZone(), ...(isEventFire ? { events: eventBatch } : {}), ...(args.trigger === "manual" ? { trigger: "manual" as const } : {}) })}${spendGuardReminder == null ? "" : `\n\n${spendGuardReminder}`}`,
                 {
                   hidden: true,
                   isSilenceAllowed: true,

@@ -378,7 +378,7 @@ export interface AgentDesktopBridge {
   setComputerUseModel(model: AgentModelSelection | null): Promise<AgentModelSelection | null>;
   getAvailableModels(): Promise<unknown>;
   getOpenRouterChannelStatus(): Promise<unknown>;
-  getAutomationWebhookCredential(automationId: string): Promise<{ agentId: string; automationId: string; url: string; key: string } | null>;
+  getAutomationWebhookCredential(agentId: string, automationId: string): Promise<{ agentId: string; automationId: string; url: string; key: string } | null>;
   getInferenceRouter(): Promise<unknown>;
   setInferenceRouter(provider: string): Promise<unknown>;
   clientPersistence: {

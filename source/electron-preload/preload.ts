@@ -339,7 +339,7 @@ export function createDesktopPreloadBridge(options: {
       getOpenRouterEffort: () => edge("getOpenRouterEffort"),
       setOpenRouterEffort: (effort: string | null) => edge("setOpenRouterEffort", { effort }),
       getOpenRouterChannelStatus: () => edge("getOpenRouterChannelStatus"),
-      getAutomationWebhookCredential: (automationId: string) => edge("getAutomationWebhookCredential", { automationId }),
+      getAutomationWebhookCredential: (agentId: string, automationId: string) => edge("getAutomationWebhookCredential", { id: agentId, automationId }),
       clientPersistence: {
         read: (key: string) => ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.read, { key }),
         async write(key: string, value: string) { await ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.write, { key, value }); },

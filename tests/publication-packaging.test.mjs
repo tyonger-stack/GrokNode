@@ -148,9 +148,9 @@ test("Router settings and inference packaging expose only local providers", asyn
   assert.match(rendererPatch, /guard-webhook-trigger-form/);
   assert.match(rendererPatch, /W0n\(n\)\.map\(Vgn\)\.filter\(e=>e!=null\)/);
   assert.match(rendererPatch, /n\.type==="webhook"\?\[\]:\[n\]/);
-  assert.match(preload, /getAutomationWebhookCredential: \(automationId: string\) => edge\("getAutomationWebhookCredential"/);
+  assert.match(preload, /getAutomationWebhookCredential: \(agentId: string, automationId: string\) => edge\("getAutomationWebhookCredential", \{ id: agentId, automationId \}/);
   assert.match(rpcMain, /getAutomationWebhookCredential: \{ args: "object" \}/);
-  assert.match(mainEdge, /deps\.getAutomationWebhookCredential\(automationId\)/);
+  assert.match(mainEdge, /deps\.getAutomationWebhookCredential\(agentId, automationId\)/);
   assert.match(webhookCredentialEntry, /sand-webhook-credential/);
   assert.match(webhookCredentialEntry, /sand-webhook-trigger/);
   assert.match(webhookCredentialEntry, /getAutomationWebhookCredential/);

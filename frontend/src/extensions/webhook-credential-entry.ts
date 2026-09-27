@@ -28,6 +28,16 @@ let renderFrame: number | null = null;
 /** Positive results only: a routine that is not webhook-triggered now may become one later. */
 const credentialCache = new Map<string, WebhookCredential>();
 
+function selectedAgentId(): string | null {
+  // The 0.18 sidebar marks the open agent with aria-current="page" / data-active="true";
+  // data-selected is multi-select state and must not be used here.
+  const row =
+    document.querySelector<HTMLElement>('[data-agent-id][aria-current="page"]') ??
+    document.querySelector<HTMLElement>('[data-agent-id][data-active="true"]');
+  const id = row?.getAttribute("data-agent-id") ?? "";
+  return id.length === 0 ? null : id;
+}
+
 function ensureStyles(): void {
   if (document.getElementById(STYLE_ID) != null) return;
   const style = document.createElement("style");
@@ -143,17 +153,18 @@ function scheduleRender(): void {
   });
 }
 
-async function fetchCredential(automationId: string): Promise<WebhookCredential | null> {
-  const cached = credentialCache.get(automationId);
+async function fetchCredential(agentId: string, automationId: string): Promise<WebhookCredential | null> {
+  const cacheKey = `${agentId}::${automationId}`;
+  const cached = credentialCache.get(cacheKey);
   if (cached != null) return cached;
   try {
-    const credential = await window.desktop?.agent?.getAutomationWebhookCredential?.(automationId) ?? null;
+    const credential = await window.desktop?.agent?.getAutomationWebhookCredential?.(agentId, automationId) ?? null;
     const value = credential != null && typeof credential === "object"
       && typeof (credential as { url?: unknown }).url === "string"
       && typeof (credential as { key?: unknown }).key === "string"
       ? credential as WebhookCredential
       : null;
-    if (value != null) credentialCache.set(automationId, value);
+    if (value != null) credentialCache.set(cacheKey, value);
     return value;
   } catch {
     return null;
@@ -170,7 +181,9 @@ async function renderCredentialBlock(): Promise<void> {
     return;
   }
   existing?.remove();
-  const credential = await fetchCredential(routine.id);
+  const agentId = selectedAgentId();
+  if (agentId == null) return;
+  const credential = await fetchCredential(agentId, routine.id);
   if (credential == null || editorRoot() !== editor) return;
   installTriggerRow(editor);
   insertCredentialBlock(editor, buildCredentialBlock(credential));

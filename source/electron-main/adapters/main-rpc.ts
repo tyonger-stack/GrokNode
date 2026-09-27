@@ -181,7 +181,7 @@ function createExistingMainRpcCoreDeps(
   const getComputerUseModelOverride = () => context.requireExperiments().getComputerUseModelOverride();
   const getAutomationWebhookCredential = requireFunction(
     supplied.getAutomationWebhookCredential === undefined
-      ? ((automationId: string) => context.coordinatorLegs.legs.getAutomationWebhookCredential!({ automationId }) as Promise<unknown>)
+      ? ((agentId: string, automationId: string) => context.coordinatorLegs.legs.getAutomationWebhookCredential!({ id: agentId, automationId }) as Promise<unknown>)
       : supplied.getAutomationWebhookCredential,
     "mainRpc.getAutomationWebhookCredential",
   );
