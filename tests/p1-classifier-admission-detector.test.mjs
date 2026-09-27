@@ -23,6 +23,7 @@ const runtime = await loadTs("host/extensions/transcript/turn-runtime.ts");
 const admission = await loadTs("host/extensions/transcript/run-admission.ts");
 const detector = await loadTs("host/extensions/transcript/tool-repeat-detector.ts");
 const { classifyAgentError, httpStatusOf, quotaWordingOf, isTurnInterruptedFailure } = runtime;
+const { incidentKindOf } = runtime;
 const { admitRun, resolveMaxRunQueueDepth } = admission;
 const { ToolRepeatDetector, toolRepeatKey, LOOP_SUSPECT_THRESHOLDS } = detector;
 
@@ -59,6 +60,14 @@ test("httpStatusOf finds nested and absent statuses", () => {
   const wrapped = new Error("outer");
   wrapped.cause = apiError(401);
   assert.equal(httpStatusOf(wrapped), 401);
+});
+
+test("incident kinds map failed vs stalled by error code", () => {
+  assert.equal(incidentKindOf({ code: "SAND-E0401" }), "stalled");
+  assert.equal(incidentKindOf({ code: "SAND-E0408" }), "stalled");
+  assert.equal(incidentKindOf({ code: "SAND-E0405" }), "failed");
+  assert.equal(incidentKindOf({ code: "SAND-E0407" }), "failed");
+  assert.equal(incidentKindOf({ code: "SAND-E0415" }), "failed");
 });
 
 test("interrupt signals are recognized as interrupts, not failures", () => {

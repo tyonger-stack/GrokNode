@@ -270,6 +270,25 @@ export function isDeliveryOwed(
   return result.sentMessageCount === 0 && !result.reacted;
 }
 
+/** Incident vocabulary shared with OpenMausBot's incident panel
+ * (failed/stalled/could-not-start/routine-failed). Carried on telemetry
+ * reports so fleet dashboards can aggregate by incident kind today; a UI
+ * list is a later step and must not invent renderer behavior. */
+export type TurnIncidentKind =
+  | "failed"
+  | "stalled"
+  | "could-not-start"
+  | "routine-failed";
+
+export function incidentKindOf(
+  classified: Record<string, unknown>,
+): TurnIncidentKind {
+  const code = String(classified.code ?? "");
+  if (code === "SAND-E0401" || code === "SAND-E0408") return "stalled";
+  if (code === "SAND-E0405" || code === "SAND-E0407") return "failed";
+  return "failed";
+}
+
 export function classifyAgentError(error: unknown): Record<string, unknown> {
   const statusCode = httpStatusOf(error);
   if (statusCode === 401 || statusCode === 403) {
@@ -588,12 +607,17 @@ export class TurnRuntime {
           `[sand][turn] agent run failed for ${session.id}`,
           error,
         );
-        turn.finalize(
-          "error",
-          classifyAgentError(error),
-          sandErrorDetail(error),
-        );
+        const classified = classifyAgentError(error);
+        turn.finalize("error", classified, sandErrorDetail(error));
         markTurnTraceError(turnTrace, error);
+        try {
+          this.tm.telemetry.reportTurnInterrupt({
+            conversationId: session.id,
+            reason: "turn_failed",
+            hadActiveRun: true,
+            incidentKind: incidentKindOf(classified),
+          });
+        } catch {}
         if (epoch === this.tm.sendPipeline.currentTurnEpoch(session)) {
           const description = describeAgentRunError(error);
           const requestId = session.db.getRequestIds().at(-1)?.id;
