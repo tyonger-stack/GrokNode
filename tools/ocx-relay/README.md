@@ -43,7 +43,33 @@
 ... POST /v1/chat/completions -> 429 <ms>ms queued=<ms>ms reason=queue full|queue timeout id=...  # 队列合成 429
 ```
 
-排障口诀不变：`-> 429` 突发 = 上游限流（或队列满/超时，看 reason）；`-> 200` 但 100s+ = 重思考模型正常耗时。
+排障口诀：`-> 200` 但 100s+ = 重思考模型正常耗时；`-> 429` **必须先分类再看**，见下节。
+
+### 429 的三类来源（不可混为一谈）
+
+统计口径先说清：`grep '429'` 会连耗时数字一起命中（`4429ms`），做趋势统计必须用 `-> 429` 锚定。
+
+| 类别 | 日志指纹 | 归属 | 处置 |
+| --- | --- | --- | --- |
+| `relay-queue-timeout` / `relay-queue-full` | 带 `reason=queue timeout\|queue full`，`queued=` ≈ `QUEUE_TIMEOUT_MS`，**且无 `try=` 字段** | **我们自己的容量问题**，与上游无关 | 调 `MAX_CONCURRENCY` / `MAX_QUEUE`，或缩短上游耗时 |
+| `upstream-rate-limit` | 带 `try=` 字段（走过重试路径），`queued=0ms` | 上游真实限流 | 交给 `RETRY_429` 退避重试；重试耗尽才透传给客户端 |
+| `provider-quota-exhausted` | 429 正文是 `Throttling.AllocationQuota` 一类，**几乎立刻返回（<0.1s）** | 上游账号/套餐配额耗尽 | **重试无意义**，只能换模型或等配额重置 |
+
+实证（2026-09-27/28）：
+
+- 第一类占 2026-09-27 全部 20 次 429。`09:09–09:12Z` **五分钟内 5 次**，`queued=75002ms`——是 `slots=2 / queue=4` 在 4+ 个 bot 下排不下，与 opencodex 无关。
+- 第二类在 2026-09-26 有 150 次（真实限流爆发）。
+- 第三类：`qianwen/qwen3.8-max` 返回 `Throttling.AllocationQuota: Your token-plan 1-month quota has been exhausted`，**0.039s 返回**。同一时刻 `zai/glm-5.3-flash` 正常 200 且 `tool_calls` 参数完整。
+
+**把三类混在一起统计，会得出"上游限流爆发"的错误结论**，从而把加固力气花在错的地方：第一类要扩容，第二类要重试，第三类只能换模型。
+
+### 总死线是每请求预算，不是每次尝试
+
+`UPSTREAM_MAX_TOTAL_MS`（默认 600s，部署 900s）从**取得并发槽位时**起算一次，所有重试**共享**同一份预算；预算在重试等待期间耗尽会真正终止请求。
+
+> 2026-09-28 修复。此前每次 `dispatch()` 都重装满额定时器，重试等于给自己发新预算。实证 `id=35e7fc81` 在 900s 预算下跑了 **1403443ms**（`try=1`），而同一分钟 `try=0` 的 `id=e304d31c` 在 581063ms 被正确切断。
+
+后果直接落在并发上：重试中的请求会占住 `MAX_CONCURRENCY=2` 里的一个槽最长 23 分钟，把其余 bot 挤进队列超时——也就是上表第一类自己制造自己的原因。
 
 ## watchdog：检测与告警
 
