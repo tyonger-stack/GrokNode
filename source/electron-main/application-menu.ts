@@ -70,7 +70,7 @@ export function buildApplicationMenuTemplate(
   }
   template.push({
     label: labels.file,
-    submenu: [isMac ? { role: "close" } : { role: "quit" }],
+    submenu: [isMac ? { role: "close", label: labels.closeWindow } : { role: "quit" }],
   });
   template.push({ role: "editMenu" });
   const viewSubmenu: ApplicationMenuItem[] = [
@@ -105,10 +105,11 @@ export function buildApplicationMenuTemplate(
   // `viewMenu` role instead so Electron tags this entry as the system View
   // role and macOS does not double-fill it with Edit items — the actual
   // Edit role still renders as its own top-level menu immediately above.
-  template.push({ role: "viewMenu" as ApplicationMenuRole, submenu: viewSubmenu });
+  template.push({ role: "viewMenu" as ApplicationMenuRole, label: labels.viewMenu, submenu: viewSubmenu });
   template.push({ role: "windowMenu" });
   template.push({
     role: "help",
+    label: labels.appMenuHelp,
     submenu: [
       {
         label: labels.helpCenter,

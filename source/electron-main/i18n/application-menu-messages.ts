@@ -26,13 +26,16 @@ const EN: ApplicationMenuMessages = {
   sendFeedback: "Send Feedback",
   aboutAppPrefix: "About ",
   appMenuHelp: "Help",
+  viewMenu: "View",
+  closeWindow: "Close Window",
 };
 
-// Chinese menu labels follow the layout of Grok Bot 0.58 (AppleScript-confirmed).
-// The View, Edit, Window and Help menus all use macOS system roles so they
-// are auto-localised by Cocoa from `AppleLanguages`; we only translate the
-// custom labels that the menu template injects (File, View submenu items, App
-// menu About entry, Help submenu).
+// Chinese menu labels follow Grok Bot 0.61.0's live macOS menu bar
+// (CUA-verified 2026-09-28): 文件 / Edit / 显示 / Window / 帮助, with the
+// File menu's close item reading 关闭窗口. The pinned 0.18 Electron shell's
+// built-in role localisation is incomplete (it leaves View/Help/Close Window
+// in English), so the template pins explicit labels for exactly the entries
+// 0.61 localises; Edit and Window stay English to match 0.61 byte for byte.
 const ZH_CN: ApplicationMenuMessages = {
   file: "文件",
   reload: "重新加载",
@@ -42,6 +45,8 @@ const ZH_CN: ApplicationMenuMessages = {
   sendFeedback: "发送反馈",
   aboutAppPrefix: "关于 ",
   appMenuHelp: "帮助",
+  viewMenu: "显示",
+  closeWindow: "关闭窗口",
 };
 
 const MESSAGES: Record<SupportedLocale, ApplicationMenuMessages> = {

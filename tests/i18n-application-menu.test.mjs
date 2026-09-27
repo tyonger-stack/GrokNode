@@ -48,8 +48,11 @@ test("application menu template emits English labels by default", async () => {
   assert.ok(reload, "expected a Reload item under View");
   const help = template.find((entry) => entry.role === "help");
   assert.ok(help, "expected a help role entry");
+  assert.equal(help.label, "Help", "expected the Help menu title pinned to the role default");
   const helpCenter = help.submenu.find((entry) => entry.label === "Help Center");
   assert.ok(helpCenter, "expected a Help Center item under Help");
+  const close = fileMenu.submenu.find((entry) => entry.role === "close");
+  assert.equal(close?.label, "Close Window", "expected the close item pinned to the role default");
 });
 
 test("application menu template switches to zh-CN labels when locale resolves", async () => {
@@ -72,6 +75,10 @@ test("application menu template switches to zh-CN labels when locale resolves", 
   const reload = viewMenu.submenu.find((entry) => entry.label === "重新加载");
   assert.ok(reload, "expected Reload translated to 重新加载");
   const help = template.find((entry) => entry.role === "help");
+  assert.equal(help?.label, "帮助", "expected Help menu title to match the 0.61 live menu");
+  assert.equal(viewMenu.label, "显示", "expected View menu title to match the 0.61 live menu");
+  const close = fileMenu.submenu.find((entry) => entry.role === "close");
+  assert.equal(close?.label, "关闭窗口", "expected close item to match the 0.61 live menu");
   const helpCenter = help.submenu.find((entry) => entry.label === "帮助中心");
   assert.ok(helpCenter, "expected Help Center translated to 帮助中心");
   const about = template[0]?.submenu.find((entry) => typeof entry.label === "string" && entry.label.startsWith("关于 "));
