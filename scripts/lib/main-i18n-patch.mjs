@@ -642,7 +642,6 @@ export const MAIN_I18N_061_PAIRS = [
   ["Move this account to a Premium seat to send messages.", "将此账户改为 Premium 席位即可发送消息", "v1BUtK", "PANEL"],
   ["needs auth", "需要授权", "8nZIsU", "PANEL"],
   ["Opening Disk Saver…", "正在打开磁盘清理…", "P6XTWk", "FULL"],
-  ["pebble", "卵石", "6fpvq3", "PANEL"],
   ["Privacy Mode (Legacy) isn’t compatible with Grok Bot. Switch to Privacy Mode to start using Grok Bot — data still isn’t used for training.", "隐私模式（旧版）与 Grok Bot 不兼容。切换到隐私模式即可开始使用 Grok Bot，数据同样不会用于训练。", "Gclgh7", "PANEL"],
   ["Recovering…", "恢复中…", "NCJZpd", "FULL"],
   ["Resetting…", "正在重置…", "xRPBky", "PROP"],
@@ -653,8 +652,6 @@ export const MAIN_I18N_061_PAIRS = [
   ["Sending…", "发送中…", "Sad2tK", "FULL"],
   ["Setting up your Grok Bot…", "正在设置你的 Grok Bot…", "JW5mNg", "FULL"],
   ["Sign in to Cursor in settings, then ask anything.", "先在设置中登录 Cursor，然后随便问点什么", "3as2Ge", "PANEL"],
-  ["squircle", "圆角方形", "itJYgC", "PANEL"],
-  ["teardrop", "水滴", "Q+z+5Y", "PANEL"],
   ["The model provider is under heavy load right now. This is usually temporary — try again shortly.", "模型服务商目前负载过高。这通常是暂时的，请稍后重试。", "cg5y8u", "FULL"],
   ["The recovery is still running — recreating Grok Bot's computer can take a few minutes. You can keep waiting, or continue in the background.", "恢复仍在进行中，重新创建 Grok Bot 的电脑可能需要几分钟。你可以继续等待，或在后台继续。", "T3Xxlm", "PANEL"],
   ["The reset couldn't finish. Grok Bot's computer may be in a partial state — retry to run the reset again.", "重置未能完成。Grok Bot 的电脑可能处于不完整状态，请重试以再次运行重置。", "SWsTof", "PANEL"],
@@ -692,6 +689,9 @@ export const MAIN_I18N_LOCAL_PAIRS = [
 ];
 
 export const MAIN_I18N_GAPS = [
+  ["pebble", "manual-drop: avatar shape pool element feeds Jo[shape].path registry lookup"],
+  ["squircle", "manual-drop: avatar shape pool element feeds Jo[shape].path registry lookup"],
+  ["teardrop", "manual-drop: avatar shape pool element feeds Jo[shape].path registry lookup"],
   ["You", "manual-drop"],
   ["HubSpot", "identity-noop"],
   ["Apollo", "identity-noop"],
