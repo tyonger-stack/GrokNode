@@ -308,6 +308,8 @@ export function applyPair(source, en, zh, mode) {
   }
   if (mode === "PANEL") {
     takeSearch("return" + search);
+    takeSearch("," + search);
+    takeSearch("??" + search);
     let cursor = 0;
     const needle = "=" + search;
     while (true) {

@@ -94,6 +94,9 @@ test("engine PANEL covers assignments, returns, custom props and option maps", a
   assert.equal(applyPair("if(x)return" + JSON.stringify("Stable"), "Stable", "稳定版", "PANEL").hits, 1);
   assert.equal(applyPair("d={dark:" + JSON.stringify("Dark") + "}", "Dark", "深色", "PANEL").hits, 1);
   assert.equal(applyPair("x({submitAriaLabel:" + JSON.stringify("Add rule") + "})", "Add rule", "添加规则", "PANEL").hits, 1);
+  assert.equal(applyPair("children:[a," + JSON.stringify("Search") + "]", "Search", "搜索", "PANEL").hits, 1);
+  assert.equal(applyPair("placeholder:k.title??" + JSON.stringify("Search"), "Search", "搜索", "PANEL").hits, 1);
+  assert.throws(() => applyPair("children:[a," + JSON.stringify("Search") + "]", "Search", "搜索", "FULL"), /has no anchor/);
   assert.throws(() => applyPair("let o=" + JSON.stringify("Sign Out"), "Sign Out", "退出登录", "FULL"), /has no anchor/);
   assert.throws(() => applyPair("s===" + JSON.stringify("Cancel") + "?a:b", "Cancel", "取消", "PANEL"), /has no anchor/);
   assert.throws(() => applyPair("d={46:" + JSON.stringify("Delete") + "}", "Delete", "删除", "PANEL"), /has no anchor/);
