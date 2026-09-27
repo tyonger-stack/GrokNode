@@ -22,6 +22,7 @@
     "postinstall": "node scripts/apply-third-party-patches.mjs",
     "smoke": "node scripts/smoke.mjs",
     "test": "node --test tests/*.test.mjs",
+    "test:offline": "node --test $(ls tests/*.test.mjs | grep -v local-web-tools-network)",
     "typecheck": "tsc --project frontend/tsconfig.json",
     "source:typecheck": "tsc --project source/tsconfig.json",
     "verify": "node scripts/verify.mjs"

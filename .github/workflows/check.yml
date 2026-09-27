@@ -3,6 +3,8 @@ name: repository checks
 on:
   push:
   pull_request:
+  # Lets the network-dependent suite be run on demand — see the `network` job.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,7 +27,15 @@ jobs:
       - name: Install the locked dependency graph
         run: npm ci --no-audit --no-fund
       - name: Run source and publication checks
-        run: npm run check
+        # Same gate as `npm run check`, except the suite list. The real-network
+        # web tools tests are excluded here: they turned this required job red
+        # three times on runner-network wobble alone, with no change to the code
+        # under test. Nothing is lost — `npm test` still runs them, and the
+        # `network` job below runs them on demand.
+        run: |
+          npm run typecheck
+          npm run source:typecheck
+          npm run test:offline
       - name: Build the editable frontend
         run: npm run frontend:build
       - name: Verify a fresh clean-history export is lossless
@@ -50,3 +60,20 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Run the identity, scheme-gate and macOS bridge tests
         run: node --test tests/grok-node-identity.test.mjs tests/local-feishu-bridge.test.mjs
+  # The real-network web tools tests, kept out of the required gate and run only
+  # when a human asks for them. Nothing here is platform specific; it is purely
+  # dependent on the runner being able to reach the public internet.
+  network:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26.5.0
+          cache: npm
+      - name: Install the locked dependency graph
+        run: npm ci --no-audit --no-fund
+      - name: Run the real-network web tools tests
+        run: node --test tests/local-web-tools-network.test.mjs
