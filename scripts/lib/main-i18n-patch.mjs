@@ -582,7 +582,6 @@ export const MAIN_I18N_GAPS = [
   ["Organizing files", "zero-pattern-hit"],
   ["Paralegal", "zero-pattern-hit"],
   ["Pasted image", "zero-pattern-hit"],
-  ["Paused", "zero-pattern-hit"],
   ["Pipeline Scout", "zero-pattern-hit"],
   ["Prototyper", "zero-pattern-hit"],
   ["QA Engineer", "zero-pattern-hit"],
@@ -729,6 +728,12 @@ export const MAIN_I18N_ANCHORED = [
     note: "cloud-agent-kind-label",
     anchor: "case\"cloud-agent\":return\"Cloud agent\"",
     replacement: "case\"cloud-agent\":return(RLocT(\"Cloud agent\",\"云端智能体\"))",
+  },
+  {
+    id: "URAE3q",
+    note: "routine-paused-detail",
+    anchor: "{detail:\"Paused\",iconName:\"pause-circle\",iconStyle:Moe.pausedIcon}",
+    replacement: "{detail:(RLocT(\"Paused\",\"已暂停\")),iconName:\"pause-circle\",iconStyle:Moe.pausedIcon}",
   },
 ];
 
