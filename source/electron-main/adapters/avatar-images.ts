@@ -34,7 +34,7 @@ export interface ProductionAvatarImagesPorts {
 type ElectronImageContextMenuRuntimePorts = Omit<ImageContextMenuElectronPorts, "writeFile" | "openExternalUrl" | "onEdgeFailure">;
 
 export interface ProductionImageContextMenuBinding {
-  register(deps: Pick<ImageContextMenuElectronPorts, "openExternalUrl" | "onEdgeFailure">): void;
+  register(deps: Pick<ImageContextMenuElectronPorts, "openExternalUrl" | "onEdgeFailure" | "language">): void;
 }
 
 function requireImageContextMenuPorts(ports: ElectronImageContextMenuRuntimePorts): ElectronImageContextMenuRuntimePorts {
@@ -104,6 +104,7 @@ export function createElectronProductionImageContextMenuBinding(): ProductionIma
         writeFile: async (path, bytes) => { await writeFile(path, bytes); },
         openExternalUrl: deps.openExternalUrl,
         onEdgeFailure: deps.onEdgeFailure,
+        ...(deps.language == null ? {} : { language: deps.language }),
       });
     },
   };

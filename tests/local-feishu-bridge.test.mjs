@@ -17,7 +17,16 @@ test("feishu bridge delivery state machine", () => {
   }
 });
 
-test("feishu webhook ingress http entry", () => {
+// The ingress payload is AES-256-CBC encrypted by Feishu and the decryptor
+// binds CommonCrypto through /usr/lib/libSystem.B.dylib, so this test can only
+// execute on macOS. The ubuntu job skips it; the check-darwin job runs this
+// file so the assertion is still enforced in CI rather than silently dropped.
+const ingressSkip =
+  process.platform === "darwin"
+    ? false
+    : "ingress decrypt needs macOS CommonCrypto (/usr/lib/libSystem.B.dylib)";
+
+test("feishu webhook ingress http entry", { skip: ingressSkip }, () => {
   const result = spawnSync(
     "/usr/bin/python3",
     [path.join(root, "scripts/feishu-inbox/test_ingress.py")],

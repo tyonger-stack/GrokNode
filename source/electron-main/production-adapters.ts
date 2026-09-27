@@ -12,6 +12,7 @@ import type {
   ProductionUpdateService,
 } from "./main-production-services.js";
 import type { MainBrowserWindow, MainEdge } from "./main.js";
+import type { DesktopLanguageSource } from "./i18n/desktop-messages.js";
 import {
   createCoordinatorRendererPortIpcRegistrar,
   createProductionCoordinatorAdapter,
@@ -141,7 +142,7 @@ export interface ElectronProductionAdapterBindings {
   };
   /** Built-in process-lifetime image context-menu registration; not a manifest slot. */
   readonly imageContextMenu?: {
-    register(deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void }): void;
+    register(deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void; readonly language?: DesktopLanguageSource }): void;
   };
   readonly windowLifecycle?: {
     onWindowCreated(window: MainBrowserWindow, context: ProductionServiceContext): void;
@@ -297,7 +298,7 @@ export function createElectronProductionServiceFactories(
       onWindowCreated: (window, context) => adapters.windowLifecycle!.onWindowCreated(window, context),
     }),
     ...(adapters.imageContextMenu == null ? {} : {
-      registerImageContextMenu: (deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void }) => adapters.imageContextMenu!.register(deps),
+      registerImageContextMenu: (deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void; readonly language?: DesktopLanguageSource }) => adapters.imageContextMenu!.register(deps),
     }),
   };
 }

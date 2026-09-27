@@ -299,7 +299,10 @@ export function applyPair(source, en, zh, mode) {
     }
   };
   if (mode === "PROP" || mode === "PROP_COLON" || mode === "FULL" || mode === "PANEL") {
-    for (const prop of DISPLAY_PROPS) takeSearch(prop + ":" + search);
+    for (const prop of DISPLAY_PROPS) {
+      takeSearch(prop + ":" + search);
+      takeSearch(JSON.stringify(prop) + ":" + search);
+    }
   }
   if (mode === "FULL" || mode === "PANEL") {
     takeSearch("?" + search);

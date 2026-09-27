@@ -56,6 +56,15 @@ test("engine respects PROP and PROP_COLON modes", async () => {
   assert.ok(pc.patched.includes('d={46:"Delete"}'));
 });
 
+test("engine branches quoted display props including aria-label in PROP mode", () => {
+  const src = 'x({"aria-label":"View agent settings","title":"View agent settings",kind:"View agent settings"})';
+  const out = applyPair(src, "View agent settings", "查看智能体设置", "PROP");
+  assert.equal(out.hits, 2);
+  assert.ok(out.patched.includes('"aria-label":(RLocT("View agent settings","查看智能体设置"))'));
+  assert.ok(out.patched.includes('"title":(RLocT("View agent settings","查看智能体设置"))'));
+  assert.ok(out.patched.includes('kind:"View agent settings"'));
+});
+
 test("anchored replacement is exact-once fail-closed", async () => {
   const src = "function XGn(n){return 1} function XGn(n){return 1}";
   assert.throws(() => applyAnchored(src, "function XGn(n){return 1}", "Z"), /ambiguous/);

@@ -454,6 +454,45 @@ export const MAIN_I18N_PAIRS = [
   ["Zoom out", "缩小", "FjkaiT", "FULL"],
 ];
 
+// Display literals in 0.18 that the first pass missed. Each row is checked
+// against the installed 0.61.0 English and zh-CN catalogs by message ID.
+export const MAIN_I18N_061_PAIRS = [
+  ["Couldn’t save your name", "无法保存你的名字", "Igw2sT", "PROP"],
+  ["Connecting to your computer…", "正在连接你的电脑…", "afTcdw", "PROP"],
+  ["Reconnecting to your computer…", "正在重新连接你的电脑…", "z2Cwm8", "PROP"],
+  ["and", "和", "HZFm5R", "PROP"],
+  ["Merged", "已合并", "dBQc5K", "PROP"],
+  ["Generating…", "生成中…", "B1MVWs", "PROP"],
+  ["Describe your avatar…", "描述你的头像…", "7KrBp7", "PROP"],
+  ["Transcribing voice input…", "正在转写语音输入…", "nvOFfg", "PROP"],
+  ["Loading document…", "正在加载文档…", "PZctm0", "PROP"],
+  ["Loading file…", "正在加载文件…", "zSf+pB", "PROP"],
+  ["Loading PDF…", "正在加载 PDF…", "IGQBHQ", "PROP"],
+  ["Loading spreadsheet…", "正在加载电子表格…", "tUtFbf", "PROP"],
+  ["Listening…", "正在识别…", "ZVCRHy", "PROP"],
+  ["I’m done", "我完成了", "70K6WP", "PROP"],
+  ["Loading emoji…", "正在加载表情符号…", "wYwIBL", "PROP"],
+  ["Workspace", "工作区", "pmUArF", "PROP"],
+  ["Checking for Updates…", "正在检查更新…", "1JRcvi", "PROP"],
+  ["Downloading Update…", "正在下载更新…", "mYIc/j", "PROP"],
+  ["Preparing Update…", "正在准备更新…", "a7m/Sf", "PROP"],
+  ["Grok Bot isn’t available on this account yet", "Grok Bot 尚未对此账户开放", "yt8ZcM", "PROP"],
+];
+
+// These 0.18-only labels have no counterpart in the installed 0.61.0
+// English catalog. The user explicitly authorized direct translations.
+export const MAIN_I18N_LOCAL_PAIRS = [
+  ["View agent settings", "查看智能体设置", "PROP"],
+  ["Agent settings", "智能体设置", "PROP"],
+  ["Create Routine", "创建例行任务", "PROP"],
+  ["Routines are recurring tasks this agent runs on a schedule.", "例行任务是这个智能体按计划重复执行的任务。", "PROP"],
+  ["Search...", "搜索...", "PANEL"],
+  ["Reply…", "回复…", "PANEL"],
+  ["Reply to attachment…", "回复附件…", "PANEL"],
+  ["Reply to file…", "回复文件…", "PANEL"],
+  ["Reply to link…", "回复链接…", "PANEL"],
+];
+
 export const MAIN_I18N_GAPS = [
   ["You", "manual-drop"],
   ["HubSpot", "identity-noop"],
@@ -703,12 +742,24 @@ export function patchOriginalMainI18n(source) {
     patched = result.patched;
     applied.push({ en, id, mode, hits: result.hits });
   }
+  const catalogApplied = [];
+  for (const [en, zh, id, mode] of MAIN_I18N_061_PAIRS) {
+    const result = applyPair(patched, en, zh, mode);
+    patched = result.patched;
+    catalogApplied.push({ en, id, mode, hits: result.hits });
+  }
+  const localApplied = [];
+  for (const [en, zh, mode] of MAIN_I18N_LOCAL_PAIRS) {
+    const result = applyPair(patched, en, zh, mode);
+    patched = result.patched;
+    localApplied.push({ en, mode, hits: result.hits });
+  }
   const anchored = [];
-  for (const entry of MAIN_I18N_ANCHORED) {
+  for (const entry of [...MAIN_I18N_ANCHORED, ...MAIN_I18N_LOCAL_ANCHORED]) {
     patched = applyAnchored(patched, entry.anchor, entry.replacement);
     anchored.push({ id: entry.id, note: entry.note });
   }
-  return { patched, applied, anchored };
+  return { patched, applied, catalogApplied, localApplied, anchored };
 }
 
 // Whole-block replacements for copy the pair shapes cannot express.
@@ -737,6 +788,41 @@ export const MAIN_I18N_ANCHORED = [
   },
 ];
 
+// Whole-block shapes the pair matcher cannot safely localize. Where 0.61.0
+// retains a matching message, its ID is recorded; the reply label is 0.18-only.
+export const MAIN_I18N_LOCAL_ANCHORED = [
+  {
+    id: "local-reply-action",
+    note: "localized reply action with dynamic author",
+    anchor: "function rCn(n){return`Reply to ${Wht(n)}`}",
+    replacement: "function RLocMessageTarget(e){return e===\"your message\"?\"你的消息\":e===\"Agent message\"?\"智能体消息\":e.replace(/ message$/,\"\")+\"的消息\"}function rCn(n){const e=Wht(n);return RLocT(`Reply to ${e}`,`回复${RLocMessageTarget(e)}`)}",
+  },
+  {
+    id: "ytzCVg/lKwbtc",
+    note: "localized message-action accessibility label",
+    anchor: "function aCn(n){const e=Wht(n),t=Lme(n).timestampMs;return t==null?`Message actions for ${e} (${n.id})`:`Message actions for ${e} at ${OEn(t)} (${n.id})`}",
+    replacement: "function aCn(n){const e=Wht(n),t=Lme(n).timestampMs;return t==null?RLocT(`Message actions for ${e} (${n.id})`,`${RLocMessageTarget(e)} 的消息操作 (${n.id})`):RLocT(`Message actions for ${e} at ${OEn(t)} (${n.id})`,`${RLocMessageTarget(e)} 于 ${OEn(t)} 的消息操作 (${n.id})`)}",
+  },
+  {
+    id: "EbMPZJ",
+    note: "section display name without changing stored section data",
+    anchor: "function f0n(n){return{id:n.id,name:n.id===uc?vNe:n.name}}",
+    replacement: "function f0n(n){return{id:n.id,name:n.id===uc?RLocT(\"Unassigned\",\"未分组\"):n.name}}",
+  },
+  {
+    id: "GjJ5lX/nN16ve",
+    note: "localized relative date headings",
+    anchor: "function ept(n){const e=new Date(n),t=new Date,s=FIn(e);if(ZTe(e,t))return`Today ${s}`;const r=new Date(t);return r.setDate(t.getDate()-1),ZTe(e,r)?`Yesterday ${s}`:e.getFullYear()===t.getFullYear()?`${DIn.format(e)} ${s}`:`${RIn.format(e)} ${s}`}",
+    replacement: "function ept(n){const e=new Date(n),t=new Date,s=FIn(e);if(ZTe(e,t))return`${RLocT(\"Today\",\"今天\")} ${s}`;const r=new Date(t);return r.setDate(t.getDate()-1),ZTe(e,r)?`${RLocT(\"Yesterday\",\"昨天\")} ${s}`:e.getFullYear()===t.getFullYear()?`${DIn.format(e)} ${s}`:`${RIn.format(e)} ${s}`}",
+  },
+  {
+    id: "local-transcript-date-locale",
+    note: "date formatters follow the selected language",
+    anchor: "const jIn=new Intl.DateTimeFormat(void 0,{hour:\"numeric\",minute:\"2-digit\"}),DIn=new Intl.DateTimeFormat(void 0,{weekday:\"short\",month:\"short\",day:\"numeric\"}),RIn=new Intl.DateTimeFormat(void 0,{month:\"short\",day:\"numeric\",year:\"numeric\"});",
+    replacement: "const RLocDateLocale=RLocBoot()===\"zh-CN\"?\"zh-CN\":\"en-US\",jIn=new Intl.DateTimeFormat(RLocDateLocale,{hour:\"numeric\",minute:\"2-digit\"}),DIn=new Intl.DateTimeFormat(RLocDateLocale,{weekday:\"short\",month:\"short\",day:\"numeric\"}),RIn=new Intl.DateTimeFormat(RLocDateLocale,{month:\"short\",day:\"numeric\",year:\"numeric\"});",
+  },
+];
+
 export async function applyOriginalRendererMainI18n({ stageRoot }) {
   const assetsRoot = path.join(stageRoot, "dist", "renderer", "assets");
   const candidates = [];
@@ -752,9 +838,9 @@ export async function applyOriginalRendererMainI18n({ stageRoot }) {
     throw new Error("Expected one main shell chunk for main-i18n patch, found " + candidates.length + ".");
   }
   const candidate = candidates[0];
-  const { patched, applied, anchored } = patchOriginalMainI18n(candidate.source);
+  const { patched, applied, catalogApplied, localApplied, anchored } = patchOriginalMainI18n(candidate.source);
   await writeFile(candidate.target, patched);
-  const totalReplacements = applied.reduce((sum, row) => sum + row.hits, 0);
+  const totalReplacements = [...applied, ...catalogApplied, ...localApplied].reduce((sum, row) => sum + row.hits, 0);
   const record = {
     schemaVersion: 1,
     mode: "original-renderer-main-i18n",
@@ -764,6 +850,8 @@ export async function applyOriginalRendererMainI18n({ stageRoot }) {
       original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256Hex(candidate.source) },
       patched: { bytes: Buffer.byteLength(patched), sha256: sha256Hex(patched) },
       pairsApplied: applied.length,
+      catalog061PairsApplied: catalogApplied,
+      localPairsApplied: localApplied,
       totalReplacements,
       anchoredApplied: anchored,
     }],
