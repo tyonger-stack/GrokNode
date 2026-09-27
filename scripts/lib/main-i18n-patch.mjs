@@ -54,7 +54,7 @@ export const MAIN_I18N_PAIRS = [
   ["Add Member", "添加成员", "3Qn0me", "FULL"],
   ["Add a Bot photo", "添加 Bot 照片", "yz8q3c", "FULL"],
   ["Add a message, or hit send.", "输入消息，或直接发送。", "I/1BxG", "FULL"],
-  ["Add reaction", "添加回应", "9OEgyT", "FULL"],
+  ["Add reaction", "添加回应", "9OEgyT", "PANEL"],
   ["Adjust photo", "调整照片", "gY2AXq", "FULL"],
   ["Agents in this exchange", "此交流中的智能体", "2DO+PC", "FULL"],
   ["All", "全部", "N40H+G", "FULL"],
@@ -1030,6 +1030,47 @@ export const MAIN_I18N_ANCHORED = [
     note: "computer boot state label, Q9n catalog",
     anchor: "Q9n=[\"Getting ready\"",
     replacement: "Q9n=[(RLocT(\"Getting ready\",\"正在准备\"))",
+  },
+  {
+    id: "NqAR3l",
+    note: "open-exchange button aria-label, dynamic peer name",
+    anchor: "l=`Open exchange with ${o}`;let c;",
+    replacement: "l=(RLocT(`Open exchange with ${o}`,`打开与 ${o} 的交流`));let c;",
+  },
+
+  {
+    id: "hdPaX+",
+    note: "computer preview caption, dynamic subject name",
+    anchor: ":`${r}'s screen`})",
+    replacement: ":`${r} 的屏幕`})",
+  },
+
+  {
+    id: "hdPaX+",
+    note: "computer preview aria-label, dynamic subject name",
+    anchor: "\"aria-label\":`${l}'s screen`",
+    replacement: "\"aria-label\":`${l} 的屏幕`",
+  },
+
+  {
+    id: "tWQgTD/CFIQ32",
+    note: "message-group aria-labels with dynamic peer names (0.61 wording)",
+    anchor: "?`Message from ${n.peer.name}`:`Messaged ${n.peer.name}`;case\"fanout\":return`Messaged ${n.peers.length} agents`;",
+    replacement: "?(RLocT(`Message from ${n.peer.name}`,`来自 ${n.peer.name} 的消息`)):(RLocT(`Messaged ${n.peer.name}`,`已发消息给 ${n.peer.name}`));case\"fanout\":return(RLocT(`Messaged ${n.peers.length} agents`,`已发消息给 ${n.peers.length} 个 Bot`));",
+  },
+
+  {
+    id: "pqr+oY",
+    note: "composer placeholder template branch with dynamic recipient names",
+    anchor: ":`Message ${n.map(e=>e.name).join(\", \")}`}",
+    replacement: ":(RLocT(`Message ${n.map(e=>e.name).join(\", \")}`,`发消息给 ${n.map(e=>e.name).join(\", \")}`))}",
+  },
+
+  {
+    id: "pqr+oY",
+    note: "composer placeholder template branch (named recipient)",
+    anchor: "?`Message ${e}`:n?.isGroup===!0?",
+    replacement: "?(RLocT(`Message ${e}`,`发消息给 ${e}`)):n?.isGroup===!0?",
   },
 ];
 

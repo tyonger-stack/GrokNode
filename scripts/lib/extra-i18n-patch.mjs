@@ -210,9 +210,9 @@ export const EXTRA_I18N_FILES = [
       ["Selected", "已选择", "ylXj1N", "FULL"],
       ["Submit", "提交", "hQRttt", "FULL"],
       ["Type your own answer", "输入你自己的回答", "ovrcCJ", "FULL"],
+      ["Your answer", "你的回答", "Vtq6ex", "PANEL"],
     ],
     gaps: [
-      ["Your answer", "zero-pattern-hit"],
     ],
   },
   {

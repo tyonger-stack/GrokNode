@@ -37,6 +37,12 @@ function baseSource() {
   rows.push("const Z9n=[\"Getting ready\",\"Cleaning up\",\"Reconnecting\"];");
   rows.push("const X9n=[\"Getting ready\",\"Wiping your data\",\"Creating Grok Bot's computer\"];");
   rows.push("const Q9n=[\"Getting ready\",\"Recreating Grok Bot's computer\",\"Starting\"];");
+  rows.push("const l=\"x\";l=`Open exchange with ${o}`;let c;");
+  rows.push("x({detail:P?`${r} is learning your steps…`:`${r}'s screen`});");
+  rows.push("x({\"aria-label\":`${l}'s screen`});");
+  rows.push("y=n.direction===\"inbound\"?`Message from ${n.peer.name}`:`Messaged ${n.peer.name}`;case\"fanout\":return`Messaged ${n.peers.length} agents`;");
+  rows.push("z=n.length===0?x:`Message ${n.map(e=>e.name).join(\", \")}`}");
+  rows.push("w=e!=null&&e.length>0?`Message ${e}`:n?.isGroup===!0?\"Message group\":x1t;");
   rows.push(...MAIN_I18N_LOCAL_ANCHORED.map((entry) => entry.anchor));
   return rows.join(NL);
 }
@@ -50,7 +56,7 @@ test("main-i18n patch appends prelude and branches every pair literal", async ()
   assert.equal(localApplied.length, MAIN_I18N_LOCAL_PAIRS.length);
   for (const row of localApplied) assert.ok(row.hits >= 1, "0.18-only pair must hit: " + row.en);
   assert.ok(patched.includes('(RLocT("Create Routine","创建例行任务"))'));
-  assert.equal(anchored.length, 10 + MAIN_I18N_LOCAL_ANCHORED.length, "all whole-block anchors must apply");
+  assert.equal(anchored.length, 16 + MAIN_I18N_LOCAL_ANCHORED.length, "all whole-block anchors must apply");
   assert.ok(patched.includes('(RLocT("Getting ready","正在准备"))'), "boot state catalog first element must branch to +6Ex1c wording");
   assert.ok(patched.includes('(RLocT("Couldn\'t cancel your message. Try again.","无法取消你的消息。请重试。"))'), "cancel failure toast must branch to 8gi/JY wording");
   assert.ok(patched.includes("从不允许"), "XGn never-arm must branch to wvd4WD wording");
