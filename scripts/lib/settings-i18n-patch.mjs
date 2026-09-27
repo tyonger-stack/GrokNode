@@ -1,6 +1,14 @@
-import { createHash } from "node:crypto";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+import {
+  BT,
+  NL as ENGINE_NL,
+  RUNTIME_LINES,
+  applyAnchored,
+  applyPair as applyEnginePair,
+  sha256Hex,
+} from "./i18n-patch-engine.mjs";
 
 // Settings-surface runtime Chinese translation for the upstream 0.18 renderer.
 //
@@ -30,6 +38,15 @@ import path from "node:path";
 // navigator fallback as the Language row. On a language-changed broadcast that
 // flips the resolved locale the renderer reloads once so all static strings
 // re-render; the Language row itself keeps its own live state.
+//
+// Match shapes come from the shared engine (scripts/lib/i18n-patch-engine.mjs):
+// FULL pairs use display props, ternary branches, throw sites and
+// expression-position colons; PANEL pairs (SETTINGS_I18N_PANEL) additionally
+// cover variable assignments, return statements, bespoke *AriaLabel/*Hint
+// props and theme/mode option maps. Single-quoted containers, template text
+// and comments never match (span-aware); whole-block copy such as the
+// timezone combo template and the rule-hint container is handled by
+// SETTINGS_I18N_ANCHORED (exact-once, fail-closed).
 
 export const SETTINGS_I18N_PAIRS = [
   ["Account", "账户", "AeXO77"],
@@ -101,6 +118,44 @@ export const SETTINGS_I18N_PAIRS = [
   ["You're up to date", "已是最新版本", "Ekblrc"],
 ];
 
+// Panel-shape rows: pairs whose 0.18 occurrences need more than the FULL
+// shapes (verified 2026-09-26 against the deployed Grok Node settings chunk,
+// 67 pairs / 82 blind-replaced branches). Assignment rows drive the auth
+// button variable (let o="Sign In with Cursor" / o="Sign Out" / o="Cancel")
+// and the update-row variable (let F="Check for Updates" / F="Loading…");
+// return rows are early-returns of status copy; custom-prop rows are bespoke
+// *AriaLabel/*Hint attributes; map rows are theme/mode option tables
+// ({dark:"Dark",light:"Light",system:"Follow System",...}). Everything
+// else is FULL-shaped (display props, ternary branches, throw sites and
+// expression-position colons). The Ask-first sentence container stays raw by
+// single-quote span skipping and remains a documented gap.
+export const SETTINGS_I18N_PANEL = new Set([
+  "Add rule",
+  "Auto-review rule draft",
+  "Cancel",
+  "Check for Updates",
+  "Connect your Cursor account to Grok Bot",
+  "Dark",
+  "Execution on Local Computer",
+  "Finish signing in from your browser",
+  "Follow System",
+  "Grok Bot Lab is a one-off test build and never auto-updates",
+  "Let the assistant open files and run tasks on your computer. Auto-review still checks everything first.",
+  "Light",
+  "Loading…",
+  "Nightly",
+  "No included usage available on your plan right now.",
+  "Not signed in",
+  "Rule behavior",
+  "Sign In with Cursor",
+  "Sign Out",
+  "Signing in",
+  "Stable",
+  "Updates are disabled by SAND_DISABLE_UPDATES",
+  "Updates are disabled in dev builds",
+  "Updates aren't available on this platform",
+]);
+
 export const SETTINGS_I18N_GAPS = [
   "Agent",
   "Auto-update when idle",
@@ -128,47 +183,48 @@ export const SETTINGS_I18N_GAPS = [
 
 const PA_ANCHOR = "function pa(){";
 
-const RUNTIME_LINES = [
-  "function RLocFromPref(pref){",
-  "if(pref===\"zh-CN\")return \"zh-CN\";",
-  "if(pref===\"en\")return \"en\";",
-  "try{",
-  "var tags=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language];",
-  "for(var i=0;i<tags.length;i++){var t=String(tags[i]||\"\").trim().toLowerCase();",
-  "if(t===\"zh\"||t.indexOf(\"zh-\")===0)return \"zh-CN\";",
-  "if(t===\"en\"||t.indexOf(\"en-\")===0)return \"en\";}",
-  "}catch(_e){}",
-  "return \"en\";}",
-  "function RLocBoot(){try{var s=window.desktop&&window.desktop.language;var p=s&&s.initial&&s.initial.preference;return RLocFromPref(p);}catch(_e){}return \"en\";}",
-  "function RLocT(en,zh){return RLocBoot()===\"zh-CN\"?zh:en;}",
-  "try{(function(){var s=window.desktop&&window.desktop.language;if(!s||typeof s.onChanged!==\"function\")return;var boot=RLocBoot();s.onChanged(function(st){var loc=RLocFromPref(st&&st.preference);if(loc!==boot){try{location.reload();}catch(_e){}}});})();}catch(_e){}"
-];
-
-const RUNTIME_PRELUDE = RUNTIME_LINES.join("\n") + "\n";
-
-function sha256(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-function replaceAllCounted(source, search, replacement, label) {
-  const hits = source.split(search).length - 1;
-  if (hits === 0) throw new Error("Settings i18n pair has no anchor in the renderer chunk: " + label);
-  return { patched: source.split(search).join(replacement), hits };
-}
+const RUNTIME_PRELUDE = RUNTIME_LINES.join(ENGINE_NL) + ENGINE_NL;
 
 export function patchOriginalSettingsI18n(source) {
   if (source.indexOf(PA_ANCHOR) < 0) throw new Error("Original renderer Settings anchor is missing.");
   let patched = PA_ANCHOR_REPLACEMENT(source);
   const applied = [];
   for (const [en, zh] of SETTINGS_I18N_PAIRS) {
-    const search = JSON.stringify(en);
-    const replacement = "(RLocT(" + JSON.stringify(en) + "," + JSON.stringify(zh) + "))";
-    const result = replaceAllCounted(patched, search, replacement, en);
+    const mode = SETTINGS_I18N_PANEL.has(en) ? "PANEL" : "FULL";
+    const result = applyEnginePair(patched, en, zh, mode);
     patched = result.patched;
-    applied.push({ en, hits: result.hits });
+    applied.push({ en, mode, hits: result.hits });
   }
-  return { patched, applied };
+  const anchored = [];
+  for (const entry of SETTINGS_I18N_ANCHORED) {
+    patched = applyAnchored(patched, entry.anchor, entry.replacement);
+    anchored.push({ id: entry.id, note: entry.note });
+  }
+  return { patched, applied, anchored };
 }
+
+// Whole-block replacements for copy the pair shapes cannot express.
+// Each anchor is a byte-exact 0.18 minified fragment (fail-closed
+// exact-once) and each zh is byte-sourced from the 0.59.1 catalog ID cited.
+//   * tz-combo (0.59.1 SprHbY): the timezone row composes its label as a
+//     template `Auto-detect (<tz>)`; 0.59.1 renders ASCII parens in en and
+//     fullwidth parens in zh, so the branch mirrors that per render.
+//   * rule-hint (0.59.1 NFRGrQ): the single-quoted container sentence whose
+//     inner "Ask first" quote must never branch on its own.
+export const SETTINGS_I18N_ANCHORED = [
+  {
+    id: "SprHbY",
+    note: "tz-combo-template",
+    anchor: BT + "Auto-detect (${ze(e)})" + BT,
+    replacement: "(RLocT(\"Auto-detect (\"+ze(e)+\")\",\"自动检测（\"+ze(e)+\"）\"))",
+  },
+  {
+    id: "NFRGrQ",
+    note: "rule-hint-container",
+    anchor: "'Write one short, natural-language rule for each action. \"Ask first\" takes priority if rules conflict.'",
+    replacement: "(RLocT(\"Write one short, natural-language rule for each action. \\\"Ask first\\\" takes priority if rules conflict.\",\"为每种操作写一条简短的自然语言规则。规则冲突时，“先询问”优先。\"))",
+  },
+];
 
 function PA_ANCHOR_REPLACEMENT(source) {
   const first = source.indexOf(PA_ANCHOR);
@@ -190,7 +246,7 @@ export async function applyOriginalRendererSettingsI18n({ stageRoot }) {
     throw new Error("Expected one Settings panel chunk for settings-i18n patch, found " + candidates.length + ".");
   }
   const candidate = candidates[0];
-  const { patched, applied } = patchOriginalSettingsI18n(candidate.source);
+  const { patched, applied, anchored } = patchOriginalSettingsI18n(candidate.source);
   await writeFile(candidate.target, patched);
   const totalReplacements = applied.reduce((sum, row) => sum + row.hits, 0);
   const record = {
@@ -199,13 +255,14 @@ export async function applyOriginalRendererSettingsI18n({ stageRoot }) {
     chunks: [{
       role: "settings-panel",
       path: "dist/renderer/assets/" + candidate.name,
-      original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256(candidate.source) },
-      patched: { bytes: Buffer.byteLength(patched), sha256: sha256(patched) },
+      original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256Hex(candidate.source) },
+      patched: { bytes: Buffer.byteLength(patched), sha256: sha256Hex(patched) },
       pairsApplied: applied.length,
       totalReplacements,
+      anchoredApplied: anchored,
     }],
     features: ["settings-panel-chinese"],
-    transformations: ["settings-i18n-prelude-insertion", "settings-i18n-literal-branches"],
+    transformations: ["settings-i18n-prelude-insertion", "settings-i18n-literal-branches", "settings-i18n-anchored-blocks"],
     gaps: SETTINGS_I18N_GAPS,
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-settings-i18n-extension.json");

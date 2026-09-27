@@ -1,6 +1,13 @@
-import { createHash } from "node:crypto";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+import {
+  NL,
+  RUNTIME_LINES,
+  applyAnchored,
+  applyPair,
+  sha256Hex,
+} from "./i18n-patch-engine.mjs";
 
 // Main-surface runtime Chinese translation for the upstream 0.18 renderer.
 //
@@ -34,6 +41,10 @@ import path from "node:path";
 // Runtime model: shared with the Settings patch (RLocFromPref/RLocT, reload
 // on locale flip). Both preludes are file-local; the two target chunks never
 // share scope.
+// Match shapes come from the shared engine (scripts/lib/i18n-patch-engine.mjs)
+// and are span-aware: single-quoted containers, template text and comments
+// never match. The permission tri-state resolver (switch-case returns) is
+// handled whole-block by MAIN_I18N_ANCHORED (exact-once, fail-closed).
 
 export const MAIN_I18N_PAIRS = [
   ["About", "关于", "uyJsf6", "FULL"],
@@ -256,6 +267,7 @@ export const MAIN_I18N_PAIRS = [
   ["No emoji found", "未找到表情符号", "quWMra", "FULL"],
   ["No links in this chat yet", "此聊天中还没有链接", "I+JyrD", "FULL"],
   ["No matching Bots", "没有匹配的 Bot", "12i8o8", "FULL"],
+  ["No messages yet", "还没有消息", "+52YnJ", "PANEL"],
   ["No results", "无结果", "Ev2r9A", "FULL"],
   ["Not now", "暂不", "PBxg/E", "FULL"],
   ["Not signed in", "未登录", "95+rix", "FULL"],
@@ -330,7 +342,7 @@ export const MAIN_I18N_PAIRS = [
   ["Sales Forecast", "销售预测", "B2oHPJ", "FULL"],
   ["Save", "保存", "tfDRzk", "FULL"],
   ["Screen preview unavailable", "屏幕预览不可用", "IEhHIt", "FULL"],
-  ["Search", "搜索", "A1taO8", "FULL"],
+  ["Search", "搜索", "A1taO8", "PANEL"],
   ["Search emoji", "搜索表情符号", "EarrCe", "FULL"],
   ["Search or create Bots", "搜索或创建 Bot", "PHfiXN", "FULL"],
   ["Search tools", "搜索工具", "mW8qA2", "FULL"],
@@ -408,6 +420,7 @@ export const MAIN_I18N_PAIRS = [
   ["Type a name to create a Bot", "输入名字以创建 Bot", "r32WRY", "FULL"],
   ["Unmute", "取消静音", "rn6SBY", "FULL"],
   ["Unpin", "取消置顶", "nWMRxa", "FULL"],
+  ["Unassigned", "未分组", "EbMPZJ", "PANEL"],
   ["Update", "更新", "EkH9pt", "FULL"],
   ["Update Grok Bot to see the full message.", "更新 Grok Bot 以查看完整消息。", "G80v5L", "FULL"],
   ["Update Grok Bot's Computer", "更新 Grok Bot 的电脑", "nnJerG", "FULL"],
@@ -439,6 +452,45 @@ export const MAIN_I18N_PAIRS = [
   ["Your trial has ended. Upgrade to continue using Grok Bot.", "你的试用已结束。升级以继续使用 Grok Bot。", "azzy61", "FULL"],
   ["Zoom in", "放大", "AWOSPo", "FULL"],
   ["Zoom out", "缩小", "FjkaiT", "FULL"],
+];
+
+// Display literals in 0.18 that the first pass missed. Each row is checked
+// against the installed 0.61.0 English and zh-CN catalogs by message ID.
+export const MAIN_I18N_061_PAIRS = [
+  ["Couldn’t save your name", "无法保存你的名字", "Igw2sT", "PROP"],
+  ["Connecting to your computer…", "正在连接你的电脑…", "afTcdw", "PROP"],
+  ["Reconnecting to your computer…", "正在重新连接你的电脑…", "z2Cwm8", "PROP"],
+  ["and", "和", "HZFm5R", "PROP"],
+  ["Merged", "已合并", "dBQc5K", "PROP"],
+  ["Generating…", "生成中…", "B1MVWs", "PROP"],
+  ["Describe your avatar…", "描述你的头像…", "7KrBp7", "PROP"],
+  ["Transcribing voice input…", "正在转写语音输入…", "nvOFfg", "PROP"],
+  ["Loading document…", "正在加载文档…", "PZctm0", "PROP"],
+  ["Loading file…", "正在加载文件…", "zSf+pB", "PROP"],
+  ["Loading PDF…", "正在加载 PDF…", "IGQBHQ", "PROP"],
+  ["Loading spreadsheet…", "正在加载电子表格…", "tUtFbf", "PROP"],
+  ["Listening…", "正在识别…", "ZVCRHy", "PROP"],
+  ["I’m done", "我完成了", "70K6WP", "PROP"],
+  ["Loading emoji…", "正在加载表情符号…", "wYwIBL", "PROP"],
+  ["Workspace", "工作区", "pmUArF", "PROP"],
+  ["Checking for Updates…", "正在检查更新…", "1JRcvi", "PROP"],
+  ["Downloading Update…", "正在下载更新…", "mYIc/j", "PROP"],
+  ["Preparing Update…", "正在准备更新…", "a7m/Sf", "PROP"],
+  ["Grok Bot isn’t available on this account yet", "Grok Bot 尚未对此账户开放", "yt8ZcM", "PROP"],
+];
+
+// These 0.18-only labels have no counterpart in the installed 0.61.0
+// English catalog. The user explicitly authorized direct translations.
+export const MAIN_I18N_LOCAL_PAIRS = [
+  ["View agent settings", "查看智能体设置", "PROP"],
+  ["Agent settings", "智能体设置", "PROP"],
+  ["Create Routine", "创建例行任务", "PROP"],
+  ["Routines are recurring tasks this agent runs on a schedule.", "例行任务是这个智能体按计划重复执行的任务。", "PROP"],
+  ["Search...", "搜索...", "PANEL"],
+  ["Reply…", "回复…", "PANEL"],
+  ["Reply to attachment…", "回复附件…", "PANEL"],
+  ["Reply to file…", "回复文件…", "PANEL"],
+  ["Reply to link…", "回复链接…", "PANEL"],
 ];
 
 export const MAIN_I18N_GAPS = [
@@ -509,7 +561,6 @@ export const MAIN_I18N_GAPS = [
   ["Channel Digest", "zero-pattern-hit"],
   ["Chief of Staff", "zero-pattern-hit"],
   ["ClickUp", "identity-noop"],
-  ["Cloud agent", "zero-pattern-hit"],
   ["Coding", "zero-pattern-hit"],
   ["Competitor Watcher", "zero-pattern-hit"],
   ["Connected", "zero-pattern-hit"],
@@ -560,7 +611,6 @@ export const MAIN_I18N_GAPS = [
   ["Negotiator", "zero-pattern-hit"],
   ["Network connection failed. Please check your internet connection.", "zero-pattern-hit"],
   ["Night Shift", "zero-pattern-hit"],
-  ["No messages yet", "zero-pattern-hit"],
   ["No microphone found. Please connect a microphone and try again.", "zero-pattern-hit"],
   ["None", "zero-pattern-hit"],
   ["Nooks", "identity-noop"],
@@ -571,7 +621,6 @@ export const MAIN_I18N_GAPS = [
   ["Organizing files", "zero-pattern-hit"],
   ["Paralegal", "zero-pattern-hit"],
   ["Pasted image", "zero-pattern-hit"],
-  ["Paused", "zero-pattern-hit"],
   ["Pipeline Scout", "zero-pattern-hit"],
   ["Prototyper", "zero-pattern-hit"],
   ["QA Engineer", "zero-pattern-hit"],
@@ -674,97 +723,16 @@ export const MAIN_I18N_GAPS = [
   ["Clear", "zero-pattern-hit"],
   ["Welcome to Grok Bot", "zero-pattern-hit"],
   ["Link", "zero-pattern-hit"],
-  ["Ask every time", "zero-pattern-hit"],
   ["Settings · Appearance", "zero-pattern-hit"],
   ["Click Again to Confirm", "zero-pattern-hit"],
   ["Your computer is on the latest version", "zero-pattern-hit"],
-  ["Never allow", "zero-pattern-hit"],
-  ["Unassigned", "zero-pattern-hit"],
   ["Authentication required", "zero-pattern-hit"],
   ["Error", "manual-drop:sentry-envelope-type-tag"],
 ];
 
 const DISCOVERY_ANCHOR = "sand.navigateBack";
 
-const DISPLAY_PROPS = [
-  "aria-label", "confirmLabel", "cancelLabel", "pendingLabel", "idleLabel",
-  "submitLabel", "subtitle", "description", "children", "label", "title",
-  "content", "placeholder", "text", "header", "caption", "message",
-];
-
-const NL = String.fromCharCode(10);
-
-const RUNTIME_LINES = [
-  'function RLocFromPref(pref){',
-  'if(pref==="zh-CN")return "zh-CN";',
-  'if(pref==="en")return "en";',
-  'try{',
-  'var tags=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language];',
-  'for(var i=0;i<tags.length;i++){var t=String(tags[i]||"").trim().toLowerCase();',
-  'if(t==="zh"||t.indexOf("zh-")===0)return "zh-CN";',
-  'if(t==="en"||t.indexOf("en-")===0)return "en";}',
-  '}catch(_e){}',
-  'return "en";}',
-  'function RLocBoot(){try{var s=window.desktop&&window.desktop.language;var p=s&&s.initial&&s.initial.preference;return RLocFromPref(p);}catch(_e){}return "en";}',
-  'function RLocT(en,zh){return RLocBoot()==="zh-CN"?zh:en;}',
-  'try{(function(){var s=window.desktop&&window.desktop.language;if(!s||typeof s.onChanged!=="function")return;var boot=RLocBoot();s.onChanged(function(st){var loc=RLocFromPref(st&&st.preference);if(loc!==boot){try{location.reload();}catch(_e){}}});})();}catch(_e){}'
-];
-
 const RUNTIME_PRELUDE = NL + RUNTIME_LINES.join(NL) + NL;
-
-function sha256(bytes) {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-function isIdentifierChar(ch) {
-  return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch === "_" || ch === "$";
-}
-
-function replaceAllCounted(source, search, replacement) {
-  const hits = source.split(search).length - 1;
-  return { patched: source.split(search).join(replacement), hits };
-}
-
-function applyPair(source, en, zh, mode) {
-  const search = JSON.stringify(en);
-  const replacement = "(RLocT(" + JSON.stringify(en) + "," + JSON.stringify(zh) + "))";
-  let patched = source;
-  let hits = 0;
-  const take = (result) => { patched = result.patched; hits += result.hits; };
-  for (const prop of DISPLAY_PROPS) {
-    if (mode === "PROP" || mode === "PROP_COLON" || mode === "FULL") {
-      take(replaceAllCounted(patched, prop + ":" + search, prop + ":" + replacement));
-    }
-  }
-  if (mode === "FULL") {
-    take(replaceAllCounted(patched, "?" + search, "?" + replacement));
-    take(replaceAllCounted(patched, "Error(" + search, "Error(" + replacement));
-    take(replaceAllCounted(patched, "oTe(" + search, "oTe(" + replacement));
-  }
-  if (mode === "FULL" || mode === "PROP_COLON") {
-    let cursor = 0;
-    let out = "";
-    let colonHits = 0;
-    const needle = ":" + search;
-    while (true) {
-      const idx = patched.indexOf(needle, cursor);
-      if (idx < 0) break;
-      const prev = idx > 0 ? patched[idx - 1] : "";
-      if (!isIdentifierChar(prev)) {
-        out += patched.slice(cursor, idx) + ":" + replacement;
-        colonHits += 1;
-      } else {
-        out += patched.slice(cursor, idx + needle.length);
-      }
-      cursor = idx + needle.length;
-    }
-    out += patched.slice(cursor);
-    patched = out;
-    hits += colonHits;
-  }
-  if (hits === 0) throw new Error("Main i18n pair has no anchor in the renderer chunk: " + en);
-  return { patched, hits };
-}
 
 export function patchOriginalMainI18n(source) {
   let patched = source + RUNTIME_PRELUDE;
@@ -774,8 +742,86 @@ export function patchOriginalMainI18n(source) {
     patched = result.patched;
     applied.push({ en, id, mode, hits: result.hits });
   }
-  return { patched, applied };
+  const catalogApplied = [];
+  for (const [en, zh, id, mode] of MAIN_I18N_061_PAIRS) {
+    const result = applyPair(patched, en, zh, mode);
+    patched = result.patched;
+    catalogApplied.push({ en, id, mode, hits: result.hits });
+  }
+  const localApplied = [];
+  for (const [en, zh, mode] of MAIN_I18N_LOCAL_PAIRS) {
+    const result = applyPair(patched, en, zh, mode);
+    patched = result.patched;
+    localApplied.push({ en, mode, hits: result.hits });
+  }
+  const anchored = [];
+  for (const entry of [...MAIN_I18N_ANCHORED, ...MAIN_I18N_LOCAL_ANCHORED]) {
+    patched = applyAnchored(patched, entry.anchor, entry.replacement);
+    anchored.push({ id: entry.id, note: entry.note });
+  }
+  return { patched, applied, catalogApplied, localApplied, anchored };
 }
+
+// Whole-block replacements for copy the pair shapes cannot express.
+// The permission tri-state resolver returns its labels from switch-case
+// arms (no display-prop, ternary, throw or expression-colon shape matches),
+// so the whole function is anchored byte-exact (fail-closed exact-once).
+// All three zh forms are byte-sourced from the 0.59.1 catalog IDs cited.
+export const MAIN_I18N_ANCHORED = [
+  {
+    id: "wvd4WD/NoKBgy/6CTZeX",
+    note: "permission-tri-state-resolver",
+    anchor: "function XGn(n){switch(n){case\"never\":return\"Never allow\";case\"always\":return\"Always allow\";case\"ask\":return\"Ask every time\"}}",
+    replacement: "function XGn(n){switch(n){case\"never\":return(RLocT(\"Never allow\",\"从不允许\"));case\"always\":return(RLocT(\"Always allow\",\"始终允许\"));case\"ask\":return(RLocT(\"Ask every time\",\"每次询问\"))}}",
+  },
+  {
+    id: "006KCk",
+    note: "cloud-agent-kind-label",
+    anchor: "case\"cloud-agent\":return\"Cloud agent\"",
+    replacement: "case\"cloud-agent\":return(RLocT(\"Cloud agent\",\"云端智能体\"))",
+  },
+  {
+    id: "URAE3q",
+    note: "routine-paused-detail",
+    anchor: "{detail:\"Paused\",iconName:\"pause-circle\",iconStyle:Moe.pausedIcon}",
+    replacement: "{detail:(RLocT(\"Paused\",\"已暂停\")),iconName:\"pause-circle\",iconStyle:Moe.pausedIcon}",
+  },
+];
+
+// Whole-block shapes the pair matcher cannot safely localize. Where 0.61.0
+// retains a matching message, its ID is recorded; the reply label is 0.18-only.
+export const MAIN_I18N_LOCAL_ANCHORED = [
+  {
+    id: "local-reply-action",
+    note: "localized reply action with dynamic author",
+    anchor: "function rCn(n){return`Reply to ${Wht(n)}`}",
+    replacement: "function RLocMessageTarget(e){return e===\"your message\"?\"你的消息\":e===\"Agent message\"?\"智能体消息\":e.replace(/ message$/,\"\")+\"的消息\"}function rCn(n){const e=Wht(n);return RLocT(`Reply to ${e}`,`回复${RLocMessageTarget(e)}`)}",
+  },
+  {
+    id: "ytzCVg/lKwbtc",
+    note: "localized message-action accessibility label",
+    anchor: "function aCn(n){const e=Wht(n),t=Lme(n).timestampMs;return t==null?`Message actions for ${e} (${n.id})`:`Message actions for ${e} at ${OEn(t)} (${n.id})`}",
+    replacement: "function aCn(n){const e=Wht(n),t=Lme(n).timestampMs;return t==null?RLocT(`Message actions for ${e} (${n.id})`,`${RLocMessageTarget(e)} 的消息操作 (${n.id})`):RLocT(`Message actions for ${e} at ${OEn(t)} (${n.id})`,`${RLocMessageTarget(e)} 于 ${OEn(t)} 的消息操作 (${n.id})`)}",
+  },
+  {
+    id: "EbMPZJ",
+    note: "section display name without changing stored section data",
+    anchor: "function f0n(n){return{id:n.id,name:n.id===uc?vNe:n.name}}",
+    replacement: "function f0n(n){return{id:n.id,name:n.id===uc?RLocT(\"Unassigned\",\"未分组\"):n.name}}",
+  },
+  {
+    id: "GjJ5lX/nN16ve",
+    note: "localized relative date headings",
+    anchor: "function ept(n){const e=new Date(n),t=new Date,s=FIn(e);if(ZTe(e,t))return`Today ${s}`;const r=new Date(t);return r.setDate(t.getDate()-1),ZTe(e,r)?`Yesterday ${s}`:e.getFullYear()===t.getFullYear()?`${DIn.format(e)} ${s}`:`${RIn.format(e)} ${s}`}",
+    replacement: "function ept(n){const e=new Date(n),t=new Date,s=FIn(e);if(ZTe(e,t))return`${RLocT(\"Today\",\"今天\")} ${s}`;const r=new Date(t);return r.setDate(t.getDate()-1),ZTe(e,r)?`${RLocT(\"Yesterday\",\"昨天\")} ${s}`:e.getFullYear()===t.getFullYear()?`${DIn.format(e)} ${s}`:`${RIn.format(e)} ${s}`}",
+  },
+  {
+    id: "local-transcript-date-locale",
+    note: "date formatters follow the selected language",
+    anchor: "const jIn=new Intl.DateTimeFormat(void 0,{hour:\"numeric\",minute:\"2-digit\"}),DIn=new Intl.DateTimeFormat(void 0,{weekday:\"short\",month:\"short\",day:\"numeric\"}),RIn=new Intl.DateTimeFormat(void 0,{month:\"short\",day:\"numeric\",year:\"numeric\"});",
+    replacement: "const RLocDateLocale=RLocBoot()===\"zh-CN\"?\"zh-CN\":\"en-US\",jIn=new Intl.DateTimeFormat(RLocDateLocale,{hour:\"numeric\",minute:\"2-digit\"}),DIn=new Intl.DateTimeFormat(RLocDateLocale,{weekday:\"short\",month:\"short\",day:\"numeric\"}),RIn=new Intl.DateTimeFormat(RLocDateLocale,{month:\"short\",day:\"numeric\",year:\"numeric\"});",
+  },
+];
 
 export async function applyOriginalRendererMainI18n({ stageRoot }) {
   const assetsRoot = path.join(stageRoot, "dist", "renderer", "assets");
@@ -792,22 +838,25 @@ export async function applyOriginalRendererMainI18n({ stageRoot }) {
     throw new Error("Expected one main shell chunk for main-i18n patch, found " + candidates.length + ".");
   }
   const candidate = candidates[0];
-  const { patched, applied } = patchOriginalMainI18n(candidate.source);
+  const { patched, applied, catalogApplied, localApplied, anchored } = patchOriginalMainI18n(candidate.source);
   await writeFile(candidate.target, patched);
-  const totalReplacements = applied.reduce((sum, row) => sum + row.hits, 0);
+  const totalReplacements = [...applied, ...catalogApplied, ...localApplied].reduce((sum, row) => sum + row.hits, 0);
   const record = {
     schemaVersion: 1,
     mode: "original-renderer-main-i18n",
     chunks: [{
       role: "main-shell",
       path: "dist/renderer/assets/" + candidate.name,
-      original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256(candidate.source) },
-      patched: { bytes: Buffer.byteLength(patched), sha256: sha256(patched) },
+      original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256Hex(candidate.source) },
+      patched: { bytes: Buffer.byteLength(patched), sha256: sha256Hex(patched) },
       pairsApplied: applied.length,
+      catalog061PairsApplied: catalogApplied,
+      localPairsApplied: localApplied,
       totalReplacements,
+      anchoredApplied: anchored,
     }],
     features: ["main-shell-chinese"],
-    transformations: ["main-i18n-prelude-append", "main-i18n-pattern-branches"],
+    transformations: ["main-i18n-prelude-append", "main-i18n-pattern-branches", "main-i18n-anchored-blocks"],
     gaps: MAIN_I18N_GAPS,
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-main-i18n-extension.json");
