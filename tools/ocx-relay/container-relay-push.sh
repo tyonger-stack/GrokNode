@@ -33,7 +33,7 @@ fi
 # Quoted heredoc on purpose: the pid/token/upstream lookups have to run inside
 # the container. Unquoted, they expanded on the host and handed the relay an
 # empty environment, which makes it exit on its own required-variable check.
-"$DOCKER" exec -e "RELAY_UPSTREAM_HOST_OVERRIDE=$HOST_OVERRIDE" "$CONTAINER" sh -s <<'EOS'
+"$DOCKER" exec -i -e "RELAY_UPSTREAM_HOST_OVERRIDE=$HOST_OVERRIDE" "$CONTAINER" sh -s <<'EOS'
 set -e
 pid=$(cat /tmp/ocx-relay.pid 2>/dev/null || true)
 tok=""
@@ -46,8 +46,8 @@ fi
 # && list aborts the whole script, so an unset override would exit silently
 # instead of falling back to the running relay's value.
 if [ -n "$RELAY_UPSTREAM_HOST_OVERRIDE" ]; then
+  echo "using caller-supplied RELAY_UPSTREAM_HOST=$RELAY_UPSTREAM_HOST_OVERRIDE (was ${uhost:-unset})"
   uhost="$RELAY_UPSTREAM_HOST_OVERRIDE"
-  echo "using caller-supplied RELAY_UPSTREAM_HOST (overrides the running relay's $uhost)"
 fi
 
 if [ -z "$tok" ]; then
@@ -76,7 +76,7 @@ EOS
 # which reads like "the relay answered" while actually proving nothing about
 # the path — that blind spot is why a dead upstream stayed invisible.
 echo "probe /v1/models through the relay (tokened):"
-"$DOCKER" exec "$CONTAINER" sh -s <<'EOS'
+"$DOCKER" exec -i "$CONTAINER" sh -s <<'EOS'
 pid=$(cat /tmp/ocx-relay.pid 2>/dev/null || true)
 tok=""
 if [ -n "$pid" ] && [ -r "/proc/$pid/environ" ]; then
