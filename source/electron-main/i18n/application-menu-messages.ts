@@ -15,6 +15,8 @@ export interface ApplicationMenuMessages {
   readonly sendFeedback: string;
   readonly aboutAppPrefix: string; // e.g. "About " — final app name is appended.
   readonly appMenuHelp: string;
+  readonly viewMenu: string;
+  readonly closeWindow: string;
 }
 
 const EN: ApplicationMenuMessages = {
