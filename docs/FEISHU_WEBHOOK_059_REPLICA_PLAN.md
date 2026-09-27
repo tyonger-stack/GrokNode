@@ -1,6 +1,6 @@
 # 飞书私聊 webhook 复刻方案（Grok Bot 0.59 → Grok Node）
 
-日期：2026-09-26｜状态：方案已定，待实施
+日期：2026-09-26｜状态：Wave 1/2/5 已实施（2026-09-27），Wave 3 未做，Wave 4 部分完成
 参考：官方 `/Applications/Grok Bot.app` = Grok Bot 0.59.1（asar sha256 `3d7eb92e018966c8fec65067ae264a2f3135c65eedefd869688bce7d8184e562`；契约与行内 toggle 在 0.59.0 / 0.59.1 间未变，0.59.0 的证据取自自更新前的 asar `b6b95953…`）
 目标：本地 `/Applications/Grok Node.app` = 0.18.0-reconstructed（asar sha256 `a5067582d112ac4cf73652375f88c93fbae4c4777d135da9774e876f7f03670b`）
 
@@ -103,17 +103,16 @@ bot-a 与 bot-b 都有 `same-routine` 时，`getAutomationWebhookCredential('sam
    - `webhook-credential-entry.ts`：从行 dataset 取 agentId，缓存 key 用 `agentId::automationId`。
 5. 落测试（红→绿），在 `tests/local-webhook-automations.test.mjs` 扩 5 条：暂停返回 409 不入队；入队后删/暂停不执行；source 归一为 webhook 且 text 从 content 兜底；跨 bot 同名例程凭据不串；webhook 幂等 key 命中跳过。
 
-### Wave 2 — Mac 桥加固（依赖 Wave 1 的返回码语义）
+### Wave 2 — Mac 桥加固（已实现并部署，2026-09-26）
 
-1. `bridge.py` 按状态分流：仅 `202` 记 seen；`409`（暂停/删除）→ 不记 seen，落 `pending[message_id]` 并指数退避重投（恢复后自动补投），设上限窗口；`401/404` → 记 `dead` 一次不再重试并告警一次；连接失败 → 退避重投。
-2. key 热更新：每 60s 比对容器 `webhook.json` 的 mtime/key，变了热更新内存 key（修 A6 的静态副本问题）。
-3. launchd 持久化：plist 已在位；需用户在自己终端注册（我的沙箱注册不了）：
-   ```sh
-   launchctl bootout gui/501/com.groknode.feishu-bridge-watch 2>/dev/null
-   launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.groknode.feishu-bridge-watch.plist
-   launchctl enable gui/501/com.groknode.feishu-bridge-watch
-   launchctl kickstart -k gui/501/com.groknode.feishu-bridge-watch
-   ```
+版本化源码：`scripts/feishu-inbox/{bridge.py,delivery.py,run.sh,test_bridge.py,plist}`，部署到 `~/.groknode/feishu-inbox/`（旧版备份 `backup-20260926-232352/`）。
+
+1. **状态分流**（`delivery.py`）：2xx → seen；409/5xx/网络错 → pending + 指数退避（5/10/30/60s 封顶 60s，TTL 7 天）；401 → 先热刷新 key 再重试一次，刷新成功且重试 202 → seen，刷新无变化或重试仍 401 → dead；404/其他 4xx → dead。
+2. **key 热更新**：canonical = 容器内 `webhook.json`（`docker exec cat`，60s 周期比对 sha256），fallback = 本地 `webhook.key`；启动时 canonical 优先，轮换后仅换内存值，日志只记 source 不记 key。
+3. **状态持久化**：`state.json` v2（seen/pending/dead），旧 `replied` 字段自动迁移进 seen；tmp + `os.replace` 原子写，0600 权限。
+4. **单实例**：`fcntl.flock` 文件锁（句柄保活在模块级全局），第二个实例立即退出 rc=0，杜绝 launchd + 手工双消费者。
+5. **launchd 已注册成功**（此前 error 5 是旧注册残留，bootout → bootstrap 解决）：Label `com.groknode.feishu-bridge-watch`，直接跑 `run.sh`（exec bridge.py），KeepAlive 即看门狗；launchd 最小 PATH 缺 `/usr/local/bin`（docker/node）已在 bridge 启动时补齐。
+6. **测试**：`scripts/feishu-inbox/test_bridge.py` 12 条（状态分流全表、退避表、409 恢复、401 轮换恢复/不轮换 dead/轮换后仍 401 dead、404 dead、网络错 pending、旧格式迁移、原子写权限、日志无 key 无正文），经 `tests/local-feishu-bridge.test.mjs` 并入 `npm test`（全量 221/221）。
 
 ### Wave 3 — UI 对齐 0.59（可选，低优先）
 
@@ -128,6 +127,23 @@ bot-a 与 bot-b 都有 `same-routine` 时，`getAutomationWebhookCredential('sam
 3. 真实飞书私聊（需用户发一条消息，我不能代发）：bridge.log 出现 `wake <mid> -> 202`；容器 `runs.json` 新增 `event/status:ok` 且 event 摘要是 `a webhook call: "<正文>"`；bot 在私聊回一句。
 4. 暂停/恢复端到端：暂停 → 用户发消息 → bridge 落 pending → 恢复 → 自动补投 → bot 收到。删除 → 用户发消息 → bridge 记 dead 一次不再重试。
 
+### Wave 5 — 按 OpenMausBot 接收器语义补齐通用 webhook 能力（2026-09-27 已实施）
+
+对标分析：`/Users/Apple/Documents/grokbot/OpenMausBot` 的 `server/webhooks.ts`（状态层）+ `server/webhook-ingress.ts`（HTTP 层）。其设计分层清晰：ingress 只做鉴权/解析/头提取，WebhookManager 管幂等回执/限流/事件过滤/投递模式。Grok Node 已有 Wave 1 的接收语义修正，本轮吸收其**通用发送方**能力，不改飞书链路的外部行为。
+
+已采纳（六项）：
+
+1. **`GET /health`**（`webhook-automation-listener.ts`）：无鉴权存活探针，返回 `{ok:true,service:"grok-node-webhook-automation"}`，带 `cache-control:no-store` + `nosniff`。供 `~/.grokbot/health-check.py` 与看门狗探测。
+2. **能力 URL 兜底**：`POST /webhook/<agentId>/<routine>[/<key>]` 第三段作为 key，给无法设置 Authorization 头的平台（GitHub 等）；Bearer 头仍优先，密钥尽量不进 URL/日志。
+3. **Content-Type 感知解析**：JSON 系 content-type 解析失败回 400（不再静默降级成 `{text}`）；`application/x-www-form-urlencoded` 解析成对象；无标签发送方保留宽松旧路径（JSON 对象照 spread，否则 `{text}`）。
+4. **头提取元数据**：deliveryId 取 `idempotency-key`/`x-webhook-id`/`x-github-delivery`/`webhook-id`，eventName 取 `x-github-event`/`x-webhook-event`/`x-event-type`/`ce-type`；连同 content-type、user-agent 一路透传（gateway 白名单已放开），进事件 `meta` 子对象渲染进 `<webhook_event>` 块；**头部 delivery id 优先于 body 的 message_id 作幂等键**。
+5. **每端点限流**：滑动窗口 30 次/60 秒（`WEBHOOK_RATE_LIMIT`），超出回 429 + `Retry-After`；限流在鉴权后、读 body 前判定。桥同步把 429 归类为可重试（原表会误判 dead），已部署重启。
+6. **幂等回执持久化 + 提示词截断**：`webhook-receipts.json` 存例程目录（上限 1000 条、TTL 7 天、原子写），跨 host 重启仍能去重（补 A5 对通用发送方的缺口）；`buildTriggerEventContextBlock` 序列化超 48K 字符截断并加 `[Payload truncated by Grok Node]` 标记。
+
+刻意不采纳（OpenMausBot 有、Node 不做，含理由）：密钥哈希存储+一次性展示（Node 靠 webhook.json 明文重展示，本地单用户设计，凭据卡需要回显）；secret 轮换 UI（无 0.18 DOM 锚点，Wave 3 之外另议）；eventTypes 过滤（trigger schema `{type:"webhook"}` 无配置位，例程即单一用途）；`delivery:"post"` 直投聊天、验证捕获流、256KB body 上限（Node 保持 64KB）、attempts 审计日志（runs.json + 桥日志已覆盖主要排查路径，先观察再说）。
+
+验证：`tests/local-webhook-automations.test.mjs` 20/20（新增 6 条：health/能力URL/表单/坏JSON/头透传、限流、元数据入提示词、截断标记、回执跨重启）；`tests/local-feishu-bridge.test.mjs` 1/1；`source:typecheck` + `typecheck` 双绿；esbuild 编译真实监听器后 curl 实测八种请求全符合预期（health 200、bearer/path-key 202、GitHub 头透传、form 解析、坏 JSON 400、无 key 401、第 31 次请求 429+retry-after=60）。
+
 ## 六、边界（Must NOT）
 
 - 不碰官方版（`com.anysphere.sand`）的 URL scheme、userData、沙箱、端口。
@@ -135,6 +151,22 @@ bot-a 与 bot-b 都有 `same-routine` 时，`getAutomationWebhookCredential('sam
 - 不在 UI、日志、bot 回复里打印 webhook key（`agent-state.ts` 已保证 key 不进 reply，保持）。
 - 不改 local-docker 端口/容器名。
 - Node 的 webhook URL 形状是 `/webhook/<agentId>/<automationId>`（本地），与官方 `/automations/webhook/<serverAutomationId>`（云端）不同；UI 上要说明，别拿 Node 的 URL 打官方端点。
+
+## 六·二、Wave 6 — 飞书事件订阅 webhook 推送入口（Tailscale Funnel 公网）（2026-09-27 已实施）
+
+背景：lark-cli websocket 长连接反复断连重连，需要一条不依赖长连接的入站路径：飞书开放平台「事件订阅 → 将事件发送至开发者服务器」直接 HTTP 推送到本机。飞书要求公网可达的 HTTPS 域名，用 Tailscale Funnel 提供：`https://macbook-pro.tailef0921.ts.net`（443）→ `127.0.0.1:17902`。
+
+新增（仓库 `scripts/feishu-inbox/`，已部署 `~/.groknode/feishu-inbox/`）：
+
+- `feishu_webhook_ingress.py` — 公网入口：`POST /feishu` 应答 `url_verification` 挑战；加密体用 CommonCrypto AES-256-CBC 解密（key=sha256(Encrypt Key)、iv=key[:16]，`FEISHU_ENCRYPT_KEY` 可选）；验证 token 首见即固定（TOFU，`ingress-token` 0600，此后不匹配回 403）；过滤规则与 bridge.py 一致（p2p + 指定 chat_id + sender=user）；命中事件复用 delivery.py 状态机（独立 `state-webhook.json`：暂停 409 → pending 退避补投；key 每 60s 从容器 webhook.json 热更新；launchd PATH 已补齐）；`GET /health` 无鉴权探针。日志不落 key 与正文。
+- `com.groknode.feishu-webhook-ingress.plist` — launchd 常驻（RunAtLoad + KeepAlive），已注册。
+- `test_ingress.py`（10 条，经 `tests/local-feishu-bridge.test.mjs` 并入 npm test）。
+
+与旧桥的关系：lark-cli 长连接桥（`com.groknode.feishu-bridge-watch`）保持原样未动；两边各自按 message_id 去重，17901 的 webhook-receipts 幂等兜底双路重复。长连接恢复后两者并存安全；webhook 模式稳定后可 bootout 旧桥。
+
+安全面：Funnel 只暴露 ingress 的 `/feishu`、`/health`、`/` 三个路径，17901 监听器本身不经公网。url_verification 不校验 token（飞书控制台保存 URL 的第一步），真实事件强制 token 匹配。重置 TOFU：删除 `ingress-token` 文件即可（服务每请求重读，无需重启）。
+
+验证（2026-09-27 实测）：单测 10/10；`GET /health` 经公网域名 200（外部抓取视角复验）；`POST /feishu` url_verification 经公网域名挑战回显 + TOFU 固定生效；launchd 重启后 `key-loaded source=canonical`。待用户操作：飞书开放平台把事件订阅切换为「发送至开发者服务器」并填入上述 URL；若开启了加密策略，把 Encrypt Key 配进 plist 环境变量 `FEISHU_ENCRYPT_KEY`。风险：飞书服务器到 `*.ts.net` Funnel 边缘的大陆可达性未证——控制台保存 URL 会即时发 url_verification，保存成功即证明可达；失败则需换公网中转方案。
 
 ## 七、附：本文引用的关键实测输出
 
