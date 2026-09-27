@@ -70,10 +70,16 @@ function resolveBaseUrl(macSettings) {
   return persisted || process.env.OPENROUTER_BASE_URL?.trim() || readCodexConfigValue("openai_base_url") || DEFAULT_BASE_URL;
 }
 
-function isLocalMacForwarder(baseUrl) {
+// Two hops count as "the local relay", and they are not interchangeable. 11010
+// is the Mac-side forwarder; 10100 is the container-side L7 relay that the
+// in-box host actually calls for every turn. Judging only on 11010 made this
+// report "skipped" on a box that was routing all of its inference through
+// 10100 — which is exactly the outage on 2026-09-28 that this tool was blind to.
+function isLocalRelayChain(baseUrl) {
   try {
     const url = new URL(baseUrl);
-    return (url.hostname === "127.0.0.1" || url.hostname === "localhost") && url.port === "11010";
+    return (url.hostname === "127.0.0.1" || url.hostname === "localhost")
+      && (url.port === "11010" || url.port === "10100");
   } catch { return false; }
 }
 
@@ -104,9 +110,9 @@ function relayIsListening(output) {
   });
 }
 
-async function relayCheck(dockerBinary, useLocalForwarder, containerRunning) {
+async function relayCheck(dockerBinary, useLocalForwarder, containerRunning, baseUrl) {
   if (!useLocalForwarder) {
-    return check("relay", "本地中继", "skipped", "当前 API 地址不经过本地 OpenCodex relay");
+    return check("relay", "本地中继", "skipped", `当前 API 地址 ${baseUrl} 不经过本地 relay`);
   }
   if (!containerRunning) return check("relay", "本地中继", "down", "容器未运行，无法检查中继监听");
   const result = await runCommand(dockerBinary, ["exec", CONTAINER_NAME, "cat", "/proc/net/tcp", "/proc/net/tcp6"]);
@@ -354,12 +360,12 @@ async function main() {
   const macSettingsPath = resolveMacSettingsPath();
   const macSettings = readJsonObject(macSettingsPath);
   const baseUrl = resolveBaseUrl(macSettings);
-  const useLocalForwarder = isLocalMacForwarder(baseUrl);
+  const useLocalForwarder = isLocalRelayChain(baseUrl);
   const container = await containerCheck(dockerBinary);
   const containerRunning = container.data?.running === true;
   const checks = [
     container,
-    await relayCheck(dockerBinary, useLocalForwarder, containerRunning),
+    await relayCheck(dockerBinary, useLocalForwarder, containerRunning, baseUrl),
     useLocalForwarder ? await localRelayModelListCheck(dockerBinary, containerRunning) : await directModelListCheck(baseUrl),
     await rendererCheck(),
     await settingsConsistencyCheck(dockerBinary, containerRunning),

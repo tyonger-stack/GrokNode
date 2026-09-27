@@ -22,6 +22,21 @@
 
 容器侧副本在 `/tmp/ocx-relay.py`（容器 10100 → Mac 11010），**容器重建会被还原**成 120s 空闲超时的旧版——那会把在 forwarder 队列里排了 ~100s 的请求整 120s 掐断（forwarder.log 里表现为精确 +120s 的 `client disconnected`，2026-09-26 晚实证 28 例）。重建后跑一次 `container-relay-push.sh` 即可回推 480s 版并重启、探活。
 
+**`relay-run.sh` 本身不在版本控制内**（只存在于运行时目录），所以在用参数必须在这里留档，否则某次重建后无从追溯。2026-09-28 实测在用：
+
+```sh
+MAX_CONCURRENCY=4        # 原 2
+MAX_QUEUE=12             # 原 4
+QUEUE_TIMEOUT_MS=75000   # 不变，队列仍有上界
+RETRY_429=2
+UPSTREAM_IDLE_TIMEOUT_MS=480000
+UPSTREAM_MAX_TOTAL_MS=900000
+```
+
+**为什么从 2/4 提到 4/12**：`slots=2` 在 4+ 个 bot 下不够，2026-09-27 18–19Z 一小时内出现 15 次 `reason=queue full`——请求在**进上游之前**就被拒了。同期真上游 429（带 `try=` 的那种）为 **0**，说明瓶颈在我们自己而不在 opencodex，继续压在 2 槽是限自己。队列从 4 提到 12 是为了吸收突发：实测响应耗时中位数约 30s，75s 队列超时足够覆盖两个波峰。
+
+**可逆且可观测**：若上游真开始限流，forwarder.log 里会出现带 `try=` 的 429（与 `reason=queue full` 明确可分，见下节），届时把 `MAX_CONCURRENCY` 调回 3 即可，不需要改代码。
+
 ## forwarder：行为契约与新增
 
 **不变的部分**：env 契约（`RELAY_BIND/RELAY_PORT/UPSTREAM_HOST/UPSTREAM_PORT/RELAY_TOKEN`）、Host 重写、hop-by-hop 剥离、403 令牌门禁、完成日志格式 `-> <code> <ms>ms`。非 chat 请求（如 `/v1/models` 探活轮询）完全走原直通路径，永不排队。
