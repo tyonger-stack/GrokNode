@@ -57,7 +57,7 @@ test("extra-i18n tables are 0.59.1-sourced, mode-shaped and gap-disjoint", async
       seen.add(en);
       assert.ok(id.length >= 5 && id.length <= 8, entry.file + " " + id);
       for (const ch of id) assert.ok(idChars.includes(ch), entry.file + " " + id);
-      assert.ok(mode === "FULL" || mode === "PROP" || mode === "PROP_COLON", entry.file + " " + mode);
+      assert.ok(mode === "FULL" || mode === "PROP" || mode === "PROP_COLON" || mode === "PANEL", entry.file + " " + mode);
       total += 1;
     }
     for (const [gap] of entry.gaps) assert.ok(!seen.has(gap), entry.file + " gap listed as pair: " + gap);
