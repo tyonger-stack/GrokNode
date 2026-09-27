@@ -30,6 +30,13 @@ function baseSource() {
   rows.push("function XGn(n){switch(n){case\"never\":return\"Never allow\";case\"always\":return\"Always allow\";case\"ask\":return\"Ask every time\"}}");
   rows.push("e=n.isEnabled?n.runs[0]?.status===\"running\"?{detail:n.triggerDescription,iconName:\"loading\",iconStyle:Moe.runningIcon}:{detail:n.triggerDescription,iconName:\"clock\",iconStyle:Moe.enabledIcon}:{detail:\"Paused\",iconName:\"pause-circle\",iconStyle:Moe.pausedIcon}}");
   rows.push("function _3n(n){switch(n){case\"subagent\":return\"Subagent\";case\"shell\":return\"Shell\";case\"cloud-agent\":return\"Cloud agent\"}}");
+  rows.push("te.show(\"Couldn't cancel your message. Try again.\");");
+  rows.push("te.show(\"Couldn't resend your message. Try again.\");");
+  rows.push("te.show(\"Couldn't delete your message. Try again.\");");
+  rows.push("te.show(\"Couldn't send your message. Check your connection and try again.\");");
+  rows.push("const Z9n=[\"Getting ready\",\"Cleaning up\",\"Reconnecting\"];");
+  rows.push("const X9n=[\"Getting ready\",\"Wiping your data\",\"Creating Grok Bot's computer\"];");
+  rows.push("const Q9n=[\"Getting ready\",\"Recreating Grok Bot's computer\",\"Starting\"];");
   rows.push(...MAIN_I18N_LOCAL_ANCHORED.map((entry) => entry.anchor));
   return rows.join(NL);
 }
@@ -43,7 +50,9 @@ test("main-i18n patch appends prelude and branches every pair literal", async ()
   assert.equal(localApplied.length, MAIN_I18N_LOCAL_PAIRS.length);
   for (const row of localApplied) assert.ok(row.hits >= 1, "0.18-only pair must hit: " + row.en);
   assert.ok(patched.includes('(RLocT("Create Routine","创建例行任务"))'));
-  assert.equal(anchored.length, 3 + MAIN_I18N_LOCAL_ANCHORED.length, "all whole-block anchors must apply");
+  assert.equal(anchored.length, 10 + MAIN_I18N_LOCAL_ANCHORED.length, "all whole-block anchors must apply");
+  assert.ok(patched.includes('(RLocT("Getting ready","正在准备"))'), "boot state catalog first element must branch to +6Ex1c wording");
+  assert.ok(patched.includes('(RLocT("Couldn\'t cancel your message. Try again.","无法取消你的消息。请重试。"))'), "cancel failure toast must branch to 8gi/JY wording");
   assert.ok(patched.includes("从不允许"), "XGn never-arm must branch to wvd4WD wording");
   assert.ok(patched.includes("每次询问"), "XGn ask-arm must branch to 6CTZeX wording");
   assert.ok(!patched.includes('return"Never allow"'), "raw XGn never-arm must be gone");

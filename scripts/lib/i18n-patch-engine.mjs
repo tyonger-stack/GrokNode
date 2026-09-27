@@ -313,6 +313,8 @@ export function applyPair(source, en, zh, mode) {
     takeSearch("return" + search);
     takeSearch("," + search);
     takeSearch("??" + search);
+    takeSearch("||" + search);
+    takeSearch("&&" + search);
     let cursor = 0;
     const needle = "=" + search;
     while (true) {
@@ -334,6 +336,28 @@ export function applyPair(source, en, zh, mode) {
       if (mode === "PANEL") {
         if (!isDigitKey(source, idx)) offer(idx + 1);
       } else if (!isIdentifierChar(prev) && !propHit) offer(idx + 1);
+      cursor = idx + needle.length;
+    }
+  }
+  // PANEL also accepts any identifier-prop pattern: propName:"..." where propName is in DISPLAY_PROPS,
+  // OR the literal sits as an object literal value (e.g. action:"text" inside a JSX prop object).
+  // The latter is captured by the colon-expression pattern when the colon is preceded by an
+  // identifier; we additionally cover the broader "Word:" pattern via a soft match.
+  if (mode === "PANEL") {
+    let cursor = 0;
+    const needle = search;
+    while (true) {
+      const idx = source.indexOf(needle, cursor);
+      if (idx < 0) break;
+      const before = source.substring(Math.max(0, idx - 60), idx);
+      // Pattern: identifier followed by colon then literal (any propName, not just DISPLAY_PROPS)
+      const m = /([A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*$/.exec(before);
+      if (m) {
+        const propName = m[1];
+        if (propName !== "case" && propName !== "return" && propName !== "throw" && propName !== "typeof" && propName !== "new") {
+          offer(idx + needle.length - search.length);
+        }
+      }
       cursor = idx + needle.length;
     }
   }
