@@ -137,7 +137,7 @@ npm run frontend:build  # 构建可读 renderer 重建
 
 - 判定手法：host 日志 `/tmp/sand-host.log` 看回合是否在派发 → forwarder 日志看请求是否到达 → 容器内对比 `/proc/<relay-pid>/environ` 的上游地址与 `ifconfig` 的实际接口。**Mac 侧健康探针走的是 Mac 自己的 10100，绕开了容器这一跳，所以它一直报绿——这就是这个 bug 能潜伏数小时的原因。**
 - 修复：`RELAY_UPSTREAM_HOST="$(ipconfig getifaddr en0)" tools/ocx-relay/container-relay-push.sh`。修复后 forwarder 立即出现连续 200（15–55s，队列 17–28s），host 出现 `AGENT_REQUEST_END`，watchdog 告警停止。
-- **Mac 的地址是 DHCP 的，会再变。容器重建后平台会用它自己那份配置再拉一次中继，每次重建都要重跑上面这条命令。**
+- **Mac 的地址是 DHCP 的，会再变；容器重建后平台会用它自己那份配置再拉一次中继。** 2026-09-28 起这条路**已自愈**：watchdog 每 2 分钟探一次容器内的 `127.0.0.1:10100`，失败就用 `ipconfig getifaddr en0` 现取地址重跑一次 push 脚本，复探通了就**静默不告警**，仍失败才告警（文案写明已尝试自愈及结果）。自愈有独立冷却键，失败不会循环。**手工那条命令只在告警时才需要。**
 
 **这次连带修掉的三个脚本缺陷**（`container-relay-push.sh`，此前该脚本从未真正生效过）：
 
