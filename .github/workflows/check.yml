@@ -32,7 +32,9 @@ jobs:
         run: npm run publication:check
   # The URL-scheme and app-identity gates spawn macOS plutil, so the ubuntu
   # job skips them; this job runs the identity test file (including the
-  # darwin-only scheme-gate branches) on a real macOS runner.
+  # darwin-only scheme-gate branches) on a real macOS runner. It also runs the
+  # feishu bridge tests, whose ingress half decrypts through CommonCrypto and is
+  # therefore skipped by that test file's own platform guard on the ubuntu job.
   check-darwin:
     runs-on: macos-latest
     timeout-minutes: 20
@@ -46,5 +48,5 @@ jobs:
           cache: npm
       - name: Install the locked dependency graph
         run: npm ci --no-audit --no-fund
-      - name: Run the identity and scheme-gate tests
-        run: node --test tests/grok-node-identity.test.mjs
+      - name: Run the identity, scheme-gate and macOS bridge tests
+        run: node --test tests/grok-node-identity.test.mjs tests/local-feishu-bridge.test.mjs
