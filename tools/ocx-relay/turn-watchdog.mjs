@@ -21,7 +21,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 
 const RELAY_DIR = process.env.RELAY_DIR || path.join(os.homedir(), ".grokbot", "ocx-relay");
 const FORWARDER_LOG = process.env.FORWARDER_LOG || path.join(RELAY_DIR, "forwarder.log");
@@ -39,6 +39,12 @@ const TRANSCRIPT_STALL_MS = Number(process.env.TRANSCRIPT_STALL_MS ?? "600000");
 const SPAWN_WINDOW_MS = Number(process.env.SPAWN_WINDOW_MS ?? "1800000");
 const SPAWN_READ_LAG_MS = Number(process.env.SPAWN_READ_LAG_MS ?? "180000");
 const ALERT_COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS ?? "1800000");
+// The repair re-pushes files into the box and restarts its relay, so it gets
+// its own budget: a rebuild plus probe has to fit well inside the check
+// interval, and a failed attempt must not be retried on the very next loop.
+const REPAIR_COOLDOWN_MS = Number(process.env.REPAIR_COOLDOWN_MS ?? String(ALERT_COOLDOWN_MS));
+const REPAIR_TIMEOUT_MS = Number(process.env.REPAIR_TIMEOUT_MS ?? "90000");
+const REPAIR_SCRIPT = process.env.REPAIR_SCRIPT || path.join(RELAY_DIR, "container-relay-push.sh");
 const LOG_TAIL_BYTES = Number(process.env.LOG_TAIL_BYTES ?? String(256 * 1024));
 const RUN_ONCE = process.env.RUN_ONCE === "1";
 const MACOS_NOTIFY = process.env.MACOS_NOTIFY !== "0";
@@ -58,7 +64,7 @@ const state = loadState();
 const nameCache = new Map();
 
 function loadState() {
-  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {} };
+  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {}, lastRepair: {} };
   try {
     const parsed = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
     return {
@@ -77,10 +83,18 @@ function saveState() {
   } catch { /* alerts still fire without persistence */ }
 }
 
+// The relay token travels in a shell command inside these checks, and
+// execFile's error message quotes the whole command back. Anything that
+// reaches an alert line, the alerts log or a notification has to be scrubbed
+// first, or a failed probe publishes the token.
+function redactSecrets(text) {
+  return String(text).replace(/x-relay-token:\s*[^\s'"]+/gi, "x-relay-token: <redacted>");
+}
+
 function execInContainer(command) {
   return new Promise((resolve, reject) => {
     execFile(DOCKER, ["exec", CONTAINER, "sh", "-c", command], { timeout: CONTAINER_TIMEOUT_MS }, (error, stdout, stderr) => {
-      if (error) reject(new Error(String(stderr || error.message).trim()));
+      if (error) reject(new Error(redactSecrets(String(stderr || error.message).trim())));
       else resolve(stdout);
     });
   });
@@ -239,40 +253,96 @@ function checkForwarderLiveness(now) {
   });
 }
 
-// Container hop liveness. The probe above proves the Mac-side forwarder still
-// answers, but every bot turn crosses 127.0.0.1:10100 inside the box first,
-// and that hop can die on its own: on 2026-09-28 the container relay still
-// dialled a Mac address the network had moved on from, so the request left the
-// box, was swallowed, and the Mac probe stayed green while every bot sat
-// frozen for five and a half hours. Nothing here touches a bot — it only
-// reports, consistent with the notify-only contract.
-async function checkContainerRelayLiveness(now) {
-  let token = "";
-  try { token = fs.readFileSync(path.join(RELAY_DIR, "token"), "utf8").trim(); } catch { /* probe unauthenticated */ }
-  const auth = token
-    ? ` -H 'x-relay-token: ${token.replace(/'/g, "'\\''")}'`
-    : "";
-  let code = "";
+// The Mac address the container relay has to dial. It comes from DHCP and has
+// already moved once, and the platform bakes its own value into the relay it
+// launches — so it is re-derived from the live interface on every repair
+// rather than trusted from any stored configuration.
+function currentMacAddress() {
+  // /sbin/ipconfig does not exist on this macOS; the binary lives in
+  // /usr/sbin. Try the absolute path first, then fall back to a PATH lookup so
+  // a future layout change degrades to a warning rather than a silent no-op.
+  for (const binary of ["/usr/sbin/ipconfig", "ipconfig"]) {
+    for (const iface of ["en0", "en1"]) {
+      try {
+        const out = execFileSync(binary, ["getifaddr", iface], { encoding: "utf8", timeout: 5000 }).trim();
+        if (out) return out;
+      } catch { /* binary or interface not present */ }
+    }
+  }
+  return "";
+}
+
+function relayToken() {
+  try { return fs.readFileSync(path.join(RELAY_DIR, "token"), "utf8").trim(); } catch { return ""; }
+}
+
+async function probeContainerRelay() {
+  const token = relayToken();
+  const auth = token ? ` -H 'x-relay-token: ${token.replace(/'/g, "'\\''")}'` : "";
   try {
-    code = (await execInContainer(
+    const code = (await execInContainer(
       `curl -s -o /dev/null -w '%{http_code}' --max-time 10${auth} http://127.0.0.1:10100/v1/models`,
     )).trim();
+    return { ok: code === "200", code: code || "无响应" };
   } catch (e) {
+    return { ok: false, code: `探活失败：${e.message}` };
+  }
+}
+
+// The one self-healing action in the watchdog. It re-pushes the container
+// relay against the Mac address that is actually current, which covers both
+// causes seen in the field: a container rebuild restoring the stock relay on a
+// stale address, and the Mac simply moving. It never touches a bot.
+// container-relay-push.sh is idempotent — backs up, copies, restarts, probes
+// with the real token and exits non-zero on failure — so a bad attempt is
+// visible in the log rather than silent.
+async function repairContainerRelay(now) {
+  const key = "container-relay";
+  if (now - (state.lastRepair?.[key] ?? 0) < REPAIR_COOLDOWN_MS) {
+    return { attempted: false, ok: false, detail: `距上次自愈不足 ${Math.round(REPAIR_COOLDOWN_MS / 60000)} 分钟，本轮不再尝试` };
+  }
+  const address = currentMacAddress();
+  if (!address) {
+    return { attempted: false, ok: false, detail: "取不到本机 en0/en1 地址，无法确定上游（网络未就绪？）" };
+  }
+  state.lastRepair = { ...(state.lastRepair ?? {}), [key]: now };
+  console.log(`${new Date(now).toISOString()} repairing container relay -> ${address} via ${REPAIR_SCRIPT}`);
+  try {
+    const stdout = await new Promise((resolve, reject) => {
+      execFile("/bin/zsh", [REPAIR_SCRIPT], {
+        timeout: REPAIR_TIMEOUT_MS,
+        env: { ...process.env, RELAY_UPSTREAM_HOST: address },
+      }, (error, out, err) => error ? reject(new Error(redactSecrets(String(err || error.message).trim()))) : resolve(out));
+    });
+    const lines = stdout.trim().split("\n");
+    return { attempted: true, ok: true, detail: lines[lines.length - 1] || "中继已重建" };
+  } catch (e) {
+    return { attempted: true, ok: false, detail: e.message };
+  }
+}
+
+async function checkContainerRelayLiveness(now) {
+  const first = await probeContainerRelay();
+  if (first.ok) return;
+  console.log(`${new Date(now).toISOString()} container hop probe failed (${first.code}); attempting repair`);
+  const repair = await repairContainerRelay(now);
+  if (repair.attempted) {
+    const again = await probeContainerRelay();
+    if (again.ok) {
+      console.log(`${new Date(now).toISOString()} container hop self-healed: ${repair.detail}`);
+      return;
+    }
     alert(
       "container-relay-down",
-      `容器内 10100 探活失败（${e.message}）——bot 回合会在这一跳被吞掉。`
-        + `若容器本身已停，先看容器；否则重跑 tools/ocx-relay/container-relay-push.sh 并传入当前 Mac 地址。`,
+      `容器内 10100 探活仍失败（${again.code}）——bot 回合会卡在这一跳。已尝试自愈但未成功：${repair.detail}`,
     );
     return;
   }
-  if (code !== "200") {
-    alert(
-      "container-relay-down",
-      `容器内 10100 探活异常（HTTP ${code || "无响应"}，${new Date(now).toLocaleTimeString()}）——`
-        + `Mac 侧 11010 仍通，但 bot 回合会卡在这一跳。重跑 tools/ocx-relay/container-relay-push.sh `
-        + `并传入当前 Mac 地址：RELAY_UPSTREAM_HOST="$(ipconfig getifaddr en0)"`,
-    );
-  }
+  alert(
+    "container-relay-down",
+    `容器内 10100 探活失败（${first.code}）——bot 回合会卡在这一跳。未执行自愈：${repair.detail}`
+      + `手工执行：RELAY_UPSTREAM_HOST="$(ipconfig getifaddr en0)" ${REPAIR_SCRIPT}`,
+  );
 }
 
 function osascriptNotify(message) {

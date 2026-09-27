@@ -9,7 +9,7 @@ DST="$HOME/.grokbot/ocx-relay"
 TS=$(date +%Y%m%d-%H%M%S)
 
 mkdir -p "$DST"
-for f in mac-forwarder.mjs turn-watchdog.mjs container-relay.py; do
+for f in mac-forwarder.mjs turn-watchdog.mjs container-relay.py container-relay-push.sh; do
   if [ -f "$DST/$f" ]; then
     cp "$DST/$f" "$DST/$f.bak-$TS"
     echo "backed up: $DST/$f.bak-$TS"
