@@ -464,6 +464,28 @@ export const SAND_ERROR_DEFINITIONS = {
     "payload": [],
     "seededFrom": "runAgent catch fallback in memory-synthesis-service.ts"
   },
+  "SAND-E0415": {
+    "name": "providerAuthFailure",
+    "domain": "agent",
+    "retryable": false,
+    "summary": "Model provider rejected the turn with an auth error (401/403). Re-auth the provider; retrying the same credentials would fail again.",
+    "payload": [
+      "connectCode",
+      "statusCode"
+    ],
+    "seededFrom": "isProviderAuthFailure in turn-runtime.ts"
+  },
+  "SAND-E0416": {
+    "name": "providerQuotaExhausted",
+    "domain": "agent",
+    "retryable": false,
+    "summary": "Model provider rejected the turn for quota/billing (402 or explicit quota wording). Retrying without a quota change would fail again.",
+    "payload": [
+      "connectCode",
+      "statusCode"
+    ],
+    "seededFrom": "isProviderQuotaFailure in turn-runtime.ts"
+  },
   "SAND-E0414": {
     "name": "conversationTooLarge",
     "domain": "agent",

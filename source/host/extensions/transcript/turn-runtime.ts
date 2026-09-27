@@ -138,6 +138,97 @@ export function connectCodeOf(error: unknown): string | undefined {
   return connectCodeTag(CONNECT_CODE_NAMES[connectError.code - 1]);
 }
 
+/** HTTP status carried by an ai-sdk API error chain (AI_APICallError and
+ * friends expose `statusCode`; some transports nest it under `response`). */
+export function httpStatusOf(error: unknown): number | undefined {
+  const visit = (value: unknown, seen = new Set<unknown>()): number | undefined => {
+    if (value == null || typeof value !== "object" || seen.has(value))
+      return undefined;
+    seen.add(value);
+    const record = value as Record<string, unknown>;
+    if (typeof record.statusCode === "number") return record.statusCode;
+    if (typeof record.status === "number") return record.status;
+    const nested =
+      visit(record.cause, seen) ??
+      visit(record.response, seen) ??
+      (Array.isArray(record.errors)
+        ? record.errors.map((child) => visit(child, seen)).find((code) => code !== undefined)
+        : undefined);
+    return nested;
+  };
+  return visit(error);
+}
+
+const QUOTA_WORDS = [
+  "quota",
+  "billing",
+  "payment required",
+  "insufficient",
+  "credits",
+  "rate limit exceeded",
+  "usage limit",
+];
+
+/** Explicit quota wording when the transport gives no HTTP status. */
+export function quotaWordingOf(error: unknown): boolean {
+  const visit = (value: unknown, seen = new Set<unknown>()): boolean => {
+    if (value == null || seen.has(value)) return false;
+    if (typeof value === "string")
+      return QUOTA_WORDS.some((word) => value.toLowerCase().includes(word));
+    if (typeof value !== "object") return false;
+    seen.add(value);
+    const record = value as Record<string, unknown>;
+    if (typeof record.message === "string" && quotaWordingOf(record.message))
+      return true;
+    if (typeof record.code === "string" && quotaWordingOf(record.code))
+      return true;
+    return (
+      visit(record.cause, seen) ||
+      (Array.isArray(record.errors) && record.errors.some((child) => visit(child, seen)))
+    );
+  };
+  return visit(error);
+}
+
+const INTERRUPT_WORDS = [
+  "aborted",
+  "abort",
+  "cancelled",
+  "canceled",
+  "superseded",
+  "interrupt",
+  "watchdog",
+  "agent deleted",
+  "run-queue watchdog",
+];
+
+/** True when the error is a user/system interrupt rather than a real failure.
+ * Interrupts arrive as thrown aborts or as abort-ish reason strings, never as
+ * clean returns - matching on generic abort signals keeps the failure notice
+ * from firing on every stop/supersede/watchdog path without enumerating each
+ * call site, per OpenMausBot's rule that a stopped turn must never auto-retry
+ * or report itself as failed. */
+export function isTurnInterruptedFailure(error: unknown): boolean {
+  const visit = (value: unknown, seen = new Set<unknown>()): boolean => {
+    if (value == null || seen.has(value)) return false;
+    if (typeof value === "string")
+      return INTERRUPT_WORDS.some((word) => value.toLowerCase().includes(word));
+    if (typeof value !== "object") return false;
+    seen.add(value);
+    const record = value as Record<string, unknown>;
+    if (record.name === "AbortError" || record.code === "ABORT_ERR") return true;
+    if (typeof record.message === "string" && visit(record.message, seen))
+      return true;
+    if (typeof record.reason === "string" && visit(record.reason, seen))
+      return true;
+    return (
+      visit(record.cause, seen) ||
+      (Array.isArray(record.errors) && record.errors.some((child) => visit(child, seen)))
+    );
+  };
+  return visit(error);
+}
+
 export interface TurnResult {
   sentMessageCount: number;
   reacted: boolean;
@@ -179,7 +270,39 @@ export function isDeliveryOwed(
   return result.sentMessageCount === 0 && !result.reacted;
 }
 
+/** Incident vocabulary shared with OpenMausBot's incident panel
+ * (failed/stalled/could-not-start/routine-failed). Carried on telemetry
+ * reports so fleet dashboards can aggregate by incident kind today; a UI
+ * list is a later step and must not invent renderer behavior. */
+export type TurnIncidentKind =
+  | "failed"
+  | "stalled"
+  | "could-not-start"
+  | "routine-failed";
+
+export function incidentKindOf(
+  classified: Record<string, unknown>,
+): TurnIncidentKind {
+  const code = String(classified.code ?? "");
+  if (code === "SAND-E0401" || code === "SAND-E0408") return "stalled";
+  if (code === "SAND-E0405" || code === "SAND-E0407") return "failed";
+  return "failed";
+}
+
 export function classifyAgentError(error: unknown): Record<string, unknown> {
+  const statusCode = httpStatusOf(error);
+  if (statusCode === 401 || statusCode === 403) {
+    return SandError.providerAuthFailure({
+      connectCode: connectCodeOf(error),
+      statusCode,
+    });
+  }
+  if (statusCode === 402 || quotaWordingOf(error)) {
+    return SandError.providerQuotaExhausted({
+      connectCode: connectCodeOf(error),
+      statusCode,
+    });
+  }
   if (isProviderCapacityError(error)) {
     const retryAfterMs = serverRetryAfterMsFromError(error);
     if (retryAfterMs !== undefined) {
@@ -484,12 +607,17 @@ export class TurnRuntime {
           `[sand][turn] agent run failed for ${session.id}`,
           error,
         );
-        turn.finalize(
-          "error",
-          classifyAgentError(error),
-          sandErrorDetail(error),
-        );
+        const classified = classifyAgentError(error);
+        turn.finalize("error", classified, sandErrorDetail(error));
         markTurnTraceError(turnTrace, error);
+        try {
+          this.tm.telemetry.reportTurnInterrupt({
+            conversationId: session.id,
+            reason: "turn_failed",
+            hadActiveRun: true,
+            incidentKind: incidentKindOf(classified),
+          });
+        } catch {}
         if (epoch === this.tm.sendPipeline.currentTurnEpoch(session)) {
           const description = describeAgentRunError(error);
           const requestId = session.db.getRequestIds().at(-1)?.id;

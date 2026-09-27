@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   areAgentActivitiesEqual,
   type SandAgentActivity,
@@ -11,6 +13,9 @@ import {
   type ActivityUpdate,
   type NamedActivityHoldState,
 } from "../../sand-activity.js";
+import { describeAgentRunError } from "./agent-run-error.js";
+import { isTurnInterruptedFailure } from "./turn-runtime.js";
+import { ToolRepeatDetector } from "./tool-repeat-detector.js";
 import { SandRunScheduler, type RunLane } from "./run-scheduler.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
 
@@ -26,6 +31,29 @@ export function envPositiveInt(name: string, fallback: number): number {
 export const RUN_WATCHDOG_DEFAULT_MS = 120_000;
 export const RUN_WATCHDOG_GRACE_DEFAULT_MS = 30_000;
 
+// Real bot-turn sources only: bookkeeping reruns (ack-redrive, spend_guard, ...)
+// must not raise user-facing failure notices.
+const TURN_FAILURE_NOTICE_SOURCES = new Set([
+  "turn",
+  "group",
+  "automation",
+  "connector",
+  "agent",
+  "subagent-revival",
+  "shell-revival",
+  "background_followup",
+  "handoff-resume",
+  "upgrade-resume",
+  "kickstart",
+  "event",
+]);
+
+/** Tool name for the detector: falls back to the update id when the name is
+ * absent so sparse tool streams still count. */
+function toolCallKey(toolCall: { name?: string }): string {
+  return toolCall.name ?? "unknown-tool";
+}
+
 export class RunLifecycle {
   readonly inFlightRunCounts = new Map<any, number>();
   readonly runWindowStartedAt = new Map<any, number>();
@@ -35,6 +63,9 @@ export class RunLifecycle {
   readonly runScheduler: SandRunScheduler | null;
   readonly composingMessageSessionIds = new Set<string>();
   readonly retryingSessionIds = new Set<string>();
+  /** Observes tool-call loops per session (OpenMausBot RepeatDetector
+   * equivalent). Observes only - a suspect hit never interrupts the turn. */
+  readonly toolRepeatDetector = new ToolRepeatDetector();
   readonly sessionActivities = new Map<string, SandAgentActivity>();
   readonly sessionActivityHolds = new Map<string, NamedActivityHoldState>();
   readonly lastRequestIdBySession = new Map<string, string>();
@@ -55,6 +86,8 @@ export class RunLifecycle {
           ),
           interruptWedgedRun: (agentId) =>
             this.tm.runnerRegistry.interruptWedgedRunForWatchdog(agentId),
+          isAwaitingUserSelection: (agentId) =>
+            this.tm.runnerRegistry.isAwaitingUserSelection(agentId),
           telemetry: {
             onAccepted: (event) =>
               this.tm.telemetry.reportQueueAccepted({
@@ -149,6 +182,58 @@ export class RunLifecycle {
     });
   }
 
+  appendTurnFailureNotice(agentId: string, source: string, error: unknown): void {
+    try {
+      const sessions = this.tm.sessions as
+        | { activeSession?: { id?: string }; liveSessions?: Map<string, any> }
+        | undefined;
+      const active = sessions?.activeSession;
+      const session =
+        active?.id === agentId ? active : sessions?.liveSessions?.get(agentId);
+      if (session == null) return;
+      // A turn the user (or the system) interrupted must never come back as a
+      // failure notice. Interrupts arrive as thrown aborts or as abort-ish
+      // reasons, not as clean returns, so filter them here rather than
+      // enumerating every interrupt call site.
+      if (isTurnInterruptedFailure(error)) return;
+      const description = describeAgentRunError(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      const notice = {
+        kind: "notice",
+        id: "notice-turn-failure-" + randomUUID(),
+        text:
+          "This turn ended without a reply (source: " +
+          source +
+          "; error: " +
+          description +
+          "). Send a message to run it again.",
+        timestampMs: Date.now(),
+      };
+      // The notice kind renders in the live roster, but journal/jsonl lines
+      // only accept the legacy message envelope - mirror an equivalent
+      // assistant text entry so the failure stays visible to the turn
+      // watchdog and any transcript reader (no transcript-mirror plumbing).
+      const journalMirror = {
+        kind: "message" as const,
+        role: "assistant" as const,
+        content: "⚠️ " + notice.text,
+        id: notice.id + "-journal",
+        timestampMs: notice.timestampMs,
+      };
+      if (active?.id === agentId) {
+        this.tm.appendEntry(notice);
+        this.tm.appendEntry(journalMirror);
+      } else {
+        session.db?.appendTranscriptEntry?.(notice);
+        session.db?.appendTranscriptEntry?.(journalMirror);
+        void this.tm.roster?.emitAgentUpdate(agentId);
+      }
+    } catch {
+      // best-effort: a broken notice must never mask the original turn failure
+    }
+  }
+
   enqueueExclusiveRun(
     agentId: string,
     task: () => Promise<void>,
@@ -159,12 +244,19 @@ export class RunLifecycle {
       ackToken?: string;
     },
   ): Promise<void> {
+    const guardedTask = TURN_FAILURE_NOTICE_SOURCES.has(options.source)
+      ? () =>
+          task().catch((error: unknown) => {
+            this.appendTurnFailureNotice(agentId, options.source, error);
+            throw error;
+          })
+      : task;
     if (this.runScheduler != null)
-      return this.runScheduler.enqueue(agentId, task, options);
+      return this.runScheduler.enqueue(agentId, guardedTask, options);
     const previous = this.runChains.get(agentId) ?? Promise.resolve();
     const result = previous.then(() => {
       this.tm.sendPipeline.sendAttachmentBatchIds.delete(agentId);
-      return task();
+      return guardedTask();
     });
     this.runChains.set(
       agentId,
@@ -356,6 +448,16 @@ export class RunLifecycle {
       )
         return;
       this.setSessionRetrying(session.id, true);
+    } else if (update.type === "turn-retry") {
+      // Reaches the same sink the runner's own retry path uses: attempt,
+      // outcome and pacing flow into turn-retry telemetry without a new API.
+      const { type, ...info } = update as { type: string } & Record<string, unknown>;
+      try {
+        this.tm.telemetry.reportTurnRetry({
+          conversationId: session.id,
+          ...info,
+        });
+      } catch {}
     } else if (
       [
         "text-delta",
@@ -366,7 +468,33 @@ export class RunLifecycle {
       ].includes(update.type)
     )
       this.setSessionRetrying(session.id, false);
+    const toolCall = update as {
+      type: string;
+      name?: string;
+      status?: string;
+      args?: unknown;
+    };
+    if (update.type === "tool-call" && toolCall.status === "completed") {
+      const suspect = this.toolRepeatDetector.record(
+        session.id,
+        toolCallKey(toolCall),
+        toolCall.args,
+      );
+      if (suspect != null) {
+        try {
+          this.tm.telemetry.reportTurnRetry({
+            conversationId: session.id,
+            outcome: "loop_suspected",
+            attempt: suspect.count,
+            maxAttempts: suspect.threshold,
+            toolName: toolCall.name,
+          });
+        } catch {}
+      }
+    }
+    if (update.type === "turn-ended") this.toolRepeatDetector.settle(session.id);
   }
+
   setSessionActivity(
     sessionId: string,
     activity: SandAgentActivity | undefined,

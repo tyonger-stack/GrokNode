@@ -49,6 +49,17 @@ export class RunnerRegistry {
     return hadActiveRun;
   }
 
+  /** True when any runner for this agent is paused for the user (selection,
+   * confirmation card). The run-queue watchdog defers instead of tripping. */
+  isAwaitingUserSelection(agentId: string): boolean {
+    return (
+      this.runners.get(agentId)?.isRunAwaitingUserSelection?.() === true ||
+      this.activeGroupMemberRunners
+        .get(agentId)
+        ?.isRunAwaitingUserSelection?.() === true
+    );
+  }
+
   attachRunner(runner: any): void {
     this.tm.attachRunnerFactory((session: any, hooks: any) => {
       runner.setAgentStore(session.agentStore, hooks.agentProfileProvider);

@@ -21,6 +21,10 @@ import {
   shouldNotifyAutomationFailure,
 } from "./sand-automation-failure.js";
 import { createUserMessage } from "./send-message-shaping.js";
+import {
+  admitRun,
+  resolveMaxRunQueueDepth,
+} from "./run-admission.js";
 import { nextEntryId } from "./transcript-entry-ids.js";
 import { getTranscript } from "./transcript-store.js";
 import { classifyAgentError } from "./turn-runtime.js";
@@ -177,6 +181,43 @@ export class AutomationRunPath {
       this.recordAutomationRun(session, args.automation.id);
       const automationsBeforeRun = session.automations.listDefinitions();
       this.tm.runLifecycle.beginSessionRun(session);
+      {
+        // Admission: shed unattended backlog instead of stacking it behind a
+        // deep queue. The miss stays visible via run telemetry; user traffic
+        // is never refused (see admitRun).
+        const queue = this.tm.runLifecycle
+          .getRunQueueDiagnostics()
+          .find(
+            (entry: unknown) =>
+              (entry as { agentId?: unknown }).agentId === session.id,
+          ) as { depthTotal?: unknown; active?: unknown } | undefined;
+        const verdict = admitRun({
+          surface: "automation",
+          queueDepth:
+            typeof queue?.depthTotal === "number" ? queue.depthTotal : 0,
+          maxQueueDepth: resolveMaxRunQueueDepth(),
+          hasActiveRun: queue?.active != null,
+        });
+        if (verdict.action === "refuse") {
+          this.finishAutomationRun(
+            session,
+            args.automation.id,
+            null,
+            "error",
+            `Automation run refused: run queue full (depth ${typeof queue?.depthTotal === "number" ? queue.depthTotal : 0}).`,
+          );
+          try {
+            this.tm.telemetry.reportQueueAccepted?.({
+              conversationId: session.id,
+              lane: "background",
+              source: "automation",
+              refused: true,
+              code: verdict.code,
+            });
+          } catch {}
+          return runOutcome;
+        }
+      }
       await this.tm.runLifecycle.enqueueExclusiveRun(
         session.id,
         async () => {

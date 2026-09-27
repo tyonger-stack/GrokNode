@@ -442,7 +442,7 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     throw error;
   }
   const tools = toToolSet(definitions, executeTool);
-  const result = streamText({ model, system: GROK_ROUTER_SYSTEM_PROMPT, messages: messages as CoreMessage[], ...(signal === undefined ? {} : { abortSignal: signal }), ...(tools === undefined ? {} : { tools }), toolCallStreaming: true, maxSteps: tools === undefined ? 1 : 8 });
+  const result = streamText({ model, system: GROK_ROUTER_SYSTEM_PROMPT, messages: messages as CoreMessage[], ...(signal === undefined ? {} : { abortSignal: signal }), ...(tools === undefined ? {} : { tools }), toolCallStreaming: true, maxSteps: tools === undefined ? 1 : 8, maxRetries: 4 });
   async function* observedFullStream() {
     const iterator = result.fullStream[Symbol.asyncIterator]();
     let pending = iterator.next();
