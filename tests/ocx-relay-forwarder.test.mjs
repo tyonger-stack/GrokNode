@@ -337,6 +337,82 @@ test("aborts a trickle-hung stream at the total deadline and frees the slot", as
   }
 });
 
+test("the total deadline is one budget for the whole request, not one per attempt", async () => {
+  // Live id=35e7fc81 finished at 1403443ms against a 900000ms budget because
+  // every retry re-armed the total timer. Budget spent during the retry sleep
+  // must stop the request, and must not be handed to the next attempt.
+  let attempts = 0;
+  const upstream = await startMockUpstream(async (req, res) => {
+    attempts += 1;
+    if (attempts === 1) {
+      res.writeHead(429, { "retry-after": "1", "content-type": "application/json" });
+      res.end('{"error":"slow down"}');
+      return;
+    }
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    const trickle = setInterval(() => { try { res.write(": keepalive\n\n"); } catch { } }, 30);
+    res.on("close", () => clearInterval(trickle));
+  });
+  // Budget (250ms) is far shorter than the Retry-After the upstream asks for
+  // (~1000ms), so the deadline lands while the request is asleep between
+  // attempts — the window where destroying the (already ended) upstream did
+  // nothing and the sleep simply resurrected the request.
+  const relay = await startRelay(upstream.port, {
+    upstreamMaxTotalMs: 250, retry429: 2, retryMaxDelayMs: 5000, idleTimeoutMs: 0, maxConcurrency: 1,
+  });
+  try {
+    const startedAt = Date.now();
+    const res = await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: CHAT_BODY });
+    const elapsed = Date.now() - startedAt;
+    assert.equal(attempts, 1, "the retry started after the request budget was already spent");
+    assert.ok(elapsed < 700, `request ran ${elapsed}ms; the per-attempt budget was not shared across the retry`);
+    assert.equal(res.status, 502);
+    assert.ok(relay.logs.some((line) => line.includes("upstream total deadline")), "total deadline was not logged");
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
+test("the total deadline still fires on a live retried attempt", async () => {
+  // Companion to the test above, not a second repro of it: that one fails only
+  // when the deadline lands in the sleep window, because the previously armed
+  // timer happens to still be pending here. This guards the other side of the
+  // fix — the request that *is* streaming a retried attempt must still be cut
+  // off by the single armed timer, which depends on the sleep having cleared
+  // its marker when it woke up.
+  let attempts = 0;
+  const upstream = await startMockUpstream(async (req, res) => {
+    attempts += 1;
+    if (attempts === 1) {
+      res.writeHead(429, { "content-type": "application/json" });
+      res.end('{"error":"slow down"}');
+      return;
+    }
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    const trickle = setInterval(() => { try { res.write(": keepalive\n\n"); } catch { } }, 30);
+    res.on("close", () => clearInterval(trickle));
+  });
+  const relay = await startRelay(upstream.port, {
+    upstreamMaxTotalMs: 300, retry429: 2, retryMaxDelayMs: 20, idleTimeoutMs: 0, maxConcurrency: 1,
+  });
+  try {
+    const startedAt = Date.now();
+    const res = await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: CHAT_BODY });
+    const elapsed = Date.now() - startedAt;
+    assert.equal(attempts, 2, "expected exactly one retry before the hang");
+    assert.ok(elapsed < 700, `retried request ran ${elapsed}ms; the single budget did not cut off the second attempt`);
+    // Headers for the retried attempt already reached the client, so the
+    // deadline can only truncate the stream — safeRespond() will not rewrite a
+    // status that is already on the wire.
+    assert.ok([200, 502].includes(res.status), `unexpected status ${res.status}`);
+    assert.ok(relay.logs.some((line) => line.includes("upstream total deadline")), "total deadline was not logged");
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
 test("a mid-stream client abort frees its slot for the next request", async () => {
   let seen = 0;
   const upstream = await startMockUpstream(async (req, res) => {

@@ -135,7 +135,7 @@ export function startForwarder(config) {
     const entry = {
       id: randomUUID().slice(0, 8),
       method: clientReq.method, url: clientReq.url, started,
-      tries: 0, queuedAt: 0, queueTimer: null, sleepTimer: null,
+      tries: 0, queuedAt: 0, queueTimer: null, sleepTimer: null, totalTimer: null,
       upstream: null, clientGone: false, released: false, finished: false,
       clientRes, headers: null, body: null,
     };
@@ -212,11 +212,31 @@ export function startForwarder(config) {
   function dispatch(entry) {
     const queuedMs = entry.queuedAt ? Date.now() - entry.queuedAt : 0;
     log(`${new Date().toISOString()} POST ${entry.url} started id=${entry.id} try=${entry.tries} queued=${queuedMs}ms`);
-    entry.totalTimer = setTimeout(() => {
-      if (entry.finished || entry.released) return;
-      entry.upstream?.destroy(new Error(`upstream total deadline ${upstreamMaxTotalMs}ms exceeded`));
-    }, upstreamMaxTotalMs);
-    entry.totalTimer.unref?.();
+    // The total budget belongs to the request, not to each attempt: arm it once
+    // when the slot is acquired and let every retry share what is left of it.
+    // Re-arming per attempt let a retried request outlive upstreamMaxTotalMs by a
+    // whole retry chain — live id=35e7fc81 ran 1403443ms against a 900000ms
+    // budget — and parked one of only two concurrency slots for 23 minutes,
+    // which is how the other bots got starved into relay queue-timeout 429s.
+    if (entry.totalTimer === null) {
+      entry.totalTimer = setTimeout(() => {
+        if (entry.finished || entry.released) return;
+        const message = `upstream total deadline ${upstreamMaxTotalMs}ms exceeded`;
+        // A retry sleep owns no upstream socket, so destroying entry.upstream
+        // here would land on the attempt that already ended and leave the client
+        // hanging. Terminate the request the way an upstream failure does.
+        if (entry.sleepTimer) {
+          clearTimeout(entry.sleepTimer);
+          entry.sleepTimer = null;
+          log(`${new Date().toISOString()} POST ${entry.url} upstream-error id=${entry.id} ${message}`);
+          safeRespond(entry.clientRes, 502, { "content-type": "application/json" }, JSON.stringify({ error: "upstream error", message }));
+          releaseSlot(entry);
+          return;
+        }
+        entry.upstream?.destroy(new Error(message));
+      }, upstreamMaxTotalMs);
+      entry.totalTimer.unref?.();
+    }
     const upstream = http.request(
       { host: upstreamHost, port: upstreamPort, method: entry.method, path: entry.url, headers: entry.headers },
       (upRes) => {
@@ -226,6 +246,9 @@ export function startForwarder(config) {
           const delay = retryDelayMs(upRes.headers["retry-after"], entry.tries, retryMaxDelayMs);
           log(`${new Date().toISOString()} POST ${entry.url} retry id=${entry.id} attempt=${entry.tries} in=${delay}ms`);
           entry.sleepTimer = setTimeout(() => {
+            // Clear the marker as the sleep ends: the total-deadline path reads
+            // it to tell "waiting to retry" from "streaming an attempt".
+            entry.sleepTimer = null;
             if (entry.clientGone || entry.finished) { releaseSlot(entry); return; }
             dispatch(entry);
           }, delay);
