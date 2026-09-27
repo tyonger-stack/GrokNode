@@ -3,6 +3,7 @@ import path from "node:path";
 
 import {
   BT,
+  DQ,
   NL as ENGINE_NL,
   RUNTIME_LINES,
   applyAnchored,
@@ -116,6 +117,30 @@ export const SETTINGS_I18N_PAIRS = [
   ["Use hardware security keys", "使用硬件安全密钥", "VUEkDl"],
   ["When Grok Bot wants to:", "当 Grok Bot 想要：", "8X0v3P"],
   ["You're up to date", "已是最新版本", "Ekblrc"],
+  // 0.61.0 catalog ports and 0.18-only direct translations (wave 2: 17
+  // remaining settings-panel display strings). Each row is byte-sourced
+  // from the installed Grok Bot 0.61.0 en/zh-CN catalogs (IDs cited from
+  // 0.58 message IDs), or newly authored when no 0.61.0 counterpart
+  // exists (o18locA..D). Five switch labels (available/unavailable/
+  // connected/connecting/up-to-date) stay English: the Settings panel
+  // compares them with === against typed status values, so translating
+  // would orphan the runtime branches; they remain in SETTINGS_I18N_GAPS
+  // below as documented, intentional gaps.
+  ["Agent", "代理", "o18locA"],
+  ["Auto-update when idle", "空闲时自动更新", "o18locB"],
+  ["Canceling\u2026", "正在取消\u2026", "UsfSPG"],
+  ["Checking\u2026", "检查中\u2026", "RLe7Vk"],
+  ["Loading update status\u2026", "正在加载更新状态\u2026", "+Vy0cC"],
+  ["Loading usage\u2026", "正在加载用量\u2026", "zfTucZ"],
+  ["Connecting to Grok Bot's computer\u2026", "正在连接 Grok Bot 的电脑", "NFgPnJ"],
+  ["Route egress through this desktop", "通过此桌面路由出口流量", "o18locC"],
+  ["Allow Grok Bot to use a security key (such as a YubiKey) connected to your computer. You\u2019ll be asked to approve each use.", "允许 Grok Bot 使用连接到你电脑的安全密钥（如 YubiKey）。每次使用前都会请你批准。", "rmVuan"],
+  ["e.g. reply to emails for me", "例如：替我回复邮件", "TWBOU+"],
+  ["unknown error", "未知错误", "o18locD"],
+  ["Couldn\u2019t load usage.", "无法加载用量。", "QtkApk"],
+  ["Couldn\u2019t refresh usage \u2014 showing the last known values.", "无法刷新用量，正在显示最近一次已知数据。", "hCwN14"],
+  ["Couldn\u2019t cancel the trial. Try again.", "无法取消试用，请重试。", "Q5HBNA"],
+  ["This ends your Grok Bot trial now and removes your remaining trial credits. Your card won’t be charged either way — the trial never turns into a paid plan on its own.", "这会立即结束你的 Grok Bot 试用，并移除剩余的试用额度。无论如何都不会向你的银行卡扣款，试用绝不会自动转为付费计划。", "L41f29"],
 ];
 
 // Panel-shape rows: pairs whose 0.18 occurrences need more than the FULL
@@ -154,31 +179,33 @@ export const SETTINGS_I18N_PANEL = new Set([
   "Updates are disabled by SAND_DISABLE_UPDATES",
   "Updates are disabled in dev builds",
   "Updates aren't available on this platform",
+  // wave 2: PANEL-shaped occurrences for the 17 newly added pairs.
+  // Checking… is an update-row variable assignment (let F="Check…"
+  // / F="Loading…" / F="Checking…"), Connecting to Grok Bot's
+  // computer… is an early-return from a switch on relay state, unknown
+  // error and Couldn't cancel the trial. Try again. are ?? default-value
+  // fallbacks (so they only render when the upstream message is empty),
+  // and Update access is managed by internal release-track policy. is
+  // the first element of a JSX children array literal (no prop: prefix,
+  // hence PANEL over FULL).
+  "Checking…",
+  "Connecting to Grok Bot's computer…",
+  "unknown error",
+  "Couldn't cancel the trial. Try again.",
 ]);
 
 export const SETTINGS_I18N_GAPS = [
-  "Agent",
-  "Auto-update when idle",
-  "Canceling…",
-  "Checking…",
-  "Loading update status…",
-  "Loading usage…",
-  "Connecting to Grok Bot’s computer…",
-  "Route egress through this desktop",
-  "Allow Grok Bot to use a security key (such as a YubiKey) connected to your computer. You’ll be asked to approve each use.",
-  "e.g. reply to emails for me",
-  "unknown error",
+  // Status-string switch labels: the Settings panel compares these with
+  // === against typed status values from the host (e.g. e.lastCheck.result
+  // === "up-to-date", e.status === "unavailable", T.type === "available",
+  // s.state === "connected" / "connecting"). Translating them would orphan
+  // the runtime branches because the upstream status enum stays English.
+  // Keep them as gaps so the patch leaves them byte-identical.
   "available",
   "connected",
   "connecting",
   "unavailable",
   "up-to-date",
-  "Couldn’t load usage.",
-  "Couldn’t refresh usage — showing the last known values.",
-  "Couldn’t cancel the trial. Try again.",
-  "This ends your Grok Bot trial now and removes your remaining trial credits.",
-  "Update access is managed by internal release-track policy.",
-  "Open Statsig config",
 ];
 
 const PA_ANCHOR = "function pa(){";
@@ -218,11 +245,27 @@ export const SETTINGS_I18N_ANCHORED = [
     anchor: BT + "Auto-detect (${ze(e)})" + BT,
     replacement: "(RLocT(\"Auto-detect (\"+ze(e)+\")\",\"自动检测（\"+ze(e)+\"）\"))",
   },
+
   {
     id: "NFRGrQ",
     note: "rule-hint-container",
     anchor: "'Write one short, natural-language rule for each action. \"Ask first\" takes priority if rules conflict.'",
     replacement: "(RLocT(\"Write one short, natural-language rule for each action. \\\"Ask first\\\" takes priority if rules conflict.\",\"为每种操作写一条简短的自然语言规则。规则冲突时，“先询问”优先。\"))",
+  },
+
+  {
+    // 0.61.0 catalog (D6WGx5) renders the entire "Update access ...
+    // <0>Open Statsig config</0>" inline as one localized string with a
+    // linked "<0>" placeholder; 0.18 hand-rolls the same content with a
+    // JSX Fragment containing a plain-text element and an <a> child. The
+    // literal sits at the head of a children: [...] array, so neither the
+    // PROP/FULL nor PANEL : or , literal patterns reach it. Anchored
+    // exact-once replacement is the only safe route; both inner strings
+    // are branched independently so the link target stays intact.
+    id: "D6WGx5",
+    note: "track-policy-fragment",
+    anchor: DQ + "Update access is managed by internal release-track policy." + DQ + "," + DQ + " " + DQ + ",a.jsx(" + DQ + "a" + DQ + ",{...h(Me,f),className:k(" + DQ + "sand-kbann2 sand-1ypdohk sand-ujl8zx" + DQ + "),href:Me,rel:" + DQ + "noopener noreferrer" + DQ + ",target:" + DQ + "_blank" + DQ + ",children:" + DQ + "Open Statsig config" + DQ + "})",
+    replacement: DQ + "(RLocT(\"Update access is managed by internal release-track policy.\",\"更新权限由内部发布通道策略管理。\"))" + DQ + "," + DQ + " " + DQ + ",a.jsx(" + DQ + "a" + DQ + ",{...h(Me,f),className:k(" + DQ + "sand-kbann2 sand-1ypdohk sand-ujl8zx" + DQ + "),href:Me,rel:" + DQ + "noopener noreferrer" + DQ + ",target:" + DQ + "_blank" + DQ + ",children:" + DQ + "(RLocT(\"Open Statsig config\",\"打开 Statsig 配置\"))" + DQ + "})",
   },
 ];
 

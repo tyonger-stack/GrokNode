@@ -14,6 +14,7 @@ import {
 
 const NL = String.fromCharCode(10);
 const BT = String.fromCharCode(96);
+const DQ = String.fromCharCode(34);
 
 // Synthetic upstream Settings panel slice. Every pair EN literal is embedded
 // once as a title attribute so the test proves each row applies; the pa
@@ -25,6 +26,9 @@ function baseSource() {
   rows.push("l=a.jsx(pa,{}),r=null,i=a.jsx(oa,{}),o=a.jsx(va,{})");
   rows.push("f=e!=null?" + BT + "Auto-detect (${ze(e)})" + BT + ":" + JSON.stringify("Auto-detect"));
   rows.push("a.jsx(Le,{children:'Write one short, natural-language rule for each action. \"Ask first\" takes priority if rules conflict.'})");
+  // D6WGx5 anchor — exact byte-pattern so applyAnchored finds the literal.
+  const d6wgx5 = DQ + "Update access is managed by internal release-track policy." + DQ + "," + DQ + " " + DQ + ",a.jsx(" + DQ + "a" + DQ + ",{...h(Me,f),className:k(" + DQ + "sand-kbann2 sand-1ypdohk sand-ujl8zx" + DQ + "),href:Me,rel:" + DQ + "noopener noreferrer" + DQ + ",target:" + DQ + "_blank" + DQ + ",children:" + DQ + "Open Statsig config" + DQ + "})";
+  rows.push("a.jsxs(re,{children:[" + d6wgx5 + "]})");
   return rows.join(NL);
 }
 
@@ -32,7 +36,7 @@ test("settings-i18n patch inserts prelude and branches every pair literal", asyn
   const { patched, applied, anchored } = patchOriginalSettingsI18n(baseSource());
   assert.equal(applied.length, SETTINGS_I18N_PAIRS.length);
   for (const row of applied) assert.ok(row.hits >= 1, "pair must hit at least once in fixture: " + row.en);
-  assert.equal(anchored.length, 2, "both whole-block anchors must apply");
+  assert.equal(anchored.length, 3, "all three whole-block anchors must apply");
   assert.ok(patched.includes("自动检测（"), "tz combo must branch to the 0.59.1 fullwidth-paren form");
   assert.ok(patched.includes("规则冲突时，“先询问”优先。"), "rule-hint container must branch to NFRGrQ wording");
   assert.ok(!patched.includes("children:'Write one short"), "raw single-quoted rule-hint container must be gone");
@@ -114,6 +118,8 @@ test("settings skips inner container quotes but branches the dropdown value", as
   rows.push("a.jsx(Le,{children:" + container + "})");
   rows.push("f=e!=null?" + BT + "Auto-detect (${ze(e)})" + BT + ":" + JSON.stringify("Auto-detect"));
   rows.push("a.jsx(Le,{children:'Write one short, natural-language rule for each action. \"Ask first\" takes priority if rules conflict.'})");
+  const d6wgx5 = DQ + "Update access is managed by internal release-track policy." + DQ + "," + DQ + " " + DQ + ",a.jsx(" + DQ + "a" + DQ + ",{...h(Me,f),className:k(" + DQ + "sand-kbann2 sand-1ypdohk sand-ujl8zx" + DQ + "),href:Me,rel:" + DQ + "noopener noreferrer" + DQ + ",target:" + DQ + "_blank" + DQ + ",children:" + DQ + "Open Statsig config" + DQ + "})";
+  rows.push("a.jsxs(re,{children:[" + d6wgx5 + "]})");
   const { patched, applied } = patchOriginalSettingsI18n(rows.join(NL));
   assert.equal(applied.length, SETTINGS_I18N_PAIRS.length);
   const ask = applied.find((row) => row.en === "Ask first");
