@@ -81,7 +81,10 @@ if [ -z "$uhost" ]; then
   exit 1
 fi
 case "$uhost" in
-  *[^0-9a-zA-Z.:_-]*|"")
+  # POSIX `!` negation, not `^`: the container's dash build does not support
+  # caret negation at all (verified live: `[^a]` matches `a` there), so `^`
+  # would let everything through. Leading `-` is literal everywhere.
+  *[!0-9a-zA-Z.:_/-]*|"")
     echo "FATAL: RELAY_UPSTREAM_HOST contains shell-unsafe characters: $uhost" >&2
     exit 1
     ;;

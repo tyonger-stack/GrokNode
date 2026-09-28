@@ -303,3 +303,17 @@ test("default RPC deadline is one minute and env-overridable at construction", (
     else process.env.SAND_AGENT_WORKER_RPC_DEADLINE_MS = previous;
   }
 });
+
+test("defaultWorkerEntryPath prefers the worker beside the pool, else the bundle layout", async () => {
+  const bundle = await import(`file://${poolOut}`);
+  assert.equal(typeof bundle.defaultWorkerEntryPath, "function");
+  // In this checkout only the .ts sources exist (no compiled .cjs beside
+  // the pool), so the probe must fall back to the bundle layout the
+  // packager produces: dist/host/agent-isolation/agent-store-worker.cjs.
+  // (The live container verified the fallback resolves to the real file.)
+  const resolved = bundle.defaultWorkerEntryPath();
+  assert.ok(
+    resolved.endsWith(path.join("agent-isolation", "agent-store-worker.cjs")),
+    `unexpected fallback: ${resolved}`,
+  );
+});

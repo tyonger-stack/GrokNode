@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
@@ -8,9 +9,14 @@ export function defaultWorkerEntryPath(): string {
     typeof __dirname === "string"
       ? __dirname
       : dirname(fileURLToPath(import.meta.url));
-  // agent-worker-pool.ts lives in agent-isolation/ next to the compiled
-  // worker, so join from here — never append the directory name itself.
-  return join(here, "agent-store-worker.cjs");
+  // The worker ships next to this file in a source checkout
+  // (agent-isolation/agent-store-worker.cjs) but one level down when this
+  // module is bundled into dist/host/host-main.cjs
+  // (dist/host/agent-isolation/agent-store-worker.cjs). Probe rather than
+  // assume: a wrong guess fails every spawn with MODULE_NOT_FOUND.
+  const beside = join(here, "agent-store-worker.cjs");
+  if (existsSync(beside)) return beside;
+  return join(here, "agent-isolation", "agent-store-worker.cjs");
 }
 
 // 2026-09-28: one agent's blob db wedged its worker thread deterministically
