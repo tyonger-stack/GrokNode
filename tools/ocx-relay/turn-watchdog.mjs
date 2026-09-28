@@ -78,7 +78,10 @@ const HOST_RESTART_RESPAWN_MS = Number(process.env.HOST_RESTART_RESPAWN_MS ?? "2
 const CANARY_AGENT = process.env.CANARY_AGENT || "70e22ee1-4b23-4860-a598-9e39f47ddc19";
 const CANARY_ROUTINE = process.env.CANARY_ROUTINE || "feishu-p2p";
 const CANARY_PORT = Number(process.env.CANARY_PORT ?? "17901");
-const CANARY_VERIFY_MS = Number(process.env.CANARY_VERIFY_MS ?? "300000");
+// 10 minutes, not less: a busy agent's canary can legitimately queue behind
+// a long turn, and a too-tight window would report a healthy recovery as a
+// failed one.
+const CANARY_VERIFY_MS = Number(process.env.CANARY_VERIFY_MS ?? "600000");
 const LOG_TAIL_BYTES = Number(process.env.LOG_TAIL_BYTES ?? String(256 * 1024));
 const RUN_ONCE = process.env.RUN_ONCE === "1";
 const MACOS_NOTIFY = process.env.MACOS_NOTIFY !== "0";
@@ -214,6 +217,9 @@ const stallReport = [];
 let lastTranscriptMtimes = new Map();
 async function checkStalledTurns(now) {
   stallReport.length = 0;
+  // Stale mtimes would let the canary verdict read a pre-restart write as
+  // post-restart proof; if this round cannot read them, carry none forward.
+  lastTranscriptMtimes = new Map();
   const sizeText = await execInContainer(`wc -c < ${HOST_LOG}`);
   const size = Number(sizeText.trim());
   if (Number.isFinite(size) && size > 0) {
@@ -423,8 +429,7 @@ async function probeContainerRelay() {
 // container-relay-push.sh is idempotent — backs up, copies, restarts, probes
 // with the real token and exits non-zero on failure — so a bad attempt is
 // visible in the log rather than silent.
-async function repairContainerRelay(now) {
-  const key = "container-relay";
+async function repairContainerRelay(now, key = "container-relay") {
   const lastAttempt = state.lastRepair?.[key] ?? 0;
   const lastSucceeded = state.lastRepairOk?.[key] === true;
   const cooldown = lastSucceeded ? REPAIR_COOLDOWN_MS : REPAIR_RETRY_COOLDOWN_MS;
@@ -485,11 +490,20 @@ async function checkContainerRelayLiveness(now) {
     // while it still works, so the switch never gets a chance to bite.
     const upstream = await relayUpstreamEnv();
     if (upstream && upstream !== STABLE_UPSTREAM) {
-      const repair = await repairContainerRelay(now);
+      // Its own cooldown key on purpose: normalization is preventive (the
+      // probe is green, the upstream is merely a landmine), while the
+      // repair cooldown is earned by fixing an outage and is deliberately
+      // long. Sharing one key let a successful repair silence normalization
+      // for 30 minutes - exactly the window in which a freshly rebuilt
+      // container would sit on a DHCP address waiting for the next network
+      // switch to kill every bot.
+      const repair = await repairContainerRelay(now, "container-relay-normalize");
       if (repair.attempted && repair.ok) {
         console.log(`${new Date(now).toISOString()} normalized relay upstream ${upstream} -> ${STABLE_UPSTREAM}`);
       } else if (repair.attempted) {
         console.log(`${new Date(now).toISOString()} relay upstream normalization failed (${repair.detail}); probe stays green on ${upstream}`);
+      } else {
+        console.log(`${new Date(now).toISOString()} relay upstream ${upstream} still wants normalizing to ${STABLE_UPSTREAM}, deferred: ${repair.detail}`);
       }
     }
     return;

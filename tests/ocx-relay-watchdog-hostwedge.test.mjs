@@ -242,3 +242,26 @@ test("a green probe on a DHCP-baked upstream gets normalized to the stable name"
   const pushes = (await readFile(`${fx.log}.pushes`, "utf8").catch(() => "")).trim().split("\n").filter(Boolean);
   assert.deepEqual(pushes, ["push host.internal"], "the push script must receive the stable upstream");
 });
+
+test("a recent successful outage repair does not silence upstream normalization", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, `#!/bin/sh\necho "push $RELAY_UPSTREAM_HOST" >> "${fx.log}.pushes"\nexit 0\n`);
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 1);
+  // The repair cooldown (30 min after success) is still running from an
+  // earlier outage fix - normalization must not be silenced by it.
+  const justNow = Date.now() - 60_000;
+  const state = JSON.parse(await readFile(fx.stateFile, "utf8"));
+  state.lastRepair = { "container-relay": justNow };
+  state.lastRepairOk = { "container-relay": true };
+  await writeFile(fx.stateFile, JSON.stringify(state));
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(2)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, `${transcriptLine(AGENT_A, 1)}\n`);
+
+  const stdout = await runWatchdog(fx, { FAKE_UPSTREAM_ENV: "192.168.5.216" });
+
+  assert.ok(stdout.includes("normalized relay upstream 192.168.5.216 -> host.internal"), `normalization must not wait for the repair cooldown, got: ${stdout}`);
+});
