@@ -1,6 +1,6 @@
 # 飞书私聊 webhook 复刻方案（Grok Bot 0.59 → Grok Node）
 
-日期：2026-09-26｜状态：Wave 1/2/3/5/6 已实施（2026-09-27），Wave 4 自动化项全绿，真实飞书与暂停恢复待用户配合
+日期：2026-09-26｜状态：Wave 1/2/3/5/6 已实施并部署（2026-09-28，最终构建 37815be4 = main@1183d14 = release v0.18.0-reconstructed.2，含 webhook 与全部 i18n），Wave 4 自动化项全绿，真实飞书与暂停恢复待用户配合
 参考：官方 `/Applications/Grok Bot.app` = Grok Bot 0.59.1（asar sha256 `3d7eb92e018966c8fec65067ae264a2f3135c65eedefd869688bce7d8184e562`；契约与行内 toggle 在 0.59.0 / 0.59.1 间未变，0.59.0 的证据取自自更新前的 asar `b6b95953…`）
 目标：本地 `/Applications/Grok Node.app` = 0.18.0-reconstructed（asar sha256 `a5067582d112ac4cf73652375f88c93fbae4c4777d135da9774e876f7f03670b`）
 
