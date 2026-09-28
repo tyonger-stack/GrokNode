@@ -41,34 +41,92 @@ export const RUN_WATCHDOG_GRACE_DEFAULT_MS = 30_000;
 // wording deliberately avoids isTurnInterruptedFailure's interrupt vocabulary
 // so the failure stays user-visible.
 export const RUN_HARD_DEADLINE_DEFAULT_MS = 30 * 60_000;
+// Time spent parked on the user (confirmation card, selection) does not count
+// against the hard deadline - the same anti-false-kill rule the run-queue
+// watchdog follows with its deferred_awaiting_user stage. A run waiting on a
+// human is not wedged, and killing it would strand the question the bot just
+// asked. The cap keeps a permanently-unanswered prompt from pinning the agent
+// queue forever.
+export const RUN_HARD_DEADLINE_AWAITING_MAX_MS = 24 * 60 * 60_000;
+const RUN_HARD_DEADLINE_TICK_MS = 30_000;
 
 export function withRunHardDeadline(
   agentId: string,
   source: string,
-  task: () => Promise<void>
+  task: () => Promise<void>,
+  isAwaitingUser: (agentId: string) => boolean = () => false,
+  onDeadlineFired: (agentId: string) => void = () => {}
 ): () => Promise<void> {
   const deadlineMs = envPositiveInt(
     "SAND_RUN_HARD_DEADLINE_MS",
     RUN_HARD_DEADLINE_DEFAULT_MS
   );
+  const awaitingCapMs = envPositiveInt(
+    "SAND_RUN_HARD_DEADLINE_AWAITING_MAX_MS",
+    RUN_HARD_DEADLINE_AWAITING_MAX_MS
+  );
+  const tickMs = Math.max(
+    1_000,
+    Math.min(deadlineMs, RUN_HARD_DEADLINE_TICK_MS)
+  );
   return () =>
     new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(
-          new Error(
-            `run hard deadline exceeded (${deadlineMs}ms) for agent ${agentId} (source: ${source}): the run never settled and was failed so the queue can move on`
-          )
-        );
-      }, deadlineMs);
+      let activeMs = 0;
+      let awaitingMs = 0;
+      let lastTickAt = Date.now();
+      let timer: NodeJS.Timeout | null = null;
+      const finish = (
+        settle: (value: void) => void,
+        fail: (error: Error) => void,
+        error?: Error
+      ) => {
+        if (timer != null) clearTimeout(timer);
+        timer = null;
+        if (error != null) fail(error);
+        else settle();
+      };
+      const check = () => {
+        const now = Date.now();
+        const delta = Math.max(0, now - lastTickAt);
+        lastTickAt = now;
+        // Reject first, then ask the runner to abort: the rejection is what
+        // releases the queue and writes the notice, and the abort is the
+        // best-effort stop for the task that keeps running as the loser's
+        // target (without it a wedged run could keep writing the agent's
+        // transcript while the next run already started).
+        const fail = (message: string) => {
+          finish(resolve, reject, new Error(message));
+          onDeadlineFired(agentId);
+        };
+        if (isAwaitingUser(agentId)) {
+          awaitingMs += delta;
+          if (awaitingMs >= awaitingCapMs) {
+            fail(
+              `run hard deadline exceeded: still awaiting the user after ${awaitingCapMs}ms for agent ${agentId} (source: ${source}); the run was failed so the queue can move on`
+            );
+            return;
+          }
+        } else {
+          awaitingMs = 0;
+          activeMs += delta;
+          if (activeMs >= deadlineMs) {
+            fail(
+              `run hard deadline exceeded (${deadlineMs}ms) for agent ${agentId} (source: ${source}): the run never settled and was failed so the queue can move on`
+            );
+            return;
+          }
+        }
+        timer = setTimeout(check, tickMs);
+        if (typeof timer.unref === "function") timer.unref();
+      };
+      timer = setTimeout(check, tickMs);
       if (typeof timer.unref === "function") timer.unref();
       task().then(
         value => {
-          clearTimeout(timer);
-          resolve(value);
+          finish(() => resolve(value), reject);
         },
         error => {
-          clearTimeout(timer);
-          reject(error);
+          finish(resolve, reject, error);
         }
       );
     });
@@ -280,6 +338,18 @@ export class RunLifecycle {
     }
   }
 
+  private isRunAwaitingUserSelection(agentId: string): boolean {
+    try {
+      const registry = this.tm.runnerRegistry as
+        | { isAwaitingUserSelection?: (agentId: string) => boolean }
+        | undefined;
+      return registry?.isAwaitingUserSelection?.(agentId) === true;
+    } catch {
+      // A broken probe must not fail the run; the deadline just keeps ticking.
+      return false;
+    }
+  }
+
   enqueueExclusiveRun(
     agentId: string,
     task: () => Promise<void>,
@@ -294,7 +364,21 @@ export class RunLifecycle {
     // through the turn-failure notice catch, or a wedged run would fail
     // silently (the notice wrapper's catch only sees rejections of the task
     // promise it wrapped itself).
-    const deadlinedTask = withRunHardDeadline(agentId, options.source, task);
+    const deadlinedTask = withRunHardDeadline(
+      agentId,
+      options.source,
+      task,
+      id => this.isRunAwaitingUserSelection(id),
+      id => {
+        // Same escalation the run-queue watchdog uses: abort the runner we
+        // just gave up on so it stops writing this agent's state.
+        try {
+          this.tm.runnerRegistry?.interruptWedgedRunForWatchdog?.(id);
+        } catch {
+          // best-effort; the deadline itself already released the queue
+        }
+      }
+    );
     const guardedTask = TURN_FAILURE_NOTICE_SOURCES.has(options.source)
       ? () =>
           deadlinedTask().catch((error: unknown) => {

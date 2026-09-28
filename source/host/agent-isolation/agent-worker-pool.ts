@@ -175,6 +175,12 @@ export class AgentWorkerConnection {
             `agent worker rpc timed out after ${this.rpcDeadlineMs}ms (kind: ${request.kind ?? "unknown"}) - the worker thread stopped answering; connection retired`
           )
         );
+        // The thread is still alive here (that is the whole point of the
+        // deadline) and it still owns the agent's open blob-db handle, but
+        // onExit already dropped it from the pool, so the capacity sweeper
+        // can never reap it. Terminate it explicitly or every timeout
+        // leaks a thread plus its db handle for the life of the process.
+        void this.worker.terminate().catch(() => {});
       }, this.rpcDeadlineMs);
       if (typeof timer.unref === "function") timer.unref();
       this.pending.set(requestId, {

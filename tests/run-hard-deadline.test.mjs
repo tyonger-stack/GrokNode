@@ -72,6 +72,60 @@ test("withRunHardDeadline fails a never-settling task with a user-visible error"
   }
 });
 
+test("time spent waiting on the user does not consume the hard deadline", async () => {
+  const awaiting = { value: true };
+  const wrapped = withRunHardDeadline(
+    "agent-x",
+    "turn",
+    () => new Promise(() => {}),
+    () => awaiting.value,
+  );
+  const run = wrapped();
+  let settled = false;
+  run.catch(() => { settled = true; });
+  // Park on the user well past the 150ms budget AND past a full tick cycle
+  // (the tick floor is 1s), so the check actually runs while awaiting.
+  await new Promise((resolve) => setTimeout(resolve, 1300));
+  assert.equal(settled, false, "a run waiting on the user must not be failed");
+  // Once the user answers, the budget starts biting again.
+  awaiting.value = false;
+  let caught;
+  await run.catch((error) => { caught = error; });
+  assert.match(caught.message, /run hard deadline exceeded/);
+});
+
+test("an unanswered prompt cannot pin the queue forever (awaiting cap)", async () => {
+  const previous = process.env.SAND_RUN_HARD_DEADLINE_AWAITING_MAX_MS;
+  process.env.SAND_RUN_HARD_DEADLINE_AWAITING_MAX_MS = "150";
+  try {
+    const wrapped = withRunHardDeadline(
+      "agent-x",
+      "turn",
+      () => new Promise(() => {}),
+      () => true,
+    );
+    let caught;
+    await assert.rejects(wrapped(), (error) => { caught = error; return true; });
+    assert.match(caught.message, /still awaiting the user/);
+  } finally {
+    if (previous === undefined) delete process.env.SAND_RUN_HARD_DEADLINE_AWAITING_MAX_MS;
+    else process.env.SAND_RUN_HARD_DEADLINE_AWAITING_MAX_MS = previous;
+  }
+});
+
+test("the deadline asks the runner to abort the run it gave up on", async () => {
+  const aborted = [];
+  const wrapped = withRunHardDeadline(
+    "agent-x",
+    "turn",
+    () => new Promise(() => {}),
+    () => false,
+    (id) => aborted.push(id),
+  );
+  await assert.rejects(wrapped(), /run hard deadline exceeded/);
+  assert.deepEqual(aborted, ["agent-x"]);
+});
+
 test("withRunHardDeadline passes a settling task through untouched", async () => {
   const wrapped = withRunHardDeadline("agent-x", "turn", async () => "done-marker");
   await wrapped();
@@ -143,13 +197,16 @@ test("a wedged worker RPC rejects, retires the connection, and the next op gets 
     },
   );
   assert.equal(pool.connections.size, 0, "the wedged connection must leave the pool");
+  // The retired thread must actually go away: it still holds the agent's
+  // open blob-db handle and the sweeper can no longer see it.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(wedged.worker.threadId, -1, "the wedged worker thread must be terminated");
 
   // The next op transparently runs on a fresh worker.
   const again = await pool.getBlob("agent-x", dbPath, healthy);
   assert.deepEqual(again, new Uint8Array([1, 2, 3]));
   assert.equal(pool.connections.size, 1, "a replacement worker should be pooled");
 
-  await wedged.worker.terminate();
   await pool.closeAll();
 });
 
