@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { bindAttachmentStagingPort } from "./attachment-runtime-ports.js";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   commandErrorReportToTelemetry,
@@ -534,8 +535,10 @@ export class SandHost {
       void this.kickstartIfPending(activeAgentId);
     }
 
+    const attachmentStaging = bindAttachmentStagingPort(extensions.api("attachments"));
     optionalMethod(transcript, "setAgentForgottenObserver")?.(
       (agentId: string) => {
+        attachmentStaging.forgetAgent(agentId);
         void optionalMethod(extensions.api("box-store-sync"), "forgetAgent")?.(
           agentId
         );

@@ -77,6 +77,11 @@ export function getSandRootDir(homeDir = homedir()): string {
 export function reanchorSandPath(storedPath: string): string {
   const root = getSandRootDir();
   if (isPathWithin(root, storedPath, { isInclusive: true })) return storedPath;
+  // The model-visible alias maps onto the same store; canonicalize it before
+  // any ownership or protection check sees the path.
+  if (isPathWithin(SAND_BOX_MODEL_VISIBLE_DATA_ROOT, storedPath, { isInclusive: true })) {
+    return join(root, relative(SAND_BOX_MODEL_VISIBLE_DATA_ROOT, storedPath));
+  }
   const match = /(?:[/\\]\.cursor[/\\]sand(?:-[^/\\]+)?|[/\\]\.grokbot)[/\\](.+)$/.exec(storedPath);
   if (match?.[1] == null) return storedPath;
   const segments = match[1].split(/[/\\]+/);

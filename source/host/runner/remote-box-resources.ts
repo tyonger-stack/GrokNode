@@ -43,6 +43,7 @@ import {
   SAND_BOX_NOT_READY_MESSAGE,
 } from "../ports/box.js";
 import { requestIdKey } from "../../packages/chat-inference-proto/client.js";
+import { agentMediaReadScopeKey } from "../box/protected-path-guard.js";
 
 export class SandBoxNotReadyError extends Error {
   override readonly name = "SandBoxNotReadyError";
@@ -116,7 +117,14 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
       return connection;
     } catch (error) {
       connectionPromise = undefined;
-      throw new SandBoxNotReadyError(boxNotReadyMessageForError(error), { cause: error });
+      context.signal.throwIfAborted();
+      const detail = (error instanceof Error ? error.message : String(error)).slice(0, 1200);
+      const message = error instanceof SandBoxNoMonitorAvailableError
+        ? boxNotReadyMessageForError(error)
+        : error instanceof Error && error.name === "SandBoxWindowError"
+          ? `The agent's desktop could not be started: ${detail}. Try again in a moment.`
+          : `The computer connection could not be established: ${detail}. Try again in a moment.`;
+      throw new SandBoxNotReadyError(message, { cause: error });
     }
   };
 
@@ -216,7 +224,7 @@ export function createRemoteBoxResourceAccessor(host: RemoteBoxResourceHost) {
     ): Promise<ReadResult> => {
       const connection = await connect(context);
       return await connection.remoteAccessor.get(readExecutorResource).execute(
-        context,
+        context.with(agentMediaReadScopeKey, agentId),
         args,
         options,
       );

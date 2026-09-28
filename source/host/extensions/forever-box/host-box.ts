@@ -6,17 +6,118 @@ export const RUN_STATE_PROBE_AGENT_ID = "";
 export interface BoxStatus { agentId: string; state: string; vncUrl: string | null; windows?: Array<{ windowIndex: number; vncUrl: string }>; imageUpdateAvailable?: boolean; pull?: { percent: number } }
 export interface BoxConnection { vncUrl: string; imageUpdateAvailable?: boolean; remoteAccessor?: unknown }
 export interface HostBoxInner { ensureReady(ctx: Context, agentId: string): Promise<BoxConnection>; runState(ctx: Context, agentId: string): Promise<string>; listBoxes(): Promise<Array<{ agentId: string; running?: boolean }>>; uploadFile(ctx: Context, agentId: string, path: string, data: Uint8Array): Promise<void>; downloadFile(ctx: Context, agentId: string, path: string): Promise<Uint8Array>; ensureWindow?(ctx: Context, agentId: string, windowIndex: number, options?: unknown): Promise<{ windowIndex: number; vncUrl: string }>; releaseWindow?(ctx: Context, agentId: string): Promise<void>; recreateInBox?(ctx: Context, options: { preserveData: boolean; force?: boolean }): Promise<{ started: boolean; reason?: string }>; getAgentWindowIndex?(agentId: string): number | undefined; maxWindows?(): number; getTerminalsFolder?(): string | undefined; isAvailable?(): boolean | Promise<boolean>; isPreparing?(agentId: string): boolean; describe?(): unknown; applyEnvironment?(ctx: Context, update: unknown): Promise<void>; loadMcpServers?(ctx: Context, configJson: string): Promise<unknown>; mcpResourceAccessor?(ctx: Context): Promise<unknown> }
+interface BoxStartup {
+  ctx: Context;
+  cancel(reason?: unknown): void;
+  waiters: Set<symbol>;
+  promise: Promise<unknown>;
+}
+
 export class HostBox {
-  readonly vncUrls = new Map<string, string>(); readonly forkVncUrls = new Map<string, Map<number, string>>(); private readonly listeners = new Set<(status: BoxStatus) => void>(); private readonly lastReported = new Map<string, BoxStatus>(); private readonly connectionEpochs = new Map<string, number>(); private imageUpdateAvailable: boolean | undefined; constructor(readonly inner: HostBoxInner) {}
+  readonly vncUrls = new Map<string, string>(); readonly forkVncUrls = new Map<string, Map<number, string>>(); private readonly listeners = new Set<(status: BoxStatus) => void>(); private readonly lastReported = new Map<string, BoxStatus>(); private readonly releaseEpochs = new Map<string, number>(); private imageUpdateAvailable: boolean | undefined;
+  private readonly startups = new Map<string, Map<string, BoxStartup>>();
+  private readonly releases = new Map<string, Promise<void>>();
+  constructor(readonly inner: HostBoxInner) {}
   subscribe(listener: (status: BoxStatus) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   buildWindows(agentId: string): Array<{ windowIndex: number; vncUrl: string }> | undefined { const main = this.vncUrls.get(agentId), forks = this.forkVncUrls.get(agentId); if (main == null && (forks == null || forks.size === 0)) return undefined; const windows: Array<{ windowIndex: number; vncUrl: string }> = []; if (main != null) windows.push({ windowIndex: 0, vncUrl: main }); for (const index of [...(forks?.keys() ?? [])].sort((a, b) => a - b)) { const url = forks?.get(index); if (url != null) windows.push({ windowIndex: index, vncUrl: url }); } return windows; }
-  recordConnection(agentId: string, connection: BoxConnection): void { this.vncUrls.set(agentId, connection.vncUrl); this.connectionEpochs.set(agentId, (this.connectionEpochs.get(agentId) ?? 0) + 1); if (connection.imageUpdateAvailable !== undefined) this.imageUpdateAvailable = connection.imageUpdateAvailable; }
+  recordConnection(agentId: string, connection: BoxConnection): void { this.vncUrls.set(agentId, connection.vncUrl); if (connection.imageUpdateAvailable !== undefined) this.imageUpdateAvailable = connection.imageUpdateAvailable; }
   recordImageUpdateAvailable(value: boolean | undefined): void { if (value === undefined || value === this.imageUpdateAvailable) return; this.imageUpdateAvailable = value; for (const agentId of this.lastReported.keys()) { const url = this.vncUrls.get(agentId), last = this.lastReported.get(agentId); if (url != null) this.notify(this.runningStatus(agentId, url)); else if (last != null) this.notify({ ...last, imageUpdateAvailable: value }); } }
   runningStatus(agentId: string, vncUrl: string): BoxStatus { const windows = this.buildWindows(agentId); return { agentId, state: "running", vncUrl, ...(windows === undefined ? {} : { windows }), ...(this.imageUpdateAvailable === undefined ? {} : { imageUpdateAvailable: this.imageUpdateAvailable }) }; }
-  async ensureReady(ctx: Context, agentId: string): Promise<BoxConnection> { const connection = await this.inner.ensureReady(ctx, agentId); this.recordConnection(agentId, connection); this.notify(this.runningStatus(agentId, connection.vncUrl)); return connection; }
+  private async coalesceStartup<T>(ctx: Context, agentId: string, key: string, start: (ctx: Context) => Promise<T>, record: (value: T) => void): Promise<T> {
+    ctx.signal.throwIfAborted();
+    const epoch = this.releaseEpochs.get(agentId) ?? 0;
+    const checkCurrent = () => {
+      ctx.signal.throwIfAborted();
+      if ((this.releaseEpochs.get(agentId) ?? 0) !== epoch) throw new Error("Box window was released during startup");
+    };
+    for (;;) {
+      checkCurrent();
+      const releasing = this.releases.get(agentId);
+      if (releasing != null) { await releasing; continue; }
+      const operations = this.startups.get(agentId) ?? new Map<string, BoxStartup>();
+      let startup = operations.get(key);
+      // Keep canceled work in the map until the raw operation and its rollback settle.
+      if (startup?.ctx.signal.aborted) { await startup.promise.catch(() => {}); continue; }
+      if (startup == null) {
+        const [operationCtx, cancel] = ctx.withDetached().withCancel();
+        startup = { ctx: operationCtx, cancel, waiters: new Set(), promise: Promise.resolve() };
+        const current = startup;
+        operations.set(key, current);
+        this.startups.set(agentId, operations);
+        current.promise = Promise.resolve().then(async () => {
+          operationCtx.signal.throwIfAborted();
+          const value = await start(operationCtx);
+          operationCtx.signal.throwIfAborted();
+          record(value);
+          return value;
+        }).finally(() => {
+          if (operations.get(key) === current) operations.delete(key);
+          if (operations.size === 0 && this.startups.get(agentId) === operations) this.startups.delete(agentId);
+        });
+      }
+      const current = startup, waiter = Symbol();
+      current.waiters.add(waiter);
+      const onAbort = () => {
+        current.waiters.delete(waiter);
+        if (current.waiters.size === 0) current.cancel(ctx.signal.reason);
+      };
+      ctx.signal.addEventListener("abort", onAbort, { once: true });
+      try {
+        const value = await current.promise as T;
+        checkCurrent();
+        return value;
+      } catch (error) {
+        checkCurrent();
+        throw error;
+      } finally {
+        ctx.signal.removeEventListener("abort", onAbort);
+        current.waiters.delete(waiter);
+      }
+    }
+  }
+  async ensureReady(ctx: Context, agentId: string): Promise<BoxConnection> {
+    return this.coalesceStartup(ctx, agentId, "ready", operationCtx => this.inner.ensureReady(operationCtx, agentId), connection => {
+      this.recordConnection(agentId, connection);
+      this.notify(this.runningStatus(agentId, connection.vncUrl));
+    });
+  }
   async hibernate(): Promise<void> {} runState(ctx: Context, agentId: string): Promise<string> { return this.inner.runState(ctx, agentId); } describe(): unknown { return boxDescription(this.inner); } isAvailable(): Promise<boolean> { return boxIsAvailable(this.inner); } isPreparing(agentId: string): boolean { return boxIsPreparing(this.inner, agentId); } getTerminalsFolder(): string | undefined { return boxTerminalsFolder(this.inner); } listBoxes() { return this.inner.listBoxes(); } maxWindows(): number { return boxMaxWindows(this.inner); }
-  async ensureWindow(ctx: Context, agentId: string, windowIndex: number, options?: unknown): Promise<{ windowIndex: number; vncUrl: string }> { if (this.inner.ensureWindow == null) throw new SandBoxCapabilityError("This box does not support multiple desktop windows."); if (!this.vncUrls.has(agentId)) await this.ensureReady(ctx, agentId); const window = await this.inner.ensureWindow(ctx, agentId, windowIndex, options); if (window.windowIndex === 0) this.vncUrls.set(agentId, window.vncUrl); else { const forks = this.forkVncUrls.get(agentId) ?? new Map<number, string>(); forks.set(window.windowIndex, window.vncUrl); this.forkVncUrls.set(agentId, forks); } this.notify(this.runningStatus(agentId, this.vncUrls.get(agentId) ?? window.vncUrl)); return window; }
-  async releaseWindow(ctx: Context, agentId: string): Promise<void> { const epoch = this.connectionEpochs.get(agentId) ?? 0; try { await this.inner.releaseWindow?.(ctx, agentId); } catch {} if ((this.connectionEpochs.get(agentId) ?? 0) !== epoch) return; this.vncUrls.delete(agentId); this.forkVncUrls.delete(agentId); this.connectionEpochs.delete(agentId); this.notify({ agentId, state: "absent", vncUrl: null }); this.lastReported.delete(agentId); }
+  async ensureWindow(ctx: Context, agentId: string, windowIndex: number, options?: unknown): Promise<{ windowIndex: number; vncUrl: string }> {
+    if (this.inner.ensureWindow == null) throw new SandBoxCapabilityError("This box does not support multiple desktop windows.");
+    return this.coalesceStartup(ctx, agentId, `window:${windowIndex}`, async operationCtx => {
+      if (!this.vncUrls.has(agentId)) await this.ensureReady(operationCtx, agentId);
+      operationCtx.signal.throwIfAborted();
+      return this.inner.ensureWindow!(operationCtx, agentId, windowIndex, options);
+    }, window => {
+      if (window.windowIndex === 0) this.vncUrls.set(agentId, window.vncUrl);
+      else {
+        const forks = this.forkVncUrls.get(agentId) ?? new Map<number, string>();
+        forks.set(window.windowIndex, window.vncUrl);
+        this.forkVncUrls.set(agentId, forks);
+      }
+      this.notify(this.runningStatus(agentId, this.vncUrls.get(agentId) ?? window.vncUrl));
+    });
+  }
+  async releaseWindow(ctx: Context, agentId: string): Promise<void> {
+    const releasing = this.releases.get(agentId);
+    if (releasing != null) return releasing;
+    this.releaseEpochs.set(agentId, (this.releaseEpochs.get(agentId) ?? 0) + 1);
+    const startups = [...(this.startups.get(agentId)?.values() ?? [])];
+    const reason = new Error("Box window was released during startup");
+    for (const startup of startups) startup.cancel(reason);
+    this.vncUrls.delete(agentId);
+    this.forkVncUrls.delete(agentId);
+    const cleanup = Promise.allSettled(startups.map(startup => startup.promise)).then(async () => {
+      // Stop only after start-window has settled; otherwise a late start can resurrect the seat.
+      try { await this.inner.releaseWindow?.(ctx.withDetached(), agentId); } catch {}
+      this.notify({ agentId, state: "absent", vncUrl: null });
+      this.lastReported.delete(agentId);
+    }).finally(() => {
+      if (this.releases.get(agentId) === cleanup) this.releases.delete(agentId);
+    });
+    this.releases.set(agentId, cleanup);
+    return cleanup;
+  }
   async applyEnvironment(ctx: Context, update: unknown): Promise<void> { await boxApplyEnvironment(this.inner, ctx, update); }
   async loadMcpServers(ctx: Context, configJson: string): Promise<unknown> { return await boxLoadMcpServers(this.inner, ctx, configJson); }
   async mcpResourceAccessor(ctx: Context): Promise<unknown> { return await boxMcpResourceAccessor(this.inner, ctx); }

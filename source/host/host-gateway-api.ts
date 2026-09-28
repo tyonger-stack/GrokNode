@@ -4,6 +4,7 @@ import {
   parseCoordinatorTranscriptWindowRequest,
 } from "../shared/rpc/coordinator.js";
 import type { BotTemplateManualContents } from "../shared/bot-template.js";
+import { bindAgentBoxPrewarmPort } from "./attachment-runtime-ports.js";
 import { applyLocalBotTemplateContents } from "./extensions/transcript/local-bot-template-contents.js";
 import type { SandAgentDb } from "./extensions/session/agent-db.js";
 
@@ -90,6 +91,7 @@ export function createHostGatewayApi(
   const localToolPermission = deps.extensions.api("local-tool-permission");
   const telemetry = deps.extensions.api("telemetry");
   const sharing = deps.extensions.api("cross-user-sharing");
+  const boxPrewarm = bindAgentBoxPrewarmPort(deps.extensions.api("forever-box"));
   const now = deps.now ?? Date.now;
   const createAgentMintsByNonce = new Map<string, Promise<any>>();
 
@@ -139,6 +141,7 @@ export function createHostGatewayApi(
       origin: args.origin ?? "user",
       ...(templateId === undefined ? {} : { template_id: templateId })
     });
+    boxPrewarm.prewarm({ id: result.agent.id });
     return result;
   };
 

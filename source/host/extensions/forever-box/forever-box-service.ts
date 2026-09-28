@@ -1,25 +1,138 @@
-import { DeadlineExceededError, type DeadlinePolicy, type ExpiryPolicy, type PollingPolicy, type RetryPolicy } from "../../../internal/scheduling.js";
+import { createDeadlinePolicy, DeadlineExceededError, realClock, type DeadlinePolicy, type ExpiryPolicy, type PollingPolicy, type RetryPolicy } from "../../../internal/scheduling.js";
 import { createContext, type Context } from "../../../packages/context/core.js";
+import { AgentBoxPrewarmScheduler, type AgentBoxPrewarmOptions } from "../../box/agent-box-prewarm.js";
 import { HostBox, type BoxStatus } from "./host-box.js";
 
 export class SandForeverBoxError extends Error {}
+export const FOREVER_BOX_RELEASE_WAIT_TIMEOUT_MS = 5_000;
 export const RECREATE_UNAVAILABLE_MESSAGE = "Couldn't reach the service that updates this computer. It is unchanged. Try again in a moment; if it keeps failing, the backend may need to be updated.";
 export const FOREVER_BOX_MIGRATION_TTL_MS = 5 * 60_000; export const FOREVER_BOX_SCREENSHOT_TIMEOUT_MS = 5_000; export const FOREVER_BOX_RECREATE_FLUSH_WAIT_MS = 10_000; export const FOREVER_BOX_IMAGE_WATCH_INTERVAL_MS = 24 * 60 * 60_000; export const FOREVER_BOX_IMAGE_CHECK_TIMEOUT_MS = 30_000;
-export interface ForeverBoxOptions { box: HostBox; lifecycleClient: { recreateInBox(options: { preserveData: boolean; force?: boolean }): Promise<{ started: boolean; reason?: string }>; fetchImageUpdateAvailable(signal: AbortSignal): Promise<boolean | undefined> }; trays: { pushError(value: { agentId: string; title: string; detail: string }): void }; telemetry: { reportBoxRecreateDecided(value: Record<string, string>): void; reportBoxImageCheck(value: Record<string, unknown>): void }; imagePolling: PollingPolicy; imagePollingStartDelay: RetryPolicy; imageSeedRetry: RetryPolicy; imageCheckDeadline: DeadlinePolicy; migrationExpiry: ExpiryPolicy; screenshotDeadline: DeadlinePolicy; recreateFlushWaitDeadline: DeadlinePolicy; flushPendingUploads(): Promise<void>; autoUpdateEnabled: boolean; hostBundleAutoUpdateEnabled: boolean; isInBox(): boolean; log(message: string): void; captureScreenshot?(connection: Awaited<ReturnType<HostBox["ensureReady"]>>, signal: AbortSignal): Promise<Uint8Array | null>; ctx?: Context; now?: () => number }
+export interface ForeverBoxOptions { box: HostBox; lifecycleClient: { recreateInBox(options: { preserveData: boolean; force?: boolean }): Promise<{ started: boolean; reason?: string }>; fetchImageUpdateAvailable(signal: AbortSignal): Promise<boolean | undefined> }; trays: { pushError(value: { agentId: string; title: string; detail: string }): void }; telemetry: { reportBoxRecreateDecided(value: Record<string, string>): void; reportBoxImageCheck(value: Record<string, unknown>): void }; imagePolling: PollingPolicy; imagePollingStartDelay: RetryPolicy; imageSeedRetry: RetryPolicy; imageCheckDeadline: DeadlinePolicy; migrationExpiry: ExpiryPolicy; screenshotDeadline: DeadlinePolicy; recreateFlushWaitDeadline: DeadlinePolicy; flushPendingUploads(): Promise<void>; autoUpdateEnabled: boolean; hostBundleAutoUpdateEnabled: boolean; isInBox(): boolean; log(message: string): void; captureScreenshot?(connection: Awaited<ReturnType<HostBox["ensureReady"]>>, signal: AbortSignal): Promise<Uint8Array | null>; ctx?: Context; now?: () => number; prewarm?: Omit<AgentBoxPrewarmOptions, "ctx" | "ensure" | "log" | "warn"> }
 export class ForeverBoxService {
   readonly box: HostBox; readonly isAutoUpdateEnabled: boolean; private readonly ctx: Context; private readonly listeners = new Set<(status: BoxStatus) => void>(); private readonly abort = new AbortController(); private readonly unsubscribeBox: () => void; private imagePolling: { dispose(): void } | undefined; private imagePollingStartDelay: { elapsed: Promise<void>; dispose(): void } | undefined; private migrationExpiry: { dispose(): void } | undefined; private isBusy = false; private updateInFlight = false; private updateFailureNotified = false; private imageRefreshInFlight = false; private migrating = false; private stopped = false; private readonly now: () => number;
-  constructor(readonly options: ForeverBoxOptions) { this.box = options.box; this.ctx = options.ctx ?? createContext().withName("foreverBox"); this.now = options.now ?? (() => performance.now()); this.isAutoUpdateEnabled = options.autoUpdateEnabled; this.unsubscribeBox = this.box.subscribe((status) => this.emit(this.decorateStatus(status))); }
+  private readonly prewarmScheduler: AgentBoxPrewarmScheduler;
+  private readonly releaseWaitDeadline: DeadlinePolicy;
+  private readonly ensures = new Map<string, Set<(reason?: unknown) => void>>();
+  private readonly releases = new Map<string, Promise<void>>();
+  private readonly releasedAgents = new Set<string>();
+  private readonly cleanupCancels = new Set<(reason?: unknown) => void>();
+
+  constructor(readonly options: ForeverBoxOptions) {
+    this.box = options.box;
+    this.ctx = options.ctx ?? createContext().withName("foreverBox");
+    this.now = options.now ?? (() => performance.now());
+    this.isAutoUpdateEnabled = options.autoUpdateEnabled;
+    this.unsubscribeBox = this.box.subscribe((status) => this.emit(this.decorateStatus(status)));
+    this.releaseWaitDeadline = createDeadlinePolicy(options.prewarm?.clock ?? realClock, {
+      name: "agent-box-release-wait",
+      timeoutMs: FOREVER_BOX_RELEASE_WAIT_TIMEOUT_MS,
+    });
+    this.prewarmScheduler = new AgentBoxPrewarmScheduler({
+      ...options.prewarm,
+      ctx: this.ctx,
+      ensure: (ctx, id) => this.ensureForContext(ctx, id),
+      log: options.log,
+    });
+  }
   start(): void { void this.seedImageUpdateAvailable(); void this.startImagePolling(); } subscribe(listener: (status: BoxStatus) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); } setBusy(value: boolean): void { this.isBusy = value; }
-  async getStatus(input: { id: string }): Promise<BoxStatus> { return this.decorateStatus(await this.box.getStatus(this.ctx, input.id)); }
-  async ensure(input: { id: string }): Promise<BoxStatus> { const status = await this.box.ensure(this.ctx, input.id); void this.maybeAutoUpdate(input.id, status.imageUpdateAvailable); return this.decorateStatus(status); }
+  async getStatus(input: { id: string }): Promise<BoxStatus> { this.assertAgentActive(input.id); return this.decorateStatus(await this.box.getStatus(this.ctx, input.id)); }
+  prewarm(input: { id: string }): void {
+    if (this.stopped || this.releasedAgents.has(input.id) || this.ensures.has(input.id)) return;
+    this.prewarmScheduler.prewarm(input.id);
+  }
+
+  async ensure(input: { id: string }): Promise<BoxStatus> {
+    this.assertAgentActive(input.id);
+    // Each caller owns a HostBox waiter; HostBox coalesces only the raw startup,
+    // so a background attempt's deadline cannot cancel foreground demand.
+    // Pending/backoff prewarm yields to foreground demand.
+    if (!this.ensures.has(input.id)) this.prewarmScheduler.cancel(input.id);
+    const status = await this.ensureForContext(this.ctx, input.id);
+    this.assertAgentActive(input.id);
+    void this.maybeAutoUpdate(input.id, status.imageUpdateAvailable);
+    return this.decorateStatus(status);
+  }
+
+  private assertAgentActive(id: string): void {
+    if (this.stopped || this.releasedAgents.has(id)) throw new DOMException("Agent box was released or the service stopped", "AbortError");
+    this.ctx.signal.throwIfAborted();
+  }
+
+  private ensureForContext(parent: Context, id: string): Promise<BoxStatus> {
+    this.assertAgentActive(id);
+    parent.signal.throwIfAborted();
+    const [ctx, cancel] = parent.withDetached().withCancel();
+    const callers = this.ensures.get(id) ?? new Set<(reason?: unknown) => void>();
+    callers.add(cancel);
+    this.ensures.set(id, callers);
+    const abort = () => cancel(parent.signal.reason);
+    parent.signal.addEventListener("abort", abort, { once: true });
+    const completion = Promise.resolve().then(async () => {
+      ctx.signal.throwIfAborted();
+      this.assertAgentActive(id);
+      const status = await this.box.ensure(ctx, id);
+      ctx.signal.throwIfAborted();
+      this.assertAgentActive(id);
+      return status;
+    }).finally(() => {
+      parent.signal.removeEventListener("abort", abort);
+      cancel();
+      callers.delete(cancel);
+      if (callers.size === 0) this.ensures.delete(id);
+    });
+    return completion;
+  }
   reset(input: { id: string }): Promise<BoxStatus> { return this.recreate(input.id, { preserveData: false }); } update(input: { id: string; force?: boolean }): Promise<BoxStatus> { return this.recreate(input.id, { preserveData: true, ...(input.force === undefined ? {} : { force: input.force }) }); }
   async autoUpdateNow(): Promise<{ started: boolean; reason?: string }> { if (!this.options.isInBox()) return { started: false, reason: "not-in-box" }; if (!this.options.autoUpdateEnabled) return { started: false, reason: "auto-update-disabled" }; if (this.isBusy) return { started: false, reason: "busy" }; if (this.updateInFlight) return { started: false, reason: "update-in-flight" }; this.updateInFlight = true; try { const imageCheck = await this.refreshImageUpdateAvailable("pre_hibernation", { coalesce: false }); if (imageCheck.outcome === "failed" || imageCheck.outcome === "timeout") return { started: false, reason: "staleness-check-failed" }; if (imageCheck.available !== true) return { started: false, reason: "no-update-required" }; this.options.telemetry.reportBoxRecreateDecided({ trigger: "hibernation_auto_update", mode: "pod_recreate", preserved: "true" }); try { const result = await this.requestRecreate({ preserveData: true }); if (result.started) this.updateFailureNotified = false; return result; } catch { return { started: false, reason: "recreate-unavailable" }; } } finally { this.updateInFlight = false; } }
   setMigrating(input: { migrating: boolean }): void { this.migrating = input.migrating; this.migrationExpiry?.dispose(); this.migrationExpiry = input.migrating ? this.options.migrationExpiry.arm("migration", () => { this.migrating = false; this.migrationExpiry = undefined; }) : undefined; }
-  releaseAgent(agentId: string): Promise<void> { return this.box.releaseWindow(this.ctx, agentId); }
-  async captureScreenshot(agentId: string): Promise<Uint8Array | null> { if (this.options.captureScreenshot == null) return null; try { return await this.options.screenshotDeadline.run(async () => this.options.captureScreenshot!(await this.box.ensureReady(this.ctx, agentId), this.abort.signal), this.abort.signal); } catch { return null; } }
-  dispose(): void { if (this.stopped) return; this.stopped = true; this.abort.abort(); this.imagePollingStartDelay?.dispose(); this.imagePolling?.dispose(); this.migrationExpiry?.dispose(); this.unsubscribeBox(); this.listeners.clear(); }
+  releaseAgent(agentId: string): Promise<void> {
+    const existing = this.releases.get(agentId);
+    if (existing !== undefined) return existing;
+    if (this.stopped) return Promise.reject(new DOMException("Forever box service stopped", "AbortError"));
+    if (this.releasedAgents.has(agentId)) return Promise.resolve();
+    // Agent ids are unique for the service lifetime. Keep a tombstone so a late
+    // creation callback cannot enqueue prewarm again after deletion.
+    this.releasedAgents.add(agentId);
+    this.prewarmScheduler.cancel(agentId);
+    for (const cancel of this.ensures.get(agentId) ?? []) cancel(new DOMException("Agent box was released", "AbortError"));
+    // HostBox fences all startup waiters immediately (including direct foreground
+    // callers), then orders inner window cleanup after the raw startup settles.
+    const [cleanupCtx, cancelCleanup] = this.ctx.withDetached().withCancel();
+    this.cleanupCancels.add(cancelCleanup);
+    const cleanup = this.box.releaseWindow(cleanupCtx, agentId).catch((error: unknown) => {
+      this.logPrewarmCleanup(`box cleanup for released agent ${agentId} failed: ${String(error)}`);
+    }).finally(() => this.cleanupCancels.delete(cancelCleanup));
+    // Bound deletion's wait, not cleanup itself. Cleanup remains observed and
+    // ordered after the raw ensure even if the caller's wait deadline expires.
+    const release = this.releaseWaitDeadline.run(() => cleanup).catch((error: unknown) => {
+      this.logPrewarmCleanup(`box cleanup for released agent ${agentId} is still pending: ${String(error)}`);
+    }).finally(() => this.releases.delete(agentId));
+    this.releases.set(agentId, release);
+    return release;
+  }
+
+  private logPrewarmCleanup(message: string): void {
+    try { this.options.log(message); } catch {}
+  }
+  async captureScreenshot(agentId: string): Promise<Uint8Array | null> { this.assertAgentActive(agentId); if (this.options.captureScreenshot == null) return null; try { return await this.options.screenshotDeadline.run(async () => this.options.captureScreenshot!(await this.box.ensureReady(this.ctx, agentId), this.abort.signal), this.abort.signal); } catch { return null; } }
+  dispose(): void {
+    if (this.stopped) return;
+    this.stopped = true;
+    this.prewarmScheduler.dispose();
+    for (const cancelCleanup of this.cleanupCancels) cancelCleanup(new DOMException("Forever box service stopped", "AbortError"));
+    this.cleanupCancels.clear();
+    for (const callers of this.ensures.values()) {
+      for (const cancel of callers) cancel(new DOMException("Forever box service stopped", "AbortError"));
+    }
+    this.abort.abort();
+    this.imagePollingStartDelay?.dispose();
+    this.imagePolling?.dispose();
+    this.migrationExpiry?.dispose();
+    this.unsubscribeBox();
+    this.listeners.clear();
+  }
   private decorateStatus(status: BoxStatus): BoxStatus { return this.migrating ? { ...status, vncUrl: null, pull: { percent: 0 } } : status; } private emit(status: BoxStatus): void { for (const listener of this.listeners) listener(status); }
-  private async recreate(agentId: string, options: { preserveData: boolean; force?: boolean }): Promise<BoxStatus> { let result: { started: boolean; reason?: string }; try { result = await this.requestRecreate(options); } catch (error) { throw new SandForeverBoxError(RECREATE_UNAVAILABLE_MESSAGE, { cause: error }); } if (!result.started) throw new SandForeverBoxError(`Couldn't ${options.preserveData ? "update" : "reset"} the computer (${result.reason?.length ? result.reason : "the service declined the recreate"}). It is unchanged.`); this.updateFailureNotified = false; return this.decorateStatus({ agentId, state: "running", vncUrl: null, pull: { percent: 0 } }); }
+  private async recreate(agentId: string, options: { preserveData: boolean; force?: boolean }): Promise<BoxStatus> { this.assertAgentActive(agentId); let result: { started: boolean; reason?: string }; try { result = await this.requestRecreate(options); } catch (error) { throw new SandForeverBoxError(RECREATE_UNAVAILABLE_MESSAGE, { cause: error }); } if (!result.started) throw new SandForeverBoxError(`Couldn't ${options.preserveData ? "update" : "reset"} the computer (${result.reason?.length ? result.reason : "the service declined the recreate"}). It is unchanged.`); this.updateFailureNotified = false; return this.decorateStatus({ agentId, state: "running", vncUrl: null, pull: { percent: 0 } }); }
   private async requestRecreate(options: { preserveData: boolean; force?: boolean }): Promise<{ started: boolean; reason?: string }> { try { await this.options.recreateFlushWaitDeadline.run(() => this.options.flushPendingUploads(), this.abort.signal); } catch (error) { if (this.abort.signal.aborted) throw error; this.options.log(`snapshot upload flush failed before box recreate: ${String(error)}`); } this.abort.signal.throwIfAborted(); return this.options.lifecycleClient.recreateInBox(options); }
   private async maybeAutoUpdate(agentId: string | undefined, available: boolean | undefined): Promise<void> { if (!this.options.autoUpdateEnabled || this.options.hostBundleAutoUpdateEnabled || available !== true || this.isBusy || this.updateInFlight) return; this.updateInFlight = true; this.options.telemetry.reportBoxRecreateDecided({ trigger: "auto_update", mode: "pod_recreate", preserved: "true" }); try { await this.recreate(agentId ?? "", { preserveData: true }); this.updateFailureNotified = false; } catch (error) { this.options.log(`image update failed; computer stays on its current image: ${String(error)}`); if (!this.updateFailureNotified && agentId != null) { this.updateFailureNotified = true; this.options.trays.pushError({ agentId, title: "Computer update failed", detail: `Couldn't move Grok Bot's computer to the latest image. It keeps working on its current image. Grok Bot will retry, or you can run "Update Grok Bot's Computer" from Settings > Updates.` }); } } finally { this.updateInFlight = false; } }
   async refreshImageUpdateAvailable(trigger: string, options = { coalesce: true }): Promise<{ outcome: string; available?: boolean }> { const startedAt = this.now(); if (!this.options.isInBox()) { this.reportImageCheck({ trigger, outcome: "skipped", durationMs: this.elapsedSince(startedAt), skipReason: "outside_box" }); return { outcome: "skipped" }; } if (options.coalesce && this.imageRefreshInFlight) return { outcome: "skipped" }; if (options.coalesce) this.imageRefreshInFlight = true; try { const available = await this.options.imageCheckDeadline.run((signal) => this.options.lifecycleClient.fetchImageUpdateAvailable(signal), this.abort.signal); this.box.recordImageUpdateAvailable(available); const outcome = available === undefined ? "unanswered" : "answered"; this.reportImageCheck({ trigger, outcome, durationMs: this.elapsedSince(startedAt) }); return { outcome, ...(available === undefined ? {} : { available }) }; } catch (error) { const outcome = this.abort.signal.aborted ? "skipped" : error instanceof DeadlineExceededError ? "timeout" : "failed"; this.reportImageCheck({ trigger, outcome, durationMs: this.elapsedSince(startedAt) }); return { outcome }; } finally { if (options.coalesce) this.imageRefreshInFlight = false; } }

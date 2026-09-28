@@ -213,7 +213,7 @@ export function createProductionBoxGeneratedPorts<
       return new CombinedResourceAccessor(accessor, [
         resourceEntry(readExecutorResource, {
           async execute(ctx, args, options) {
-            await assertFileReadAllowed(args.path);
+            await assertFileReadAllowed(args.path, ctx);
             return await accessor.get(readExecutorResource).execute(ctx, args, options);
           }
         })

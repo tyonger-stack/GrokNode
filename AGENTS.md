@@ -86,7 +86,7 @@ npm run frontend:build  # 构建可读 renderer 重建
 - **Provider 判定函数**：`source/shared/node/inference-router-local.ts` 的 `getLocalInferenceCliStatus()`。
   - **Codex**：看 `~/.codex/auth.json`，`hasUsableCodexLogin()` 要求 `auth_mode=chatgpt` + access/refresh/id/account_id 四字段非空 + 权限不含 group/other 位 → **本机 TRUE**（零额外 key）。
   - **OpenRouter**：需 API key（Settings → Router 或 `OPENROUTER_API_KEY`）。
-- **本地 Docker VM**：默认 `DEFAULT_SAND_BOX_RUNTIME="remote"`，需 UI 显式切。容器 `grok-bot-local-vm`，镜像 `public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest`，`--platform linux/amd64`，6 端口全绑 `127.0.0.1`，schema v6，host-sha256 内容寻址，`READY_TIMEOUT_MS=180000`。`~/.codex` 以**只读**挂载复用登录态（`localAuthMountArguments()`，目前仅此一项）。
+- **本地 Docker VM**：`SandBoxRuntime` **只剩 `"local-docker"` 一个值**（remote 已整体移除，勿再按"默认 remote"理解；2026-09-28 核实）。打包版容器 `grok-node-local-vm`（开发身份 `grok-bot-local-vm`），镜像 `public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest`，`--platform linux/amd64`（Apple Silicon 上的兼容执行由容器引擎处理），6 端口全绑 `127.0.0.1`，schema v6，host-sha256 内容寻址，`READY_TIMEOUT_MS=180000`（**不覆盖** `docker run` 内的首次拉镜像）。`~/.codex` 以**只读**挂载复用登录态（`localAuthMountArguments()`，目前仅此一项）。附件链路排障用 `node scripts/attachment-diagnostics.mjs [agentId|latest]`。
 
 ## 本地未提交改动（工作区脏，接手先确认）
 

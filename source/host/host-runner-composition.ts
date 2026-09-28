@@ -1,4 +1,5 @@
 import { dirname } from "node:path";
+import { bindAgentBoxPrewarmPort, bindAttachmentStagingPort } from "./attachment-runtime-ports.js";
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
   CreateProductionRunnerRunStep,
@@ -80,6 +81,9 @@ import { parseStoredTrigger } from "./automations/automation-trigger.js";
 import { listenerPlatformsInTrigger } from "./automations/listener-integrations.js";
 import { resolveSharedRoomBoxToolsEnabled } from "./groups/xuser.js";
 import { boxAgentWindowIndex, boxSupportsMultiWindow } from "./box/box-capabilities.js";
+import { agentMediaReadScopeKey } from "./box/protected-path-guard.js";
+import { CombinedResourceAccessor, resourceEntry } from "../packages/agent-exec/resource-provider.js";
+import { readExecutorResource } from "../packages/agent-exec/read.js";
 import { createAutoReviewGate } from "./runner/auto-review-gate.js";
 import { createSandMcpApprovalProvider } from "./runner/sand-auto-review-tool-escalations.js";
 import {
@@ -922,6 +926,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
     const isSharedRoomTurn = overrides.isSharedRoomTurn === true;
     const localExec = extensions.api("local-exec");
     const attachments = extensions.api("attachments");
+    const attachmentStaging = bindAttachmentStagingPort(attachments);
     const memory = extensions.api("memory");
     const transcript = extensions.api("transcript");
     const experiments = extensions.api("experiments");
@@ -932,6 +937,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
     const settings = extensions.api("settings");
     const cloudAgents = extensions.api("cloud-agents");
     const foreverBox = extensions.api("forever-box");
+    const boxPrewarm = bindAgentBoxPrewarmPort(foreverBox);
     const remoteBox = foreverBox.box as DynamicApi;
     const transcriptsDir = method(sessionApi, "transcriptsDir")?.() ??
       dirname(dirname(session.dbPath));
@@ -1230,6 +1236,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           description: input.description
         }, "user");
         const agent = result.agent;
+        boxPrewarm.prewarm({ id: agent.id });
         return {
           id: agent.id,
           name: agent.name,
@@ -1273,7 +1280,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
     const productionRequestContext = isPromptRequestContext(requestContext)
       ? requestContext
       : undefined;
-    const readVideoAttachmentBytes = method(attachments, "readVideoBytes");
+    const readVideoAttachment = method(attachments, "readVideoBytes");
+    const readVideoAttachmentBytes = readVideoAttachment === undefined
+      ? undefined
+      : (path: string) => readVideoAttachment({ path, agentId: session.id });
     const mcpCustomInstructions = method(mcp.mcp, "getCustomInstructions");
     let shellWatchWatermark:
       | { readonly turnCount: number; readonly boundaryRef: Uint8Array; readonly lastUserMessageId?: string; readonly hasUserTurn: boolean }
@@ -1309,8 +1319,8 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             ? {}
             : { readVideoAttachmentBytes: readVideoAttachment }),
           isSpotlightEnabled: () => method(experiments, "isSpotlightEnabled")?.() ?? false,
-          uploadAttachmentsIntoBox: async paths =>
-            new Map(await method(attachments, "stageIntoBox")?.(session.id, paths) ?? []),
+          uploadAttachmentsIntoBox: paths => attachmentStaging.stageIntoBox(session.id, paths),
+          scheduleAttachmentRestage: paths => attachmentStaging.scheduleRestage(session.id, paths),
           getRemoteBoxAvailable: () => method(remoteBox, "isAvailable")?.() !== false,
           getConversationId: () => session.id,
           resolveBoxId: () => session.id,
@@ -1445,8 +1455,8 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       ingestAttachment: hooks.ingestAttachment,
       persistImage: hooks.persistImage,
       persistMediaBytes: hooks.persistMediaBytes,
-      readVideoAttachmentBytes: method(attachments, "readVideoBytes"),
-      readMediaDimensions: method(attachments, "readMediaDimensions"),
+      readVideoAttachmentBytes,
+      readMediaDimensions: (path: string) => method(attachments, "readMediaDimensions")?.({ path, agentId: session.id }),
       requestContext,
       localToolPermission,
       ...autoReview,
@@ -1571,7 +1581,12 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         || typeof runner.auditShellCommand !== "function"
         || !isAgentContext(context)
 ) {
-        return await baseProductionResourceAccessor(context);
+        const baseAccessor = await baseProductionResourceAccessor(context);
+        return new CombinedResourceAccessor(baseAccessor, [resourceEntry(readExecutorResource, {
+          execute: (readContext, args, options) => baseAccessor.get(readExecutorResource).execute(
+            readContext.with(agentMediaReadScopeKey, session.id), args, options,
+          ),
+        })]);
       }
       const remoteAutoReviewGate = {
         assertNoPendingApproval: () => autoReviewGate.assertNoPendingApproval(),
@@ -1688,7 +1703,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         )?.(dirname(session.dbPath)),
         getAgentDir: () => dirname(session.dbPath),
         uploadAttachmentsIntoBox: (hostPaths: readonly string[]) =>
-          method(attachments, "stageIntoBox")?.(session.id, hostPaths),
+          attachmentStaging.stageIntoBox(session.id, hostPaths),
         agentStore: session.agentStore,
         conversationSizeGuard: () =>
           sessionApi.store?.ensureConversationCapacityForTurn?.(session),
@@ -1716,7 +1731,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
     );
 
     const hostDependencies = (): ProductionTurnHostDependencies => {
-      const readMediaDimensions = method(attachments, "readMediaDimensions");
+      const readMediaDimensions = (path: string) => method(attachments, "readMediaDimensions")?.({ path, agentId: session.id });
       const uploadFile = method(remoteBox, "uploadFile");
       const downloadFile = method(remoteBox, "downloadFile");
       const watchCloudAgent = createRunnerCloudWatch(builtRunner);

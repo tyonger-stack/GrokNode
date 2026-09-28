@@ -1,3 +1,4 @@
+import type { Context } from "../../packages/context/core.js";
 import { errorLogTag } from "../../shared/errors.js";
 import { reportHostDiagnostic } from "../host-diagnostics.js";
 import type { HostBoxInner } from "../extensions/forever-box/host-box.js";
@@ -47,7 +48,7 @@ export interface ProductionBoxGeneratedPorts<
   createResourceAccessor(manager: BoxRemoteExecManager): Accessor;
   withFileReadGuard(
     accessor: Accessor,
-    assertFileReadAllowed: (path: string) => Promise<void>
+    assertFileReadAllowed: (path: string, ctx: Context) => Promise<void>
   ): Accessor;
   withNoMonitorComputerUse(accessor: Accessor): Accessor;
 }

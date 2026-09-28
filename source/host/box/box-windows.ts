@@ -20,7 +20,27 @@ export const SAND_BOX_MAX_WINDOWS = envInt("SAND_BOX_MAX_WINDOWS", 100);
 export function sandBoxDisplayToken(windowIndex: number): string { return String(windowIndex); }
 export type ShellExecutionResult = ShellExecResponse;
 export interface ShellAccessor { get(resource: typeof shellExecutorResource): ShellExecutor }
-export async function runWindowScript(ctx: Context, accessor: ShellAccessor, label: string, windowIndex: number, options: { ownerToken?: string; reportGuardRefused?: (stage: string) => void } = {}): Promise<void> { if (isPrimaryWindowIndex(windowIndex)) { options.reportGuardRefused?.(label); return; } const ownerToken = options.ownerToken; if (ownerToken != null && !SAND_BOX_WINDOW_OWNER_TOKEN_PATTERN.test(ownerToken)) throw new SandBoxWindowError(`refusing to run ${label} with a malformed owner token`); const command = ownerToken == null ? `/usr/local/bin/${label} ${windowIndex}` : `/usr/local/bin/${label} ${windowIndex} ${ownerToken}`; const result = await accessor.get(shellExecutorResource).execute(ctx, buildHostShellArgs({ command, name: label, workingDirectory: "/workspace", toolCallId: `sand-${label}` })); if (result.result.case !== "success") throw new SandBoxWindowError(`${label} failed (${result.result.case})`); const { exitCode, stderr } = result.result.value; if (exitCode === SAND_BOX_WINDOW_UNAVAILABLE_EXIT_CODE) throw new SandBoxNoMonitorAvailableError(`${label} could not claim display :${windowIndex}: it is a live fork owned by a different agent`); if (exitCode !== 0) throw new SandBoxWindowError(`${label} exited ${exitCode}: ${stderr}`); }
+export async function runWindowScript(ctx: Context, accessor: ShellAccessor, label: string, windowIndex: number, options: { ownerToken?: string; reportGuardRefused?: (stage: string) => void } = {}): Promise<void> {
+  ctx.signal.throwIfAborted();
+  if (isPrimaryWindowIndex(windowIndex)) { options.reportGuardRefused?.(label); return; }
+  const ownerToken = options.ownerToken;
+  if (ownerToken != null && !SAND_BOX_WINDOW_OWNER_TOKEN_PATTERN.test(ownerToken)) throw new SandBoxWindowError(`refusing to run ${label} with a malformed owner token`);
+  const command = ownerToken == null ? `/usr/local/bin/${label} ${windowIndex}` : `/usr/local/bin/${label} ${windowIndex} ${ownerToken}`;
+  const response = await accessor.get(shellExecutorResource).execute(ctx, buildHostShellArgs({ command, name: label, workingDirectory: "/workspace", toolCallId: `sand-${label}` }));
+  ctx.signal.throwIfAborted();
+  const result = response.result;
+  if (result.case === "success" || result.case === "failure") {
+    const { exitCode, stderr } = result.value;
+    if (exitCode === SAND_BOX_WINDOW_UNAVAILABLE_EXIT_CODE) throw new SandBoxNoMonitorAvailableError(`${label} could not claim display :${windowIndex}: it is a live fork owned by a different agent`);
+    if (result.case === "success" && exitCode === 0) return;
+    const signal = result.case === "failure" && result.value.signal ? `, signal ${result.value.signal}` : "";
+    throw new SandBoxWindowError(`${label} exited ${exitCode}${signal}: ${stderr.trim().slice(0, 1200)}`);
+  }
+  const detail = result.case === "spawnError" || result.case === "permissionDenied" ? result.value.error
+    : result.case === "rejected" ? result.value.reason
+    : result.case === "timeout" ? `exceeded ${result.value.timeoutMs}ms` : "no execution result";
+  throw new SandBoxWindowError(`${label} failed (${result.case ?? "unknown"}): ${detail.slice(0, 1200)}`);
+}
 export async function runStartWindow(ctx: Context, accessor: ShellAccessor, windowIndex: number, ownerToken?: string): Promise<void> { await runWindowScript(ctx, accessor, "start-window", windowIndex, ownerToken == null ? {} : { ownerToken }); }
 export async function runStopWindow(ctx: Context, accessor: ShellAccessor, windowIndex: number): Promise<void> { await runWindowScript(ctx, accessor, "stop-window", windowIndex); }
 export async function touchSandMonitorBusyLease(ctx: Context, accessor: ShellAccessor, windowIndex: number): Promise<void> { if (!Number.isInteger(windowIndex) || windowIndex < 1) return; try { await accessor.get(shellExecutorResource).execute(ctx, buildHostShellArgs({ command: `touch /tmp/sand-monitor-busy-${windowIndex}`, name: "touch", workingDirectory: "/workspace", toolCallId: "sand-monitor-busy-lease" })); } catch {} }

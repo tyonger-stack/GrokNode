@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import { promises as fs } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -14,6 +15,8 @@ import { Mp4Dimensions } from "../../../shared/media/video-dimensions.js";
 import { isPathWithin } from "../../../shared/node/paths.js";
 import { createSandGenerateImageResourceAccessor } from "./generate-image-resource-accessor.js";
 import { createSandGenerateImageService, type GenerateImageAuth } from "./generate-image-service.js";
+import type { Context } from "../../../packages/context/core.js";
+import { createAttachmentRestager, type AttachmentRestageOptions } from "./attachment-restage.js";
 import { stageAttachmentsIntoBox, type BoxStagingDependencies } from "./box-staging.js";
 import { readEncodedImageSize, type ImageSize } from "./link-preview-image-bounds.js";
 import { fetchSafeLinkPreviewResource, parseSafeLinkPreviewUrl, SandLinkPreviewError } from "./safe-link-preview-fetch.js";
@@ -188,7 +191,19 @@ export async function ingestAttachment(agentDir: string, sourcePath: string): Pr
   if (typeof sourcePath !== "string" || sourcePath.trim().length === 0) throw new SandAttachmentError("Attachment file path is empty.");
   if (!isAbsolute(sourcePath)) throw new SandAttachmentError(`Attachment path must be absolute: ${sourcePath}`);
   const attachmentsDir = getAgentAttachmentsDir(agentDir);
-  if (isPathWithin(attachmentsDir, sourcePath, { isInclusive: true })) { const info = await fs.stat(sourcePath); return { absolutePath: sourcePath, hash: "preserved", bytes: info.size }; }
+  if (isPathWithin(attachmentsDir, sourcePath, { isInclusive: true })) {
+    const opened = await openOwnedMediaFile(agentDir, sourcePath);
+    // A directory or an oversized file already inside the bucket is not a
+    // valid ingest result, even when no copy is required.
+    if (opened == null) throw new SandAttachmentError(`Attachment source is not a readable file: ${sourcePath}`);
+    try {
+      const info = await opened.handle.stat();
+      if (!info.isFile()) throw new SandAttachmentError(`Attachment source is not a file: ${sourcePath}`);
+      const byteLimit = attachmentByteLimitForName(sourcePath);
+      if (info.size > byteLimit) throw new AttachmentTooLargeError(byteLimit);
+      return { absolutePath: opened.resolved, hash: "preserved", bytes: info.size };
+    } finally { await opened.handle.close(); }
+  }
   const info = await fs.stat(sourcePath); if (!info.isFile()) throw new SandAttachmentError(`Attachment source is not a file: ${sourcePath}`);
   const byteLimit = attachmentByteLimitForName(sourcePath); if (info.size > byteLimit) throw new AttachmentTooLargeError(byteLimit);
   return await ingestAttachmentBytes(agentDir, sourcePath, await fs.readFile(sourcePath));
@@ -201,31 +216,149 @@ export async function ingestAttachmentBytes(agentDir: string, filename: string, 
   await writeContentAddressedFile(getAgentAttachmentsDir(agentDir), targetPath, buffer); return { absolutePath: targetPath, hash, bytes: buffer.byteLength };
 }
 function imageSize(buffer: Buffer, mime: string): ImageSize | null { return readEncodedImageSize(`data:${mime};base64,${buffer.toString("base64")}`); }
-export async function readHostAttachmentImage(filePath: string) { const resolved = reanchorSandPath(filePath); if (!filePath || !isPathWithin(getSandRootDir(), resolved)) return null; const mime = servableImageMimeFromPath(resolved); if (mime == null) return null; try { const data = await fs.readFile(resolved), size = imageSize(data, mime); return { dataUrl: `data:${mime};base64,${data.toString("base64")}`, width: size?.width ?? null, height: size?.height ?? null }; } catch { return null; } }
-export async function readHostAttachmentVideoBytes(filePath: string): Promise<Uint8Array | null> { const resolved = reanchorSandPath(filePath); if (!filePath || !isPathWithin(getSandRootDir(), resolved) || videoMimeFromPath(resolved) === undefined) return null; try { const info = await fs.stat(resolved); return !info.isFile() || info.size > VIDEO_BYTE_LIMIT ? null : new Uint8Array(await fs.readFile(resolved)); } catch { return null; } }
+
+/**
+ * Gateway reads must bind to the caller's own media bucket, the same way the
+ * Read guard and staging do. Lexical bucket checks alone follow symlinks and
+ * trust whichever agent id the path happens to name.
+ */
+async function openOwnedMediaFile(agentDir: string, filePath: string): Promise<{ handle: import("node:fs/promises").FileHandle; resolved: string } | null> {
+  if (!filePath) return null;
+  const source = reanchorSandPath(filePath);
+  const allowed = [getAgentAttachmentsDir(agentDir), getAgentAssetsDir(agentDir)];
+  if (!allowed.some((dir) => isPathWithin(dir, source))) return null;
+  let handle: import("node:fs/promises").FileHandle;
+  try {
+    handle = await fs.open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch { return null; }
+  try {
+    const info = await handle.stat();
+    if (!info.isFile()) { await handle.close(); return null; }
+    const real = await fs.realpath(source);
+    if (!allowed.some((dir) => isPathWithin(dir, real))) { await handle.close(); return null; }
+    return { handle, resolved: real };
+  } catch {
+    try { await handle.close(); } catch {}
+    return null;
+  }
+}
+
+async function readOwnedMediaBytes(agentDir: string, filePath: string): Promise<{ bytes: Buffer; resolved: string } | null> {
+  const opened = await openOwnedMediaFile(agentDir, filePath);
+  if (opened == null) return null;
+  try {
+    return { bytes: await opened.handle.readFile(), resolved: opened.resolved };
+  } catch { return null; }
+  finally { await opened.handle.close(); }
+}
+
+export async function readHostAttachmentImage(filePath: string, agentDir?: string) {
+  const resolved = reanchorSandPath(filePath);
+  if (!filePath || !isPathWithin(getSandRootDir(), resolved)) return null;
+  const mime = servableImageMimeFromPath(resolved);
+  if (mime == null) return null;
+  if (agentDir != null) {
+    const owned = await readOwnedMediaBytes(agentDir, filePath);
+    if (owned == null) return null;
+    const size = imageSize(owned.bytes, mime);
+    return { dataUrl: `data:${mime};base64,${owned.bytes.toString("base64")}`, width: size?.width ?? null, height: size?.height ?? null };
+  }
+  try { const data = await fs.readFile(resolved), size = imageSize(data, mime); return { dataUrl: `data:${mime};base64,${data.toString("base64")}`, width: size?.width ?? null, height: size?.height ?? null }; } catch { return null; }
+}
+export async function readHostAttachmentVideoBytes(filePath: string, agentDir?: string): Promise<Uint8Array | null> {
+  const resolved = reanchorSandPath(filePath);
+  if (!filePath || !isPathWithin(getSandRootDir(), resolved) || videoMimeFromPath(resolved) === undefined) return null;
+  if (agentDir != null) {
+    const owned = await readOwnedMediaBytes(agentDir, filePath);
+    if (owned == null || owned.bytes.byteLength > VIDEO_BYTE_LIMIT) return null;
+    return new Uint8Array(owned.bytes);
+  }
+  try { const info = await fs.stat(resolved); return !info.isFile() || info.size > VIDEO_BYTE_LIMIT ? null : new Uint8Array(await fs.readFile(resolved)); } catch { return null; }
+}
 export async function readHostAttachmentChunk(agentDir: string, filePath: string, offset: number, length: number, videoPlayback = false) {
   if (!filePath) return null; const source = reanchorSandPath(filePath);
   if (!isPathWithin(getAgentAttachmentsDir(agentDir), source) && !isPathWithin(getAgentAssetsDir(agentDir), source)) return null;
   if (videoPlayback && videoMimeFromPath(source) == null) return null;
-  const read = async (resolved: string) => { const info = await fs.stat(resolved); if (!info.isFile()) return null; const totalSize = info.size, mime = imageMimeFromPath(resolved) ?? videoMimeFromPath(resolved) ?? audioMimeFromPath(resolved) ?? null, start = Math.min(Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0, totalSize), safeLength = Number.isFinite(length) ? Math.max(0, Math.floor(length)) : 0, len = Math.min(safeLength, ATTACHMENT_CHUNK_MAX_BYTES, totalSize - start); if (len <= 0) return { bytesBase64: "", totalSize, mime }; const handle = await fs.open(resolved, "r"); try { const buffer = Buffer.alloc(len), { bytesRead } = await handle.read(buffer, 0, len, start); return { bytesBase64: buffer.subarray(0, bytesRead).toString("base64"), totalSize, mime }; } finally { await handle.close(); } };
+  const read = async (resolved: string) => { const opened = await openOwnedMediaFile(agentDir, filePath); if (opened == null || opened.resolved !== resolved) { if (opened != null) await opened.handle.close(); return null; } const info = await opened.handle.stat(); if (!info.isFile()) { await opened.handle.close(); return null; } const totalSize = info.size, mime = imageMimeFromPath(resolved) ?? videoMimeFromPath(resolved) ?? audioMimeFromPath(resolved) ?? null, start = Math.min(Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0, totalSize), safeLength = Number.isFinite(length) ? Math.max(0, Math.floor(length)) : 0, len = Math.min(safeLength, ATTACHMENT_CHUNK_MAX_BYTES, totalSize - start); if (len <= 0) { await opened.handle.close(); return { bytesBase64: "", totalSize, mime }; } try { const buffer = Buffer.alloc(len), { bytesRead } = await opened.handle.read(buffer, 0, len, start); return { bytesBase64: buffer.subarray(0, bytesRead).toString("base64"), totalSize, mime }; } finally { await opened.handle.close(); } };
   try { return videoPlayback ? await withVideoPlaybackSource(source, read) : await read(source); } catch { return null; }
 }
-export function resolveAttachmentOwnerDir(filePath: string): string | null { if (!filePath) return null; const resolved = reanchorSandPath(filePath), agentsRoot = join(getSandRootDir(), "agents"); if (!isPathWithin(agentsRoot, resolved)) return null; const segments = relative(agentsRoot, resolved).split(sep), agentId = segments[0], bucket = segments[1]; return segments.length >= 3 && isSafeFolderId(agentId) && (bucket === ATTACHMENTS_DIRNAME || bucket === ASSETS_DIRNAME) ? join(agentsRoot, agentId) : null; }
+export function resolveAttachmentOwnerDir(filePath: string): string | null { if (!filePath) return null; const resolved = reanchorSandPath(filePath), agentsRoot = join(getSandRootDir(), "agents"); if (!isPathWithin(agentsRoot, resolved)) return null; const segments = relative(agentsRoot, resolved).split(sep), agentId = segments[0], bucket = segments[1]; return segments.length === 3 && isSafeFolderId(agentId) && (bucket === ATTACHMENTS_DIRNAME || bucket === ASSETS_DIRNAME) ? join(agentsRoot, agentId) : null; }
 const TEXT_PREVIEWABLE_EXTENSIONS = new Set(["txt","text","log","md","markdown","mdx","rst","adoc","tex","json","jsonc","json5","ndjson","csv","tsv","xml","yaml","yml","toml","ini","cfg","conf","env","properties","plist","gradle","html","htm","css","scss","sass","less","svg","js","jsx","mjs","cjs","ts","tsx","mts","cts","py","pyi","rb","go","rs","java","kt","kts","c","h","cc","cpp","cxx","hpp","hh","cs","php","swift","scala","dart","lua","pl","pm","r","sql","graphql","gql","proto","vue","svelte","astro","sh","bash","zsh","fish","bat","ps1","tf","tfvars","dockerfile","diff","patch"]);
 function isTextPreviewableName(path: string): boolean { const extension = extname(path).slice(1).toLowerCase(); return extension.length > 0 && TEXT_PREVIEWABLE_EXTENSIONS.has(extension); }
 function looksLikeBinary(bytes: Uint8Array): boolean { const sample = bytes.subarray(0, 8 * 1024); if (sample.byteLength === 0) return false; let controls = 0; for (const byte of sample) { if (byte === 0) return true; if (byte < 32 && !(byte >= 9 && byte <= 13)) controls += 1; } return controls / sample.byteLength > 0.3; }
-export async function readAttachmentText(agentDir: string, filePath: string) { const resolved = reanchorSandPath(filePath); if (!filePath || !isPathWithin(getAgentAttachmentsDir(agentDir), resolved)) return null; try { const info = await fs.stat(resolved); if (!info.isFile()) return null; if (!isTextPreviewableName(resolved)) return { kind: "binary" as const, bytes: info.size }; const handle = await fs.open(resolved, "r"); let head: Buffer; try { head = Buffer.alloc(ATTACHMENT_TEXT_PREVIEW_BYTE_CAP); const result = await handle.read(head, 0, head.length, 0); head = head.subarray(0, result.bytesRead); } finally { await handle.close(); } return looksLikeBinary(head) ? { kind: "binary" as const, bytes: info.size } : { kind: "text" as const, text: head.toString("utf8"), truncated: info.size > ATTACHMENT_TEXT_PREVIEW_BYTE_CAP, bytes: info.size }; } catch { return null; } }
-export async function readImageDimensions(filePath: string): Promise<ImageSize | null> { const resolved = reanchorSandPath(filePath), mime = servableImageMimeFromPath(resolved); if (mime == null) return null; try { return imageSize(await fs.readFile(resolved), mime); } catch { return null; } }
+export async function readAttachmentText(agentDir: string, filePath: string) {
+  const resolved = reanchorSandPath(filePath);
+  if (!filePath) return null;
+  const allowed = [getAgentAttachmentsDir(agentDir), getAgentAssetsDir(agentDir)];
+  if (!allowed.some((dir) => isPathWithin(dir, resolved))) return null;
+  try {
+    const opened = await openOwnedMediaFile(agentDir, filePath);
+    if (opened == null || opened.resolved !== resolved) { if (opened != null) await opened.handle.close(); return null; }
+    const info = await opened.handle.stat();
+    if (!info.isFile()) { await opened.handle.close(); return null; }
+    if (!isTextPreviewableName(resolved)) { await opened.handle.close(); return { kind: "binary" as const, bytes: info.size }; }
+    let head: Buffer;
+    try { head = Buffer.alloc(ATTACHMENT_TEXT_PREVIEW_BYTE_CAP); const result = await opened.handle.read(head, 0, head.length, 0); head = head.subarray(0, result.bytesRead); } finally { await opened.handle.close(); }
+    return looksLikeBinary(head) ? { kind: "binary" as const, bytes: info.size } : { kind: "text" as const, text: head.toString("utf8"), truncated: info.size > ATTACHMENT_TEXT_PREVIEW_BYTE_CAP, bytes: info.size };
+  } catch { return null; }
+}
+export async function readImageDimensions(filePath: string, agentDir?: string): Promise<ImageSize | null> { const resolved = reanchorSandPath(filePath), mime = servableImageMimeFromPath(resolved); if (mime == null) return null; try { if (agentDir != null) { const owned = await readOwnedMediaBytes(agentDir, filePath); return owned == null ? null : imageSize(owned.bytes, mime); } return imageSize(await fs.readFile(resolved), mime); } catch { return null; } }
 export { Mp4Dimensions };
 export const VIDEO_DIMENSIONS_HEAD_BYTES = 1024 * 1024, VIDEO_DIMENSIONS_TAIL_BYTES = 8 * 1024 * 1024;
-export async function readVideoDimensions(filePath: string): Promise<ImageSize | null> { const resolved = reanchorSandPath(filePath); if (!isPathWithin(getSandRootDir(), resolved) || videoMimeFromPath(resolved) === undefined) return null; try { const handle = await fs.open(resolved, "r"); try { const { size } = await handle.stat(), headLength = Math.min(size, VIDEO_DIMENSIONS_HEAD_BYTES), head = Buffer.alloc(headLength); await handle.read(head, 0, headLength, 0); const fromHead = Mp4Dimensions.read(head); if (fromHead != null || size <= headLength) return fromHead; const tailLength = Math.min(size, VIDEO_DIMENSIONS_TAIL_BYTES), tail = Buffer.alloc(tailLength); await handle.read(tail, 0, tailLength, size - tailLength); return Mp4Dimensions.read(tail); } finally { await handle.close(); } } catch { return null; } }
-export async function readMediaDimensions(filePath: string): Promise<ImageSize | null> { const resolved = reanchorSandPath(filePath); if (!isPathWithin(getSandRootDir(), resolved)) return null; if (servableImageMimeFromPath(resolved) != null) return readImageDimensions(resolved); if (videoMimeFromPath(resolved) !== undefined) return readVideoDimensions(resolved); return null; }
+export async function readVideoDimensions(filePath: string, agentDir?: string): Promise<ImageSize | null> {
+  const resolved = reanchorSandPath(filePath);
+  if (!isPathWithin(getSandRootDir(), resolved) || videoMimeFromPath(resolved) === undefined) return null;
+  if (agentDir != null && await openOwnedMediaFile(agentDir, filePath) == null) return null;
+  try { const handle = await fs.open(resolved, "r"); try { const { size } = await handle.stat(), headLength = Math.min(size, VIDEO_DIMENSIONS_HEAD_BYTES), head = Buffer.alloc(headLength); await handle.read(head, 0, headLength, 0); const fromHead = Mp4Dimensions.read(head); if (fromHead != null || size <= headLength) return fromHead; const tailLength = Math.min(size, VIDEO_DIMENSIONS_TAIL_BYTES), tail = Buffer.alloc(tailLength); await handle.read(tail, 0, tailLength, size - tailLength); return Mp4Dimensions.read(tail); } finally { await handle.close(); } } catch { return null; } }
+export async function readMediaDimensions(filePath: string, agentDir?: string): Promise<ImageSize | null> { const resolved = reanchorSandPath(filePath); if (!isPathWithin(getSandRootDir(), resolved)) return null; if (servableImageMimeFromPath(resolved) != null) return readImageDimensions(resolved, agentDir); if (videoMimeFromPath(resolved) !== undefined) return readVideoDimensions(resolved, agentDir); return null; }
 export async function persistImageBytes(targetDir: string, data: Uint8Array, mimeType: string) { const buffer = Buffer.from(data), hash = sha256(buffer), targetPath = join(targetDir, `${hash}${extensionFromImageMime(mimeType) ?? ".png"}`); await writeContentAddressedFile(targetDir, targetPath, buffer); const size = imageSize(buffer, mimeType); return { absolutePath: targetPath, fileUrl: pathToFileURL(targetPath).href, bytes: buffer.byteLength, width: size?.width ?? null, height: size?.height ?? null }; }
 
-export interface AttachmentsServiceDependencies<Context> { readonly auth: GenerateImageAuth; readonly ctx: Context; readonly box: BoxStagingDependencies<Context>["box"]; readonly report?: (diagnostic: Record<string, unknown>) => void }
-export function createAttachmentsService<Context>(deps: AttachmentsServiceDependencies<Context>) {
+export interface AttachmentsServiceDependencies {
+  readonly auth: GenerateImageAuth;
+  readonly ctx: Context;
+  readonly box: BoxStagingDependencies["box"];
+  readonly report?: (diagnostic: Record<string, unknown>) => void;
+  readonly restage?: AttachmentRestageOptions;
+}
+export function createAttachmentsService(deps: AttachmentsServiceDependencies) {
   let fallbackAgentId: string | null = null;
   const resolveDir = (agentId?: string | null) => { const id = agentId ?? fallbackAgentId; if (!id) throw new SandAttachmentError("No active agent to attach to."); return resolveSandAgentDir(id); };
   const readDir = (path: string, agentId?: string | null) => resolveAttachmentOwnerDir(path) ?? (() => { try { return resolveDir(agentId); } catch { return null; } })();
-  return { setFallbackAgentId(agentId: string | null) { fallbackAgentId = agentId; }, async upload(args: { filename: string; bytesBase64?: string; agentId?: string | null }) { const result = await ingestAttachmentBytes(resolveDir(args.agentId), args.filename, Buffer.from(typeof args.bytesBase64 === "string" ? args.bytesBase64 : "", "base64")); return { path: result.absolutePath }; }, readImage: (args: { path: string }) => readHostAttachmentImage(args.path), async readText(args: { path: string; agentId?: string | null }) { const dir = readDir(args.path, args.agentId); if (dir == null) { deps.report?.({ extension: "attachments", kind: "read_text_miss", hasActive: args.agentId != null }); return null; } return await readAttachmentText(dir, args.path); }, async readChunk(args: { path: string; agentId?: string | null; offset: number; length: number; videoPlayback?: boolean }) { const dir = readDir(args.path, args.agentId); if (dir == null) { deps.report?.({ extension: "attachments", kind: "read_chunk_miss", hasActive: args.agentId != null }); return null; } return await readHostAttachmentChunk(dir, args.path, args.offset, args.length, args.videoPlayback); }, ingest: ingestAttachment, ingestBytes: ingestAttachmentBytes, persistImageBytes, readImageDimensions, readMediaDimensions, readVideoBytes: readHostAttachmentVideoBytes, resolveChannelAttachment, resolveOwnerDir: resolveAttachmentOwnerDir, createGenerateImageResourceAccessor: createSandGenerateImageResourceAccessor, stageIntoBox: (agentId: string, paths: readonly string[]) => stageAttachmentsIntoBox({ ctx: deps.ctx, box: deps.box, resolveOwnerDir: resolveAttachmentOwnerDir, upload: async (ctx, box, id, files) => { await uploadBoxFiles(ctx, box, id, files); } }, agentId, paths), createGenerateImageService: <C>(options: Parameters<typeof createSandGenerateImageService<C>>[1]) => createSandGenerateImageService(deps.auth, options) };
+  const staging = createAttachmentRestager({
+    ...deps.restage,
+    ctx: deps.ctx,
+    report: (diagnostic) => deps.report?.(diagnostic),
+    stage: (ctx, agentId, paths, onResult) => stageAttachmentsIntoBox({
+      ctx, box: deps.box, resolveOwnerDir: resolveAttachmentOwnerDir, onResult,
+      upload: async (uploadCtx, box, id, files) => { await uploadBoxFiles(uploadCtx, box, id, files); },
+    }, agentId, paths),
+  });
+  return {
+    setFallbackAgentId(agentId: string | null) { fallbackAgentId = agentId; },
+    async upload(args: { filename: string; bytesBase64?: string; agentId?: string | null }) { const result = await ingestAttachmentBytes(resolveDir(args.agentId), args.filename, Buffer.from(typeof args.bytesBase64 === "string" ? args.bytesBase64 : "", "base64")); return { path: result.absolutePath }; },
+    readImage: (args: { path: string; agentId?: string | null }) => {
+      try { return readHostAttachmentImage(args.path, resolveDir(args.agentId)); }
+      catch { return null; }
+    },
+    async readText(args: { path: string; agentId?: string | null }) { const dir = readDir(args.path, args.agentId); if (dir == null) { deps.report?.({ extension: "attachments", kind: "read_text_miss", hasActive: args.agentId != null }); return null; } return await readAttachmentText(dir, args.path); },
+    async readChunk(args: { path: string; agentId?: string | null; offset: number; length: number; videoPlayback?: boolean }) { const dir = readDir(args.path, args.agentId); if (dir == null) { deps.report?.({ extension: "attachments", kind: "read_chunk_miss", hasActive: args.agentId != null }); return null; } return await readHostAttachmentChunk(dir, args.path, args.offset, args.length, args.videoPlayback); },
+    readVideoBytes: (args: { path: string; agentId?: string | null }) => {
+      try { return readHostAttachmentVideoBytes(args.path, resolveDir(args.agentId)); }
+      catch { return null; }
+    },
+    readImageDimensions: (args: { path: string; agentId?: string | null }) => {
+      try { return readImageDimensions(args.path, resolveDir(args.agentId)); }
+      catch { return null; }
+    },
+    readMediaDimensions: (args: { path: string; agentId?: string | null }) => {
+      try { return readMediaDimensions(args.path, resolveDir(args.agentId)); }
+      catch { return null; }
+    },
+    ingest: ingestAttachment, ingestBytes: ingestAttachmentBytes, persistImageBytes, resolveChannelAttachment, resolveOwnerDir: resolveAttachmentOwnerDir, createGenerateImageResourceAccessor: createSandGenerateImageResourceAccessor,
+    stageIntoBox: staging.stageIntoBox,
+    scheduleRestage: staging.scheduleRestage,
+    forgetAgent(agentId: string) { staging.forgetAgent(agentId); if (fallbackAgentId === agentId) fallbackAgentId = null; },
+    dispose() { staging.dispose(); fallbackAgentId = null; },
+    createGenerateImageService: <C>(options: Parameters<typeof createSandGenerateImageService<C>>[1]) => createSandGenerateImageService(deps.auth, options),
+  };
 }
