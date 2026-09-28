@@ -7,21 +7,24 @@
 # container-relay.py (480s idle) in, restarts the relay, and probes the result
 # with the real token. Run it after every container rebuild.
 #
-# The Mac's address is NOT stable — it comes from DHCP and has already moved
-# once. On 2026-09-28 the relay was still dialing 192.168.3.52 while the Mac sat
-# on 192.168.5.216; that address accepts TCP and swallows every byte, so each
-# host turn stalled at "model provider did not start responding within 150s"
-# and workers piled up until every bot looked frozen. Pass
-# RELAY_UPSTREAM_HOST= whenever the Mac's address has changed:
+# The Mac's address is NOT stable — it comes from DHCP and moves on every
+# network switch. The stable dial target is OrbStack's built-in host name
+# `host.internal`, which resolves inside the box to a WiFi-independent address
+# (IPv4 0.250.250.254 / IPv6 ULA) and reaches the Mac-side forwarder directly
+# (verified 2026-09-28: HTTP 200 in ~0.1s from the container). That killed the
+# entire DHCP-drift incident class: no en0 reading, no 169.254 link-local
+# poisoning window, nothing to re-derive on a network switch.
 #
-#   RELAY_UPSTREAM_HOST="$(ipconfig getifaddr en0)" tools/ocx-relay/container-relay-push.sh
-#
-# Only when that is unset does the running relay's own value act as fallback.
+# RELAY_UPSTREAM_HOST remains as a manual escape hatch (e.g. pointing the relay
+# at a different forwarder for experiments). The running relay's own value is
+# deliberately NOT used as a fallback any more — inheriting it is how a stale
+# DHCP address survived relay restart after relay restart on 2026-09-28.
 set -e
 DOCKER="${DOCKER:-/usr/local/bin/docker}"
 CONTAINER="${CONTAINER:-grok-node-local-vm}"
 SRC="$(cd "$(dirname "$0")" && pwd)/container-relay.py"
 HOST_OVERRIDE="${RELAY_UPSTREAM_HOST:-}"
+DEFAULT_UPSTREAM="host.internal"
 
 if ! "$DOCKER" inspect -f "{{.State.Running}}" "$CONTAINER" | grep -q true; then
   echo "container $CONTAINER is not running; nothing to push" >&2
@@ -33,7 +36,10 @@ fi
 # Quoted heredoc on purpose: the pid/token/upstream lookups have to run inside
 # the container. Unquoted, they expanded on the host and handed the relay an
 # empty environment, which makes it exit on its own required-variable check.
-"$DOCKER" exec -i -e "RELAY_UPSTREAM_HOST_OVERRIDE=$HOST_OVERRIDE" "$CONTAINER" sh -s <<'EOS'
+"$DOCKER" exec -i \
+  -e "RELAY_UPSTREAM_HOST_OVERRIDE=$HOST_OVERRIDE" \
+  -e "RELAY_DEFAULT_UPSTREAM=$DEFAULT_UPSTREAM" \
+  "$CONTAINER" sh -s <<'EOS'
 set -e
 pid=$(cat /tmp/ocx-relay.pid 2>/dev/null || true)
 tok=""
@@ -44,10 +50,15 @@ if [ -n "$pid" ] && [ -r "/proc/$pid/environ" ]; then
 fi
 # `if` rather than `[ ... ] &&`: under `set -e` a failing test at the end of an
 # && list aborts the whole script, so an unset override would exit silently
-# instead of falling back to the running relay's value.
+# instead of falling back to the default upstream.
 if [ -n "$RELAY_UPSTREAM_HOST_OVERRIDE" ]; then
   echo "using caller-supplied RELAY_UPSTREAM_HOST=$RELAY_UPSTREAM_HOST_OVERRIDE (was ${uhost:-unset})"
   uhost="$RELAY_UPSTREAM_HOST_OVERRIDE"
+else
+  # Passed in via `docker exec -e`: this heredoc is quoted, so Mac-side
+  # variables never expand in here.
+  echo "using default RELAY_UPSTREAM_HOST=$RELAY_DEFAULT_UPSTREAM (was ${uhost:-unset})"
+  uhost="$RELAY_DEFAULT_UPSTREAM"
 fi
 
 if [ -z "$tok" ]; then

@@ -52,6 +52,33 @@ const REPAIR_COOLDOWN_MS = Number(process.env.REPAIR_COOLDOWN_MS ?? String(ALERT
 const REPAIR_RETRY_COOLDOWN_MS = Number(process.env.REPAIR_RETRY_COOLDOWN_MS ?? String(INTERVAL_MS * 2));
 const REPAIR_TIMEOUT_MS = Number(process.env.REPAIR_TIMEOUT_MS ?? "90000");
 const REPAIR_SCRIPT = process.env.REPAIR_SCRIPT || path.join(RELAY_DIR, "container-relay-push.sh");
+// 2026-09-28: the DHCP-drift class is dead upstream — `host.internal` is
+// OrbStack's built-in host name, resolves inside the box to a network-independent
+// address and reaches the Mac forwarder directly (verified HTTP 200 in ~0.1s).
+// The en0 derivation below is only the fallback for the day OrbStack changes it.
+const STABLE_UPSTREAM = process.env.STABLE_UPSTREAM ?? "host.internal";
+// Host-wedge auto-remediation (2026-09-28 third incident): turns can wedge
+// INSIDE the container host process — re-dispatched workers never even open a
+// socket to the relay (zero forwarder POSTs, zero transcript writes, no error,
+// forever), and only killing host-main.cjs clears it; sand-supervisor respawns
+// the host in ~16s. Signature: several freshly-spawned agents stalled AND no
+// in-flight inference AND no forwarder traffic for the same window AND the
+// relay hop healthy (a broken relay is the repair path's problem, and killing
+// the host would not fix it anyway).
+const HOST_RESTART_ENABLED = process.env.HOST_RESTART_ENABLED !== "0";
+const HOST_WEDGE_MIN_AGENTS = Number(process.env.HOST_WEDGE_MIN_AGENTS ?? "2");
+const HOST_WEDGE_STALL_MS = Number(process.env.HOST_WEDGE_STALL_MS ?? String(TRANSCRIPT_STALL_MS));
+const HOST_RESTART_COOLDOWN_MS = Number(process.env.HOST_RESTART_COOLDOWN_MS ?? "1800000");
+const HOST_RESTART_RETRY_COOLDOWN_MS = Number(process.env.HOST_RESTART_RETRY_COOLDOWN_MS ?? String(INTERVAL_MS * 2));
+const HOST_RESTART_RESPAWN_MS = Number(process.env.HOST_RESTART_RESPAWN_MS ?? "25000");
+// Post-restart canary: wake one webhook bot with a selftest payload and expect
+// a transcript write within CANARY_VERIFY_MS. This is the only probe that
+// exercises the full run-queue path (spawn -> inference -> transcript) —
+// /v1/models probes stay green through a wedged host.
+const CANARY_AGENT = process.env.CANARY_AGENT || "70e22ee1-4b23-4860-a598-9e39f47ddc19";
+const CANARY_ROUTINE = process.env.CANARY_ROUTINE || "feishu-p2p";
+const CANARY_PORT = Number(process.env.CANARY_PORT ?? "17901");
+const CANARY_VERIFY_MS = Number(process.env.CANARY_VERIFY_MS ?? "300000");
 const LOG_TAIL_BYTES = Number(process.env.LOG_TAIL_BYTES ?? String(256 * 1024));
 const RUN_ONCE = process.env.RUN_ONCE === "1";
 const MACOS_NOTIFY = process.env.MACOS_NOTIFY !== "0";
@@ -71,13 +98,19 @@ const state = loadState();
 const nameCache = new Map();
 
 function loadState() {
-  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {}, lastRepair: {} };
+  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {}, lastRepair: {}, lastRepairOk: {}, lastHostRestart: {}, canary: null };
   try {
     const parsed = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
     return {
       hostLogBytes: Number(parsed.hostLogBytes ?? 0),
       lastSpawnSeen: parsed.lastSpawnSeen ?? {},
       lastAlert: parsed.lastAlert ?? {},
+      // Repair/restart cooldown state has to survive a watchdog restart, or a
+      // crash-looping watchdog re-fires the (heavy) self-heal every start.
+      lastRepair: parsed.lastRepair ?? {},
+      lastRepairOk: parsed.lastRepairOk ?? {},
+      lastHostRestart: parsed.lastHostRestart ?? {},
+      canary: parsed.canary ?? null,
     };
   } catch {
     return fresh;
@@ -122,10 +155,15 @@ function readTail(file, bytes) {
 }
 
 // Signal 1: started-without-completion lines in the forwarder log.
+// Also records system-wide inference activity for the host-wedge check: a
+// wedged host produces neither in-flight requests nor fresh POST lines, while
+// a healthy-but-slow system shows at least an open `started` entry.
+const forwarderActivity = { inflight: 0, lastPostAt: 0 };
 function checkInflightStalls(now) {
   const tail = readTail(FORWARDER_LOG, LOG_TAIL_BYTES);
   const startedAt = new Map();
   const finished = new Set();
+  let lastPostAt = 0;
   for (const line of tail.split("\n")) {
     if (line.includes("relay listening")) {
       // Forwarder (re)start: every request still marked in-flight belonged to
@@ -142,14 +180,23 @@ function checkInflightStalls(now) {
     const id = idMatch[1];
     if (line.includes(" started ")) {
       const ts = Date.parse(line.slice(0, line.indexOf("Z") + 1));
-      if (Number.isFinite(ts)) startedAt.set(id, ts);
+      if (Number.isFinite(ts)) {
+        startedAt.set(id, ts);
+        lastPostAt = Math.max(lastPostAt, ts);
+      }
     } else if (line.includes(" retry ")) {
       // re-dispatch of the same id; still in flight, keep the original start
+      const retryTs = Date.parse(line.slice(0, line.indexOf("Z") + 1));
+      if (Number.isFinite(retryTs)) lastPostAt = Math.max(lastPostAt, retryTs);
     } else {
       // any other terminal line for this id (-> code, upstream-error, ...)
       finished.add(id);
+      const doneTs = Date.parse(line.slice(0, line.indexOf("Z") + 1));
+      if (Number.isFinite(doneTs)) lastPostAt = Math.max(lastPostAt, doneTs);
     }
   }
+  forwarderActivity.inflight = [...startedAt.keys()].filter((id) => !finished.has(id)).length;
+  forwarderActivity.lastPostAt = lastPostAt;
   for (const [id, ts] of startedAt) {
     if (finished.has(id)) continue;
     const age = now - ts;
@@ -160,7 +207,13 @@ function checkInflightStalls(now) {
 }
 
 // Signal 2: worker spawned recently but the agent transcript went quiet.
+// The per-agent stall findings are also collected for the systemic host-wedge
+// check below (several stalled spawns + zero forwarder traffic = the host
+// process itself is wedged, not just one slow bot).
+const stallReport = [];
+let lastTranscriptMtimes = new Map();
 async function checkStalledTurns(now) {
+  stallReport.length = 0;
   const sizeText = await execInContainer(`wc -c < ${HOST_LOG}`);
   const size = Number(sizeText.trim());
   if (Number.isFinite(size) && size > 0) {
@@ -191,8 +244,13 @@ async function checkStalledTurns(now) {
     if (!seconds || !file) continue;
     const agentId = path.basename(path.dirname(file));
     if (agentId.startsWith("sand-subagent-")) continue;
-    mtimes.set(agentId, Number(seconds) * 1000);
+    // An agent dir can hold more than one jsonl (rotation); the agent is as
+    // fresh as its NEWEST file, so keep the max instead of whatever find
+    // happens to list last.
+    const ts = Number(seconds) * 1000;
+    mtimes.set(agentId, Math.max(mtimes.get(agentId) ?? 0, ts));
   }
+  lastTranscriptMtimes = mtimes;
 
   for (const [agentId, seenAt] of Object.entries(state.lastSpawnSeen)) {
     if (now - seenAt > SPAWN_WINDOW_MS) {
@@ -216,6 +274,7 @@ async function checkStalledTurns(now) {
     const turnAge = now - seenAt;
     if (turnAge >= TRANSCRIPT_STALL_MS) {
       const name = await agentName(agentId);
+      stallReport.push({ agentId, seenAt, turnAge });
       alert(`stall:${agentId}`, `bot「${name}」(${agentId.slice(0, 8)}) 疑似卡死：回合派出后 ${Math.round(turnAge / 60000)} 分钟 transcript 零写入（该 bot 最后一次写入 ${new Date(mtime).toLocaleString()}，早于本回合派出）。`, { agent: agentId, name });
     }
   }
@@ -311,6 +370,39 @@ function relayToken() {
   try { return fs.readFileSync(path.join(RELAY_DIR, "token"), "utf8").trim(); } catch { return ""; }
 }
 
+// Does the stable OrbStack host name actually reach the Mac forwarder from
+// inside the box right now? Verified live on 2026-09-28; re-checked at repair
+// time so a future OrbStack networking change degrades to the en0 fallback
+// instead of pushing a dead name into the relay.
+async function stableUpstreamReachable() {
+  const token = relayToken();
+  const auth = token ? ` -H 'x-relay-token: ${token.replace(/'/g, "'\\''")}'` : "";
+  try {
+    const code = (await execInContainer(
+      `curl -s -o /dev/null -w '%{http_code}' --max-time 8${auth} http://${STABLE_UPSTREAM}:11010/v1/models`,
+    )).trim();
+    return code === "200";
+  } catch {
+    return false;
+  }
+}
+
+// The upstream the running container relay currently dials, read from its own
+// environment. Used to normalize a freshly (re)built container: the platform
+// bakes a DHCP-derived address into its relay, which works until the next
+// network switch — normalizing it to the stable name the moment we see it
+// removes that time bomb even while the probe is still green.
+async function relayUpstreamEnv() {
+  try {
+    const out = await execInContainer(
+      `pid=$(cat /tmp/ocx-relay.pid 2>/dev/null); [ -n "$pid" ] && tr '\\0' '\\n' < /proc/$pid/environ | sed -n 's/^RELAY_UPSTREAM_HOST=//p'`,
+    );
+    return out.trim();
+  } catch {
+    return "";
+  }
+}
+
 async function probeContainerRelay() {
   const token = relayToken();
   const auth = token ? ` -H 'x-relay-token: ${token.replace(/'/g, "'\\''")}'` : "";
@@ -343,16 +435,31 @@ async function repairContainerRelay(now) {
       detail: `距上次${lastSucceeded ? "成功" : "失败"}自愈不足 ${Math.max(1, Math.round(cooldown / 60000))} 分钟，本轮不再尝试`,
     };
   }
-  const address = currentMacAddress();
+  // Prefer the WiFi-independent OrbStack host name; en0 is only the fallback
+  // for the day that name stops resolving. Both paths validate before use —
+  // the DHCP window where en0 briefly holds a 169.254 link-local address is
+  // exactly when a repair would otherwise poison the relay again.
+  let address = "";
+  let source = "";
+  if (await stableUpstreamReachable()) {
+    address = STABLE_UPSTREAM;
+    source = "稳定主机名";
+  } else {
+    const en0 = currentMacAddress();
+    if (en0) {
+      address = en0;
+      source = "en0 现场 IP（稳定主机名不可达，已回退）";
+    }
+  }
   if (!address) {
-    return { attempted: false, ok: false, detail: "取不到本机 en0/en1 可路由地址，无法确定上游（网络未就绪？）" };
+    return { attempted: false, ok: false, detail: `稳定主机名 ${STABLE_UPSTREAM} 与本机 en0/en1 均不可达，无法确定上游（网络未就绪？）` };
   }
   // Stamp before the attempt so a repair that hangs past REPAIR_TIMEOUT_MS is
   // not retried on the very next loop, but only as a *failed* one; the long
   // cooldown is earned by an attempt that is known to have worked.
   state.lastRepair = { ...(state.lastRepair ?? {}), [key]: now };
   state.lastRepairOk = { ...(state.lastRepairOk ?? {}), [key]: false };
-  console.log(`${new Date(now).toISOString()} repairing container relay -> ${address} via ${REPAIR_SCRIPT}`);
+  console.log(`${new Date(now).toISOString()} repairing container relay -> ${address} (${source}) via ${REPAIR_SCRIPT}`);
   try {
     const stdout = await new Promise((resolve, reject) => {
       execFile("/bin/zsh", [REPAIR_SCRIPT], {
@@ -370,7 +477,23 @@ async function repairContainerRelay(now) {
 
 async function checkContainerRelayLiveness(now) {
   const first = await probeContainerRelay();
-  if (first.ok) return;
+  if (first.ok) {
+    // Probe green is not the whole story: after a container rebuild the
+    // platform relaunches the relay with a DHCP-derived address baked in. That
+    // address happens to work right now and dies on the next network switch —
+    // the exact 2026-09-28 incident shape. Normalize it to the stable name
+    // while it still works, so the switch never gets a chance to bite.
+    const upstream = await relayUpstreamEnv();
+    if (upstream && upstream !== STABLE_UPSTREAM) {
+      const repair = await repairContainerRelay(now);
+      if (repair.attempted && repair.ok) {
+        console.log(`${new Date(now).toISOString()} normalized relay upstream ${upstream} -> ${STABLE_UPSTREAM}`);
+      } else if (repair.attempted) {
+        console.log(`${new Date(now).toISOString()} relay upstream normalization failed (${repair.detail}); probe stays green on ${upstream}`);
+      }
+    }
+    return;
+  }
   console.log(`${new Date(now).toISOString()} container hop probe failed (${first.code}); attempting repair`);
   const repair = await repairContainerRelay(now);
   if (repair.attempted) {
@@ -388,7 +511,132 @@ async function checkContainerRelayLiveness(now) {
   alert(
     "container-relay-down",
     `容器内 10100 探活失败（${first.code}）——bot 回合会卡在这一跳。未执行自愈：${repair.detail}`
-      + `手工执行：RELAY_UPSTREAM_HOST="$(ipconfig getifaddr en0)" ${REPAIR_SCRIPT}`,
+    + `手工执行：RELAY_UPSTREAM_HOST="${STABLE_UPSTREAM}" ${REPAIR_SCRIPT}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Host-wedge remediation (2026-09-28 third incident). Turns can wedge INSIDE
+// the container host process: re-dispatched workers never open a socket to the
+// relay (zero POSTs at the forwarder, zero transcript writes, no error, the
+// retry engine cycles them forever). Nothing below the host process can see or
+// fix that — but the host is supervised by sand-supervisor, so a TERM is a
+// ~16s respawn that clears the wedge. The signature below is deliberately
+// systemic so one slow bot can never trigger it.
+async function restartHostProcess() {
+  // `[.]` keeps pgrep's own `sh -c` carrier (whose cmdline contains the
+  // bracketed pattern literally) from matching itself; `| head -1` makes the
+  // pipeline exit 0 even when pgrep finds nothing, and kill failures (process
+  // already gone) must not reject the whole restart path.
+  const pidBefore = (await execInContainer(`pgrep -f 'host-main[.]cjs' | head -1`)).trim();
+  if (!pidBefore) {
+    return { ok: false, detail: "容器内找不到 host-main.cjs 进程（pgrep 空）" };
+  }
+  await execInContainer(`kill -TERM ${pidBefore} 2>/dev/null || true`);
+  await new Promise((resolve) => setTimeout(resolve, HOST_RESTART_RESPAWN_MS));
+  const pidAfter = (await execInContainer(`pgrep -f 'host-main[.]cjs' | head -1`)).trim();
+  if (!pidAfter || pidAfter === pidBefore) {
+    return { ok: false, detail: `TERM 后 ${Math.round(HOST_RESTART_RESPAWN_MS / 1000)}s 内未见重生（旧 pid=${pidBefore}，新 pid=${pidAfter || "无"}）——sand-supervisor 可能没有接管，需要人工检查容器` };
+  }
+  return { ok: true, detail: `host pid ${pidBefore} -> ${pidAfter}（sand-supervisor 已重生）` };
+}
+
+// Fire the webhook wake used to verify (and if needed re-kick) the run queue.
+// Same contract the feishu ingress delivers: flat JSON + selftest flag so the
+// routine runs its turn but never sends a real Feishu reply.
+function sendCanaryWake(agentId, nowMs) {
+  return new Promise((resolve) => {
+    const keyPromise = execInContainer(
+      `cat ${AGENT_ROOT}/${agentId}/automations/${CANARY_ROUTINE}/webhook.json`,
+    )
+      .then((out) => JSON.parse(out).key)
+      .catch(() => "");
+    keyPromise.then((key) => {
+      if (!key) return resolve(false);
+      const payload = JSON.stringify({
+        message_id: `canary-${nowMs}`,
+        chat_id: "selftest",
+        chat_type: "p2p",
+        sender_type: "user",
+        sender_id: "watchdog",
+        message_type: "text",
+        content: "selftest: reply hi",
+        text: "selftest: reply hi",
+        create_time: nowMs,
+        source: "watchdog-hostrestart",
+        selftest: true,
+      });
+      const req = http.request(
+        {
+          host: "127.0.0.1",
+          port: CANARY_PORT,
+          path: `/webhook/${agentId}/${CANARY_ROUTINE}`,
+          method: "POST",
+          headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "content-length": Buffer.byteLength(payload) },
+          timeout: 8000,
+        },
+        (res) => { res.resume(); resolve(res.statusCode !== undefined && res.statusCode < 500); },
+      );
+      req.on("timeout", () => { req.destroy(); resolve(false); });
+      req.on("error", () => resolve(false));
+      req.end(payload);
+    });
+  });
+}
+
+async function checkHostWedge(now) {
+  if (!HOST_RESTART_ENABLED) return;
+  // Verify the previous restart's canary first — a wake that never produced a
+  // transcript write means the run queue is still stuck after a respawn, which
+  // deserves a (very loud) human look rather than another blind restart.
+  if (state.canary && state.canary.agentId) {
+    const mtime = lastTranscriptMtimes.get(state.canary.agentId);
+    if (mtime !== undefined && mtime >= state.canary.sentAt) {
+      console.log(`${new Date(now).toISOString()} canary ok: ${state.canary.agentId.slice(0, 8)} wrote after restart`);
+      state.canary = null;
+    } else if (now - state.canary.sentAt >= CANARY_VERIFY_MS) {
+      alert(
+        "host-restart-canary-failed",
+        `host 重启后自检唤醒 ${Math.round((now - state.canary.sentAt) / 60000)} 分钟仍无 transcript 写入——run 队列可能仍未恢复，需要人工排查（重启不能治的僵死）。`,
+      );
+      state.canary = null;
+    } else {
+      return; // canary verdict pending; never stack a second restart on top
+    }
+  }
+
+  const key = "host-main";
+  const record = state.lastHostRestart?.[key];
+  const lastAttempt = record?.at ?? 0;
+  const lastSucceeded = record?.ok === true;
+  const cooldown = lastSucceeded ? HOST_RESTART_COOLDOWN_MS : HOST_RESTART_RETRY_COOLDOWN_MS;
+  if (now - lastAttempt < cooldown) return;
+
+  const stalledLong = stallReport.filter((entry) => entry.turnAge >= HOST_WEDGE_STALL_MS);
+  if (stalledLong.length < HOST_WEDGE_MIN_AGENTS) return;
+  if (forwarderActivity.inflight > 0) return; // something IS inferring — slow, not wedged
+  if (forwarderActivity.lastPostAt > 0 && now - forwarderActivity.lastPostAt < HOST_WEDGE_STALL_MS) return;
+  // A broken relay hop mimics this signature; that is the repair path's case
+  // and a host restart would not fix it. Only act when the hop is healthy.
+  const relay = await probeContainerRelay();
+  if (!relay.ok) {
+    console.log(`${new Date(now).toISOString()} host-wedge signature present but relay hop unhealthy (${relay.code}); leaving it to the relay repair path`);
+    return;
+  }
+
+  const names = stalledLong.slice(0, 4).map((entry) => entry.agentId.slice(0, 8)).join(", ");
+  console.log(`${new Date(now).toISOString()} host-wedge signature: ${stalledLong.length} stalled spawns (${names}), 0 in-flight, no POST traffic ${Math.round(HOST_WEDGE_STALL_MS / 60000)}+ min, relay ok -> restarting host`);
+  state.lastHostRestart = { ...(state.lastHostRestart ?? {}), [key]: { at: now, ok: false } };
+  const result = await restartHostProcess();
+  state.lastHostRestart = { ...(state.lastHostRestart ?? {}), [key]: { at: now, ok: result.ok, detail: redactSecrets(result.detail) } };
+  if (CANARY_AGENT) {
+    const sent = await sendCanaryWake(CANARY_AGENT, now);
+    state.canary = sent ? { agentId: CANARY_AGENT, sentAt: now } : null;
+    if (!sent) console.log(`${new Date(now).toISOString()} canary wake not sent (webhook key missing or app listener down)`);
+  }
+  alert(
+    "host-wedge-restarted",
+    `检测到 host 进程僵死（${stalledLong.length} 个 bot 回合派出后 ${Math.round(HOST_WEDGE_STALL_MS / 60000)}+ 分钟零推理零写入、无 in-flight 请求、中继正常）——已自动重启容器内 host：${result.detail}${state.canary ? "，并已发自检唤醒验证恢复。" : "。"}僵死回合不会自动恢复，相关消息需要重发。`,
   );
 }
 
@@ -438,6 +686,10 @@ async function runOnce() {
   const now = Date.now();
   try { checkInflightStalls(now); } catch (e) { console.log(`checkInflightStalls failed: ${e.message}`); }
   try { await checkStalledTurns(now); } catch (e) { console.log(`checkStalledTurns failed: ${e.message}`); }
+  // Order matters: the wedge check consumes stallReport (from stalled turns)
+  // and forwarderActivity (from inflight), so it must run after both — and it
+  // takes the relay probe itself, so it also has to be robust to its failure.
+  try { await checkHostWedge(now); } catch (e) { console.log(`checkHostWedge failed: ${e.message}`); }
   await checkForwarderLiveness(now);
   try { await checkContainerRelayLiveness(now); } catch (e) { console.log(`checkContainerRelayLiveness failed: ${e.message}`); }
   saveState();
@@ -446,7 +698,7 @@ async function runOnce() {
 if (RUN_ONCE) {
   await runOnce();
 } else {
-  console.log(`${new Date().toISOString()} turn-watchdog started (interval=${INTERVAL_MS}ms, transcript-stall=${TRANSCRIPT_STALL_MS}ms, inflight-stall=${INFLIGHT_STALL_MS}ms)`);
+  console.log(`${new Date().toISOString()} turn-watchdog started (interval=${INTERVAL_MS}ms, transcript-stall=${TRANSCRIPT_STALL_MS}ms, inflight-stall=${INFLIGHT_STALL_MS}ms, host-restart=${HOST_RESTART_ENABLED ? `on (wedge=${HOST_WEDGE_MIN_AGENTS} agents/${Math.round(HOST_WEDGE_STALL_MS / 60000)}min)` : "off"})`);
   let loops = 0;
   for (;;) {
     loops += 1;
