@@ -503,7 +503,9 @@ async function repairContainerRelay(now, key = "container-relay") {
   const currentToken = relayToken();
   try {
     const stdout = await new Promise((resolve, reject) => {
-      execFile("/bin/zsh", [REPAIR_SCRIPT], {
+      // Execute via shebang, not a hardcoded interpreter: /bin/zsh exists on
+      // macOS but not on Linux CI runners.
+      execFile(REPAIR_SCRIPT, [], {
         timeout: REPAIR_TIMEOUT_MS,
         env: { ...process.env, RELAY_UPSTREAM_HOST: address, RELAY_TOKEN_OVERRIDE: currentToken },
       }, (error, out, err) => error ? reject(new Error(redactSecrets(String(err || error.message).trim()))) : resolve(out));
@@ -750,7 +752,8 @@ function alert(key, message, fields = {}) {
     // {message} {agent} {name} are substituted with sanitized id-safe tokens.
     const safe = (value) => String(value ?? "unknown").replace(/[^\w.:/-]/g, "_").slice(0, 128);
     const parts = [ALERT_COMMAND, safe(key), safe(message).slice(0, 512), safe(fields.agent), safe(fields.name ?? fields.agent)];
-    execFile("/bin/zsh", ["-c", '"$0" "$1" "$2" "$3" "$4"', ...parts], { timeout: 15000 }, () => {});
+    const shell = process.platform === "darwin" ? "/bin/zsh" : "/bin/sh";
+    execFile(shell, ["-c", '"$0" "$1" "$2" "$3" "$4"', ...parts], { timeout: 15000 }, () => {});
   }
 }
 
