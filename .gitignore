@@ -30,3 +30,6 @@ node_modules/
 /mermaid.core-*.js
 /xlsx-*.js
 /index.html
+
+# local app backups never belong in the repo (workspace-level grokbot/backups/ is the home)
+/backups/
