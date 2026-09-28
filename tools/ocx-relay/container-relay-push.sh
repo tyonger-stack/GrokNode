@@ -65,10 +65,15 @@ fi
 if [ -n "$RELAY_UPSTREAM_HOST_OVERRIDE" ]; then
   echo "using caller-supplied RELAY_UPSTREAM_HOST=$RELAY_UPSTREAM_HOST_OVERRIDE (was ${uhost:-unset})"
   uhost="$RELAY_UPSTREAM_HOST_OVERRIDE"
+elif [ -n "$uhost" ]; then
+  # No override: keep the running relay's own upstream (token-only resync
+  # must not move a healthy hop). The default applies only when there is no
+  # running relay to inherit from (first bootstrap).
+  echo "keeping running relay upstream=$uhost"
 else
   # Passed in via `docker exec -e`: this heredoc is quoted, so Mac-side
   # variables never expand in here.
-  echo "using default RELAY_UPSTREAM_HOST=$RELAY_DEFAULT_UPSTREAM (was ${uhost:-unset})"
+  echo "using default RELAY_UPSTREAM_HOST=$RELAY_DEFAULT_UPSTREAM (no running relay)"
   uhost="$RELAY_DEFAULT_UPSTREAM"
 fi
 

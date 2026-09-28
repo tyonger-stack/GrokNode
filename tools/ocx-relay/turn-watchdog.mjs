@@ -461,7 +461,7 @@ async function probeContainerRelay() {
 // container-relay-push.sh is idempotent — backs up, copies, restarts, probes
 // with the real token and exits non-zero on failure — so a bad attempt is
 // visible in the log rather than silent.
-async function repairContainerRelay(now, key = "container-relay") {
+async function repairContainerRelay(now, key = "container-relay", options = {}) {
   const lastAttempt = state.lastRepair?.[key] ?? 0;
   const lastSucceeded = state.lastRepairOk?.[key] === true;
   const cooldown = lastSucceeded ? REPAIR_COOLDOWN_MS : REPAIR_RETRY_COOLDOWN_MS;
@@ -472,13 +472,18 @@ async function repairContainerRelay(now, key = "container-relay") {
       detail: `距上次${lastSucceeded ? "成功" : "失败"}自愈不足 ${Math.max(1, Math.round(cooldown / 60000))} 分钟，本轮不再尝试`,
     };
   }
-  // Prefer the WiFi-independent OrbStack host name; en0 is only the fallback
-  // for the day that name stops resolving. Both paths validate before use —
-  // the DHCP window where en0 briefly holds a 169.254 link-local address is
-  // exactly when a repair would otherwise poison the relay again.
+  // Token-only resync (403 auth-mismatch): the credential is stale but the
+  // upstream is fine, so there is nothing to re-derive — skip address
+  // resolution entirely and re-push with the current Mac-side token. The
+  // push script falls back to the running relay's own upstream when no
+  // override is given, leaving the healthy hop untouched. (This path must
+  // not depend on en0/ipconfig: Linux CI runners have neither, and the
+  // token resync must work there too.)
   let address = "";
   let source = "";
-  if (await stableUpstreamReachable()) {
+  if (options.tokenOnly) {
+    source = "仅重同步 token（上游不动）";
+  } else if (await stableUpstreamReachable()) {
     address = STABLE_UPSTREAM;
     source = "稳定主机名";
   } else {
@@ -488,7 +493,7 @@ async function repairContainerRelay(now, key = "container-relay") {
       source = "en0 现场 IP（稳定主机名不可达，已回退）";
     }
   }
-  if (!address) {
+  if (!address && !options.tokenOnly) {
     return { attempted: false, ok: false, detail: `稳定主机名 ${STABLE_UPSTREAM} 与本机 en0/en1 均不可达，无法确定上游（网络未就绪？）` };
   }
   // Stamp before the attempt so a repair that hangs past REPAIR_TIMEOUT_MS is
@@ -496,7 +501,7 @@ async function repairContainerRelay(now, key = "container-relay") {
   // cooldown is earned by an attempt that is known to have worked.
   state.lastRepair = { ...(state.lastRepair ?? {}), [key]: now };
   state.lastRepairOk = { ...(state.lastRepairOk ?? {}), [key]: false };
-  console.log(`${new Date(now).toISOString()} repairing container relay -> ${address} (${source}) via ${REPAIR_SCRIPT}`);
+  console.log(`${new Date(now).toISOString()} repairing container relay -> ${address || "(upstream unchanged)"} (${source}) via ${REPAIR_SCRIPT}`);
   // Always hand the CURRENT Mac-side token to the push script (the forwarder
   // compares against the token file live): the old relay's environ token may
   // be the very credential a 403 just told us is stale.
@@ -504,7 +509,9 @@ async function repairContainerRelay(now, key = "container-relay") {
   try {
     const stdout = await new Promise((resolve, reject) => {
       // Execute via shebang, not a hardcoded interpreter: /bin/zsh exists on
-      // macOS but not on Linux CI runners.
+      // macOS but not on Linux CI runners. In tokenOnly mode the upstream
+      // override is left empty on purpose: the push script then keeps the
+      // running relay's own upstream and only rotates the credential.
       execFile(REPAIR_SCRIPT, [], {
         timeout: REPAIR_TIMEOUT_MS,
         env: { ...process.env, RELAY_UPSTREAM_HOST: address, RELAY_TOKEN_OVERRIDE: currentToken },
@@ -548,7 +555,7 @@ async function checkContainerRelayLiveness(now) {
   }
   console.log(`${new Date(now).toISOString()} container hop probe failed (${first.code}); attempting repair`);
   const repair = first.authMismatch
-    ? await repairContainerRelay(now, "container-relay-token")
+    ? await repairContainerRelay(now, "container-relay-token", { tokenOnly: true })
     : await repairContainerRelay(now);
   if (repair.attempted) {
     const again = await probeContainerRelay();
