@@ -265,7 +265,11 @@ export const SETTINGS_I18N_ANCHORED = [
     id: "D6WGx5",
     note: "track-policy-fragment",
     anchor: DQ + "Update access is managed by internal release-track policy." + DQ + "," + DQ + " " + DQ + ",a.jsx(" + DQ + "a" + DQ + ",{...h(Me,f),className:k(" + DQ + "sand-kbann2 sand-1ypdohk sand-ujl8zx" + DQ + "),href:Me,rel:" + DQ + "noopener noreferrer" + DQ + ",target:" + DQ + "_blank" + DQ + ",children:" + DQ + "Open Statsig config" + DQ + "})",
-    replacement: DQ + "(RLocT(\"Update access is managed by internal release-track policy.\",\"更新权限由内部发布通道策略管理。\"))" + DQ + "," + DQ + " " + DQ + ",a.jsx(" + DQ + "a" + DQ + ",{...h(Me,f),className:k(" + DQ + "sand-kbann2 sand-1ypdohk sand-ujl8zx" + DQ + "),href:Me,rel:" + DQ + "noopener noreferrer" + DQ + ",target:" + DQ + "_blank" + DQ + ",children:" + DQ + "(RLocT(\"Open Statsig config\",\"打开 Statsig 配置\"))" + DQ + "})",
+    // children:[...] entries hold expressions, not strings: the RLocT calls
+    // must land unquoted (a quoted "(RLocT(...))" is a string literal and
+    // breaks the module parse — the settings view failed to load on exactly
+    // this until 2026-09-28).
+    replacement: "(RLocT(\"Update access is managed by internal release-track policy.\",\"更新权限由内部发布通道策略管理。\"))" + "," + DQ + " " + DQ + ",a.jsx(" + DQ + "a" + DQ + ",{...h(Me,f),className:k(" + DQ + "sand-kbann2 sand-1ypdohk sand-ujl8zx" + DQ + "),href:Me,rel:" + DQ + "noopener noreferrer" + DQ + ",target:" + DQ + "_blank" + DQ + ",children:(RLocT(\"Open Statsig config\",\"打开 Statsig 配置\"))" + "})",
   },
 ];
 

@@ -15,7 +15,7 @@ const NL = String.fromCharCode(10);
 
 function stageSourceFor(entry) {
   const rows = entry.pairs.map((pair) => "x({title:" + JSON.stringify(pair[0]) + "})");
-  for (const anchor of entry.anchors) rows.unshift("const probe=" + JSON.stringify(anchor) + ";");
+  for (const [index, anchor] of entry.anchors.entries()) rows.unshift("const probe" + index + "=" + JSON.stringify(anchor) + ";");
   return rows.join(NL);
 }
 
@@ -26,6 +26,8 @@ test("extra-i18n patch appends prelude and branches pair literals per file", asy
     for (const row of applied) assert.ok(row.hits >= 1, entry.file + " :: " + row.en);
     assert.ok(patched.includes("function RLocT("), entry.file);
     for (const anchor of entry.anchors) assert.ok(patched.includes(anchor), entry.file);
+    assert.ok(!patched.includes('["(RLocT('), entry.file + " children entries must hold RLocT calls, not quoted strings");
+    assert.ok(!patched.includes(':"(RLocT('), entry.file + " prop values must hold RLocT calls, not quoted strings");
   }
 });
 

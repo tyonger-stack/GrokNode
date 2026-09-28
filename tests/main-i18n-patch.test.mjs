@@ -25,10 +25,10 @@ function baseSource() {
   rows.push(...MAIN_I18N_061_PAIRS.map((pair) => "x({title:" + JSON.stringify(pair[0]) + "})"));
   rows.push(...MAIN_I18N_LOCAL_PAIRS.map((pair) => "x({title:" + JSON.stringify(pair[0]) + "})"));
   rows.unshift("const anchor=sand.navigateBack;");
-  rows.push("y=s?" + JSON.stringify("Cancel") + ":z;");
-  rows.push("d={46:" + JSON.stringify("Delete") + "};");
+  rows.push("function yc(){return s?" + JSON.stringify("Cancel") + ":z}");
+  rows.push("function dc(){d={46:" + JSON.stringify("Delete") + "}}");
   rows.push("function XGn(n){switch(n){case\"never\":return\"Never allow\";case\"always\":return\"Always allow\";case\"ask\":return\"Ask every time\"}}");
-  rows.push("e=n.isEnabled?n.runs[0]?.status===\"running\"?{detail:n.triggerDescription,iconName:\"loading\",iconStyle:Moe.runningIcon}:{detail:n.triggerDescription,iconName:\"clock\",iconStyle:Moe.enabledIcon}:{detail:\"Paused\",iconName:\"pause-circle\",iconStyle:Moe.pausedIcon}}");
+  rows.push("function ec(){e=n.isEnabled?n.runs[0]?.status===\"running\"?{detail:n.triggerDescription,iconName:\"loading\",iconStyle:Moe.runningIcon}:{detail:n.triggerDescription,iconName:\"clock\",iconStyle:Moe.enabledIcon}:{detail:\"Paused\",iconName:\"pause-circle\",iconStyle:Moe.pausedIcon}}}");
   rows.push("function _3n(n){switch(n){case\"subagent\":return\"Subagent\";case\"shell\":return\"Shell\";case\"cloud-agent\":return\"Cloud agent\"}}");
   rows.push("te.show(\"Couldn't cancel your message. Try again.\");");
   rows.push("te.show(\"Couldn't resend your message. Try again.\");");
@@ -40,9 +40,9 @@ function baseSource() {
   rows.push("const l=\"x\";l=`Open exchange with ${o}`;let c;");
   rows.push("x({detail:P?`${r} is learning your steps…`:`${r}'s screen`});");
   rows.push("x({\"aria-label\":`${l}'s screen`});");
-  rows.push("y=n.direction===\"inbound\"?`Message from ${n.peer.name}`:`Messaged ${n.peer.name}`;case\"fanout\":return`Messaged ${n.peers.length} agents`;");
-  rows.push("z=n.length===0?x:`Message ${n.map(e=>e.name).join(\", \")}`}");
-  rows.push("w=e!=null&&e.length>0?`Message ${e}`:n?.isGroup===!0?\"Message group\":x1t;");
+  rows.push("function yc2(n){y=n.direction==\"inbound\"?`Message from ${n.peer.name}`:`Messaged ${n.peer.name}`;case\"fanout\":return`Messaged ${n.peers.length} agents`;}");
+  rows.push("function zp(n){return n.length===0?x:`Message ${n.map(e=>e.name).join(\", \")}`}");
+  rows.push("function wp(n){return n=1,e!=null&&e.length>0?`Message ${e}`:n?.isGroup===!0?\"Message group\":x1t}");
   rows.push(...MAIN_I18N_LOCAL_ANCHORED.map((entry) => entry.anchor));
   return rows.join(NL);
 }
@@ -74,13 +74,21 @@ test("main-i18n patch appends prelude and branches every pair literal", async ()
   assert.ok(patched.includes('(RLocT("General","通用"))'), "General must branch to 0.59.1 wording");
   const prelude = patched.slice(patched.indexOf("function RLocFromPref("));
   assert.ok(!prelude.includes("(RLocT("), "prelude itself must not contain branch calls");
+  // Production guard (2026-09-28 settings outage): a quoted "(RLocT(" is a
+  // string literal, not a call — the module then fails to parse in the
+  // renderer. The synthetic fixture cannot be parsed as a module (its anchor
+  // lines are deliberately ragged switch fragments), so we assert on the
+  // concrete failure signature instead of a full parse.
+  assert.ok(!patched.includes('["(RLocT('), "children array entries must hold RLocT calls, not quoted strings");
+  assert.ok(!patched.includes(':"(RLocT('), "prop values must hold RLocT calls, not quoted strings");
+
 });
 
 test("main-i18n patch restricts risky pairs to display positions", async () => {
   const { patched } = patchOriginalMainI18n(baseSource());
-  assert.ok(patched.includes('y=s?"Cancel":z;'), "PROP-only Cancel must leave ternary branches raw");
-  assert.ok(!patched.includes('y=s?(RLocT("Cancel",'), "PROP-only Cancel must not branch ternaries");
-  assert.ok(patched.includes('d={46:"Delete"};'), "digit-key map values must stay raw");
+  assert.ok(patched.includes('function yc(){return s?"Cancel":z}'), "PROP-only Cancel must leave ternary branches raw");
+  assert.ok(!patched.includes('s?(RLocT("Cancel",'), "PROP-only Cancel must not branch ternaries");
+  assert.ok(patched.includes('d={46:"Delete"}}'), "digit-key map values must stay raw");
 });
 
 test("dynamic reply and message-action labels switch between English and Chinese", () => {

@@ -56,6 +56,20 @@ test("settings-i18n patch inserts prelude and branches every pair literal", asyn
   );
   const prelude = patched.slice(0, patched.indexOf("function pa(){"));
   assert.ok(!prelude.includes("(RLocT("), "prelude itself must not contain branch calls");
+  // A quoted "(RLocT(...))" inside children:[...] is a string literal, not a
+  // call — the module then fails to parse and the settings view cannot load
+  // (bit us in production on 2026-09-28). The patched source must stay
+  // parseable as an ES module, and no children entry may be a quoted call.
+  const vm = await import("node:vm");
+  if (typeof vm.SourceTextModule === "function") {
+    assert.doesNotThrow(() => new vm.SourceTextModule(patched, { identifier: "settings-fixture" }), "patched settings chunk must parse as an ES module");
+  } else {
+    // Without --experimental-vm-modules the ESM parser is unavailable; the
+    // quoted-RLocT signature checks below still catch the production break.
+    assert.doesNotThrow(() => new Function(patched), "patched settings chunk must parse as a script");
+  }
+  assert.ok(!patched.includes('["(RLocT('), "children array entries must hold RLocT calls, not quoted strings");
+  assert.ok(!patched.includes(':"(RLocT('), "prop values must hold RLocT calls, not quoted strings");
 });
 
 test("settings-i18n patch is fail-closed when a pair anchor is missing", async () => {
