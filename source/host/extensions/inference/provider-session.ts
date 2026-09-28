@@ -87,6 +87,45 @@ function recordRoutedUsage(provider: RoutedProvider, usage: UsageRecord): void {
   new SandSettingsStore(join(getSandRootDir(), "settings.json")).recordInferenceUsage(provider, usage);
 }
 
+// Quota-exhaustion is visible only at request time (no upstream exposes a
+// balance query): when a request dies with a quota failure, stamp it into
+// the usage store so the Settings → Router → Usage panel can show it. The
+// success counters are untouched — a quota event must stay visible until
+// the next event, not inflate request counts. Codex errors are plain-text
+// Errors (no classifier available), so they go through the wording list;
+// OpenRouter errors go through the shared classifier.
+const QUOTA_WORDS = ["quota", "billing", "payment required", "insufficient", "credits", "rate limit exceeded", "usage limit", "额度", "余额", "余量"];
+function errorLooksLikeQuotaExhaustion(provider: RoutedProvider, error: unknown): boolean {
+  if (provider === "openrouter") {
+    try {
+      return classifyOpenRouterError(error, "chat")?.state === "out_of_quota";
+    } catch { return false; }
+  }
+  const texts: string[] = [];
+  const visit = (value: unknown, seen = new Set<unknown>()): void => {
+    if (value == null || seen.has(value)) return;
+    if (typeof value === "string") { texts.push(value); return; }
+    if (typeof value !== "object") return;
+    seen.add(value);
+    const record = value as Record<string, unknown>;
+    if (typeof record.message === "string") texts.push(record.message);
+    if (typeof record.code === "string") texts.push(record.code);
+    visit(record.cause, seen);
+    if (Array.isArray(record.errors)) for (const child of record.errors) visit(child, seen);
+  };
+  visit(error, new Set());
+  const haystack = texts.join(" ").toLowerCase();
+  return QUOTA_WORDS.some((word) => haystack.includes(word));
+}
+
+function recordRoutedQuotaExhausted(provider: RoutedProvider, error: unknown): void {
+  if (!errorLooksLikeQuotaExhaustion(provider, error)) return;
+  const model = provider === "codex" ? configuredCodexModel() : resolveOpenRouterModel();
+  try {
+    new SandSettingsStore(join(getSandRootDir(), "settings.json")).recordQuotaExhausted(provider, model);
+  } catch { /* usage bookkeeping must never break the turn */ }
+}
+
 function persistedSecrets(): Record<string, string> {
   try {
     const parsed = JSON.parse(readFileSync(getBoxSecretsStorePath(), "utf8")) as unknown;
@@ -421,6 +460,10 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
       recordedChatStatusSignature = "aborted";
       return;
     }
+    // The channel-status write covers the status light; the usage-store write
+    // covers the Usage panel (which has no other quota signal). Both fire
+    // from the same classification so they can never disagree.
+    if (status.state === "out_of_quota") recordRoutedQuotaExhausted("openrouter", error);
     writeChatStatus(status);
   }
   const transport = resolveOpenRouterTransport(readPersistedOpenRouterBaseUrl());
@@ -507,12 +550,17 @@ export async function runRoutedProviderText(provider: RoutedProvider, messages: 
     ? codexExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage, options?.signal)
     : openRouterExecutor(messages, invocationId, options?.tools, options?.executeTool, onUsage, options?.signal);
   let text = "";
-  for await (const event of result.fullStream) {
-    if (event.type === "text-delta" && typeof event.textDelta === "string") {
-      text += event.textDelta;
-      options?.onTextDelta?.(event.textDelta, text);
+  try {
+    for await (const event of result.fullStream) {
+      if (event.type === "text-delta" && typeof event.textDelta === "string") {
+        text += event.textDelta;
+        options?.onTextDelta?.(event.textDelta, text);
+      }
     }
+    await result.response;
+  } catch (error) {
+    recordRoutedQuotaExhausted(provider, error);
+    throw error;
   }
-  await result.response;
   return text;
 }

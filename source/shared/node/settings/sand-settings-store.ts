@@ -119,7 +119,8 @@ function parseSettings(value: unknown): SandStoredSettings | null {
         if (typeof item !== "object" || item == null || Array.isArray(item)) continue;
         const record = item as Record<string, unknown>;
         const count = (key: string): number => Number.isSafeInteger(record[key]) && (record[key] as number) >= 0 ? record[key] as number : 0;
-        usage.providers[provider] = { requests: count("requests"), inputTokens: count("inputTokens"), outputTokens: count("outputTokens"), cacheReadTokens: count("cacheReadTokens"), cacheWriteTokens: count("cacheWriteTokens"), lastUsedAt: typeof record.lastUsedAt === "string" ? record.lastUsedAt : null };
+        const textOrNull = (key: string): string | null => typeof record[key] === "string" && (record[key] as string).length > 0 ? (record[key] as string).slice(0, 256) : null;
+        usage.providers[provider] = { requests: count("requests"), inputTokens: count("inputTokens"), outputTokens: count("outputTokens"), cacheReadTokens: count("cacheReadTokens"), cacheWriteTokens: count("cacheWriteTokens"), lastUsedAt: typeof record.lastUsedAt === "string" ? record.lastUsedAt : null, quotaExhaustedAt: typeof record.quotaExhaustedAt === "string" ? record.quotaExhaustedAt : null, quotaExhaustedModel: textOrNull("quotaExhaustedModel") };
       }
     }
     result.inferenceRouterUsage = usage;
@@ -220,7 +221,18 @@ export class SandSettingsStore {
     this.update((settings) => {
       const current = settings.inferenceRouterUsage ?? emptySandInferenceRouterUsage();
       const previous = current.providers[provider];
-      return { ...settings, inferenceRouterUsage: { schemaVersion: 1, providers: { ...current.providers, [provider]: { requests: previous.requests + 1, inputTokens: previous.inputTokens + safe(usage.inputTokens), outputTokens: previous.outputTokens + safe(usage.outputTokens), cacheReadTokens: previous.cacheReadTokens + safe(usage.cacheReadTokens), cacheWriteTokens: previous.cacheWriteTokens + safe(usage.cacheWriteTokens), lastUsedAt: new Date().toISOString() } } } };
+      return { ...settings, inferenceRouterUsage: { schemaVersion: 1, providers: { ...current.providers, [provider]: { requests: previous.requests + 1, inputTokens: previous.inputTokens + safe(usage.inputTokens), outputTokens: previous.outputTokens + safe(usage.outputTokens), cacheReadTokens: previous.cacheReadTokens + safe(usage.cacheReadTokens), cacheWriteTokens: previous.cacheWriteTokens + safe(usage.cacheWriteTokens), lastUsedAt: new Date().toISOString(), quotaExhaustedAt: previous.quotaExhaustedAt, quotaExhaustedModel: previous.quotaExhaustedModel } } } };
+    });
+  }
+  /** Records a quota-exhaustion event without touching the success counters:
+   * a quota failure must stay visible (and must not inflate request counts)
+   * until the next event or a successful request overwrites it. */
+  recordQuotaExhausted(provider: SandInferenceProvider, model?: string): void {
+    const safeModel = typeof model === "string" && model.trim().length > 0 ? model.trim().slice(0, 256) : null;
+    this.update((settings) => {
+      const current = settings.inferenceRouterUsage ?? emptySandInferenceRouterUsage();
+      const previous = current.providers[provider];
+      return { ...settings, inferenceRouterUsage: { schemaVersion: 1, providers: { ...current.providers, [provider]: { ...previous, quotaExhaustedAt: new Date().toISOString(), quotaExhaustedModel: safeModel } } } };
     });
   }
   setLocalToolPermissionCeiling(value?: SandLocalToolPermission): void { this.update((s) => { const { localToolPermissionCeiling: _old, ...rest } = s; return value === undefined ? rest : { ...rest, localToolPermissionCeiling: value }; }); }
