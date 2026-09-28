@@ -74,6 +74,7 @@ npm run frontend:build  # 构建可读 renderer 重建
 | **`open -a "Grok Node"` 有时拉不起来**（进程数为 0） | 按名字解析失败 | 用完整路径 `open -a "/Applications/Grok Node.app"` |
 | **打包报 `Extra i18n pair has no anchor ... Accounts`（2026-09-26 已修）** | `extra-i18n-patch.mjs` 只用文件名当 anchor 去匹配 chunk，但 minified chunk **不含自己的文件名**——名字只出现在引用它的 `index-*.js` 里 → 补丁打到了 importer，那里没有 `children:"Accounts"` → fail-closed 抛错 | 已改为**先按 `entry.file` 精确定位**（这才是 entry.file 的本意），anchor 扫描降为兜底；两条路径都保留 fail-closed（缺失/歧义仍抛错）。修前只在"完整重建 `.build`"路径必现，复用旧 `.build` 时侥幸通过 |
 | **清理 `.build` 要整包清** | 只删 `.build/fidelity` 会留下已 patch 的残留，二次 patch 找不到原始锚点 | 用 `node -e "fs.rmSync('.build',{recursive:true})"`（配合 `CODEBUDDY_SAFE_DELETE_ENABLED=0`，`rm -rf` 会被守卫按文件数拦） |
+| **i18n 补丁把 JSX children 里的 `RLocT()` 多套一层引号 → 整个 chunk 解析失败**（2026-09-28 已修，但**已安装 app 带了 2 天病**） | `SETTINGS_I18N_ANCHORED` 的 D6WGx5 条目把替换文本写成 `DQ + "(RLocT(\"...\",\"...\"))" + DQ + "`，产出 `children:["(RLocT("Update access is managed…","更新权限…"))", …]`。`"(RLocT("` 在第二个引号处就结束，后面 `Update` 成了裸标识符 → `SyntaxError: Unexpected identifier 'Update'`。**`children:[…]` 里放的是表达式，不是字符串**，外层引号必须去掉 | 已改为不带 `DQ +` 的裸表达式。**教训：这类错误 typecheck / `npm test` / 打包全绿都测不出来，只有把产物 chunk 喂 `node --check` 才现形**；而且它只炸在**懒加载**的设置视图上（`view-*.js` 动态 import 解析失败 → 错误边界显示 "This view failed to load."），主界面完全正常，极易被当成偶发 UI 问题。**打包后必做**：对产物 `dist/renderer/assets/*.js` 逐个 `node --check`，并断言 `"(RLocT("` 出现 0 次。排查这类"点某个视图才炸"的问题，用 `open -a … --args --remote-debugging-port=9224` + CDP `Runtime.enable` 抓真实异常，比翻 minified 产物快得多 |
 | box-doctor `egress FAIL` | 只在容器启动时跑一次，`docker logs` 看到的是历史记录不刷新；宿主代理（Fake-IP `198.18.0.120` + `HTTP_PROXY=127.0.0.1:58037`）不会自动进容器 | 复测可 PASS；如需容器稳定联网，显式把代理 `-e` 传进容器 |
 
 ## 登录与 Router 现状
@@ -144,6 +145,23 @@ npm run frontend:build  # 构建可读 renderer 重建
 1. `docker exec` **缺 `-i`**：stdin 不转发，`sh -s` 读到空脚本、exit 0、零输出。480s 的文件复制进去了，但进程一直沿用旧环境。**"容器重建后重推"这一步历史上一直是空操作。**
 2. 容器侧脚本在**未加引号的 heredoc** 里，`$pid`/`$tok`/`$uhost` 在宿主展开，等于把环境变量清空。
 3. 末尾探针**不带 `x-relay-token`**，拿到 403 也会读成"通了"；且上游地址无条件继承旧进程的值。
+
+**同一天第二次复发（2026-09-28 09:00，换 WiFi 后全部 bot 静默）——这次自愈自己把锁死了**：Mac 换到手机热点，en0 从 `192.168.5.216` 变成 `172.20.10.6`；容器 03:00 重建时平台把 `RELAY_UPSTREAM_HOST=169.254.10.9` 烤进了新 relay，于是又是一次"连上不回"。但这次多了两层，是**自愈逻辑本身有洞**：
+
+1. **`currentMacAddress()` 不校验地址类别**。`ipconfig getifaddr` 在切网窗口会先返回 DHCP 前的 **link-local 自配置地址 169.254.x**。watchdog 08:41:38 报"取不到地址"（正好在切网窗口），08:43:38 重试时读到的就是 `169.254.10.9`，照单全收推了进去。**最需要这个值的时刻，恰恰是它最不可信的时刻。**
+2. **失败的修复照样吃掉 30 分钟冷却**。那次推送失败后仍写了 `lastRepair`，于是 08:46/08:48/08:50/08:52/08:55 五轮探活全部被冷却**静默跳过**——watchdog 一直在跑、一直在探、就是不再修，12 分钟零推理无人吭声。
+
+已修（`turn-watchdog.mjs`，仓库与 `~/.grokbot/ocx-relay/` 部署副本同步，`launchctl kickstart -k gui/$(id -u)/com.groknode.turn-watchdog` 生效）：
+
+- 新增 `isRoutableAddress()`，拒绝 `0.0.0.0` / `127.x` / **`169.254.x`** / `>=224`，被拒的地址会打进日志而不是静默丢弃；全被拒时返回空串，落到"未执行自愈"告警 + 手工指引，而不是推一个死地址进去。14 组用例全过（含今天肇事的 `169.254.10.9`）。
+- 冷却拆成两档：修复**成功**才吃长冷却 `REPAIR_COOLDOWN_MS`（30min，防无谓重复推送），**失败**只吃短冷却 `REPAIR_RETRY_COOLDOWN_MS`（`INTERVAL_MS * 2`，默认 4min），状态记在新增的 `lastRepairOk`。坏猜测最多锁 4 分钟而不是半小时。
+
+**这次踩到的另外三条**：
+
+- **`host.docker.internal` 在容器内解析到 `127.0.0.1`（黑洞，`http=000` / 9ms）**，不能拿来替代 IP 做免漂移方案——容器内 `curl http://host.docker.internal:11010` 实测不通。IP 漂移问题只能靠"现取地址 + 校验"解决。
+- **重启 app 不会重建容器**。host 代码没变 → 内容寻址哈希不变 → 容器 `Up` 时间不归零 → **容器里的 host 进程（`/exec-daemon/node`）不重启，断网窗口挂死的 worker 不会被冲掉**。AGENTS 里"重新打包 + 重启 app 后容器会重建"只在**打包产物变了**时成立。所以这次是"重启 app + 手工重推中继"两条都做，僵尸 worker 才真的释放。
+- **判断"回合是否真在推理"不能只看 HTTP 200**。forwarder 会把上游的错误体也按 200 透传——用 `model: "default"` 打一发，拿到的是 `400 invalid params, unknown model 'default'`。要判真伪得用 `settings.json` 里真实的 `openRouterModel`（当前 `zai/glm-5.3-flash`）打一发看 `choices[0].message`。
+- `zai/glm-5.3-flash` 会先吐 `reasoning_content` 再给正文，`max_tokens` 给小了会出现 `content: null` + `finish_reason: length`。Grok Bot 框架要求模型用 `send_message` 投递文字，遇到"只有 reasoning 没有 content"的回合要当心被误判成模型不回复。
 
 ## 提交规范
 
