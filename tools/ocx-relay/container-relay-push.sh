@@ -24,6 +24,7 @@ DOCKER="${DOCKER:-/usr/local/bin/docker}"
 CONTAINER="${CONTAINER:-grok-node-local-vm}"
 SRC="$(cd "$(dirname "$0")" && pwd)/container-relay.py"
 HOST_OVERRIDE="${RELAY_UPSTREAM_HOST:-}"
+TOKEN_OVERRIDE="${RELAY_TOKEN_OVERRIDE:-}"
 DEFAULT_UPSTREAM="host.internal"
 
 if ! "$DOCKER" inspect -f "{{.State.Running}}" "$CONTAINER" | grep -q true; then
@@ -39,6 +40,7 @@ fi
 "$DOCKER" exec -i \
   -e "RELAY_UPSTREAM_HOST_OVERRIDE=$HOST_OVERRIDE" \
   -e "RELAY_DEFAULT_UPSTREAM=$DEFAULT_UPSTREAM" \
+  -e "RELAY_TOKEN_OVERRIDE=$TOKEN_OVERRIDE" \
   "$CONTAINER" sh -s <<'EOS'
 set -e
 pid=$(cat /tmp/ocx-relay.pid 2>/dev/null || true)
@@ -47,6 +49,15 @@ uhost=""
 if [ -n "$pid" ] && [ -r "/proc/$pid/environ" ]; then
   tok=$(tr '\0' '\n' < "/proc/$pid/environ" | sed -n 's/^RELAY_TOKEN=//p')
   uhost=$(tr '\0' '\n' < "/proc/$pid/environ" | sed -n 's/^RELAY_UPSTREAM_HOST=//p')
+fi
+# The Mac-side token file is the single authority (the forwarder compares
+# against it live on every request); the old relay's environ token is only
+# the fallback for bootstrapping before any file exists. Preferring the
+# current file token here is what heals a 403 auth-mismatch instead of
+# rebuilding onto the same stale credential.
+if [ -n "$RELAY_TOKEN_OVERRIDE" ]; then
+  echo "using caller-supplied RELAY_TOKEN (file-fresh, was ${tok:+set})"
+  tok="$RELAY_TOKEN_OVERRIDE"
 fi
 # `if` rather than `[ ... ] &&`: under `set -e` a failing test at the end of an
 # && list aborts the whole script, so an unset override would exit silently
@@ -62,24 +73,46 @@ else
 fi
 
 if [ -z "$tok" ]; then
-  echo "FATAL: no RELAY_TOKEN in the running relay env; refusing to start one without auth" >&2
+  echo "FATAL: no RELAY_TOKEN (neither caller-supplied nor in the running relay env); refusing to start one without auth" >&2
   exit 1
 fi
 if [ -z "$uhost" ]; then
-  echo "FATAL: no RELAY_UPSTREAM_HOST. Pass it in:" >&2
-  echo "       RELAY_UPSTREAM_HOST=\"\$(ipconfig getifaddr en0)\" $0" >&2
+  echo "FATAL: no RELAY_UPSTREAM_HOST and no working default; refusing to start a relay with nowhere to dial" >&2
   exit 1
 fi
+case "$uhost" in
+  *[^0-9a-zA-Z.:_-]*|"")
+    echo "FATAL: RELAY_UPSTREAM_HOST contains shell-unsafe characters: $uhost" >&2
+    exit 1
+    ;;
+esac
 export RELAY_TOKEN="$tok"
 export RELAY_UPSTREAM_HOST="$uhost"
-echo "restarting relay -> upstream=$uhost (token reused from pid $pid)"
+echo "restarting relay -> upstream=$uhost (token ${RELAY_TOKEN_OVERRIDE:+file-fresh}${RELAY_TOKEN_OVERRIDE:-reused from pid $pid})"
+oldpid="$pid"
 
 [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
 sleep 1
 cd /tmp
 setsid /usr/bin/python3 /tmp/ocx-relay.py >/tmp/ocx-relay.out 2>&1 < /dev/null &
 sleep 2
-echo "relay pid: $(cat /tmp/ocx-relay.pid 2>/dev/null || echo none)"
+newpid=$(cat /tmp/ocx-relay.pid 2>/dev/null || echo none)
+echo "relay pid: $newpid (was ${oldpid:-none})"
+if [ -n "$oldpid" ] && [ "$newpid" = "$oldpid" ]; then
+  echo "FATAL: relay pid unchanged after restart - the old process is still bound and the new config never took effect" >&2
+  exit 1
+fi
+newenv=$(tr '\0' '\n' < "/proc/$newpid/environ" 2>/dev/null || true)
+newuhost=$(printf '%s' "$newenv" | sed -n 's/^RELAY_UPSTREAM_HOST=//p')
+newtok=$(printf '%s' "$newenv" | sed -n 's/^RELAY_TOKEN=//p')
+if [ "$newuhost" != "$uhost" ]; then
+  echo "FATAL: new relay dials '$newuhost', expected '$uhost' - refusing to report success on a stale process" >&2
+  exit 1
+fi
+if [ -z "$newtok" ]; then
+  echo "FATAL: new relay has no token in its environment" >&2
+  exit 1
+fi
 echo "listen-10100: $(grep -c 0100007F:2774 /proc/net/tcp || true)"
 EOS
 

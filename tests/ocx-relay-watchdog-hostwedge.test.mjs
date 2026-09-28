@@ -12,23 +12,36 @@ const WATCHDOG = new URL("../tools/ocx-relay/turn-watchdog.mjs", import.meta.url
 // driven by fixture files/env so each test controls the container's "state".
 // Every invocation is appended to $FAKE_DOCKER_LOG for call assertions.
 const FAKE_DOCKER = `#!/bin/sh
+# $5 is the full sh -c command string (execFile argv: $1=exec $2=box $3=sh
+# $4=-c $5=command; $0 is the script itself and takes no number). Branch on
+# it - matching any other position silently falls through to exit 0 and the
+# ingestion path would never be exercised while every test still passed.
 echo "$5" >> "$FAKE_DOCKER_LOG"
 case "$5" in
   *"wc -c <"*) echo "\${FAKE_HOST_LOG_SIZE:-1000}" ;;
-  *"tail -c +"/"sand-host.log"*) cat "\$FAKE_SPAWN_FILE" 2>/dev/null ;;
+  *"tail -c +"*) if [ -n "$FAKE_SPAWN_FILE" ]; then cat "$FAKE_SPAWN_FILE" 2>/dev/null; fi ;;
   *"agent-transcripts"*) cat "\$FAKE_TRANSCRIPT_FILE" 2>/dev/null ;;
   *"profile.json"*) echo '{"name":"测试Bot"}' ;;
-  *"127.0.0.1:10100"*) echo "\${FAKE_RELAY_CODE:-200}" ;;
-  *"host.internal:11010"*) echo "\${FAKE_STABLE_CODE:-200}" ;;
+  *"127.0.0.1:10100"*|*"host.internal:11010"*)
+    # Faithful to mac-forwarder.mjs: no/wrong token -> 403, not 200. The fake
+    # only answers with the fixture code when the probe carries auth.
+    case "$5" in
+      *"-H"*) echo "\${FAKE_RELAY_CODE:-200}" ;;
+      *) echo "403" ;;
+    esac ;;
   *"RELAY_UPSTREAM_HOST=//p"*) echo "\${FAKE_UPSTREAM_ENV:-host.internal}" ;;
   *"automations/"*"webhook.json"*) echo '{"key":"test-key-123"}' ;;
   *"pgrep"*)
+    if [ -n "\$FAKE_PGREP_EMPTY" ]; then exit 1; fi
+    if [ -n "\$FAKE_PGREP_POISON" ]; then echo "\$FAKE_PGREP_POISON"; exit 0; fi
     n=$(cat "\$FAKE_PID_COUNTER" 2>/dev/null || echo 0)
     n=$((n + 1))
     echo "$n" > "\$FAKE_PID_COUNTER"
     echo $((100 + n))
     ;;
-  *"kill -TERM"*) exit 0 ;;
+  *"kill -TERM"*)
+    if [ -n "\$FAKE_KILL_FAILS" ]; then exit 1; fi
+    exit 0 ;;
   *) exit 0 ;;
 esac
 `;
@@ -73,6 +86,12 @@ async function seedState(fx, spawnMinutesAgo, hostLogSize = 1000) {
   }));
 }
 
+// Probes only answer 200 when they carry auth (faithful to the forwarder),
+// so every test that needs a green hop writes the token file first.
+async function seedToken(fx, token = "fixture-token-abc") {
+  await writeFile(`${fx.dir}/token`, `${token}\n`);
+}
+
 async function runWatchdog(fx, extraEnv = {}) {
   return new Promise((resolve, reject) => {
     execFile(
@@ -99,7 +118,10 @@ async function runWatchdog(fx, extraEnv = {}) {
         },
       },
       (error, stdout, stderr) => {
-        if (error && error.code !== 1) reject(new Error(String(stderr || error.message)));
+        // A crash must never read as a successful suppression: the guard
+        // tests assert ABSENCE of kill/alert, which a dead process trivially
+        // satisfies. Non-zero exit is always a failure here.
+        if (error) reject(new Error(`watchdog exited ${error.code ?? "?"}: ${String(stderr || error.message).slice(0, 400)}`));
         else resolve(stdout);
       },
     );
@@ -111,6 +133,7 @@ test("systemic wedge (2 stalled spawns, no traffic, relay ok) restarts the host 
   await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
   await chmod(fx.repairScript, 0o755);
   await seedState(fx, 12);
+  await seedToken(fx);
   await writeFile(fx.forwarderLog, [
     `${isoMinutesAgo(15)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
     `${isoMinutesAgo(15)} POST /v1/chat/completions started id=aaaa1111 try=0 queued=0ms`,
@@ -162,11 +185,13 @@ test("systemic wedge (2 stalled spawns, no traffic, relay ok) restarts the host 
   assert.ok(state.canary && state.canary.agentId === CANARY_AGENT_ID);
 
   // Second pass: canary transcript now fresh -> canary verdict resolves; the
-  // success cooldown must prevent a second restart.
+  // success cooldown must prevent a second restart. The transcript stamp is
+  // set in the FUTURE: the canary verdict demands mtime >= sentAt + the
+  // 120s clock-skew tolerance, and same-instant stamps must NOT clear it.
   await writeFile(fx.transcriptFile, [
     transcriptLine(AGENT_A, 20),
     transcriptLine(AGENT_B, 22),
-    transcriptLine(CANARY_AGENT_ID, 0),
+    transcriptLine(CANARY_AGENT_ID, -5),
     "",
   ].join("\n"));
   const stdout2 = await runWatchdog(fx, { CANARY_PORT: String(port) }).catch(() => "");
@@ -181,6 +206,7 @@ test("an in-flight inference suppresses the wedge restart (slow, not wedged)", a
   await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
   await chmod(fx.repairScript, 0o755);
   await seedState(fx, 12);
+  await seedToken(fx);
   await writeFile(fx.forwarderLog, [
     `${isoMinutesAgo(15)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
     `${isoMinutesAgo(12)} POST /v1/chat/completions started id=bbbb2222 try=0 queued=0ms`,
@@ -200,11 +226,187 @@ test("an in-flight inference suppresses the wedge restart (slow, not wedged)", a
   assert.ok(!calls.includes("kill -TERM"), "no TERM may be issued while inference is in flight");
 });
 
+test("a single stalled bot never triggers a host restart", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  const seenAt = Date.now() - 12 * 60_000;
+  await writeFile(fx.stateFile, JSON.stringify({
+    hostLogBytes: 1000,
+    lastSpawnSeen: { [AGENT_A]: seenAt },
+    lastAlert: {},
+  }));
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(15)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(15)} POST /v1/chat/completions started id=dddd4444 try=0 queued=0ms`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions -> 200 30000ms queued=0ms try=0 id=dddd4444`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, `${transcriptLine(AGENT_A, 20)}\n`);
+
+  await runWatchdog(fx);
+
+  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+  assert.ok(!alerts.includes("host-wedge-restarted"), "one stalled bot must not restart the host");
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "no TERM for a single-bot stall");
+});
+
+test("fresh forwarder traffic suppresses the wedge restart", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(15)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(11)} POST /v1/chat/completions started id=eeee5555 try=0 queued=0ms`,
+    `${isoMinutesAgo(5)} POST /v1/chat/completions -> 200 300000ms queued=0ms try=0 id=eeee5555`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  await runWatchdog(fx);
+
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "recent POST traffic must suppress the restart");
+});
+
+test("empty pgrep output is refused without touching the container", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(15)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(15)} POST /v1/chat/completions started id=ffff6666 try=0 queued=0ms`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions -> 200 30000ms queued=0ms try=0 id=ffff6666`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  const stdout = await runWatchdog(fx, { FAKE_PGREP_EMPTY: "1" });
+
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "no TERM may be issued when pgrep finds nothing");
+});
+
+test("a poisoned pgrep output is refused without touching the container", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(15)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(15)} POST /v1/chat/completions started id=abab7777 try=0 queued=0ms`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions -> 200 30000ms queued=0ms try=0 id=abab7777`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  await runWatchdog(fx, { FAKE_PGREP_POISON: "1; touch /tmp/pwned" });
+
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "poisoned pgrep output must never reach a kill line");
+  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+  assert.ok(!alerts.includes("host-wedge-restarted"), "a refused restart must not be reported as done");
+  assert.ok(alerts.includes("host-wedge-restart-failed"), "a refused restart must raise its own alert");
+});
+
+test("a 403 probe resyncs the token on its own cooldown key", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, `#!/bin/sh\necho "push $RELAY_UPSTREAM_HOST token:$RELAY_TOKEN_OVERRIDE" >> "${fx.log}.pushes"\nexit 0\n`);
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 1);
+  await seedToken(fx);
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(2)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, `${transcriptLine(AGENT_A, 1)}\n`);
+
+  await runWatchdog(fx, { FAKE_RELAY_CODE: "403" });
+
+  const pushes = (await readFile(`${fx.log}.pushes`, "utf8").catch(() => "")).trim().split("\n").filter(Boolean);
+  assert.ok(pushes.length >= 1, "a 403 must trigger a token resync push");
+  assert.ok(pushes.every((line) => line.includes("token:")), "every resync must carry the current token override");
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "a 403 must not suppress wedge logic by killing the host");
+});
+
+test("spawn ingestion reads the tail file and seeds tracking from it", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  const spawnFile = `${fx.dir}/spawns.txt`;
+  await writeFile(spawnFile, `irrelevant preamble\n[agent-isolation] spawned worker for agent ${AGENT_A} on thread 9 (pid 349, active workers: 1)\n`);
+  // hostLogBytes=1 forces a tail read; the wedge itself is not the point here.
+  await writeFile(fx.stateFile, JSON.stringify({ hostLogBytes: 1, lastSpawnSeen: {}, lastAlert: {} }));
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(2)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, `${transcriptLine(AGENT_A, 20)}\n`);
+
+  await runWatchdog(fx, { FAKE_SPAWN_FILE: spawnFile, FAKE_HOST_LOG_SIZE: "1000" });
+
+  const state = JSON.parse(await readFile(fx.stateFile, "utf8"));
+  assert.ok(state.lastSpawnSeen[AGENT_A] !== undefined, "the tail-read spawn must seed tracking");
+  assert.ok(state.lastSpawnSeen[AGENT_A].seenAt > 0, "spawn tracking must carry a sighting time");
+  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+  assert.ok(!alerts.includes("host-wedge-restarted"), "one freshly-ingested spawn must not restart anything");
+});
+
+test("exec failures and the token never surface in alerts", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\necho boom >&2\nexit 1\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(15)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(15)} POST /v1/chat/completions started id=acac8888 try=0 queued=0ms`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions -> 200 30000ms queued=0ms try=0 id=acac8888`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  const broken = `${fx.dir}/broken-docker.sh`;
+  await writeFile(broken, "#!/bin/sh\nexit 127\n");
+  await chmod(broken, 0o755);
+  await runWatchdog(fx, { DOCKER: broken }).catch(() => {});
+
+  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+  // The header name may appear redacted; the secret value must never appear.
+  assert.ok(!alerts.includes("test-key-123"), "alerts must never carry the raw key material");
+  assert.ok(!alerts.includes("fixture-token-abc"), "alerts must never carry the fixture token value");
+  assert.ok(!alerts.match(/x-relay-token:\s+(?!<redacted>)/), "any relay token in alerts must be redacted");
+});
+
 test("a broken relay hop suppresses the wedge restart (relay repair owns that case)", async () => {
   const fx = await makeFixtures();
   await writeFile(fx.repairScript, "#!/bin/sh\nexit 1\n");
   await chmod(fx.repairScript, 0o755);
   await seedState(fx, 12);
+  await seedToken(fx);
   await writeFile(fx.forwarderLog, [
     `${isoMinutesAgo(15)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
     `${isoMinutesAgo(15)} POST /v1/chat/completions started id=cccc3333 try=0 queued=0ms`,
@@ -230,6 +432,7 @@ test("a green probe on a DHCP-baked upstream gets normalized to the stable name"
   await writeFile(fx.repairScript, `#!/bin/sh\necho "push $RELAY_UPSTREAM_HOST" >> "${fx.log}.pushes"\nexit 0\n`);
   await chmod(fx.repairScript, 0o755);
   await seedState(fx, 1);
+  await seedToken(fx);
   await writeFile(fx.forwarderLog, [
     `${isoMinutesAgo(2)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
     "",
@@ -248,6 +451,7 @@ test("a recent successful outage repair does not silence upstream normalization"
   await writeFile(fx.repairScript, `#!/bin/sh\necho "push $RELAY_UPSTREAM_HOST" >> "${fx.log}.pushes"\nexit 0\n`);
   await chmod(fx.repairScript, 0o755);
   await seedState(fx, 1);
+  await seedToken(fx);
   // The repair cooldown (30 min after success) is still running from an
   // earlier outage fix - normalization must not be silenced by it.
   const justNow = Date.now() - 60_000;

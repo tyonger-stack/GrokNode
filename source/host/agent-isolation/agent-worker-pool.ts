@@ -8,7 +8,9 @@ export function defaultWorkerEntryPath(): string {
     typeof __dirname === "string"
       ? __dirname
       : dirname(fileURLToPath(import.meta.url));
-  return join(here, "agent-isolation", "agent-store-worker.cjs");
+  // agent-worker-pool.ts lives in agent-isolation/ next to the compiled
+  // worker, so join from here — never append the directory name itself.
+  return join(here, "agent-store-worker.cjs");
 }
 
 // 2026-09-28: one agent's blob db wedged its worker thread deterministically
@@ -52,8 +54,7 @@ interface WorkerBoot {
 }
 
 interface PendingWorkerRequest {
-  resolve(response: WorkerResponse): void;
-  reject(error: Error): void;
+  deliver(response: WorkerResponse): void;
 }
 
 export function rebuildWorkerError(
@@ -130,11 +131,7 @@ export class AgentWorkerConnection {
       const entry = this.pending.get(workerResponse.requestId);
       if (entry == null) return;
       this.pending.delete(workerResponse.requestId);
-      if (workerResponse.kind === "error") {
-        entry.reject(rebuildWorkerError(workerResponse));
-      } else {
-        entry.resolve(workerResponse);
-      }
+      entry.deliver(workerResponse);
     });
     this.worker.on("error", error => this.die(error));
     this.worker.on("exit", code => {
@@ -145,15 +142,29 @@ export class AgentWorkerConnection {
 
   private die(reason: unknown): void {
     if (this.isDead) return;
-    const error = reason instanceof Error ? reason : new Error(String(reason));
     this.isDead = true;
-    for (const entry of this.pending.values()) entry.reject(error);
+    for (const entry of this.pending.values())
+      entry.deliver({ kind: "error", requestId: -1, message: String(reason instanceof Error ? reason.message : reason), name: "WorkerDied" } as WorkerResponse);
     this.pending.clear();
     this.onExit(this);
   }
 
+  /** Fail-fast guard for a response that cannot possibly belong to this op:
+   * the request side validates on receipt so a misbehaving worker fails the
+   * one poisoned RPC instead of hanging the caller for the full deadline.
+   * Returns the response for the happy path, or null when it already rejected. */
+  private static validateResponse(
+    response: WorkerResponse,
+    expectedKind: string
+  ): WorkerResponse | null {
+    if (response.kind === "error" || response.kind === expectedKind)
+      return response;
+    return null;
+  }
+
   send(
     build: (requestId: number) => object,
+    expectedKind: string,
     transfer: readonly ArrayBuffer[] = []
   ): Promise<WorkerResponse> {
     if (this.isDead) {
@@ -163,6 +174,25 @@ export class AgentWorkerConnection {
     const requestId = this.nextRequestId++;
     const request = build(requestId) as { kind?: string };
     return new Promise((resolve, reject) => {
+      const expected = expectedKind || (request.kind as string) || "unknown";
+      const deliver = (response: WorkerResponse) => {
+        const valid = AgentWorkerConnection.validateResponse(response, expected);
+        if (valid == null) {
+          reject(
+            new Error(
+              `agent worker replied kind "${response.kind}" to a ${expected} request (requestId ${requestId}) - failing fast instead of returning stale data`
+            )
+          );
+          return;
+        }
+        if (response.kind === "error") {
+          reject(rebuildWorkerError(response));
+          return;
+        }
+        this.lastActivityAt = Date.now();
+        resolve(response);
+      };
+      const entry: PendingWorkerRequest = { deliver };
       const timer = setTimeout(() => {
         // Retire the whole connection, not just this request: a worker that
         // stopped answering mid-op leaves the db handle owned by a wedged
@@ -172,7 +202,7 @@ export class AgentWorkerConnection {
         // from the pool so the next ensure() spawns a fresh worker.
         this.die(
           new Error(
-            `agent worker rpc timed out after ${this.rpcDeadlineMs}ms (kind: ${request.kind ?? "unknown"}) - the worker thread stopped answering; connection retired`
+            `agent worker rpc timed out after ${this.rpcDeadlineMs}ms (kind: ${expected}) - the worker thread stopped answering; connection retired`
           )
         );
         // The thread is still alive here (that is the whole point of the
@@ -183,18 +213,13 @@ export class AgentWorkerConnection {
         void this.worker.terminate().catch(() => {});
       }, this.rpcDeadlineMs);
       if (typeof timer.unref === "function") timer.unref();
-      this.pending.set(requestId, {
-        resolve: response => {
+      const tracked: PendingWorkerRequest = {
+        deliver: (response: WorkerResponse) => {
           clearTimeout(timer);
-          this.lastActivityAt = Date.now();
-          resolve(response);
+          deliver(response);
         },
-        reject: error => {
-          clearTimeout(timer);
-          this.lastActivityAt = Date.now();
-          reject(error);
-        }
-      });
+      };
+      this.pending.set(requestId, tracked);
       this.worker.postMessage(request, [...transfer]);
     });
   }
@@ -218,7 +243,8 @@ export class AgentWorkerConnection {
       agentId: boot.agentId,
       blobDbPath: boot.blobDbPath,
       busyTimeoutMs: boot.busyTimeoutMs
-    }));
+    }),
+    "init-ok");
     this.workerThreadId = response.threadId as number;
     this.workerPid = response.pid as number;
   }
@@ -229,7 +255,8 @@ export class AgentWorkerConnection {
       requestId,
       blobId,
       blobData
-    }));
+    }),
+    "set-blob-ok");
   }
 
   async getBlob(blobId: Uint8Array): Promise<Uint8Array | undefined> {
@@ -237,7 +264,8 @@ export class AgentWorkerConnection {
       kind: "get-blob",
       requestId,
       blobId
-    }));
+    }),
+    "get-blob-ok");
     return response.blobData;
   }
 
@@ -245,12 +273,13 @@ export class AgentWorkerConnection {
     const response = await this.send(requestId => ({
       kind: "find-latest-root",
       requestId
-    }));
+    }),
+    "find-latest-root-ok");
     return response.rootId;
   }
 
   async clearBlobs(): Promise<void> {
-    await this.send(requestId => ({ kind: "clear-blobs", requestId }));
+    await this.send(requestId => ({ kind: "clear-blobs", requestId }), "clear-blobs-ok");
   }
 
   async clearStaleCheckpointRoots(retainedRootIdHex: string): Promise<number> {
@@ -258,7 +287,8 @@ export class AgentWorkerConnection {
       kind: "clear-stale-roots",
       requestId,
       retainedRootIdHex
-    }));
+    }),
+    "clear-stale-roots-ok");
     return response.deleted as number;
   }
 
@@ -271,7 +301,8 @@ export class AgentWorkerConnection {
       requestId,
       retainedRootIdHex,
       pendingWriteRetentionMs
-    }));
+    }),
+    "collect-garbage-ok");
     return response.result;
   }
 
@@ -284,14 +315,15 @@ export class AgentWorkerConnection {
       requestId,
       retainedRootIdHex,
       legacyBlobDbPath
-    }));
+    }),
+    "verify-legacy-blob-retirement-ok");
     return response.verdict;
   }
 
   async close(): Promise<void> {
     if (this.isDead) return;
     try {
-      await this.send(requestId => ({ kind: "close", requestId }));
+      await this.send(requestId => ({ kind: "close", requestId }), "close-ok");
     } catch {}
     await this.worker.terminate();
   }
@@ -550,7 +582,8 @@ export class AgentWorkerPool {
       blobDbPath,
       threadId: connection.threadId(),
       pid: connection.pid()
-    }));
+    }),
+    "verify-legacy-blob-retirement-ok");
   }
 
   private evictForCapacity(): void {

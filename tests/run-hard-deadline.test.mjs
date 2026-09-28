@@ -22,7 +22,8 @@ await build({ entryPoints: [path.join(root, "source/host/agent-isolation/agent-w
 const { AgentWorkerPool, AgentWorkerConnection, DEFAULT_RPC_DEADLINE_MS } = createRequire(import.meta.url)(poolOut);
 
 // Small deadline for every test in this file; the production default is
-// 30 minutes and would time the tests out instead.
+// 30 minutes and would time the tests out instead. The tick floor stays at
+// its 1s default, so awaiting tests budget one full tick cycle of margin.
 process.env.SAND_RUN_HARD_DEADLINE_MS = "150";
 
 // A worker that answers init and normal blobs, but never replies to the
@@ -32,13 +33,13 @@ const WEDGED_WORKER = `
 const { parentPort, threadId } = require("node:worker_threads");
 parentPort.on("message", (request) => {
   if (request.kind === "init") {
-    parentPort.postMessage({ kind: "ready", requestId: request.requestId, threadId, pid: process.pid });
+    parentPort.postMessage({ kind: "init-ok", requestId: request.requestId, threadId, pid: process.pid });
     return;
   }
   if (request.kind === "get-blob") {
     const poison = request.blobId.length === 1 && request.blobId[0] === 66;
     if (poison) return; // never answers - the deterministic wedge
-    parentPort.postMessage({ kind: "blob", requestId: request.requestId, blobData: new Uint8Array([1, 2, 3]) });
+    parentPort.postMessage({ kind: "get-blob-ok", requestId: request.requestId, blobData: new Uint8Array([1, 2, 3]) });
     return;
   }
   parentPort.postMessage({ kind: "ok", requestId: request.requestId });
@@ -47,10 +48,16 @@ parentPort.on("message", (request) => {
 
 function makeFakeTm(agentId) {
   const appended = [];
+  const interrupts = [];
   return {
     appended,
+    interrupts,
     sendPipeline: { sendAttachmentBatchIds: new Map() },
     roster: { emitAgentUpdate() {} },
+    runnerRegistry: {
+      isAwaitingUserSelection: () => false,
+      interruptWedgedRunForWatchdog: (id) => { interrupts.push(id); return true; },
+    },
     sessions: {
       liveSessions: new Map([
         [agentId, { db: { appendTranscriptEntry: (entry) => appended.push(entry) } }],
@@ -160,11 +167,85 @@ test("enqueueExclusiveRun releases the queue when a run wedges before inference"
     const notice = tm.appended.find((entry) => entry.text?.includes("ended without a reply"));
     assert.ok(notice, `expected a turn-failure notice, got: ${JSON.stringify(tm.appended.map((e) => e.text ?? e.content))}`);
     assert.match(notice.text, /run hard deadline exceeded/);
+    // And the integration path actually asked the runner to abort the
+    // abandoned run (not a no-op callback silently skipped).
+    assert.deepEqual(tm.interrupts, [agentId]);
   } finally {
     if (previousScheduler === undefined) delete process.env.SAND_DISABLE_RUN_SCHEDULER;
     else process.env.SAND_DISABLE_RUN_SCHEDULER = previousScheduler;
     if (previousDeadline === undefined) delete process.env.SAND_RUN_HARD_DEADLINE_MS;
     else process.env.SAND_RUN_HARD_DEADLINE_MS = previousDeadline;
+  }
+});
+
+test("enqueueExclusiveRun releases the scheduler queue too (production path)", async () => {
+  const agentId = "22222222-2222-4222-8222-222222222222";
+  const previousDeadline = process.env.SAND_RUN_HARD_DEADLINE_MS;
+  const previousWatchdog = process.env.SAND_RUN_WATCHDOG_MS;
+  delete process.env.SAND_DISABLE_RUN_SCHEDULER;
+  process.env.SAND_RUN_HARD_DEADLINE_MS = "150";
+  process.env.SAND_RUN_WATCHDOG_MS = "3600000";
+  try {
+    const tm = makeFakeTm(agentId);
+    tm.telemetry = { reportQueueAccepted() {}, reportQueueDequeued() {}, reportQueueDepth() {}, onWatchdog() {} };
+    const lifecycle = new RunLifecycle(tm);
+
+    let t2Started = false;
+    const t1 = lifecycle.enqueueExclusiveRun(agentId, () => new Promise(() => {}), { lane: "background", source: "automation" });
+    const t2 = lifecycle.enqueueExclusiveRun(
+      agentId,
+      async () => { t2Started = true; },
+      { lane: "background", source: "automation" },
+    );
+
+    await assert.rejects(t1, /run hard deadline exceeded/);
+    await t2;
+    assert.equal(t2Started, true, "the scheduler queue must move on too");
+  } finally {
+    if (previousDeadline === undefined) delete process.env.SAND_RUN_HARD_DEADLINE_MS;
+    else process.env.SAND_RUN_HARD_DEADLINE_MS = previousDeadline;
+    if (previousWatchdog === undefined) delete process.env.SAND_RUN_WATCHDOG_MS;
+    else process.env.SAND_RUN_WATCHDOG_MS = previousWatchdog;
+  }
+});
+
+test("a wedged bookkeeping run fails silently (no notice outside the whitelist)", async () => {
+  const agentId = "33333333-3333-4333-8333-333333333333";
+  const previousScheduler = process.env.SAND_DISABLE_RUN_SCHEDULER;
+  const previousDeadline = process.env.SAND_RUN_HARD_DEADLINE_MS;
+  process.env.SAND_DISABLE_RUN_SCHEDULER = "1";
+  process.env.SAND_RUN_HARD_DEADLINE_MS = "150";
+  try {
+    const tm = makeFakeTm(agentId);
+    const lifecycle = new RunLifecycle(tm);
+
+    const t1 = lifecycle.enqueueExclusiveRun(agentId, () => new Promise(() => {}), { lane: "background", source: "ack-redrive" });
+    await assert.rejects(t1, /run hard deadline exceeded/);
+    assert.equal(tm.appended.length, 0, "bookkeeping failures must stay silent");
+  } finally {
+    if (previousScheduler === undefined) delete process.env.SAND_DISABLE_RUN_SCHEDULER;
+    else process.env.SAND_DISABLE_RUN_SCHEDULER = previousScheduler;
+    if (previousDeadline === undefined) delete process.env.SAND_RUN_HARD_DEADLINE_MS;
+    else process.env.SAND_RUN_HARD_DEADLINE_MS = previousDeadline;
+  }
+});
+
+test("a task that finishes beside an expired tick is not killed or notified", async () => {
+  const agentId = "44444444-4444-4444-8444-444444444444";
+  const previousScheduler = process.env.SAND_DISABLE_RUN_SCHEDULER;
+  process.env.SAND_DISABLE_RUN_SCHEDULER = "1";
+  try {
+    const tm = makeFakeTm(agentId);
+    const lifecycle = new RunLifecycle(tm);
+  // A fast task that settles on the same macrotask as an expired check must
+  // win: the deadline must not abort or notice a finished turn.
+  const done = lifecycle.enqueueExclusiveRun(agentId, async () => {}, { lane: "user", source: "turn" });
+  await done;
+  assert.deepEqual(tm.interrupts, [], "no abort for a settled turn");
+  assert.equal(tm.appended.length, 0, "no failure notice for a settled turn");
+  } finally {
+    if (previousScheduler === undefined) delete process.env.SAND_DISABLE_RUN_SCHEDULER;
+    else process.env.SAND_DISABLE_RUN_SCHEDULER = previousScheduler;
   }
 });
 

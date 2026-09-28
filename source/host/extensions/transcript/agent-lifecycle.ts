@@ -178,7 +178,10 @@ export class AgentLifecycle {
         }
       },
       { lane: "user", source: "kickstart" },
-    );
+      // Fire-and-forget: errors are reported inside the task itself, but the
+      // queue's rejection (e.g. a run-deadline failure) must not become an
+      // unhandled rejection.
+    ).catch(() => {});
     return true;
   }
 
@@ -235,7 +238,10 @@ export class AgentLifecycle {
         }
       },
       { lane: "background", source: "event" },
-    );
+      // Fire-and-forget: the turn-failure notice is already written inside
+      // the queue, but the deadline rejection must not become an unhandled
+      // rejection (it would once every wedged run settled).
+    ).catch(() => {});
     return true;
   }
 

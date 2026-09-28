@@ -48,7 +48,13 @@ export const RUN_HARD_DEADLINE_DEFAULT_MS = 30 * 60_000;
 // asked. The cap keeps a permanently-unanswered prompt from pinning the agent
 // queue forever.
 export const RUN_HARD_DEADLINE_AWAITING_MAX_MS = 24 * 60 * 60_000;
-const RUN_HARD_DEADLINE_TICK_MS = 30_000;
+export const RUN_HARD_DEADLINE_TICK_MS = 30_000;
+// Test deployments run with minute-scale budgets where a 30s tick floor
+// would never fire; the floor stays an env-tunable safety rail.
+const RUN_HARD_DEADLINE_TICK_FLOOR_MS = envPositiveInt(
+  "SAND_RUN_HARD_DEADLINE_TICK_FLOOR_MS",
+  1_000
+);
 
 export function withRunHardDeadline(
   agentId: string,
@@ -66,7 +72,7 @@ export function withRunHardDeadline(
     RUN_HARD_DEADLINE_AWAITING_MAX_MS
   );
   const tickMs = Math.max(
-    1_000,
+    RUN_HARD_DEADLINE_TICK_FLOOR_MS,
     Math.min(deadlineMs, RUN_HARD_DEADLINE_TICK_MS)
   );
   return () =>
@@ -75,17 +81,25 @@ export function withRunHardDeadline(
       let awaitingMs = 0;
       let lastTickAt = Date.now();
       let timer: NodeJS.Timeout | null = null;
+      // The deadline check and the task's own settlement are two independent
+      // callbacks. If the task settles in the same macrotask window where the
+      // tick already fired, the tick must not abort a finished turn or write
+      // a failure notice for it.
+      let settled = false;
       const finish = (
         settle: (value: void) => void,
         fail: (error: Error) => void,
         error?: Error
       ) => {
+        if (settled) return;
+        settled = true;
         if (timer != null) clearTimeout(timer);
         timer = null;
         if (error != null) fail(error);
         else settle();
       };
       const check = () => {
+        if (settled) return;
         const now = Date.now();
         const delta = Math.max(0, now - lastTickAt);
         lastTickAt = now;
@@ -142,7 +156,10 @@ const TURN_FAILURE_NOTICE_SOURCES = new Set([
   "agent",
   "subagent-revival",
   "shell-revival",
+  "background-revival",
   "background_followup",
+  "group-member",
+  "broadcast",
   "handoff-resume",
   "upgrade-resume",
   "kickstart",

@@ -42,6 +42,7 @@ interface MirrorWorkerResponse {
 interface PendingMirrorRequest {
   resolve(response: MirrorWorkerResponse): void;
   reject(error: Error): void;
+  expectedKind: string;
 }
 
 class MirrorWorkerConnection {
@@ -69,6 +70,16 @@ class MirrorWorkerConnection {
     if (entry == null) return;
     this.pending.delete(response.requestId);
 
+    // Defensive: a misbehaving worker must fail its one poisoned RPC loudly,
+    // not have its wrong-kind reply mistaken for a real result upstream.
+    if (response.kind !== "error" && response.kind !== entry.expectedKind) {
+      entry.reject(
+        new Error(
+          `mirror worker replied kind "${response.kind}" to a ${entry.expectedKind} request (requestId ${response.requestId}) - failing fast instead of returning stale data`
+        )
+      );
+      return;
+    }
     if (response.kind === "error") {
       entry.reject(new Error(response.message));
     } else {
@@ -91,6 +102,7 @@ class MirrorWorkerConnection {
 
   private send(
     build: (requestId: number) => object,
+    expectedKind: string,
     transfer: ArrayBuffer[] = []
   ): Promise<MirrorWorkerResponse> {
     if (this.dead) {
@@ -99,7 +111,7 @@ class MirrorWorkerConnection {
 
     const requestId = this.nextRequestId++;
     return new Promise<MirrorWorkerResponse>((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject });
+      this.pending.set(requestId, { resolve, reject, expectedKind });
       this.worker.postMessage(build(requestId), transfer);
     });
   }
@@ -111,6 +123,7 @@ class MirrorWorkerConnection {
         requestId,
         ...job
       }),
+      "mirror-write-ok",
       [job.stateBlobId.buffer]
     );
     return response.written as boolean;
@@ -119,7 +132,7 @@ class MirrorWorkerConnection {
   async close(): Promise<void> {
     if (this.dead) return;
     try {
-      await this.send(requestId => ({ kind: "close", requestId }));
+      await this.send(requestId => ({ kind: "close", requestId }), "close-ok");
     } catch {
       // A worker that died while closing has already rejected all callers.
     }

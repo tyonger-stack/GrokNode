@@ -236,7 +236,10 @@ async function checkStalledTurns(now) {
       state.hostLogBytes = size;
       for (const line of fresh.split("\n")) {
         const match = line.match(/spawned worker for agent ([0-9a-f-]{36})/);
-        if (match) state.lastSpawnSeen[match[1]] = now;
+        // Record the spawn sighting together with the transcript's mtime at
+        // that moment: health is judged against writes NEWER than the spawn,
+        // never against the previous turn's tail sitting under the same file.
+        if (match) state.lastSpawnSeen[match[1]] = { seenAt: now, baselineMtime: -1 };
       }
     }
   }
@@ -258,17 +261,41 @@ async function checkStalledTurns(now) {
   }
   lastTranscriptMtimes = mtimes;
 
-  for (const [agentId, seenAt] of Object.entries(state.lastSpawnSeen)) {
+  for (const [agentId, tracked] of Object.entries(state.lastSpawnSeen)) {
+    const { seenAt, baselineMtime } =
+      typeof tracked === "number"
+        ? { seenAt: tracked, baselineMtime: -1 }
+        : { seenAt: tracked.seenAt ?? 0, baselineMtime: tracked.baselineMtime ?? -1 };
     if (now - seenAt > SPAWN_WINDOW_MS) {
       delete state.lastSpawnSeen[agentId];
       continue;
     }
     const mtime = mtimes.get(agentId);
-    if (mtime === undefined) continue;
-    // The dispatched turn produced output: its transcript write landed at or
-    // after the spawn sighting (within the polling-lag tolerance). Healthy —
-    // stop tracking so a completed turn followed by idle time never alerts.
-    if (mtime >= seenAt - SPAWN_READ_LAG_MS) {
+    if (mtime === undefined) {
+      // A spawned agent with NO transcript file at all is the most wedged
+      // shape there is (dispatch without even a first write). Previously it
+      // was skipped silently and never entered the wedge count; now it
+      // counts with a stale epoch so a never-written turn still trips the
+      // stall timer from its spawn sighting.
+      const turnAge = now - seenAt;
+      if (turnAge >= TRANSCRIPT_STALL_MS) {
+        const name = await agentName(agentId);
+        stallReport.push({ agentId, seenAt, turnAge, noTranscript: true });
+        alert(`stall:${agentId}`, `bot「${name}」(${agentId.slice(0, 8)}) 疑似卡死：回合派出后 ${Math.round(turnAge / 60000)} 分钟且从未产生 transcript 文件。`, { agent: agentId, name });
+      }
+      continue;
+    }
+    // First sight of this tracking entry: pin the current mtime as the
+    // baseline. A write the spawn already saw is the previous turn's tail.
+    const record = typeof tracked === "number" || baselineMtime < 0
+      ? { seenAt, baselineMtime: mtime }
+      : { seenAt, baselineMtime };
+    state.lastSpawnSeen[agentId] = record;
+    // Healthy only when the transcript moved past the spawn-time baseline:
+    // any write newer than what the spawn already saw is this turn's output.
+    // (Older readings tolerated the polling lag by accepting the tail; that
+    // acceptance is exactly what hid a wedged turn on a busy bot.)
+    if (mtime > record.baselineMtime) {
       delete state.lastSpawnSeen[agentId];
       continue;
     }
@@ -416,9 +443,14 @@ async function probeContainerRelay() {
     const code = (await execInContainer(
       `curl -s -o /dev/null -w '%{http_code}' --max-time 10${auth} http://127.0.0.1:10100/v1/models`,
     )).trim();
-    return { ok: code === "200", code: code || "无响应" };
+    // 403 is an auth mismatch, not a broken hop: the Mac-side token file was
+    // rotated while the running relay still carries the old one (the push
+    // script reuses the old relay's environ). Rebuilding the relay on a 403
+    // treats the wrong disease; the cure is re-pushing with the CURRENT
+    // token, which the repair path now does unconditionally.
+    return { ok: code === "200", code: code || "无响应", authMismatch: code === "403" };
   } catch (e) {
-    return { ok: false, code: `探活失败：${e.message}` };
+    return { ok: false, code: `探活失败：${e.message}`, authMismatch: false };
   }
 }
 
@@ -465,11 +497,15 @@ async function repairContainerRelay(now, key = "container-relay") {
   state.lastRepair = { ...(state.lastRepair ?? {}), [key]: now };
   state.lastRepairOk = { ...(state.lastRepairOk ?? {}), [key]: false };
   console.log(`${new Date(now).toISOString()} repairing container relay -> ${address} (${source}) via ${REPAIR_SCRIPT}`);
+  // Always hand the CURRENT Mac-side token to the push script (the forwarder
+  // compares against the token file live): the old relay's environ token may
+  // be the very credential a 403 just told us is stale.
+  const currentToken = relayToken();
   try {
     const stdout = await new Promise((resolve, reject) => {
       execFile("/bin/zsh", [REPAIR_SCRIPT], {
         timeout: REPAIR_TIMEOUT_MS,
-        env: { ...process.env, RELAY_UPSTREAM_HOST: address },
+        env: { ...process.env, RELAY_UPSTREAM_HOST: address, RELAY_TOKEN_OVERRIDE: currentToken },
       }, (error, out, err) => error ? reject(new Error(redactSecrets(String(err || error.message).trim()))) : resolve(out));
     });
     state.lastRepairOk = { ...state.lastRepairOk, [key]: true };
@@ -509,11 +545,13 @@ async function checkContainerRelayLiveness(now) {
     return;
   }
   console.log(`${new Date(now).toISOString()} container hop probe failed (${first.code}); attempting repair`);
-  const repair = await repairContainerRelay(now);
+  const repair = first.authMismatch
+    ? await repairContainerRelay(now, "container-relay-token")
+    : await repairContainerRelay(now);
   if (repair.attempted) {
     const again = await probeContainerRelay();
     if (again.ok) {
-      console.log(`${new Date(now).toISOString()} container hop self-healed: ${repair.detail}`);
+      console.log(`${new Date(now).toISOString()} container hop self-healed${first.authMismatch ? " (token re-synced)" : ""}: ${repair.detail}`);
       return;
     }
     alert(
@@ -543,8 +581,11 @@ async function restartHostProcess() {
   // pipeline exit 0 even when pgrep finds nothing, and kill failures (process
   // already gone) must not reject the whole restart path.
   const pidBefore = (await execInContainer(`pgrep -f 'host-main[.]cjs' | head -1`)).trim();
-  if (!pidBefore) {
-    return { ok: false, detail: "容器内找不到 host-main.cjs 进程（pgrep 空）" };
+  // pgrep output goes straight into a kill command: demand a bare pid
+  // (digits only) before trusting it, or a poisoned container could smuggle
+  // a shell fragment into the kill line.
+  if (!/^\d+$/.test(pidBefore)) {
+    return { ok: false, detail: `容器内 host pid 非法（pgrep 返回 "${pidBefore.slice(0, 64)}"）——拒绝拼接执行` };
   }
   await execInContainer(`kill -TERM ${pidBefore} 2>/dev/null || true`);
   await new Promise((resolve) => setTimeout(resolve, HOST_RESTART_RESPAWN_MS));
@@ -605,7 +646,11 @@ async function checkHostWedge(now) {
   // deserves a (very loud) human look rather than another blind restart.
   if (state.canary && state.canary.agentId) {
     const mtime = lastTranscriptMtimes.get(state.canary.agentId);
-    if (mtime !== undefined && mtime >= state.canary.sentAt) {
+    // The mtime comes from the container clock and sentAt from the Mac
+    // clock; demand a full tolerance window of fresh writes, not a bare
+    // equal timestamp crossing two unsynchronized clocks.
+    const SKEW_TOLERANCE_MS = 120_000;
+    if (mtime !== undefined && mtime >= state.canary.sentAt + SKEW_TOLERANCE_MS) {
       console.log(`${new Date(now).toISOString()} canary ok: ${state.canary.agentId.slice(0, 8)} wrote after restart`);
       state.canary = null;
     } else if (now - state.canary.sentAt >= CANARY_VERIFY_MS) {
@@ -643,15 +688,25 @@ async function checkHostWedge(now) {
   state.lastHostRestart = { ...(state.lastHostRestart ?? {}), [key]: { at: now, ok: false } };
   const result = await restartHostProcess();
   state.lastHostRestart = { ...(state.lastHostRestart ?? {}), [key]: { at: now, ok: result.ok, detail: redactSecrets(result.detail) } };
-  if (CANARY_AGENT) {
+  if (CANARY_AGENT && result.ok) {
     const sent = await sendCanaryWake(CANARY_AGENT, now);
     state.canary = sent ? { agentId: CANARY_AGENT, sentAt: now } : null;
     if (!sent) console.log(`${new Date(now).toISOString()} canary wake not sent (webhook key missing or app listener down)`);
   }
-  alert(
-    "host-wedge-restarted",
-    `检测到 host 进程僵死（${stalledLong.length} 个 bot 回合派出后 ${Math.round(HOST_WEDGE_STALL_MS / 60000)}+ 分钟零推理零写入、无 in-flight 请求、中继正常）——已自动重启容器内 host：${result.detail}${state.canary ? "，并已发自检唤醒验证恢复。" : "。"}僵死回合不会自动恢复，相关消息需要重发。`,
-  );
+  // The alert must tell the truth about what happened: a failed restart is
+  // a different incident from a completed one, and claiming a restart that
+  // never ran sends the human down the wrong path.
+  if (result.ok) {
+    alert(
+      "host-wedge-restarted",
+      `检测到 host 进程僵死（${stalledLong.length} 个 bot 回合派出后 ${Math.round(HOST_WEDGE_STALL_MS / 60000)}+ 分钟零推理零写入、无 in-flight 请求、中继正常）——已自动重启容器内 host：${result.detail}${state.canary ? "，并已发自检唤醒验证恢复。" : "。"}僵死回合不会自动恢复，相关消息需要重发。`,
+    );
+  } else {
+    alert(
+      "host-wedge-restart-failed",
+      `检测到 host 进程僵死（${stalledLong.length} 个 bot 回合派出后 ${Math.round(HOST_WEDGE_STALL_MS / 60000)}+ 分钟零推理零写入、无 in-flight 请求、中继正常），但自动重启失败：${result.detail}——需要人工处理容器内 host。`,
+    );
+  }
 }
 
 function osascriptNotify(message) {
@@ -688,11 +743,14 @@ function alert(key, message, fields = {}) {
   try { fs.appendFileSync(ALERTS_LOG, line + "\n"); } catch { /* non-fatal */ }
   if (MACOS_NOTIFY) notifyMacOS(message);
   if (ALERT_COMMAND) {
-    const command = ALERT_COMMAND
-      .replaceAll("{message}", JSON.stringify(message))
-      .replaceAll("{agent}", JSON.stringify(fields.agent ?? "unknown"))
-      .replaceAll("{name}", JSON.stringify(fields.name ?? fields.agent ?? "unknown"));
-    execFile("/bin/zsh", ["-c", command], { timeout: 15000 }, () => {});
+    // Security: fields.agent/name arrive from the container (profile.json),
+    // so they must NEVER be interpolated into a shell string — a bot named
+    // `$(curl …)` would execute on the Mac. Pass values via argv/env on the
+    // expanded template; keep the template itself a static operator string.
+    // {message} {agent} {name} are substituted with sanitized id-safe tokens.
+    const safe = (value) => String(value ?? "unknown").replace(/[^\w.:/-]/g, "_").slice(0, 128);
+    const parts = [ALERT_COMMAND, safe(key), safe(message).slice(0, 512), safe(fields.agent), safe(fields.name ?? fields.agent)];
+    execFile("/bin/zsh", ["-c", '"$0" "$1" "$2" "$3" "$4"', ...parts], { timeout: 15000 }, () => {});
   }
 }
 
@@ -704,7 +762,7 @@ async function runOnce() {
   // and forwarderActivity (from inflight), so it must run after both — and it
   // takes the relay probe itself, so it also has to be robust to its failure.
   try { await checkHostWedge(now); } catch (e) { console.log(`checkHostWedge failed: ${e.message}`); }
-  await checkForwarderLiveness(now);
+  try { await checkForwarderLiveness(now); } catch (e) { console.log(`checkForwarderLiveness failed: ${e.message}`); }
   try { await checkContainerRelayLiveness(now); } catch (e) { console.log(`checkContainerRelayLiveness failed: ${e.message}`); }
   saveState();
 }

@@ -348,7 +348,10 @@ export class BackgroundWakes {
           await this.tm.automationRuntime.ensureHiddenTurnReply(runner);
       },
       "Broadcast message failed",
-    );
+      // Fire-and-forget: errors surface via the alert-adjacent paths, but the
+      // queue's rejection (e.g. a run-deadline failure) must not become an
+      // unhandled rejection.
+    ).catch(() => {});
     return true;
   }
 

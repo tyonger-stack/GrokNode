@@ -109,7 +109,10 @@ export class SharedRooms {
         );
       },
       { lane: "agent", source: "agent" },
-    );
+      // Fire-and-forget: the turn-failure notice is already written inside
+      // the queue, but the deadline rejection must not become an unhandled
+      // rejection (it would once every wedged run settled).
+    ).catch(() => {});
     return `Posted to "${groupName}". Its members will see it and reply on their own turns.`;
   }
 
@@ -661,7 +664,10 @@ export class SharedRooms {
         );
       },
       { lane: "agent", source: "agent" },
-    );
+      // Fire-and-forget: the turn-failure notice is already written inside
+      // the queue, but the deadline rejection must not become an unhandled
+      // rejection (it would once every wedged run settled).
+    ).catch(() => {});
   }
 
   async runRemoteRequestedMemberTurn(args: any): Promise<string[]> {
