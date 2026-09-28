@@ -11,6 +11,24 @@ export function defaultWorkerEntryPath(): string {
   return join(here, "agent-isolation", "agent-store-worker.cjs");
 }
 
+// 2026-09-28: one agent's blob db wedged its worker thread deterministically
+// (init answered, then a get-blob never came back — no error, no exit event),
+// hanging every subsequent run for that agent forever because nothing below
+// this class has a per-request deadline. Every worker op is a synchronous
+// SQLite statement behind a busy timeout (seconds at most), so a minute is
+// orders of magnitude beyond any legitimate op.
+export const DEFAULT_RPC_DEADLINE_MS = 60_000;
+
+function envPositiveIntOrFallback(
+  name: string,
+  fallback: number
+): number {
+  const raw = process.env[name];
+  if (raw == null || raw.trim().length === 0) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 interface WorkerResponse {
   readonly kind: string;
   readonly requestId: number;
@@ -97,7 +115,8 @@ export class AgentWorkerConnection {
   constructor(
     workerEntryPath: string,
     boot: WorkerBoot,
-    readonly onExit: (self: AgentWorkerConnection) => void
+    readonly onExit: (self: AgentWorkerConnection) => void,
+    readonly rpcDeadlineMs: number = DEFAULT_RPC_DEADLINE_MS
   ) {
     this.worker = new Worker(workerEntryPath, {
       workerData: boot,
@@ -142,14 +161,30 @@ export class AgentWorkerConnection {
     }
     this.lastActivityAt = Date.now();
     const requestId = this.nextRequestId++;
-    const request = build(requestId);
+    const request = build(requestId) as { kind?: string };
     return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        // Retire the whole connection, not just this request: a worker that
+        // stopped answering mid-op leaves the db handle owned by a wedged
+        // thread, and every later RPC would burn the same deadline. die()
+        // rejects every pending request (including this one - deleting this
+        // entry first would orphan its promise) and drops the connection
+        // from the pool so the next ensure() spawns a fresh worker.
+        this.die(
+          new Error(
+            `agent worker rpc timed out after ${this.rpcDeadlineMs}ms (kind: ${request.kind ?? "unknown"}) - the worker thread stopped answering; connection retired`
+          )
+        );
+      }, this.rpcDeadlineMs);
+      if (typeof timer.unref === "function") timer.unref();
       this.pending.set(requestId, {
         resolve: response => {
+          clearTimeout(timer);
           this.lastActivityAt = Date.now();
           resolve(response);
         },
         reject: error => {
+          clearTimeout(timer);
           this.lastActivityAt = Date.now();
           reject(error);
         }
@@ -266,6 +301,7 @@ export interface AgentWorkerPoolOptions {
   readonly idleTimeoutMs?: number;
   readonly maxWorkers?: number;
   readonly sweepIntervalMs?: number;
+  readonly rpcDeadlineMs?: number;
 }
 
 export class AgentWorkerPool {
@@ -274,6 +310,7 @@ export class AgentWorkerPool {
   readonly idleTimeoutMs: number;
   readonly maxWorkers: number;
   readonly sweepIntervalMs: number;
+  readonly rpcDeadlineMs: number;
   readonly connections = new Map<string, AgentWorkerConnection>();
   readonly activeOps = new Map<string, number>();
   sweepTimer: NodeJS.Timeout | null = null;
@@ -284,6 +321,12 @@ export class AgentWorkerPool {
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.maxWorkers = options.maxWorkers ?? DEFAULT_MAX_WORKERS;
     this.sweepIntervalMs = options.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
+    this.rpcDeadlineMs =
+      options.rpcDeadlineMs ??
+      envPositiveIntOrFallback(
+        "SAND_AGENT_WORKER_RPC_DEADLINE_MS",
+        DEFAULT_RPC_DEADLINE_MS
+      );
   }
 
   async ensure(
@@ -308,7 +351,8 @@ export class AgentWorkerPool {
           this.connections.delete(blobDbPath);
           if (this.connections.size === 0) this.stopSweep();
         }
-      }
+      },
+      this.rpcDeadlineMs
     );
     this.connections.set(blobDbPath, connection);
     this.startSweep();

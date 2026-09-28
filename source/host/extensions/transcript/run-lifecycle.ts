@@ -13,7 +13,7 @@ import {
   type ActivityUpdate,
   type NamedActivityHoldState,
 } from "../../sand-activity.js";
-import { describeAgentRunError } from "./agent-run-error.js";
+import { formatAgentRunError } from "./agent-run-error.js";
 import { isTurnInterruptedFailure } from "./turn-runtime.js";
 import { ToolRepeatDetector } from "./tool-repeat-detector.js";
 import { SandRunScheduler, type RunLane } from "./run-scheduler.js";
@@ -30,6 +30,49 @@ export function envPositiveInt(name: string, fallback: number): number {
 }
 export const RUN_WATCHDOG_DEFAULT_MS = 120_000;
 export const RUN_WATCHDOG_GRACE_DEFAULT_MS = 30_000;
+// Hard ceiling for ANY dispatched run, arming when the run starts executing.
+// The run-queue watchdog above only arms when a user task is queued behind an
+// active run, so automation/background-dispatched runs that hang before their
+// first inference (2026-09-28: an agent's blob-db worker stopped answering,
+// wedging every subsequent run with no error and no exit) hold the agent's
+// exclusive queue forever. Racing the task against this deadline converts the
+// wedge into an ordinary failure: the queue releases, the turn-failure notice
+// fires, and the next message or automation gets a real chance to run. The
+// wording deliberately avoids isTurnInterruptedFailure's interrupt vocabulary
+// so the failure stays user-visible.
+export const RUN_HARD_DEADLINE_DEFAULT_MS = 30 * 60_000;
+
+export function withRunHardDeadline(
+  agentId: string,
+  source: string,
+  task: () => Promise<void>
+): () => Promise<void> {
+  const deadlineMs = envPositiveInt(
+    "SAND_RUN_HARD_DEADLINE_MS",
+    RUN_HARD_DEADLINE_DEFAULT_MS
+  );
+  return () =>
+    new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(
+          new Error(
+            `run hard deadline exceeded (${deadlineMs}ms) for agent ${agentId} (source: ${source}): the run never settled and was failed so the queue can move on`
+          )
+        );
+      }, deadlineMs);
+      if (typeof timer.unref === "function") timer.unref();
+      task().then(
+        value => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        error => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+}
 
 // Real bot-turn sources only: bookkeeping reruns (ack-redrive, spend_guard, ...)
 // must not raise user-facing failure notices.
@@ -196,7 +239,10 @@ export class RunLifecycle {
       // reasons, not as clean returns, so filter them here rather than
       // enumerating every interrupt call site.
       if (isTurnInterruptedFailure(error)) return;
-      const description = describeAgentRunError(
+      // formatAgentRunError returns a string; describeAgentRunError returns a
+      // structured record, and interpolating it into this text rendered every
+      // notice's error as "[object Object]".
+      const description = formatAgentRunError(
         error instanceof Error ? error : new Error(String(error)),
       );
       const notice = {
@@ -244,13 +290,18 @@ export class RunLifecycle {
       ackToken?: string;
     },
   ): Promise<void> {
+    // Deadline INSIDE the notice wrapper: the deadline rejection must flow
+    // through the turn-failure notice catch, or a wedged run would fail
+    // silently (the notice wrapper's catch only sees rejections of the task
+    // promise it wrapped itself).
+    const deadlinedTask = withRunHardDeadline(agentId, options.source, task);
     const guardedTask = TURN_FAILURE_NOTICE_SOURCES.has(options.source)
       ? () =>
-          task().catch((error: unknown) => {
+          deadlinedTask().catch((error: unknown) => {
             this.appendTurnFailureNotice(agentId, options.source, error);
             throw error;
           })
-      : task;
+      : deadlinedTask;
     if (this.runScheduler != null)
       return this.runScheduler.enqueue(agentId, guardedTask, options);
     const previous = this.runChains.get(agentId) ?? Promise.resolve();
