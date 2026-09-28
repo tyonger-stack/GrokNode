@@ -43,6 +43,13 @@ const ALERT_COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS ?? "1800000");
 // its own budget: a rebuild plus probe has to fit well inside the check
 // interval, and a failed attempt must not be retried on the very next loop.
 const REPAIR_COOLDOWN_MS = Number(process.env.REPAIR_COOLDOWN_MS ?? String(ALERT_COOLDOWN_MS));
+// A repair that FAILED must not silence the self-heal for the full cooldown.
+// 2026-09-28: the repair ran inside a WiFi-switch window, read a link-local
+// address, pushed it, failed — and still stamped lastRepair, so the next five
+// probe cycles (12 minutes of dead bots) were skipped by the cooldown without a
+// word. The long cooldown now applies only to repairs that actually worked,
+// where re-pushing would be pure churn; a failure costs two intervals.
+const REPAIR_RETRY_COOLDOWN_MS = Number(process.env.REPAIR_RETRY_COOLDOWN_MS ?? String(INTERVAL_MS * 2));
 const REPAIR_TIMEOUT_MS = Number(process.env.REPAIR_TIMEOUT_MS ?? "90000");
 const REPAIR_SCRIPT = process.env.REPAIR_SCRIPT || path.join(RELAY_DIR, "container-relay-push.sh");
 const LOG_TAIL_BYTES = Number(process.env.LOG_TAIL_BYTES ?? String(256 * 1024));
@@ -254,20 +261,48 @@ function checkForwarderLiveness(now) {
 }
 
 // The Mac address the container relay has to dial. It comes from DHCP and has
-// already moved once, and the platform bakes its own value into the relay it
+// already moved twice, and the platform bakes its own value into the relay it
 // launches — so it is re-derived from the live interface on every repair
 // rather than trusted from any stored configuration.
+//
+// Validating it is not optional. `ipconfig getifaddr` answers with whatever the
+// interface currently holds, and during a WiFi switch that is briefly a
+// self-assigned link-local 169.254.x address before DHCP completes. On
+// 2026-09-28 the self-heal ran inside exactly that window, read 169.254.10.9
+// and pushed it as the relay upstream; the relay then dialled an address that
+// accepts TCP and swallows every byte, so every bot turn hung at "model
+// provider did not start responding within 150s". A non-empty string from
+// ipconfig is not a routable address, and the one moment this value is most
+// needed is the one moment it is least trustworthy.
+function isRoutableAddress(value) {
+  const parts = String(value).trim().split(".");
+  if (parts.length !== 4) return false;
+  const octets = parts.map((part) => (/^\d{1,3}$/.test(part) ? Number(part) : Number.NaN));
+  if (octets.some((octet) => Number.isNaN(octet) || octet > 255)) return false;
+  const [first, second] = octets;
+  if (first === 0 || first === 127) return false;      // unspecified / loopback
+  if (first === 169 && second === 254) return false;   // link-local autoconfig
+  if (first >= 224) return false;                      // multicast + broadcast
+  return true;
+}
+
 function currentMacAddress() {
   // /sbin/ipconfig does not exist on this macOS; the binary lives in
   // /usr/sbin. Try the absolute path first, then fall back to a PATH lookup so
   // a future layout change degrades to a warning rather than a silent no-op.
+  const rejected = [];
   for (const binary of ["/usr/sbin/ipconfig", "ipconfig"]) {
     for (const iface of ["en0", "en1"]) {
       try {
         const out = execFileSync(binary, ["getifaddr", iface], { encoding: "utf8", timeout: 5000 }).trim();
-        if (out) return out;
+        if (!out) continue;
+        if (isRoutableAddress(out)) return out;
+        rejected.push(`${iface}=${out}`);
       } catch { /* binary or interface not present */ }
     }
+  }
+  if (rejected.length) {
+    console.log(`skipping non-routable Mac address from ipconfig: ${rejected.join(", ")} (link-local autoconfig during a network switch)`);
   }
   return "";
 }
@@ -298,14 +333,25 @@ async function probeContainerRelay() {
 // visible in the log rather than silent.
 async function repairContainerRelay(now) {
   const key = "container-relay";
-  if (now - (state.lastRepair?.[key] ?? 0) < REPAIR_COOLDOWN_MS) {
-    return { attempted: false, ok: false, detail: `距上次自愈不足 ${Math.round(REPAIR_COOLDOWN_MS / 60000)} 分钟，本轮不再尝试` };
+  const lastAttempt = state.lastRepair?.[key] ?? 0;
+  const lastSucceeded = state.lastRepairOk?.[key] === true;
+  const cooldown = lastSucceeded ? REPAIR_COOLDOWN_MS : REPAIR_RETRY_COOLDOWN_MS;
+  if (now - lastAttempt < cooldown) {
+    return {
+      attempted: false,
+      ok: false,
+      detail: `距上次${lastSucceeded ? "成功" : "失败"}自愈不足 ${Math.max(1, Math.round(cooldown / 60000))} 分钟，本轮不再尝试`,
+    };
   }
   const address = currentMacAddress();
   if (!address) {
-    return { attempted: false, ok: false, detail: "取不到本机 en0/en1 地址，无法确定上游（网络未就绪？）" };
+    return { attempted: false, ok: false, detail: "取不到本机 en0/en1 可路由地址，无法确定上游（网络未就绪？）" };
   }
+  // Stamp before the attempt so a repair that hangs past REPAIR_TIMEOUT_MS is
+  // not retried on the very next loop, but only as a *failed* one; the long
+  // cooldown is earned by an attempt that is known to have worked.
   state.lastRepair = { ...(state.lastRepair ?? {}), [key]: now };
+  state.lastRepairOk = { ...(state.lastRepairOk ?? {}), [key]: false };
   console.log(`${new Date(now).toISOString()} repairing container relay -> ${address} via ${REPAIR_SCRIPT}`);
   try {
     const stdout = await new Promise((resolve, reject) => {
@@ -314,6 +360,7 @@ async function repairContainerRelay(now) {
         env: { ...process.env, RELAY_UPSTREAM_HOST: address },
       }, (error, out, err) => error ? reject(new Error(redactSecrets(String(err || error.message).trim()))) : resolve(out));
     });
+    state.lastRepairOk = { ...state.lastRepairOk, [key]: true };
     const lines = stdout.trim().split("\n");
     return { attempted: true, ok: true, detail: lines[lines.length - 1] || "中继已重建" };
   } catch (e) {
