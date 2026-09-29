@@ -223,22 +223,34 @@ test("a dispatched canary clears the pending canary before it ever writes", asyn
     "",
   ].join("\n"));
 
-  // First pass: wedge fires, canary armed.
-  await runWatchdog(fx);
-  const first = JSON.parse(await readFile(fx.stateFile, "utf8"));
-  assert.ok(first.canary, "the restart must arm a canary");
+  // First pass: wedge fires, canary armed. The canary wake is an HTTP POST,
+  // so the app side must be listening or the canary is never armed.
+  const received = [];
+  const server = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => { received.push(req.url); res.writeHead(202); res.end('{"ok":true}'); });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    await runWatchdog(fx, { CANARY_PORT: String(server.address().port) });
+    const first = JSON.parse(await readFile(fx.stateFile, "utf8"));
+    assert.ok(first.canary, "the restart must arm a canary");
+    assert.equal(received.length, 1, "exactly one canary wake must be delivered");
 
-  // Second pass: the canary agent is seen spawning AFTER the wake, while
-  // its transcript is still untouched.
-  const state = JSON.parse(await readFile(fx.stateFile, "utf8"));
-  state.lastSpawnSeen[CANARY_AGENT_ID] = { seenAt: first.canary.sentAt + 1000, baselineMtime: -1 };
-  await writeFile(fx.stateFile, JSON.stringify(state));
+    // Second pass: the canary agent is seen spawning AFTER the wake, while
+    // its transcript is still untouched.
+    const state = JSON.parse(await readFile(fx.stateFile, "utf8"));
+    state.lastSpawnSeen[CANARY_AGENT_ID] = { seenAt: first.canary.sentAt + 1000, baselineMtime: -1 };
+    await writeFile(fx.stateFile, JSON.stringify(state));
 
-  const stdout = await runWatchdog(fx);
-  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
-  assert.ok(!alerts.includes("host-restart-canary-failed"), "a dispatched canary must not be reported as failed");
-  const calls = await readFile(fx.log, "utf8");
-  assert.equal((calls.match(/kill -TERM/g) || []).length, 1, "the canary verdict must not stack a second restart");
+    await runWatchdog(fx, { CANARY_PORT: String(server.address().port) });
+    const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+    assert.ok(!alerts.includes("host-restart-canary-failed"), "a dispatched canary must not be reported as failed");
+    const calls = await readFile(fx.log, "utf8");
+    assert.equal((calls.match(/kill -TERM/g) || []).length, 1, "the canary verdict must not stack a second restart");
+  } finally {
+    server.close();
+  }
 });
 
 test("an in-flight inference suppresses the wedge restart (slow, not wedged)", async () => {

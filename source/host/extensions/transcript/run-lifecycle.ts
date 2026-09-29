@@ -542,6 +542,44 @@ export class RunLifecycle {
       [...this.inFlightRunCounts.keys()].map((session) => session.id),
     );
   }
+  /** Announce every turn still in flight as interrupted by a restart.
+   *
+   * 2026-09-29: a host restart silently dropped in-flight turns — the queue
+   * is pure memory (`run-scheduler.ts:58`) and dispose() never rejected their
+   * promises, so `appendTurnFailureNotice` never ran. The UI showed a stopped
+   * spinner and no record at all, and a fleet of bots sat untouched for hours
+   * while the operator had no way to tell "never dispatched" from "dispatched
+   * and killed". Ack redrive only covers user-sent messages, so turns from
+   * automations/background wakes had no recovery path either.
+   *
+   * This writes the notice on the way out. It deliberately does NOT re-run
+   * the turn: an interrupted tool call may already have had side effects
+   * (messages sent, tickets filed), and replaying it silently is worse than
+   * asking the user to resend. */
+  announceInterruptedRunsForRestart(): number {
+    const interrupted = [...this.inFlightRunCounts.keys()];
+    for (const session of interrupted) {
+      const agentId = session?.id;
+      if (typeof agentId !== "string" || agentId.length === 0) continue;
+      try {
+        // Wording matters: isTurnInterruptedFailure() screens out any message
+        // containing interrupt vocabulary (abort/cancel/interrupt/…), and a
+        // shutdown-induced turn loss is NOT a user interrupt — the user never
+        // asked for it and deserves to be told. So describe it as the host
+        // going away mid-turn, using none of those words.
+        this.appendTurnFailureNotice(
+          agentId,
+          "restart",
+          new Error(
+            "the host process restarted while this turn was still running, so the turn ended without replying",
+          ),
+        );
+      } catch {
+        // best-effort: a notice must never block shutdown
+      }
+    }
+    return interrupted.length;
+  }
   liveRunningAgentIds(): Set<string> {
     const running = this.runningAgentIds();
     for (const agentId of this.tm.roster.liveSubagentParentIds())

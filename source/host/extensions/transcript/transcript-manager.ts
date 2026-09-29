@@ -317,6 +317,16 @@ export class TranscriptManager {
     (this.boxHandoff as any).boxHandoffs?.clear?.();
     this.acceptanceLedger.dispose();
     this.runLifecycle.runScheduler?.dispose();
+    // Announce turns that were still in flight BEFORE their sessions and
+    // databases are torn down below — otherwise the restart leaves no trace
+    // of them at all and the agent looks idle rather than interrupted.
+    // Must run while liveSessions and the session dbs are still open.
+    const interruptedRuns =
+      this.runLifecycle.announceInterruptedRunsForRestart();
+    if (interruptedRuns > 0)
+      console.warn(
+        `[transcript] host shutdown interrupted ${interruptedRuns} in-flight turn(s); each was noted in its transcript`,
+      );
     for (const armed of this.ackObligations.ackRedriveTimers.values())
       armed.dispose();
     this.ackObligations.ackRedriveTimers.clear();
