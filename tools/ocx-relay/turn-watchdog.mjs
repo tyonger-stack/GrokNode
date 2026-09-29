@@ -44,6 +44,10 @@ const ALERT_COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS ?? "180000");
 // cooldown swallowed every repeat of a live incident, so the user saw one
 // alert hours after the bots had already recovered.
 const STALL_ALERT_COOLDOWN_MS = Number(process.env.STALL_ALERT_COOLDOWN_MS ?? "180000");
+// Slow-turn notices are background information: the box is working, nobody
+// has to act. Reporting them as often as real stalls buries the actionable
+// signal (2026-09-29: 40+ notifications in one afternoon).
+const SLOW_STALL_ALERT_COOLDOWN_MS = Number(process.env.SLOW_STALL_ALERT_COOLDOWN_MS ?? "1800000");
 // How recently the forwarder must have seen inference traffic for a stalled
 // turn to count as "slow upstream" rather than "dead". Sized to cover a
 // legitimately long turn (multi-step tool chains run 90s+ per step).
@@ -75,7 +79,12 @@ const STABLE_UPSTREAM = process.env.STABLE_UPSTREAM ?? "host.internal";
 // relay hop healthy (a broken relay is the repair path's problem, and killing
 // the host would not fix it anyway).
 const HOST_RESTART_ENABLED = process.env.HOST_RESTART_ENABLED !== "0";
-const HOST_WEDGE_MIN_AGENTS = Number(process.env.HOST_WEDGE_MIN_AGENTS ?? "2");
+// 2026-09-29: 1 agent is enough. The original "2" was a guard against
+// false positives, but the false-positive source (a slow turn reading as
+// dead) is now excluded upstream by the inference-activity exemption, so a
+// silently-stalled single agent is real evidence — and waiting for a second
+// one left a genuinely wedged agent alerting for 3 hours without a restart.
+const HOST_WEDGE_MIN_AGENTS = Number(process.env.HOST_WEDGE_MIN_AGENTS ?? "1");
 const HOST_WEDGE_STALL_MS = Number(process.env.HOST_WEDGE_STALL_MS ?? String(TRANSCRIPT_STALL_MS));
 const HOST_RESTART_COOLDOWN_MS = Number(process.env.HOST_RESTART_COOLDOWN_MS ?? "1800000");
 const HOST_RESTART_RETRY_COOLDOWN_MS = Number(process.env.HOST_RESTART_RETRY_COOLDOWN_MS ?? String(INTERVAL_MS * 2));
@@ -343,10 +352,14 @@ async function checkStalledTurns(now) {
       const name = await agentName(agentId);
       if (inferring) {
         stallReport.push({ agentId, seenAt, turnAge, inferring: true });
+        // Slow-but-working is information, not an incident: report it on the
+        // long cadence. 2026-09-29: at the 3-minute stall cadence this fired
+        // 40+ notifications in an afternoon for a fleet that was mid-turn and
+        // healthy, burying the real stalls in noise.
         alert(
-          `stall:${agentId}`,
+          `stall-slow:${agentId}`,
           `bot「${name}」(${agentId.slice(0, 8)}) 回合派出后 ${Math.round(turnAge / 60000)} 分钟 transcript 零写入，但中继 ${Math.round((now - forwarderActivity.lastPostAt) / 1000)} 秒前还有推理流量——判定为上游慢/长回合，未重启任何进程。`,
-          { agent: agentId, name },
+          { agent: agentId, name, slow: true },
         );
         continue;
       }
@@ -807,9 +820,14 @@ function notifyMacOS(message) {
 
 function alert(key, message, fields = {}) {
   const now = Date.now();
-  // Stall alerts are per-agent and re-observable, so they use the tighter
-  // cadence; everything else keeps the long catch-all cooldown.
-  const cooldown = key.startsWith("stall:") ? STALL_ALERT_COOLDOWN_MS : ALERT_COOLDOWN_MS;
+  // Three cadences: a silent stall is actionable and repeats fast, a slow
+  // turn is background information and repeats rarely, everything else keeps
+  // the long catch-all cooldown.
+  const cooldown = key.startsWith("stall-slow:")
+    ? SLOW_STALL_ALERT_COOLDOWN_MS
+    : key.startsWith("stall:")
+      ? STALL_ALERT_COOLDOWN_MS
+      : ALERT_COOLDOWN_MS;
   if (now - (state.lastAlert[key] ?? 0) < cooldown) return;
   state.lastAlert[key] = now;
   const line = `${new Date(now).toISOString()} [${key}] ${message}`;
