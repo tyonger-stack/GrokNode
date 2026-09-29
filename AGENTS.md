@@ -174,7 +174,16 @@ npm run frontend:build  # 构建可读 renderer 重建
 - **判断"回合是否真在推理"不能只看 HTTP 200**。forwarder 会把上游的错误体也按 200 透传——用 `model: "default"` 打一发，拿到的是 `400 invalid params, unknown model 'default'`。要判真伪得用 `settings.json` 里真实的 `openRouterModel`（当前 `zai/glm-5.3-flash`）打一发看 `choices[0].message`。
 - `zai/glm-5.3-flash` 会先吐 `reasoning_content` 再给正文，`max_tokens` 给小了会出现 `content: null` + `finish_reason: length`。Grok Bot 框架要求模型用 `send_message` 投递文字，遇到"只有 reasoning 没有 content"的回合要当心被误判成模型不回复。
 
-## 提交规范
+## rakazo 对标后的 M 批加固（63cb265，运维件，已部署）
+
+对标另一款同类实现（rakazo）后的采纳项——它用 **DB 租约 + 单调 fence + 30s reconciler** 取代内存队列（数学上无"永久占位"），另有 **TTFB/空闲/backoff 三分法**与**容量错误绝不重启进程**约定。我们不做租约重写（run 硬死线已把"永久"变"有限"），采纳后两项：
+
+- **容量豁免**（turn-watchdog）：近 `CAPACITY_WINDOW_MS`（默认 30min，**必须 ≥ wedge 静默窗口**，否则两闸互斥）内终态清一色 429/5xx → 只发 `host-wedge-capacity` 告警、**不重启 host**。混合结局走原重启路径。
+- **429 body drain 上限**（mac-forwarder）：先 drain（10s 上限）→ 再 retry sleep → 再 dispatch。原先"resume 后立刻排 sleep"会漏一个 socket/次重试，body 涓流则占槽至 idle。drain 的主动 destroy 用 `entry.draining429` 标记，**标记须活到下一次 dispatch**（socket 拆除的 error 异步冒泡，在 drain 回调之后才到）；dispatch 开头复位，否则吞掉新 attempt 的真 error。
+- **abort 可观测**（run-lifecycle）：死线 abort 返回 false 时 `console.warn` 暴露（被放弃的 run 可能还在写 = 镜像损坏土壤）。transcript 层 generation 围栏**评估后不做**：同进程 FIFO 串行、跨进程回调活不过重启，无处可加。
+- 403 token 重同步走 `tokenOnly`（不依赖 en0/ipconfig，CI ubuntu 上无二者）；push 脚本无 override 时**保留在跑中继的上游**而非强制默认。
+
+
 
 - 小步聚焦提交，说明改动落在哪层：**已审运行时源码 / 可编辑前端 / checksum 固定的打包渲染器 / 仅打包**。
 - 不得提交生成产物（`dist`、`.build`、`.cache`、`src/app/dist`、recovery 工作区、本地凭据）。
