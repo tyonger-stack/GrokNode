@@ -38,7 +38,16 @@ const INFLIGHT_STALL_MS = Number(process.env.INFLIGHT_STALL_MS ?? "600000");
 const TRANSCRIPT_STALL_MS = Number(process.env.TRANSCRIPT_STALL_MS ?? "600000");
 const SPAWN_WINDOW_MS = Number(process.env.SPAWN_WINDOW_MS ?? "1800000");
 const SPAWN_READ_LAG_MS = Number(process.env.SPAWN_READ_LAG_MS ?? "180000");
-const ALERT_COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS ?? "1800000");
+const ALERT_COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS ?? "180000");
+// Stall alerts need a tighter loop than the 30-minute catch-all: a real stall
+// must be reported while it is still actionable. 2026-09-29: the 30-minute
+// cooldown swallowed every repeat of a live incident, so the user saw one
+// alert hours after the bots had already recovered.
+const STALL_ALERT_COOLDOWN_MS = Number(process.env.STALL_ALERT_COOLDOWN_MS ?? "180000");
+// How recently the forwarder must have seen inference traffic for a stalled
+// turn to count as "slow upstream" rather than "dead". Sized to cover a
+// legitimately long turn (multi-step tool chains run 90s+ per step).
+const STALL_UPSTREAM_EXEMPT_MS = Number(process.env.STALL_UPSTREAM_EXEMPT_MS ?? String(TRANSCRIPT_STALL_MS));
 // The repair re-pushes files into the box and restarts its relay, so it gets
 // its own budget: a rebuild plus probe has to fit well inside the check
 // interval, and a failed attempt must not be retried on the very next loop.
@@ -322,9 +331,27 @@ async function checkStalledTurns(now) {
     // like a 60+ minute stall (the 2026-09-26 false-alarm storm).
     const turnAge = now - seenAt;
     if (turnAge >= TRANSCRIPT_STALL_MS) {
+      // Slow-not-dead exemption (2026-09-29): a turn legitimately writes
+      // nothing between dispatch and its first token, and a multi-step turn
+      // can run minutes upstream without a transcript write. Treating that
+      // silence as death produced an alert storm (7 in one afternoon) and,
+      // worse, each alert fed the wedge signature that RESTARTED the host
+      // mid-turn. If the forwarder has seen inference traffic inside the
+      // stall window, the box is working, not wedged.
+      const inferring = forwarderActivity.lastPostAt > 0
+        && now - forwarderActivity.lastPostAt < STALL_UPSTREAM_EXEMPT_MS;
       const name = await agentName(agentId);
+      if (inferring) {
+        stallReport.push({ agentId, seenAt, turnAge, inferring: true });
+        alert(
+          `stall:${agentId}`,
+          `bot「${name}」(${agentId.slice(0, 8)}) 回合派出后 ${Math.round(turnAge / 60000)} 分钟 transcript 零写入，但中继 ${Math.round((now - forwarderActivity.lastPostAt) / 1000)} 秒前还有推理流量——判定为上游慢/长回合，未重启任何进程。`,
+          { agent: agentId, name },
+        );
+        continue;
+      }
       stallReport.push({ agentId, seenAt, turnAge });
-      alert(`stall:${agentId}`, `bot「${name}」(${agentId.slice(0, 8)}) 疑似卡死：回合派出后 ${Math.round(turnAge / 60000)} 分钟 transcript 零写入（该 bot 最后一次写入 ${new Date(mtime).toLocaleString()}，早于本回合派出）。`, { agent: agentId, name });
+      alert(`stall:${agentId}`, `bot「${name}」(${agentId.slice(0, 8)}) 疑似卡死：回合派出后 ${Math.round(turnAge / 60000)} 分钟 transcript 零写入（该 bot 最后一次写入 ${new Date(mtime).toLocaleString()}，早于本回合派出），且同期无任何推理流量。`, { agent: agentId, name });
     }
   }
 }
@@ -696,8 +723,14 @@ async function checkHostWedge(now) {
   const cooldown = lastSucceeded ? HOST_RESTART_COOLDOWN_MS : HOST_RESTART_RETRY_COOLDOWN_MS;
   if (now - lastAttempt < cooldown) return;
 
+  // Only genuinely silent turns count toward the wedge: entries the stall
+  // check already excused as "slow upstream" (forwarder traffic inside the
+  // window) prove the box is inferring, and restarting it would kill a turn
+  // that is making progress. 2026-09-29: four restarts in one afternoon came
+  // from counting slow turns as dead ones.
+  const deadLong = stallReport.filter((entry) => entry.turnAge >= HOST_WEDGE_STALL_MS && entry.inferring !== true);
   const stalledLong = stallReport.filter((entry) => entry.turnAge >= HOST_WEDGE_STALL_MS);
-  if (stalledLong.length < HOST_WEDGE_MIN_AGENTS) return;
+  if (deadLong.length < HOST_WEDGE_MIN_AGENTS) return;
   if (forwarderActivity.inflight > 0) return; // something IS inferring — slow, not wedged
   if (forwarderActivity.lastPostAt > 0 && now - forwarderActivity.lastPostAt < HOST_WEDGE_STALL_MS) return;
   // Capacity-failure exemption (rakazo rule: capacity errors never restart
@@ -722,7 +755,7 @@ async function checkHostWedge(now) {
   }
 
   const names = stalledLong.slice(0, 4).map((entry) => entry.agentId.slice(0, 8)).join(", ");
-  console.log(`${new Date(now).toISOString()} host-wedge signature: ${stalledLong.length} stalled spawns (${names}), 0 in-flight, no POST traffic ${Math.round(HOST_WEDGE_STALL_MS / 60000)}+ min, relay ok -> restarting host`);
+  console.log(`${new Date(now).toISOString()} host-wedge signature: ${deadLong.length} silently-stalled spawns (${names}), 0 in-flight, no POST traffic ${Math.round(HOST_WEDGE_STALL_MS / 60000)}+ min, relay ok -> restarting host`);
   state.lastHostRestart = { ...(state.lastHostRestart ?? {}), [key]: { at: now, ok: false } };
   const result = await restartHostProcess();
   state.lastHostRestart = { ...(state.lastHostRestart ?? {}), [key]: { at: now, ok: result.ok, detail: redactSecrets(result.detail) } };
@@ -774,7 +807,10 @@ function notifyMacOS(message) {
 
 function alert(key, message, fields = {}) {
   const now = Date.now();
-  if (now - (state.lastAlert[key] ?? 0) < ALERT_COOLDOWN_MS) return;
+  // Stall alerts are per-agent and re-observable, so they use the tighter
+  // cadence; everything else keeps the long catch-all cooldown.
+  const cooldown = key.startsWith("stall:") ? STALL_ALERT_COOLDOWN_MS : ALERT_COOLDOWN_MS;
+  if (now - (state.lastAlert[key] ?? 0) < cooldown) return;
   state.lastAlert[key] = now;
   const line = `${new Date(now).toISOString()} [${key}] ${message}`;
   console.log(`ALERT ${line}`);

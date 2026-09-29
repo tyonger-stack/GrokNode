@@ -485,6 +485,35 @@ test("a broken relay hop suppresses the wedge restart (relay repair owns that ca
   assert.ok(!alerts.includes("host-wedge-restarted"), "relay outage is the repair path's case");
 });
 
+test("a stalled turn with recent inference traffic is reported as slow, not dead", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  // Stall is old, but the forwarder saw inference 2 minutes ago: the box is
+  // working on a long turn, so this must NOT read as a wedge.
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(20)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(2)} POST /v1/chat/completions started id=efef0001 try=0 queued=0ms`,
+    `${isoMinutesAgo(1)} POST /v1/chat/completions -> 200 90000ms queued=0ms try=0 id=efef0001`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  await runWatchdog(fx);
+
+  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+  assert.ok(alerts.includes("未重启任何进程"), `slow turn must be reported as such, got: ${alerts}`);
+  assert.ok(!alerts.includes("host-wedge-restarted"), "slow turns must never trigger a host restart");
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "no TERM for a slow-but-inferring turn");
+});
+
 test("a green probe on a DHCP-baked upstream gets normalized to the stable name", async () => {
   const fx = await makeFixtures();
   await writeFile(fx.repairScript, `#!/bin/sh\necho "push $RELAY_UPSTREAM_HOST" >> "${fx.log}.pushes"\nexit 0\n`);
