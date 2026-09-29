@@ -95,11 +95,19 @@ const HOST_WEDGE_STALL_MS = Number(process.env.HOST_WEDGE_STALL_MS ?? String(TRA
 const HOST_RESTART_COOLDOWN_MS = Number(process.env.HOST_RESTART_COOLDOWN_MS ?? "480000");
 const HOST_RESTART_RETRY_COOLDOWN_MS = Number(process.env.HOST_RESTART_RETRY_COOLDOWN_MS ?? String(INTERVAL_MS * 2));
 const HOST_RESTART_RESPAWN_MS = Number(process.env.HOST_RESTART_RESPAWN_MS ?? "25000");
-// Post-restart canary: wake one webhook bot with a selftest payload and expect
-// a transcript write within CANARY_VERIFY_MS. This is the only probe that
-// exercises the full run-queue path (spawn -> inference -> transcript) —
-// /v1/models probes stay green through a wedged host.
-const CANARY_AGENT = process.env.CANARY_AGENT || "70e22ee1-4b23-4860-a598-9e39f47ddc19";
+// Post-restart canary. 2026-09-30: the canary used to WAKE a bot over its
+// webhook, and the only bot with a feishu-p2p webhook was the one that kept
+// wedging — so the self-heal fed itself: restart -> wake -> that bot wedged
+// again while handling the wake -> 10 minutes later it looked dead again.
+// 42 restarts in one night, each interrupting the rest of the fleet.
+//
+// The wake is now optional. When it is off (the default) the canary is
+// PASSIVE: after a restart, ANY agent being dispatched (or writing) proves
+// the run queue handed a turn out, which is exactly what the probe is for.
+// Nothing is injected into a bot, so the canary can no longer cause the
+// failure it is watching for. Set CANARY_WAKE_AGENT to re-enable the old
+// active probe against a bot that is known to be stable.
+const CANARY_WAKE_AGENT = process.env.CANARY_WAKE_AGENT || "";
 const CANARY_ROUTINE = process.env.CANARY_ROUTINE || "feishu-p2p";
 const CANARY_PORT = Number(process.env.CANARY_PORT ?? "17901");
 // 10 minutes, not less: a busy agent's canary can legitimately queue behind
@@ -715,37 +723,47 @@ async function checkHostWedge(now) {
   // Verify the previous restart's canary first — a wake that never produced a
   // transcript write means the run queue is still stuck after a respawn, which
   // deserves a (very loud) human look rather than another blind restart.
-  if (state.canary && state.canary.agentId) {
-    // Two independent proofs, either one clears the canary:
-    //  - a transcript write after the wake (the original signal), or
-    //  - a worker spawn sighting for this agent after the wake, which is
-    //    EARLIER evidence: it proves the run queue handed the turn out. A
-    //    long turn legitimately goes many minutes between dispatch and its
-    //    first transcript write, so waiting only for the write declared
-    //    healthy boxes "canary failed" and cried for human hands while the
-    //    fleet was mid-turn (2026-09-29 23:51: the agent wrote at 23:59,
-    //    eight minutes after the canary had already given up).
-    const mtime = lastTranscriptMtimes.get(state.canary.agentId);
-    // The mtime comes from the container clock and sentAt from the Mac
-    // clock; demand a full tolerance window of fresh writes, not a bare
-    // equal timestamp crossing two unsynchronized clocks.
+  if (state.canary && state.canary.sentAt) {
+    // Passive canary (no wake injected): ANY agent dispatched after the
+    // restart proves the run queue handed a turn out, and any transcript
+    // write proves work completed. With an active wake, also require that
+    // specific agent. Either signal clears the canary.
     const SKEW_TOLERANCE_MS = 120_000;
-    const tracked = state.lastSpawnSeen?.[state.canary.agentId];
-    const seenAt = typeof tracked === "number" ? tracked : tracked?.seenAt ?? 0;
-    const dispatched = seenAt >= state.canary.sentAt;
+    const wakeAgent = state.canary.agentId;
+    let dispatched = false;
+    let seenAt = 0;
+    if (wakeAgent) {
+      const tracked = state.lastSpawnSeen?.[wakeAgent];
+      seenAt = typeof tracked === "number" ? tracked : tracked?.seenAt ?? 0;
+      dispatched = seenAt >= state.canary.sentAt;
+    } else {
+      for (const tracked of Object.values(state.lastSpawnSeen ?? {})) {
+        const at = typeof tracked === "number" ? tracked : tracked?.seenAt ?? 0;
+        if (at >= state.canary.sentAt) {
+          dispatched = true;
+          if (at > seenAt) seenAt = at;
+        }
+      }
+    }
+    let wrote = false;
+    for (const [agentId, mtime] of lastTranscriptMtimes) {
+      if (wakeAgent && agentId !== wakeAgent) continue;
+      if (mtime >= state.canary.sentAt + SKEW_TOLERANCE_MS) wrote = true;
+    }
+    const subject = wakeAgent ? wakeAgent.slice(0, 8) : "任意 bot";
     if (dispatched) {
-      console.log(`${new Date(now).toISOString()} canary ok: ${state.canary.agentId.slice(0, 8)} was dispatched after restart`);
+      console.log(`${new Date(now).toISOString()} canary ok: ${subject} was dispatched after restart`);
       state.canary = null;
-    } else if (mtime !== undefined && mtime >= state.canary.sentAt + SKEW_TOLERANCE_MS) {
-      console.log(`${new Date(now).toISOString()} canary ok: ${state.canary.agentId.slice(0, 8)} wrote after restart`);
+    } else if (wrote) {
+      console.log(`${new Date(now).toISOString()} canary ok: ${subject} wrote after restart`);
       state.canary = null;
     } else if (now - state.canary.sentAt >= CANARY_VERIFY_MS) {
       const detail = seenAt > 0
-        ? `最近一次派发在 ${new Date(seenAt).toLocaleTimeString()}（早于本次自检唤醒）`
-        : "重启后未见该 bot 的任何派发记录";
+        ? `最近一次派发在 ${new Date(seenAt).toLocaleTimeString()}（早于本次重启）`
+        : "重启后未见任何回合派发记录";
       alert(
         "host-restart-canary-failed",
-        `host 重启后自检唤醒 ${Math.round((now - state.canary.sentAt) / 60000)} 分钟，${state.canary.agentId.slice(0, 8)} 既未写入 transcript 也没有新的回合派发（${detail}）——run 队列可能仍未恢复，需要人工排查（重启不能治的僵死）。`,
+        `host 重启后 ${Math.round((now - state.canary.sentAt) / 60000)} 分钟，${subject} 既未写入 transcript 也没有新的回合派发（${detail}）——run 队列可能仍未恢复，需要人工排查（重启不能治的僵死）。`,
       );
       state.canary = null;
     } else {
@@ -796,10 +814,19 @@ async function checkHostWedge(now) {
   state.lastHostRestart = { ...(state.lastHostRestart ?? {}), [key]: { at: now, ok: false } };
   const result = await restartHostProcess();
   state.lastHostRestart = { ...(state.lastHostRestart ?? {}), [key]: { at: now, ok: result.ok, detail: redactSecrets(result.detail) } };
-  if (CANARY_AGENT && result.ok) {
-    const sent = await sendCanaryWake(CANARY_AGENT, now);
-    state.canary = sent ? { agentId: CANARY_AGENT, sentAt: now } : null;
-    if (!sent) console.log(`${new Date(now).toISOString()} canary wake not sent (webhook key missing or app listener down)`);
+  if (result.ok) {
+    // Passive by default: arm the canary without waking anything. It is
+    // cleared by the next real dispatch, which a live fleet produces on its
+    // own. Only arm it at all when a fleet may be idle — otherwise there is
+    // nothing to observe and no restart to stack.
+    state.canary = { agentId: CANARY_WAKE_AGENT || null, sentAt: now };
+    if (CANARY_WAKE_AGENT) {
+      const sent = await sendCanaryWake(CANARY_WAKE_AGENT, now);
+      if (!sent) {
+        console.log(`${new Date(now).toISOString()} canary wake not sent (webhook key missing or app listener down); falling back to passive`);
+        state.canary = { agentId: null, sentAt: now };
+      }
+    }
   }
   // The alert must tell the truth about what happened: a failed restart is
   // a different incident from a completed one, and claiming a restart that
