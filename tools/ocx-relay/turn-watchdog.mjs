@@ -86,7 +86,13 @@ const HOST_RESTART_ENABLED = process.env.HOST_RESTART_ENABLED !== "0";
 // one left a genuinely wedged agent alerting for 3 hours without a restart.
 const HOST_WEDGE_MIN_AGENTS = Number(process.env.HOST_WEDGE_MIN_AGENTS ?? "1");
 const HOST_WEDGE_STALL_MS = Number(process.env.HOST_WEDGE_STALL_MS ?? String(TRANSCRIPT_STALL_MS));
-const HOST_RESTART_COOLDOWN_MS = Number(process.env.HOST_RESTART_COOLDOWN_MS ?? "1800000");
+// 2026-09-29: 30min -> 8min. A successful restart only proves the box was
+// clear at that instant, not that every stalled turn thawed with it: live
+// today, a restart cleared 3 agents while 6 others stayed wedged, and the
+// survivors' next wedge signature waited out the remaining 20 minutes of the
+// old cooldown while alerting every 3 minutes. 8 minutes still exceeds one
+// detection round (2min) plus the restart itself, so it cannot storm.
+const HOST_RESTART_COOLDOWN_MS = Number(process.env.HOST_RESTART_COOLDOWN_MS ?? "480000");
 const HOST_RESTART_RETRY_COOLDOWN_MS = Number(process.env.HOST_RESTART_RETRY_COOLDOWN_MS ?? String(INTERVAL_MS * 2));
 const HOST_RESTART_RESPAWN_MS = Number(process.env.HOST_RESTART_RESPAWN_MS ?? "25000");
 // Post-restart canary: wake one webhook bot with a selftest payload and expect
