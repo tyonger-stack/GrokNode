@@ -201,6 +201,46 @@ test("systemic wedge (2 stalled spawns, no traffic, relay ok) restarts the host 
   assert.equal(state2.canary, null, "fresh canary transcript must clear the pending canary");
 });
 
+test("a dispatched canary clears the pending canary before it ever writes", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  // No transcript write for the canary agent at all — the queue handing
+  // the turn out is enough proof it recovered. This is the 2026-09-29
+  // false alarm: a long turn that wrote eight minutes after the canary
+  // had already declared failure.
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(20)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions started id=aaaa1111 try=0 queued=0ms`,
+    `${isoMinutesAgo(13)} POST /v1/chat/completions -> 400 1000ms queued=0ms try=0 id=aaaa1111`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  // First pass: wedge fires, canary armed.
+  await runWatchdog(fx);
+  const first = JSON.parse(await readFile(fx.stateFile, "utf8"));
+  assert.ok(first.canary, "the restart must arm a canary");
+
+  // Second pass: the canary agent is seen spawning AFTER the wake, while
+  // its transcript is still untouched.
+  const state = JSON.parse(await readFile(fx.stateFile, "utf8"));
+  state.lastSpawnSeen[CANARY_AGENT_ID] = { seenAt: first.canary.sentAt + 1000, baselineMtime: -1 };
+  await writeFile(fx.stateFile, JSON.stringify(state));
+
+  const stdout = await runWatchdog(fx);
+  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+  assert.ok(!alerts.includes("host-restart-canary-failed"), "a dispatched canary must not be reported as failed");
+  const calls = await readFile(fx.log, "utf8");
+  assert.equal((calls.match(/kill -TERM/g) || []).length, 1, "the canary verdict must not stack a second restart");
+});
+
 test("an in-flight inference suppresses the wedge restart (slow, not wedged)", async () => {
   const fx = await makeFixtures();
   await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");

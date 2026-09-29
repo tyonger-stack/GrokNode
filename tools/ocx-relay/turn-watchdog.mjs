@@ -716,18 +716,36 @@ async function checkHostWedge(now) {
   // transcript write means the run queue is still stuck after a respawn, which
   // deserves a (very loud) human look rather than another blind restart.
   if (state.canary && state.canary.agentId) {
+    // Two independent proofs, either one clears the canary:
+    //  - a transcript write after the wake (the original signal), or
+    //  - a worker spawn sighting for this agent after the wake, which is
+    //    EARLIER evidence: it proves the run queue handed the turn out. A
+    //    long turn legitimately goes many minutes between dispatch and its
+    //    first transcript write, so waiting only for the write declared
+    //    healthy boxes "canary failed" and cried for human hands while the
+    //    fleet was mid-turn (2026-09-29 23:51: the agent wrote at 23:59,
+    //    eight minutes after the canary had already given up).
     const mtime = lastTranscriptMtimes.get(state.canary.agentId);
     // The mtime comes from the container clock and sentAt from the Mac
     // clock; demand a full tolerance window of fresh writes, not a bare
     // equal timestamp crossing two unsynchronized clocks.
     const SKEW_TOLERANCE_MS = 120_000;
-    if (mtime !== undefined && mtime >= state.canary.sentAt + SKEW_TOLERANCE_MS) {
+    const tracked = state.lastSpawnSeen?.[state.canary.agentId];
+    const seenAt = typeof tracked === "number" ? tracked : tracked?.seenAt ?? 0;
+    const dispatched = seenAt >= state.canary.sentAt;
+    if (dispatched) {
+      console.log(`${new Date(now).toISOString()} canary ok: ${state.canary.agentId.slice(0, 8)} was dispatched after restart`);
+      state.canary = null;
+    } else if (mtime !== undefined && mtime >= state.canary.sentAt + SKEW_TOLERANCE_MS) {
       console.log(`${new Date(now).toISOString()} canary ok: ${state.canary.agentId.slice(0, 8)} wrote after restart`);
       state.canary = null;
     } else if (now - state.canary.sentAt >= CANARY_VERIFY_MS) {
+      const detail = seenAt > 0
+        ? `最近一次派发在 ${new Date(seenAt).toLocaleTimeString()}（早于本次自检唤醒）`
+        : "重启后未见该 bot 的任何派发记录";
       alert(
         "host-restart-canary-failed",
-        `host 重启后自检唤醒 ${Math.round((now - state.canary.sentAt) / 60000)} 分钟仍无 transcript 写入——run 队列可能仍未恢复，需要人工排查（重启不能治的僵死）。`,
+        `host 重启后自检唤醒 ${Math.round((now - state.canary.sentAt) / 60000)} 分钟，${state.canary.agentId.slice(0, 8)} 既未写入 transcript 也没有新的回合派发（${detail}）——run 队列可能仍未恢复，需要人工排查（重启不能治的僵死）。`,
       );
       state.canary = null;
     } else {
