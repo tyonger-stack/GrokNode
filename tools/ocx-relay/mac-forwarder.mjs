@@ -211,6 +211,9 @@ export function startForwarder(config) {
 
   function dispatch(entry) {
     const queuedMs = entry.queuedAt ? Date.now() - entry.queuedAt : 0;
+    // A fresh attempt owns a fresh socket: the previous attempt's deliberate
+    // 429-drain destroy must not shield this attempt's genuine errors.
+    entry.draining429 = false;
     log(`${new Date().toISOString()} POST ${entry.url} started id=${entry.id} try=${entry.tries} queued=${queuedMs}ms`);
     // The total budget belongs to the request, not to each attempt: arm it once
     // when the slot is acquired and let every retry share what is left of it.
@@ -241,17 +244,46 @@ export function startForwarder(config) {
       { host: upstreamHost, port: upstreamPort, method: entry.method, path: entry.url, headers: entry.headers },
       (upRes) => {
         if (upRes.statusCode === 429 && entry.tries < retry429) {
-          upRes.resume();
+          // Drain the 429 body BEFORE scheduling the retry: the body may
+          // trickle-hang, and firing the next attempt while the old socket
+          // is still open leaks a socket per retry (plus the slot stays
+          // logically held). Ten seconds bounds the drain; on expiry the
+          // socket is destroyed and the retry proceeds without the body,
+          // which was only ever diagnostic. The destroy is expected here:
+          // mark it so the upstream error handler below does not mistake
+          // this deliberate kill for a genuine upstream failure and 502
+          // a request that is about to be retried.
+          entry.draining429 = true;
           entry.tries += 1;
           const delay = retryDelayMs(upRes.headers["retry-after"], entry.tries, retryMaxDelayMs);
           log(`${new Date().toISOString()} POST ${entry.url} retry id=${entry.id} attempt=${entry.tries} in=${delay}ms`);
-          entry.sleepTimer = setTimeout(() => {
-            // Clear the marker as the sleep ends: the total-deadline path reads
-            // it to tell "waiting to retry" from "streaming an attempt".
-            entry.sleepTimer = null;
-            if (entry.clientGone || entry.finished) { releaseSlot(entry); return; }
-            dispatch(entry);
-          }, delay);
+          let drained = false;
+          const proceed = () => {
+            if (drained) return;
+            drained = true;
+            clearTimeout(drainTimer);
+            // Keep the draining flag until the next attempt dispatches: the
+            // socket teardown from the deliberate destroy bubbles to the
+            // request's error handler asynchronously, AFTER this callback
+            // runs. Clearing it here would let that late error 502 a
+            // request that is already on its way to retry.
+            entry.sleepTimer = setTimeout(() => {
+              // Clear the marker as the sleep ends: the total-deadline path reads
+              // it to tell "waiting to retry" from "streaming an attempt".
+              entry.sleepTimer = null;
+              if (entry.clientGone || entry.finished) { entry.draining429 = false; releaseSlot(entry); return; }
+              dispatch(entry);
+            }, delay);
+            if (entry.sleepTimer.unref) entry.sleepTimer.unref();
+          };
+          const drainTimer = setTimeout(() => {
+            upRes.destroy(new Error("429 body drain timeout"));
+            proceed();
+          }, 10000);
+          if (drainTimer.unref) drainTimer.unref();
+          upRes.resume();
+          upRes.on("end", proceed);
+          upRes.on("error", proceed);
           return;
         }
         // Keep the request referenced during streaming: the total deadline and
@@ -267,6 +299,9 @@ export function startForwarder(config) {
         entry.clientRes.writeHead(status, upRes.headers);
         upRes.pipe(entry.clientRes);
         upRes.on("error", () => {
+          // Same guard as the upstream error handler: a 429-drain destroy
+          // is deliberate and the retry is already scheduled.
+          if (entry.draining429) return;
           safeRespond(entry.clientRes, 502, { "content-type": "application/json" }, JSON.stringify({ error: "upstream error" }));
           releaseSlot(entry);
         });
@@ -275,6 +310,9 @@ export function startForwarder(config) {
     entry.upstream = upstream;
     upstream.on("error", (e) => {
       if (entry.released) return;
+      // A 429-body drain destroy is deliberate (see above): the retry is
+      // already scheduled, so this error must not terminate the request.
+      if (entry.draining429) return;
       if (entry.totalTimer) clearTimeout(entry.totalTimer);
       log(`${new Date().toISOString()} POST ${entry.url} upstream-error id=${entry.id} ${e.message}`);
       safeRespond(entry.clientRes, 502, { "content-type": "application/json" }, JSON.stringify({ error: "upstream error", message: e.message }));

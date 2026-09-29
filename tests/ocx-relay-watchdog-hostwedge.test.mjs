@@ -226,6 +226,64 @@ test("an in-flight inference suppresses the wedge restart (slow, not wedged)", a
   assert.ok(!calls.includes("kill -TERM"), "no TERM may be issued while inference is in flight");
 });
 
+test("all-capacity terminal outcomes exempt the host restart (alert only)", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  // Two stalled spawns, zero in-flight, but every recent terminal is an
+  // upstream 429/503: the upstream is broke, not the host. Terminals sit
+  // 12+ minutes back so the wedge signature's no-traffic gate is met.
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(20)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions started id=cccc0001 try=0 queued=0ms`,
+    `${isoMinutesAgo(13)} POST /v1/chat/completions -> 429 60000ms queued=0ms try=2 id=cccc0001`,
+    `${isoMinutesAgo(13)} POST /v1/chat/completions started id=cccc0002 try=0 queued=0ms`,
+    `${isoMinutesAgo(12)} POST /v1/chat/completions -> 503 60000ms queued=0ms try=0 id=cccc0002`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  await runWatchdog(fx);
+
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "capacity outage must not restart the host");
+  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+  assert.ok(!alerts.includes("host-wedge-restarted"), "capacity outage must not claim a restart");
+  assert.ok(alerts.includes("host-wedge-capacity"), "capacity outage must raise its own alert");
+});
+
+test("a single success among capacity failures keeps the restart path", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(20)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions started id=dddd0001 try=0 queued=0ms`,
+    `${isoMinutesAgo(13)} POST /v1/chat/completions -> 429 60000ms queued=0ms try=2 id=dddd0001`,
+    `${isoMinutesAgo(13)} POST /v1/chat/completions started id=dddd0002 try=0 queued=0ms`,
+    `${isoMinutesAgo(12)} POST /v1/chat/completions -> 200 60000ms queued=0ms try=0 id=dddd0002`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  await runWatchdog(fx);
+
+  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+  assert.ok(!alerts.includes("host-wedge-capacity"), "a mixed outcome is not a capacity outage");
+});
+
 test("a single stalled bot never triggers a host restart", async () => {
   const fx = await makeFixtures();
   await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");

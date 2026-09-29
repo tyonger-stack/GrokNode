@@ -161,12 +161,19 @@ function readTail(file, bytes) {
 // Also records system-wide inference activity for the host-wedge check: a
 // wedged host produces neither in-flight requests nor fresh POST lines, while
 // a healthy-but-slow system shows at least an open `started` entry.
-const forwarderActivity = { inflight: 0, lastPostAt: 0 };
+const forwarderActivity = { inflight: 0, lastPostAt: 0, recentTerminal: [] };
+// Window for the capacity-failure exemption: terminal outcomes younger than
+// this count toward the "all failures are capacity" verdict. It must cover
+// the wedge signature's own quiet window (HOST_WEDGE_STALL_MS of zero POST
+// traffic), or the two gates can never agree: terminals old enough to trip
+// the wedge would already have aged out of a shorter capacity window.
+const CAPACITY_WINDOW_MS = Number(process.env.CAPACITY_WINDOW_MS ?? "1800000");
 function checkInflightStalls(now) {
   const tail = readTail(FORWARDER_LOG, LOG_TAIL_BYTES);
   const startedAt = new Map();
   const finished = new Set();
   let lastPostAt = 0;
+  const terminals = [];
   for (const line of tail.split("\n")) {
     if (line.includes("relay listening")) {
       // Forwarder (re)start: every request still marked in-flight belonged to
@@ -195,11 +202,20 @@ function checkInflightStalls(now) {
       // any other terminal line for this id (-> code, upstream-error, ...)
       finished.add(id);
       const doneTs = Date.parse(line.slice(0, line.indexOf("Z") + 1));
-      if (Number.isFinite(doneTs)) lastPostAt = Math.max(lastPostAt, doneTs);
+      if (Number.isFinite(doneTs)) {
+        lastPostAt = Math.max(lastPostAt, doneTs);
+        // Terminal outcome for the capacity verdict: `-> <code>` lines carry
+        // the status; anything else (upstream-error, handler-error) is an
+        // infrastructure failure, not upstream capacity.
+        const codeMatch = line.match(/->\s*(\d{3})\b/);
+        if (codeMatch) terminals.push({ at: doneTs, code: Number(codeMatch[1]) });
+        else terminals.push({ at: doneTs, code: -1 });
+      }
     }
   }
   forwarderActivity.inflight = [...startedAt.keys()].filter((id) => !finished.has(id)).length;
   forwarderActivity.lastPostAt = lastPostAt;
+  forwarderActivity.recentTerminal = terminals.filter((t) => now - t.at < CAPACITY_WINDOW_MS);
   for (const [id, ts] of startedAt) {
     if (finished.has(id)) continue;
     const age = now - ts;
@@ -684,6 +700,19 @@ async function checkHostWedge(now) {
   if (stalledLong.length < HOST_WEDGE_MIN_AGENTS) return;
   if (forwarderActivity.inflight > 0) return; // something IS inferring — slow, not wedged
   if (forwarderActivity.lastPostAt > 0 && now - forwarderActivity.lastPostAt < HOST_WEDGE_STALL_MS) return;
+  // Capacity-failure exemption (rakazo rule: capacity errors never restart
+  // the process): when every recent terminal outcome is upstream 429/5xx,
+  // the system is not wedged — the upstream is broke. Restarting the host
+  // would only murder the queued requests without producing a single reply.
+  // Alert (so a human sees the outage) but do not touch the host.
+  const terms = forwarderActivity.recentTerminal;
+  if (terms.length > 0 && terms.every((t) => t.code === 429 || (t.code >= 500 && t.code <= 599))) {
+    alert(
+      "host-wedge-capacity",
+      `上游容量不足（近 ${Math.round(CAPACITY_WINDOW_MS / 60000)} 分钟 ${terms.length} 个终态全是 ${[...new Set(terms.map((t) => t.code))].join("/")}），${stalledLong.length} 个 bot 回合停滞但属上游原因——不重启 host（重启也变不出回复），请检查模型配额或切换模型。`,
+    );
+    return;
+  }
   // A broken relay hop mimics this signature; that is the repair path's case
   // and a host restart would not fix it. Only act when the hop is healthy.
   const relay = await probeContainerRelay();

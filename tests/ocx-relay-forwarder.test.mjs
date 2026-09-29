@@ -185,6 +185,36 @@ test("passes the 429 through once retries are exhausted", async () => {
   }
 });
 
+test("a trickling 429 body does not park the slot: drain times out and the retry proceeds", async () => {
+  let attempts = 0;
+  const upstream = await startMockUpstream(async (req, res) => {
+    attempts += 1;
+    if (attempts === 1) {
+      // Headers out, body trickles one byte per 30s: resume() alone would
+      // park the concurrency slot until the idle timeout.
+      res.writeHead(429, { "content-type": "application/json" });
+      res.write('{"error":"');
+      const timer = setInterval(() => res.write("x"), 30_000);
+      res.on("close", () => clearInterval(timer));
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end('{"done":true}');
+  });
+  const relay = await startRelay(upstream.port, { retry429: 2, retryMaxDelayMs: 20, idleTimeoutMs: 600_000 });
+  try {
+    const started = Date.now();
+    const res = await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: CHAT_BODY });
+    const elapsed = Date.now() - started;
+    assert.equal(res.status, 200);
+    assert.equal(attempts, 2, "the retry must proceed after the drain timeout, not after idle");
+    assert.ok(elapsed < 60_000, `drain timeout must fire long before idle (took ${elapsed}ms)`);
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
 test("serializes chat requests through the concurrency queue", async () => {
   const upstream = await startMockUpstream(async (req, res) => {
     res.writeHead(200, { "content-type": "text/event-stream" });

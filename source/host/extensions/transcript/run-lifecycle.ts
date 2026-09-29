@@ -388,9 +388,17 @@ export class RunLifecycle {
       id => this.isRunAwaitingUserSelection(id),
       id => {
         // Same escalation the run-queue watchdog uses: abort the runner we
-        // just gave up on so it stops writing this agent's state.
+        // just gave up on so it stops writing this agent's state. The return
+        // value matters: a failed abort means the abandoned run may still be
+        // writing while the next run starts (the "durable steps moved
+        // backwards" soil). Surface it loudly instead of swallowing it.
         try {
-          this.tm.runnerRegistry?.interruptWedgedRunForWatchdog?.(id);
+          const aborted = this.tm.runnerRegistry?.interruptWedgedRunForWatchdog?.(id);
+          if (aborted === false) {
+            console.warn(
+              `[run-lifecycle] hard-deadline abort refused for agent ${id}: the abandoned run may still be writing; watch for mirror corruption`
+            );
+          }
         } catch {
           // best-effort; the deadline itself already released the queue
         }
