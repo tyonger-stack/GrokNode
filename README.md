@@ -8,8 +8,7 @@
 它像一个自足的节点（node）一样跑在本机：推理走本机已有的 Codex 登录或 OpenRouter
 API key，代码执行跑在由应用自管的本地 Docker 容器里，登录态由 preload 层提供的
 固定本地账户承担，打包出的应用因此命名为 `Grok Node.app`。
-<img width="3456" height="2048" alt="image" src="https://github.com/user-attachments/assets/e2ce1d02-40e5-4bd5-9dea-50ae15d80407" />
-
+<img width="3456" height="2048" alt="image" src="https://github.com/user-attachments/assets/f9578f3d-418d-4dbd-98f8-97aaf7b8c190" />
 ## 本地化改造做了什么？
 
 - 推理路由（Inference Router）：Codex 与 OpenRouter 两档 provider，替代原有的
