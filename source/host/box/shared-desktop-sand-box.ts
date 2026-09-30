@@ -15,7 +15,7 @@ export function parseAssignments(bytes: Uint8Array, maxWindowCount: number): Par
 export function resolveSharedBoxId(explicit?: string, env: Record<string, string | undefined> = process.env): string { if (explicit) return explicit; return env.SAND_SHARED_BOX_ID?.trim() || DEFAULT_SHARED_BOX_ID; }
 
 export interface SharedInnerBox<Accessor = unknown> extends CapableBox { ensureReady(ctx: Context, agentId: string): Promise<{ remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }>; ensureWindow?(ctx: Context, agentId: string, windowIndex: number, options?: { ownerToken?: string }): Promise<{ windowIndex: number; computerUse: Accessor; vncUrl: string }>; releaseWindow?(ctx: Context, agentId: string, windowIndex: number): Promise<void>; recreateInBox?(ctx: Context, options: { preserveData: boolean; force?: boolean }): Promise<{ started: boolean; reason?: string }>; runState(ctx: Context, agentId: string): Promise<string>; listBoxes(): Promise<Array<{ agentId: string; running: boolean }>>; uploadFile(ctx: Context, agentId: string, path: string, data: Uint8Array): Promise<void>; downloadFile(ctx: Context, agentId: string, path: string): Promise<Uint8Array>; dispose?(): Promise<void> }
-export interface SharedDesktopOptions<Accessor> { sharedBoxId?: string; persistAssignments?: boolean; now?: () => number; sleep?: (ms: number, signal?: AbortSignal) => Promise<void>; gateComputerUse?: (primary: { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }) => { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }; reportPersistFailure?: (error: unknown) => void }
+export interface SharedDesktopOptions<Accessor> { sharedBoxId?: string; persistAssignments?: boolean; now?: () => number; sleep?: (ms: number, signal?: AbortSignal) => Promise<void>; gateComputerUse?: (primary: { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }) => { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }; reportPersistFailure?: (error: unknown) => void; onAssignmentConflict?: (detail: { agentId: string; windowIndex: number; heldBy: string }) => void }
 interface AssignmentsLoad { ctx: Context; cancel(reason?: unknown): void; waiters: Set<symbol>; promise: Promise<void> }
 
 export class SharedDesktopSandBox<Accessor = unknown> {
@@ -95,11 +95,21 @@ export class SharedDesktopSandBox<Accessor = unknown> {
         continue;
       }
       ctx.signal.throwIfAborted();
-      const used = new Set(this.agentWindows.values());
+      const used = new Map<number, string>();
+      for (const [agentId, index] of this.agentWindows) used.set(index, agentId);
       for (const [agentId, index] of persisted) {
-        if (this.releasedAssignments.has(agentId) || this.agentWindows.has(agentId) || used.has(index)) continue;
+        if (this.releasedAssignments.has(agentId) || this.agentWindows.has(agentId)) continue;
+        // A persisted seat can collide with a live in-memory one (an earlier
+        // allocation that never persisted, or a duplicate entry). Skipping it
+        // silently used to strand the panel on a stale window, so report it:
+        // the two identities now disagree about which display this agent owns.
+        const heldBy = used.get(index);
+        if (heldBy != null) {
+          this.options.onAssignmentConflict?.({ agentId, windowIndex: index, heldBy });
+          continue;
+        }
         this.agentWindows.set(agentId, index);
-        used.add(index);
+        used.set(index, agentId);
         const token = persistedTokens.get(agentId);
         if (token != null && !this.agentWindowTokens.has(agentId)) this.agentWindowTokens.set(agentId, token);
       }

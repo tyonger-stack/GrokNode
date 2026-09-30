@@ -3,7 +3,35 @@ import { boxApplyEnvironment, boxDescription, boxIsAvailable, boxIsPreparing, bo
 
 export class SandBoxCapabilityError extends Error {}
 export const RUN_STATE_PROBE_AGENT_ID = "";
+
+/**
+ * The fork noVNC URL carries the display it streams as a `token=` query value
+ * (`.../vnc.html?path=websockify%3Ftoken%3D4`). That token is the only thing
+ * tying a panel to a display, so it is the one value that can prove a panel is
+ * showing the window the agent actually owns.
+ */
+export function vncUrlDisplayToken(vncUrl: string | null | undefined): number | undefined {
+  if (typeof vncUrl !== "string") return undefined;
+  const match = /[?&]token=(\d+)/.exec(vncUrl) ?? /token%3D(\d+)/.exec(vncUrl);
+  if (match?.[1] === undefined) return undefined;
+  const token = Number.parseInt(match[1], 10);
+  return Number.isInteger(token) && token > 0 ? token : undefined;
+}
+
 export interface BoxStatus { agentId: string; state: string; vncUrl: string | null; windows?: Array<{ windowIndex: number; vncUrl: string }>; imageUpdateAvailable?: boolean; pull?: { percent: number } }
+
+/**
+ * Raised when the desktop panel would stream a display other than the one this
+ * agent holds. Fail-closed on purpose: a panel showing the wrong screen is
+ * indistinguishable from a broken agent, so surface it instead of shipping a
+ * mismatched URL.
+ */
+export class SandBoxWindowSeatMismatchError extends Error {
+  constructor(readonly agentId: string, readonly seatIndex: number, readonly panelIndex: number, readonly urlToken: number) {
+    super(`Box window seat mismatch for agent ${agentId}: it holds display :${seatIndex} but the panel would stream :${panelIndex} (url token ${urlToken}).`);
+    this.name = "SandBoxWindowSeatMismatchError";
+  }
+}
 export interface BoxConnection { vncUrl: string; imageUpdateAvailable?: boolean; remoteAccessor?: unknown }
 export interface HostBoxInner { ensureReady(ctx: Context, agentId: string): Promise<BoxConnection>; runState(ctx: Context, agentId: string): Promise<string>; listBoxes(): Promise<Array<{ agentId: string; running?: boolean }>>; uploadFile(ctx: Context, agentId: string, path: string, data: Uint8Array): Promise<void>; downloadFile(ctx: Context, agentId: string, path: string): Promise<Uint8Array>; ensureWindow?(ctx: Context, agentId: string, windowIndex: number, options?: unknown): Promise<{ windowIndex: number; vncUrl: string }>; releaseWindow?(ctx: Context, agentId: string): Promise<void>; recreateInBox?(ctx: Context, options: { preserveData: boolean; force?: boolean }): Promise<{ started: boolean; reason?: string }>; getAgentWindowIndex?(agentId: string): number | undefined; maxWindows?(): number; getTerminalsFolder?(): string | undefined; isAvailable?(): boolean | Promise<boolean>; isPreparing?(agentId: string): boolean; describe?(): unknown; applyEnvironment?(ctx: Context, update: unknown): Promise<void>; loadMcpServers?(ctx: Context, configJson: string): Promise<unknown>; mcpResourceAccessor?(ctx: Context): Promise<unknown> }
 interface BoxStartup {
@@ -19,10 +47,56 @@ export class HostBox {
   private readonly releases = new Map<string, Promise<void>>();
   constructor(readonly inner: HostBoxInner) {}
   subscribe(listener: (status: BoxStatus) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
-  buildWindows(agentId: string): Array<{ windowIndex: number; vncUrl: string }> | undefined { const main = this.vncUrls.get(agentId), forks = this.forkVncUrls.get(agentId); if (main == null && (forks == null || forks.size === 0)) return undefined; const windows: Array<{ windowIndex: number; vncUrl: string }> = []; if (main != null) windows.push({ windowIndex: 0, vncUrl: main }); for (const index of [...(forks?.keys() ?? [])].sort((a, b) => a - b)) { const url = forks?.get(index); if (url != null) windows.push({ windowIndex: index, vncUrl: url }); } return windows; }
+  /**
+   * Resolve the window list the panel renders.
+   *
+   * `forkVncUrls` accumulates one entry per window index an agent has ever
+   * held, so after a re-assignment it holds both the stale and the live index.
+   * Handing all of them to the panel left it picking a window the agent no
+   * longer owned — the panel then streamed a different display than the one
+   * computer_use drove. Only the index the agent currently holds is returned.
+   */
+  buildWindows(agentId: string): Array<{ windowIndex: number; vncUrl: string }> | undefined {
+    const forks = this.forkVncUrls.get(agentId);
+    const current = this.inner.getAgentWindowIndex?.(agentId);
+    if (forks != null && forks.size > 0) {
+      if (current != null) {
+        const url = forks.get(current);
+        if (url != null) return [{ windowIndex: current, vncUrl: url }];
+      }
+      // No live seat (released, or the inner box cannot report one): fall back
+      // to the highest index so the panel still has something to show.
+      const indexes = [...forks.keys()].sort((a, b) => a - b);
+      const highest = indexes[indexes.length - 1];
+      if (highest != null) {
+        const url = forks.get(highest);
+        if (url != null) return [{ windowIndex: highest, vncUrl: url }];
+      }
+    }
+    const main = this.vncUrls.get(agentId);
+    return main == null ? undefined : [{ windowIndex: 0, vncUrl: main }];
+  }
   recordConnection(agentId: string, connection: BoxConnection): void { this.vncUrls.set(agentId, connection.vncUrl); if (connection.imageUpdateAvailable !== undefined) this.imageUpdateAvailable = connection.imageUpdateAvailable; }
   recordImageUpdateAvailable(value: boolean | undefined): void { if (value === undefined || value === this.imageUpdateAvailable) return; this.imageUpdateAvailable = value; for (const agentId of this.lastReported.keys()) { const url = this.vncUrls.get(agentId), last = this.lastReported.get(agentId); if (url != null) this.notify(this.runningStatus(agentId, url)); else if (last != null) this.notify({ ...last, imageUpdateAvailable: value }); } }
-  runningStatus(agentId: string, vncUrl: string): BoxStatus { const windows = this.buildWindows(agentId); return { agentId, state: "running", vncUrl, ...(windows === undefined ? {} : { windows }), ...(this.imageUpdateAvailable === undefined ? {} : { imageUpdateAvailable: this.imageUpdateAvailable }) }; }
+  runningStatus(agentId: string, vncUrl: string): BoxStatus { const windows = this.buildWindows(agentId); this.assertWindowMatchesSeat(agentId, windows); return { agentId, state: "running", vncUrl, ...(windows === undefined ? {} : { windows }), ...(this.imageUpdateAvailable === undefined ? {} : { imageUpdateAvailable: this.imageUpdateAvailable }) }; }
+  /**
+   * A fork panel is correct only when the URL it will stream names the display
+   * the agent actually holds. This is the check that has to live on the
+   * consuming side: the URL is minted from the same `windowIndex` that routes
+   * computer_use, so asserting at mint time would be tautologically true and
+   * would pass while the panel still pointed at a re-assigned seat.
+   */
+  private assertWindowMatchesSeat(agentId: string, windows: Array<{ windowIndex: number; vncUrl: string }> | undefined): void {
+    if (windows == null) return;
+    const current = this.inner.getAgentWindowIndex?.(agentId);
+    if (current == null || current <= 0) return; // primary seat: no token to match
+    for (const { windowIndex, vncUrl } of windows) {
+      const token = vncUrlDisplayToken(vncUrl);
+      if (token != null && token !== current) {
+        throw new SandBoxWindowSeatMismatchError(agentId, current, windowIndex, token);
+      }
+    }
+  }
   private async coalesceStartup<T>(ctx: Context, agentId: string, key: string, start: (ctx: Context) => Promise<T>, record: (value: T) => void): Promise<T> {
     ctx.signal.throwIfAborted();
     const epoch = this.releaseEpochs.get(agentId) ?? 0;

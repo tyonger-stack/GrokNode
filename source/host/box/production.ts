@@ -230,6 +230,14 @@ export function createProductionBoxInner<
         kind: "window_assignment_persist_failed",
         errorClass: errorLogTag(error)
       });
+    },
+    onAssignmentConflict({ agentId, windowIndex, heldBy }) {
+      reportHostDiagnostic({
+        kind: "window_assignment_conflict",
+        stage: "load_assignments",
+        agentId,
+        reason: `display :${windowIndex} is already held by ${heldBy}`
+      });
     }
   });
   return composed;
