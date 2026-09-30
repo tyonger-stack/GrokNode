@@ -55,6 +55,13 @@ export const MAIN_I18N_PAIRS = [
   ["Add a Bot photo", "添加 Bot 照片", "yz8q3c", "FULL"],
   ["Add a message, or hit send.", "输入消息，或直接发送。", "I/1BxG", "FULL"],
   ["Add reaction", "添加回应", "9OEgyT", "PANEL"],
+  // 0.62.0's selection toolbar, injected by selection-add-to-prompt-renderer-patch.mjs.
+  // The message ids are 0.62.0's own, so the translations are the ones that version
+  // ships rather than anything authored here. PANEL because each literal only ever
+  // appears inside an injected JSX prop object.
+  ["Add selection to prompt", "将所选内容添加到提示词", "WWv1+v", "PANEL"],
+  ["Add to prompt", "添加到提示词", "9D9gK1", "PANEL"],
+  ["Selection actions", "所选内容操作", "6kt/Ns", "PANEL"],
   ["Adjust photo", "调整照片", "gY2AXq", "FULL"],
   ["Agents in this exchange", "此交流中的智能体", "2DO+PC", "FULL"],
   ["All", "全部", "N40H+G", "FULL"],
@@ -675,9 +682,12 @@ export const MAIN_I18N_061_PAIRS = [
 
 // These 0.18-only labels have no counterpart in the installed 0.61.0
 // English catalog. The user explicitly authorized direct translations.
+// Retired: "View agent settings" — chat-header-identity-renderer-patch.mjs
+// replaced that control with 0.61.0's "View conversation details" (message id
+// +fxiY8, already in MAIN_I18N_PAIRS above). applyPair is fail-closed on a zero-anchor
+// pair, so the dead row had to go rather than stay.
 export const MAIN_I18N_LOCAL_PAIRS = [
   ["Booting up the computer", "正在启动电脑", "FULL"],
-  ["View agent settings", "查看智能体设置", "PROP"],
   ["Agent settings", "智能体设置", "PROP"],
   ["Create Routine", "创建例行任务", "PROP"],
   ["Routines are recurring tasks this agent runs on a schedule.", "例行任务是这个智能体按计划重复执行的任务。", "PROP"],

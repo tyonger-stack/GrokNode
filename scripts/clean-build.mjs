@@ -37,10 +37,17 @@ import {
 } from "./electron-main-production-activation.mjs";
 import { applyOriginalRendererRouterPatch } from "./lib/router-renderer-patch.mjs";
 import { applyOriginalRendererSidebarTopBarSearch } from "./lib/sidebar-search-renderer-patch.mjs";
+import { applyOriginalRendererChatHeaderIdentity } from "./lib/chat-header-identity-renderer-patch.mjs";
+import { applyOriginalRendererActivityLabelVisibility } from "./lib/activity-label-visibility-renderer-patch.mjs";
+import { applyOriginalRendererSelectionAddToPrompt } from "./lib/selection-add-to-prompt-renderer-patch.mjs";
+import { applyOriginalRendererSkillDetail } from "./lib/skill-detail-renderer-patch.mjs";
+import { applyOriginalRendererTeachSuccessPath } from "./lib/teach-success-path-renderer-patch.mjs";
+import { applyOriginalRendererInfoPaneSplit } from "./lib/info-pane-split-renderer-patch.mjs";
 import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patch.mjs";
 import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
+import { applyTeachGateRestorePatch } from "./lib/teach-gate-restore-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -279,10 +286,46 @@ export async function buildFidelityReconstructedAsar({
   // Must run after the renderer extension (it patches the same chunk) and before the
   // i18n passes (its "Search" label is localised by main-i18n's existing pair).
   await applyOriginalRendererSidebarTopBarSearch({ stageRoot });
+  // Must run before the i18n passes (it resolves its label through RLocT, which
+  // main-i18n appends to this chunk later — function declarations hoist).
+  await applyOriginalRendererChatHeaderIdentity({ stageRoot });
+  // Independent of the header patches (it rewrites the transcript's activity mark, not the
+  // chat header) and touches no string literal, so it is order-free against the passes
+  // around it. It is kept here, ahead of the i18n passes, with the rest of the renderer
+  // extensions so the i18n passes stay last.
+  await applyOriginalRendererActivityLabelVisibility({ stageRoot });
+  // 0.62.0's selection toolbar. Same chunk as every pass above, and like them it must
+  // land before the i18n passes: its three labels ("Add to prompt", "Selection actions",
+  // "Add selection to prompt") are raw literals that main-i18n localises through the
+  // pairs added for it there.
+  await applyOriginalRendererSelectionAddToPrompt({ stageRoot });
+  // 0.62.0's skill-detail pane (the "Learn from demonstration" popup). Own chunk
+  // (view-B5Ug8wEm.js), so it is order-free against the passes above, and like them it
+  // must land before the i18n passes: it keeps the raw "Save" / "Name" / "Description" /
+  // "Instructions" literals those passes localise, and rewrites the surrounding layout
+  // without touching any of them.
+  await applyOriginalRendererSkillDetail({ stageRoot });
+  // The rest of 0.62.0's "Learn from demonstration" round trip: the publish-gate flip
+  // that brings back the header's Publish trigger, the teach-recording message
+  // classifier plus the contentBeforeRichText line it gates, and the managed-skill
+  // chip label. It edits the MAIN chunk (index-UbX-y3il.js), which the sidebar-search
+  // / chat-header / activity-label / selection / router passes above all edit too, so
+  // order matters — and it must still land before the i18n passes, because it emits
+  // RLocT pairs the main-i18n pass then wraps.
+  await applyOriginalRendererTeachSuccessPath({ stageRoot });
+  // 0.62.0's info-pane split sizing: the right-hand column is no longer capped at 480px, so
+  // the 电脑 (VNC) column widens with the window. It edits the MAIN chunk's layout constant
+  // block and five clamps, adds and removes no string literal and touches no JSX, so it is
+  // order-free against both the header passes above and the i18n passes below.
+  await applyOriginalRendererInfoPaneSplit({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
   await applyOriginalRendererLanguagePatch({ stageRoot });
+  // Last among the chunk-mutating passes: the flip touches one gate-fallback token in the
+  // renderer chunk and the host bundle's bundled FLAGS default, neither of which the i18n
+  // passes read or write. It must land before the packaging audit snapshots the stage.
+  await applyTeachGateRestorePatch({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);
