@@ -20,6 +20,7 @@ node_modules/
 /.mcp-bridge.*/
 /.openrouter-probe.*/
 /.router-*/
+/.omo/
 
 # One-off extracted bundle copies at the repository root. Canonical payloads
 # live under src/app/dist and recovered/frontend.
