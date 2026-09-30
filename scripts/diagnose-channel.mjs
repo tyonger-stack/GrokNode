@@ -344,6 +344,61 @@ function conclusionFromChecks(checks) {
   return { conclusion: "OK", exitCode: 0 };
 }
 
+// "Who is actually serving :1340?" — a mount point existing proves nothing.
+// Read the pid the gateway itself wrote, resolve its cmdline, and compare the
+// in-container sha256 against the container label (which the app stamps from
+// the reconstructed bundle it staged). 2026-10-01: an upstream image update
+// moved the launch path to /opt/sand and our bundle sat unread for days while
+// every other check was green.
+async function hostIdentityCheck(dockerBinary, containerRunning) {
+  if (!containerRunning) return check("host-identity", "Host identity", "skipped", "container not running");
+  const inspect = await runCommand(dockerBinary, ["inspect", "--format", "{{json .Config.Labels}}", CONTAINER_NAME]);
+  let expectedSha = "";
+  try { expectedSha = JSON.parse(inspect.stdout)["com.grok-bot.local-vm.host-sha256"] ?? ""; } catch {}
+  const gatewayRaw = await runCommand(dockerBinary, ["exec", CONTAINER_NAME, "cat", "/home/box/sand-data/gateway.json"]);
+  let pid = null;
+  try { pid = JSON.parse(gatewayRaw.stdout || "null")?.pid ?? null; } catch {}
+  if (typeof pid !== "number") return check("host-identity", "Host identity", "degraded", "gateway.json unreadable or has no pid");
+  const cmdline = await runCommand(dockerBinary, ["exec", CONTAINER_NAME, "sh", "-c", `tr '\\0' ' ' < /proc/${pid}/cmdline`]);
+  const cmdlineText = (cmdline.stdout || "").trim();
+  if (!cmdlineText.includes("/home/box/sand-host/host-main.cjs")) {
+    return check("host-identity", "Host identity", "degraded", `foreign host (pid ${pid}): ${cmdlineText.slice(0, 120)} — reconstructed bundle NOT running`, { pid, cmdline: cmdlineText });
+  }
+  const shaOut = await runCommand(dockerBinary, ["exec", CONTAINER_NAME, "sha256sum", "/home/box/sand-host/host-main.cjs"]);
+  const runningSha = (shaOut.stdout || "").trim().split(/\s+/)[0] ?? "";
+  if (expectedSha && runningSha && runningSha !== expectedSha) {
+    return check("host-identity", "Host identity", "degraded", `mounted bundle sha ${runningSha.slice(0, 12)} != staged ${expectedSha.slice(0, 12)} — bytes were swapped`, { pid, runningSha, expectedSha });
+  }
+  return check("host-identity", "Host identity", "ok", `reconstructed host confirmed (pid ${pid}, sha ${runningSha.slice(0, 12)}…)`, { pid, runningSha, expectedSha });
+}
+
+// Contract surface scan: POST every method name the desktop side may send with
+// an empty body. 400 = method exists (arg validation ran); 404 = method gone.
+// This is how silent protocol drift between the 0.18 shell and a newer stock
+// host gets caught in seconds instead of "some view failed to load".
+const GATEWAY_METHOD_PROBES = ["sendPrompt", "updateHostNow"];
+async function gatewayMethodSurfaceCheck(dockerBinary, containerRunning) {
+  if (!containerRunning) return check("gateway-surface", "Gateway method surface", "skipped", "container not running");
+  const gatewayRaw = await runCommand(dockerBinary, ["exec", CONTAINER_NAME, "cat", "/home/box/sand-data/gateway.json"]);
+  let token = "";
+  try { token = JSON.parse(gatewayRaw.stdout || "{}")?.token ?? ""; } catch {}
+  if (!token) return check("gateway-surface", "Gateway method surface", "degraded", "gateway.json has no token");
+  const results = {};
+  let missing = 0;
+  for (const method of GATEWAY_METHOD_PROBES) {
+    const outcome = await fetch(`http://127.0.0.1:1340/api/${method}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: "{}",
+      signal: AbortSignal.timeout(4_000),
+    }).then((response) => response.status).catch(() => "unreachable");
+    results[method] = outcome;
+    if (outcome === 404 || outcome === "unreachable") missing += 1;
+  }
+  if (missing > 0) return check("gateway-surface", "Gateway method surface", "degraded", `missing/unreachable methods: ${Object.entries(results).filter(([, v]) => v === 404 || v === "unreachable").map(([k]) => k).join(", ")}`, results);
+  return check("gateway-surface", "Gateway method surface", "ok", `${GATEWAY_METHOD_PROBES.length} probed, all recognized (400 arg-validation)`, results);
+}
+
 function printHuman(result) {
   console.log(result.conclusion);
   console.log("Mac endpoint: " + result.macEndpoint);
@@ -369,6 +424,8 @@ async function main() {
     useLocalForwarder ? await localRelayModelListCheck(dockerBinary, containerRunning) : await directModelListCheck(baseUrl),
     await rendererCheck(),
     await settingsConsistencyCheck(dockerBinary, containerRunning),
+    await hostIdentityCheck(dockerBinary, containerRunning),
+    await gatewayMethodSurfaceCheck(dockerBinary, containerRunning),
   ];
   const verdict = conclusionFromChecks(checks);
   const result = {

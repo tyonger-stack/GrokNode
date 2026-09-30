@@ -13,6 +13,18 @@ import type { SandSettingsStore } from "../../shared/node/settings/sand-settings
 import type { RecreateResult } from "./box-recreate-commands.js";
 import type { GatewayConnection } from "./gateway-descriptor-cache.js";
 
+// PINNED BY DIGEST — do not "upgrade" back to the moving :sand-box-latest tag.
+// 2026-10-01: the upstream image moved the host launch path from
+// /home/box/sand-host/host-main.cjs (which we bind-mount our reconstructed
+// bundle onto) to a hardcoded /opt/sand/sand-host/host-main.cjs with no env
+// override, silently disabling every host-side rebuild feature while the
+// desktop shell kept working on the stock upstream host. Digest f9dff5cd…
+// (image git-sha 12c7367, Chrome 151) is the last version that launches the
+// bind-mounted bundle. To move forward, read sand-supervisor-contract.mjs in
+// the new image first (HOST_BUNDLE_ROOT, box-scripts sync blast radius).
+export const LOCAL_DOCKER_BOX_IMAGE_DIGEST = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal@sha256:f9dff5cd254d9fac936f33754b8950e50443bacffdf0fdc61cf5b23d72a82856";
+// Kept for diagnostics display and backward-compatible status reporting; the
+// container is created from LOCAL_DOCKER_BOX_IMAGE_DIGEST above.
 export const LOCAL_DOCKER_BOX_IMAGE = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest";
 export const LOCAL_DOCKER_BOX_CONTAINER = isGrokNodePackagedApp() ? GROK_NODE_DOCKER_CONTAINER : "grok-bot-local-vm";
 export const LOCAL_DOCKER_WORKSPACE_VOLUME = `${LOCAL_DOCKER_BOX_CONTAINER}-workspace`;
@@ -29,6 +41,58 @@ export interface LocalDockerStatus {
   readonly containerName: string;
   readonly image: string;
   readonly detail: string;
+}
+
+export type HostIdentityStatus =
+  | { readonly kind: "verified"; readonly pid: number; readonly cmdline: string; readonly sha256: string }
+  | { readonly kind: "foreign-host"; readonly pid: number; readonly cmdline: string; readonly expectedSha256: string }
+  | { readonly kind: "unknown"; readonly reason: string };
+
+// Pure decision helper for the host-identity check: given the gateway pid's
+// /proc cmdline and the sha256 of the file that cmdline points at, decide
+// whether the reconstructed host is the process actually serving :1340.
+// Exported for tests (tests/local-docker-host-identity.test.mjs).
+export function classifyHostIdentity(args: {
+  readonly gatewayPid: number | null;
+  readonly cmdline: string | null;
+  readonly runningBundleSha256: string | null;
+  readonly expectedSha256: string;
+}): HostIdentityStatus {
+  const { gatewayPid, cmdline, runningBundleSha256, expectedSha256 } = args;
+  if (gatewayPid == null) return { kind: "unknown", reason: "gateway.json has no pid" };
+  if (cmdline == null) return { kind: "unknown", reason: `could not read /proc/${gatewayPid}/cmdline (process exited?)` };
+  if (!cmdline.includes("/home/box/sand-host/host-main.cjs")) {
+    return { kind: "foreign-host", pid: gatewayPid, cmdline, expectedSha256: expectedSha256 };
+  }
+  if (runningBundleSha256 == null) return { kind: "unknown", reason: "could not sha256 the mounted bundle inside the container" };
+  if (runningBundleSha256 !== expectedSha256) {
+    return { kind: "foreign-host", pid: gatewayPid, cmdline, expectedSha256: expectedSha256 };
+  }
+  return { kind: "verified", pid: gatewayPid, cmdline, sha256: runningBundleSha256 };
+}
+
+// After the gateway answers we verify *which* host is actually serving: read
+// the pid from the container's gateway.json, read /proc/<pid>/cmdline, and
+// require the reconstructed bundle's sha256. A mount point merely existing
+// proves nothing — the 2026-10-01 image swap served :1340 from the upstream
+// /opt/sand host while our bundle sat unread at /home/box/sand-host.
+// Default is WARN, not throw: the upstream host can still serve the desktop
+// shell, so a mismatch is an observability problem, not an availability one.
+// Set SAND_STRICT_HOST_IDENTITY=1 to turn mismatches into a connect failure.
+async function verifyHostIdentity(hostBundle: LocalHostBundle): Promise<HostIdentityStatus> {
+  const readJson = async (): Promise<{ pid?: unknown } | null> => {
+    const result = await runDocker(["exec", LOCAL_DOCKER_BOX_CONTAINER, "cat", "/home/box/sand-data/gateway.json"]);
+    if (!result.ok) return null;
+    try { return JSON.parse(result.output) as { pid?: unknown }; } catch { return null; }
+  };
+  const gateway = await readJson();
+  const gatewayPid = typeof gateway?.pid === "number" ? gateway.pid : null;
+  if (gatewayPid == null) return { kind: "unknown", reason: "gateway.json unreadable or has no pid" };
+  const cmdlineResult = await runDocker(["exec", LOCAL_DOCKER_BOX_CONTAINER, "sh", "-c", `tr '\\0' ' ' < /proc/${gatewayPid}/cmdline`]);
+  const cmdline = cmdlineResult.ok ? cmdlineResult.output.trim() : null;
+  const shaResult = await runDocker(["exec", LOCAL_DOCKER_BOX_CONTAINER, "sha256sum", "/home/box/sand-host/host-main.cjs"]);
+  const runningBundleSha256 = shaResult.ok ? (shaResult.output.trim().split(/\s+/)[0] ?? null) : null;
+  return classifyHostIdentity({ gatewayPid, cmdline, runningBundleSha256, expectedSha256: hostBundle.sha256 });
 }
 
 interface CommandResult { readonly ok: boolean; readonly code: number | null; readonly output: string }
@@ -276,7 +340,7 @@ async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnec
   if (!daemon.ok) throw new Error(`Local Docker VM is selected, but Docker is unavailable: ${daemon.output || "start Docker and try again"}`);
   const inspected = await inspectContainer();
   if (inspected.exists && !inspected.owned) throw new Error(`Local Docker VM cannot use ${LOCAL_DOCKER_BOX_CONTAINER}: an unowned container already has that name.`);
-  if (inspected.exists && inspected.image !== LOCAL_DOCKER_BOX_IMAGE) throw new Error(`Local Docker VM container uses unexpected image ${inspected.image}. Remove it explicitly before changing images.`);
+  if (inspected.exists && inspected.image !== LOCAL_DOCKER_BOX_IMAGE_DIGEST && inspected.image !== LOCAL_DOCKER_BOX_IMAGE) throw new Error(`Local Docker VM container uses unexpected image ${inspected.image}. Remove it explicitly before changing images.`);
   if (inspected.exists && (inspected.schemaVersion !== LOCAL_DOCKER_SCHEMA_VERSION || inspected.hostSha256 !== hostBundle.sha256)) {
     const removed = await runDocker(["rm", "--force", LOCAL_DOCKER_BOX_CONTAINER]);
     if (!removed.ok) throw new Error(`Could not replace the local VM with the current app runtime: ${removed.output}`);
@@ -294,20 +358,29 @@ async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnec
       "--label", `com.grok-bot.local-vm.box-exec-daemon-sha256=${hostBundle.boxExecDaemonSha256}`,
       "--label", `com.grok-bot.local-vm.schema-version=${LOCAL_DOCKER_SCHEMA_VERSION}`,
       "--platform", "linux/amd64", "--restart", "unless-stopped",
-      "--env", "SAND_SUPERVISOR_ENABLED=1", "--env", "SAND_BOX_AUTO_UPDATE=0", "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1", "--env", "SAND_TREE_SITTER_NODE_DEPS=/home/box/deps", "--env", "NODE_PATH=/home/box/deps", "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0", "--env", "SAND_HOST_PORT=1340", "--env", `SAND_GATEWAY_TOKEN=${token}`,
+      "--env", "SAND_SUPERVISOR_ENABLED=1",
+      // SAND_BOX_AUTO_UPDATE=0 is LOAD-BEARING: it is the only opt-out the
+      // upstream supervisor's shouldBootFetchHostBundle() honours. Without it,
+      // a freshly booted container whose image-baked host matches the image
+      // git-sha fetches the newest upstream host bundle from the vendor S3 and
+      // swaps it in, replacing whatever we mounted. Do not remove this env
+      // when "cleaning up" the docker run arguments.
+      "--env", "SAND_BOX_AUTO_UPDATE=0",
+      "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1", "--env", "SAND_TREE_SITTER_NODE_DEPS=/home/box/deps", "--env", "NODE_PATH=/home/box/deps", "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0", "--env", "SAND_HOST_PORT=1340", "--env", `SAND_GATEWAY_TOKEN=${token}`,
       "--publish", "127.0.0.1:1337:1337", "--publish", "127.0.0.1:1339:1339", "--publish", "127.0.0.1:1340:1340",
       "--publish", "127.0.0.1:6080:6080", "--publish", "127.0.0.1:6081:6081", "--publish", "127.0.0.1:8790:8790",
       "--volume", `${LOCAL_DOCKER_WORKSPACE_VOLUME}:/workspace`, "--volume", `${LOCAL_DOCKER_DATA_VOLUME}:/home/box/sand-data`,
       "--mount", `type=bind,src=${hostBundle.path},dst=/home/box/sand-host/host-main.cjs,readonly`,
       "--mount", `type=bind,src=${dirname(hostBundle.boxExecDaemonPath)},dst=/home/box/box-exec-daemon,readonly`,
       ...authMounts,
-      LOCAL_DOCKER_BOX_IMAGE,
+      LOCAL_DOCKER_BOX_IMAGE_DIGEST,
     ]);
     if (!created.ok) throw new Error(`Could not create the local Docker VM: ${created.output}`);
   }
   const deadline = Date.now() + READY_TIMEOUT_MS;
+  let gatewayUp = false;
   while (Date.now() < deadline) {
-    if (await gatewayReady(token)) return { baseUrl: LOCAL_DOCKER_GATEWAY_URL, token };
+    if (await gatewayReady(token)) { gatewayUp = true; break; }
     const state = await inspectContainer();
     if (!state.running) {
       const logs = await runDocker(["logs", "--tail", "80", LOCAL_DOCKER_BOX_CONTAINER]);
@@ -315,7 +388,16 @@ async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnec
     }
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
-  throw new Error("Local Docker VM did not expose its gateway within three minutes.");
+  if (!gatewayUp) throw new Error("Local Docker VM did not expose its gateway within three minutes.");
+  const identity = await verifyHostIdentity(hostBundle);
+  if (identity.kind === "foreign-host") {
+    const message = `Local Docker VM gateway is served by a foreign host (pid ${identity.pid}: ${identity.cmdline}); the reconstructed bundle (sha256 ${identity.expectedSha256.slice(0, 12)}…) is NOT running. Host-side rebuild features (Router/OpenRouter/Effort) are silently disabled. Likely cause: the pinned image digest no longer launches /home/box/sand-host/host-main.cjs.`;
+    if (process.env.SAND_STRICT_HOST_IDENTITY === "1") throw new Error(message);
+    console.warn(`[local-docker-host-connector] WARNING: ${message}`);
+  } else if (identity.kind === "unknown") {
+    console.warn(`[local-docker-host-connector] host identity could not be verified: ${identity.reason}`);
+  }
+  return { baseUrl: LOCAL_DOCKER_GATEWAY_URL, token };
 }
 
 export async function startLocalDockerBox(settingsPath: string): Promise<GatewayConnection> {
