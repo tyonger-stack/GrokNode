@@ -342,16 +342,19 @@ export function createAttachmentsService(deps: AttachmentsServiceDependencies) {
     },
     async readText(args: { path: string; agentId?: string | null }) { const dir = readDir(args.path, args.agentId); if (dir == null) { deps.report?.({ extension: "attachments", kind: "read_text_miss", hasActive: args.agentId != null }); return null; } return await readAttachmentText(dir, args.path); },
     async readChunk(args: { path: string; agentId?: string | null; offset: number; length: number; videoPlayback?: boolean }) { const dir = readDir(args.path, args.agentId); if (dir == null) { deps.report?.({ extension: "attachments", kind: "read_chunk_miss", hasActive: args.agentId != null }); return null; } return await readHostAttachmentChunk(dir, args.path, args.offset, args.length, args.videoPlayback); },
-    readVideoBytes: (args: { path: string; agentId?: string | null }) => {
-      try { return readHostAttachmentVideoBytes(args.path, resolveDir(args.agentId)); }
+    readVideoBytes: async (args: { path: string; agentId?: string | null }) => {
+      try { return await readHostAttachmentVideoBytes(args.path, resolveDir(args.agentId)); }
       catch { return null; }
     },
-    readImageDimensions: (args: { path: string; agentId?: string | null }) => {
-      try { return readImageDimensions(args.path, resolveDir(args.agentId)); }
+    // These three wrap async readers, so the guard has to await inside the
+    // try: a plain `return someAsync()` in a sync try only catches the
+    // synchronous part and lets a rejection escape as a failed command.
+    readImageDimensions: async (args: { path: string; agentId?: string | null }) => {
+      try { return await readImageDimensions(args.path, resolveDir(args.agentId)); }
       catch { return null; }
     },
-    readMediaDimensions: (args: { path: string; agentId?: string | null }) => {
-      try { return readMediaDimensions(args.path, resolveDir(args.agentId)); }
+    readMediaDimensions: async (args: { path: string; agentId?: string | null }) => {
+      try { return await readMediaDimensions(args.path, resolveDir(args.agentId)); }
       catch { return null; }
     },
     ingest: ingestAttachment, ingestBytes: ingestAttachmentBytes, persistImageBytes, resolveChannelAttachment, resolveOwnerDir: resolveAttachmentOwnerDir, createGenerateImageResourceAccessor: createSandGenerateImageResourceAccessor,

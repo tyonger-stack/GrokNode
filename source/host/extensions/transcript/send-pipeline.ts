@@ -269,6 +269,9 @@ export class SendPipeline {
                 ? {}
                 : { clientNonce: options.clientNonce }),
               ...(byteSize == null ? {} : { byteSize }),
+              // Scope the media read to this session's agent, matching how the
+              // rest of the host calls the attachments service.
+              agentId: session.id,
             },
           );
           echoes.push(

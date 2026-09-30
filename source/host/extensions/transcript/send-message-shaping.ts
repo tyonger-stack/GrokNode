@@ -129,8 +129,12 @@ export function stampBoxRequestEntry<T extends object>(
 }
 export async function createUserAttachmentEntry(
   attachments: {
+    // Object request, not a bare path: the attachments service reads
+    // `request.path`/`request.agentId`, so a string argument makes `path`
+    // undefined and the read rejects with ERR_INVALID_ARG_TYPE. The id is
+    // also what scopes the read to the owning agent's media bucket.
     readImageDimensions(
-      path: string,
+      request: { path: string; agentId?: string | null },
     ): Promise<{ width?: number; height?: number } | null>;
   },
   id: string,
@@ -142,9 +146,13 @@ export async function createUserAttachmentEntry(
     byteSize?: number;
     replyTo?: string;
     branched?: boolean;
+    agentId?: string | null;
   } = {},
 ): Promise<TranscriptEntry> {
-  const dimensions = await attachments.readImageDimensions(filePath),
+  const dimensions = await attachments.readImageDimensions({
+    path: filePath,
+    agentId: options.agentId ?? null,
+  }),
     fileName = options.fileName?.trim();
   return {
     kind: "user-attachment",

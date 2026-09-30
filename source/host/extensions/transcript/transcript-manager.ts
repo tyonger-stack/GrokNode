@@ -87,7 +87,7 @@ export const NOOP_TRANSCRIPT_ATTACHMENTS = {
       height: null,
     };
   },
-  readImageDimensions: async (_path: string) => null,
+  readImageDimensions: async (_request: { path: string; agentId?: string | null }) => null,
 };
 
 export const EMPTY_FOREVER_BOX = {
