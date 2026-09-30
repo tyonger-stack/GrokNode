@@ -53,7 +53,7 @@ test("inflight check drops requests started before a forwarder restart marker", 
   assert.ok(!alerts.includes("deadbeef"), "pre-restart started-only entry must not alert");
 });
 
-test("inflight check still alerts requests hung after the latest restart", async () => {
+test("a lone hung request with no completions is reported as an upstream outage", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "wd-inflight-"));
   await writeFile(
     path.join(dir, "forwarder.log"),
@@ -65,7 +65,13 @@ test("inflight check still alerts requests hung after the latest restart", async
   );
   await runWatchdog(dir);
   const alerts = await readFile(path.join(dir, "alerts.log"), "utf8");
-  assert.ok(alerts.includes("inflight:cafe1234"), "genuinely hung request must still alert");
+  // 2026-09-30: one request that never completes while nothing else does is
+  // indistinguishable from an upstream/network outage, and reporting it as
+  // such names the cause instead of the symptom.
+  assert.ok(
+    alerts.includes("upstream-outage"),
+    `a lone silent request must report as an outage, got: ${alerts}`,
+  );
 });
 
 test("inflight check stays silent for ids with terminal lines", async () => {

@@ -48,6 +48,9 @@ const STALL_ALERT_COOLDOWN_MS = Number(process.env.STALL_ALERT_COOLDOWN_MS ?? "1
 // has to act. Reporting them as often as real stalls buries the actionable
 // signal (2026-09-29: 40+ notifications in one afternoon).
 const SLOW_STALL_ALERT_COOLDOWN_MS = Number(process.env.SLOW_STALL_ALERT_COOLDOWN_MS ?? "1800000");
+// An outage notice is a condition, not an event: it persists for as long as
+// the network is down, so it reports on a long cadence instead of every loop.
+const OUTAGE_ALERT_COOLDOWN_MS = Number(process.env.OUTAGE_ALERT_COOLDOWN_MS ?? "3600000");
 // How recently the forwarder must have seen inference traffic for a stalled
 // turn to count as "slow upstream" rather than "dead". Sized to cover a
 // legitimately long turn (multi-step tool chains run 90s+ per step).
@@ -133,7 +136,7 @@ const state = loadState();
 const nameCache = new Map();
 
 function loadState() {
-  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {}, lastRepair: {}, lastRepairOk: {}, lastHostRestart: {}, canary: null };
+  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {}, lastRepair: {}, lastRepairOk: {}, lastHostRestart: {}, canary: null, outageSince: null };
   try {
     const parsed = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
     return {
@@ -146,6 +149,7 @@ function loadState() {
       lastRepairOk: parsed.lastRepairOk ?? {},
       lastHostRestart: parsed.lastHostRestart ?? {},
       canary: parsed.canary ?? null,
+      outageSince: parsed.outageSince ?? null,
     };
   } catch {
     return fresh;
@@ -248,13 +252,57 @@ function checkInflightStalls(now) {
   forwarderActivity.inflight = [...startedAt.keys()].filter((id) => !finished.has(id)).length;
   forwarderActivity.lastPostAt = lastPostAt;
   forwarderActivity.recentTerminal = terminals.filter((t) => now - t.at < CAPACITY_WINDOW_MS);
+  // 2026-09-30: during an outage every in-flight request hangs at once, and
+  // this loop alerted per request id — a morning of network loss produced
+  // dozens of "request N has hung" notices that all said the same thing and
+  // none of which named the cause. Fold them into ONE outage notice and stay
+  // quiet while it lasts; per-request detail goes to the log.
+  const hung = [];
   for (const [id, ts] of startedAt) {
     if (finished.has(id)) continue;
-    const age = now - ts;
-    if (age >= INFLIGHT_STALL_MS) {
-      alert(`inflight:${id}`, `有推理请求已挂起 ${Math.round(age / 60000)} 分钟未返回（id=${id}，自 ${new Date(ts).toLocaleTimeString()}）——上游可能限流或挂死。`);
-    }
+    if (now - ts >= INFLIGHT_STALL_MS) hung.push({ id, ts });
   }
+  if (hung.length === 0) {
+    if (state.outageSince != null) {
+      const minutes = Math.round((now - state.outageSince) / 60000);
+      state.outageSince = null;
+      console.log(`${new Date(now).toISOString()} upstream recovered after ${minutes}min`);
+      alert("upstream-recovered", `上游已恢复响应（中断持续约 ${minutes} 分钟），推理链路重新可用。`);
+    }
+    return;
+  }
+  // A network outage is different from a slow upstream: during one, nothing
+  // completes at all and the relay hop itself stops answering. Distinguish
+  // them by whether ANY inference completed recently.
+  const completing = terminals.some(
+    (t) => now - t.at < INFLIGHT_STALL_MS && t.code !== -1,
+  );
+  if (completing) {
+    // Upstream is still answering for some requests: keep the per-id detail.
+    state.outageSince = null;
+    for (const { id, ts } of hung) {
+      console.log(
+        `${new Date(now).toISOString()} inflight stalled id=${id} age=${Math.round((now - ts) / 1000)}s`,
+      );
+      alert(
+        `inflight:${id}`,
+        `有推理请求已挂起 ${Math.round((now - ts) / 60000)} 分钟未返回（id=${id}，自 ${new Date(ts).toLocaleTimeString()}）——上游可能限流或挂死。`,
+      );
+    }
+    return;
+  }
+  // Nothing at all is completing. One notice for the whole outage, refreshed
+  // on a long cadence, naming the likely cause instead of the symptom.
+  if (state.outageSince == null) state.outageSince = now;
+  const minutes = Math.round((now - state.outageSince) / 60000);
+  console.log(
+    `${new Date(now).toISOString()} upstream outage ${minutes}min: ${hung.length} request(s) hung, none completing`,
+  );
+  alert(
+    "upstream-outage",
+    `上游无响应已持续 ${minutes} 分钟：${hung.length} 个推理请求全部挂起、无一完成（最早自 ${new Date(hung[0].ts).toLocaleTimeString()}）。`
+    + `这是网络或上游整体中断的典型表现，不是单个 bot 的问题——请先检查本机网络与容器到上游的连通性；恢复后系统会自动继续，无需逐个干预 bot。`,
+  );
 }
 
 // Signal 2: worker spawned recently but the agent transcript went quiet.
@@ -720,6 +768,16 @@ function sendCanaryWake(agentId, nowMs) {
 
 async function checkHostWedge(now) {
   if (!HOST_RESTART_ENABLED) return;
+  // A network outage stalls every turn at once and looks exactly like a wedge,
+  // but restarting the host cannot restore connectivity — it would only kill
+  // the turns that are waiting to resume. The outage notice is the report.
+  if (state.outageSince != null) {
+    const minutes = Math.round((now - state.outageSince) / 60000);
+    console.log(
+      `${new Date(now).toISOString()} wedge signature ignored: upstream outage active for ${minutes}min (restarting cannot fix connectivity)`,
+    );
+    return;
+  }
   // Verify the previous restart's canary first — a wake that never produced a
   // transcript write means the run queue is still stuck after a respawn, which
   // deserves a (very loud) human look rather than another blind restart.
@@ -874,12 +932,21 @@ function alert(key, message, fields = {}) {
   // Three cadences: a silent stall is actionable and repeats fast, a slow
   // turn is background information and repeats rarely, everything else keeps
   // the long catch-all cooldown.
-  const cooldown = key.startsWith("stall-slow:")
-    ? SLOW_STALL_ALERT_COOLDOWN_MS
-    : key.startsWith("stall:")
-      ? STALL_ALERT_COOLDOWN_MS
-      : ALERT_COOLDOWN_MS;
+  const cooldown = key === "upstream-outage"
+    ? OUTAGE_ALERT_COOLDOWN_MS
+    : key.startsWith("stall-slow:")
+      ? SLOW_STALL_ALERT_COOLDOWN_MS
+      : key.startsWith("stall:")
+        ? STALL_ALERT_COOLDOWN_MS
+        : ALERT_COOLDOWN_MS;
   if (now - (state.lastAlert[key] ?? 0) < cooldown) return;
+  // While an outage is active, its single notice IS the diagnosis. Every
+  // stall/inflight below it is a symptom of the same cause, and an hour of
+  // network loss must not produce an hour of per-bot notices.
+  if (
+    state.outageSince != null
+    && (key.startsWith("stall:") || key.startsWith("stall-slow:") || key.startsWith("inflight:"))
+  ) return;
   state.lastAlert[key] = now;
   const line = `${new Date(now).toISOString()} [${key}] ${message}`;
   console.log(`ALERT ${line}`);
