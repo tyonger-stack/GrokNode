@@ -201,6 +201,23 @@ export function patchOriginalWebhookTriggerFormGuard(source) {
   return replaceExactlyOnce(patched, WEBHOOK_FORM_GUARD_BEFORE, WEBHOOK_FORM_GUARD_AFTER, "webhook trigger form guard");
 }
 
+/** Hide the "Grok Bot's Computer" block (Update / Reset cards) in Settings → Updates.
+ *  The block is vKn in the shared chunk (exported `as dc`, imported by the registry chunk
+ *  as `qs` and rendered inside the `x==="beta"` branch). vKn renders the whole section —
+ *  aDn title container + "Update Grok Bot's Computer" card + "Reset Grok Bot's Computer"
+ *  card — so stubbing it to null removes the cards AND the section heading in one shot.
+ *  Belt-and-suspenders with main-edge's `updateComputer` refusal: the button can no
+ *  longer be misclicked, and even another entry point (footer Update pill) is refused
+ *  process-side. The Reset card is removed together with Update because Reset recreates
+ *  the container too (snapshot restore → docker recreate), which strands the pinned
+ *  digest + bind-mounted host exactly like an update would. */
+const BOX_UPDATES_SECTION_BEFORE = 'function vKn(n){const e=he.c(53)';
+const BOX_UPDATES_SECTION_AFTER = 'function vKn(n){return null;function _vKnRemoved(){const e=he.c(53)';
+
+export function patchOriginalBoxUpdatesSection(source) {
+  return replaceExactlyOnce(source, BOX_UPDATES_SECTION_BEFORE, BOX_UPDATES_SECTION_AFTER, "box updates section removal");
+}
+
 export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const assetsRoot = path.join(stageRoot, "dist", "renderer", "assets");
   const registryCandidates = [];
@@ -219,6 +236,18 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const channelStatusExtension = await buildChannelStatusRendererExtension();
   const pluginsDockExtension = await buildPluginsDockRendererExtension();
   const webhookCredentialExtension = await buildWebhookCredentialRendererExtension();
+  // The box updates block (vKn) lives in the shared chunk the registry imports from;
+  // find that file the same way as the registry/panel candidates: by anchor.
+  const boxUpdatesCandidates = [];
+  for (const name of await readdir(assetsRoot)) {
+    if (!name.endsWith(".js") || registryCandidates.some((c) => c.name === name) || panelCandidates.some((c) => c.name === name)) continue;
+    const target = path.join(assetsRoot, name);
+    const source = await readFile(target, "utf8");
+    if (source.includes(BOX_UPDATES_SECTION_BEFORE)) boxUpdatesCandidates.push({ name, target, source });
+  }
+  if (boxUpdatesCandidates.length !== 1) {
+    throw new Error(`Expected one shared chunk carrying the box updates section, found ${boxUpdatesCandidates.length}.`);
+  }
   const approvalName = "view-QqBtBG74.js";
   const approvalTarget = path.join(assetsRoot, approvalName);
   const approvalCandidate = { name: approvalName, target: approvalTarget, source: await readFile(approvalTarget, "utf8") };
@@ -227,6 +256,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     ["registry", registryCandidates[0], (source) => patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source)))],
     ["panel", panelCandidates[0], patchOriginalSettingsPanel],
     ["approval", approvalCandidate, patchOriginalAutoReviewApproval],
+    ["box-updates", boxUpdatesCandidates[0], patchOriginalBoxUpdatesSection],
   ]) {
     const registryExtensions = role === "registry" ? "\n;" + [botTemplateExtension, channelStatusExtension, pluginsDockExtension, webhookCredentialExtension].join("\n;") : "";
     let patched = transform(candidate.source) + registryExtensions;
@@ -255,8 +285,8 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     schemaVersion: 1,
     mode: "original-renderer-settings-extension",
     chunks: changes,
-    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy", "routine-row-toggle", "routine-detail-panel"],
-    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "routine-list-row-switch", "routine-detail-surface", "fail-closed-always-allow"],
+    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy", "routine-row-toggle", "routine-detail-panel", "box-updates-section-removed"],
+    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "routine-list-row-switch", "routine-detail-surface", "fail-closed-always-allow", "remove-box-updates-section"],
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-router-extension.json");
   await writeFile(provenancePath, `${JSON.stringify(record, null, 2)}\n`);

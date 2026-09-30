@@ -258,7 +258,13 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     getBoxMigrationStatus: () => invoke(deps.boxRecovery, "readBoxMigrationStatus"),
     forceReconnectGateway: () => { invoke(deps.boxRecovery, "restartCoordinator"); },
     forceRecreateComputer: () => invoke(deps.boxRecovery, "forceRecreateComputer"),
-    updateComputer: async (raw) => { const { id } = req(raw); invariant(typeof id === "string", "A computer update names the agent by its string id."); const force = req(raw).force === true; const result = req(await Promise.resolve(invoke(deps.boxRecovery, "recreateComputer", { preserveData: true, force }))); if (result.status !== "dev-fallback") return result; await Promise.resolve(invoke(deps.boxRecovery, "updateForeverBox", { id, force })); return { status: "dev-fallback-finished" }; },
+    // The "Update Grok Bot's computer" card (Settings → Updates) funnels here.
+    // In this reconstruction the box image is pinned by digest and the host
+    // bundle is bind-mounted; recreating the computer on a whim can strand the
+    // desktop shell on a stock upstream host (see AGENTS.md 2026-10-01).
+    // Refuse the action instead of letting it run — the card is also hidden in
+    // the renderer patch, this is the belt to that suspenders.
+    updateComputer: async () => { throw new Error("Computer updates are disabled in this reconstructed build. The sandbox image is pinned by digest; recreate it deliberately (docker rm + app restart) instead."); },
 
     getWindowState: () => invoke(deps.windowChrome, "getWindowState"), minimizeWindow: () => { invoke(deps.windowChrome, "minimize"); }, toggleMaximizeWindow: () => { invoke(deps.windowChrome, "toggleMaximize"); }, closeWindow: () => { invoke(deps.windowChrome, "close"); },
     setTitleBarOverlayTone: (raw) => { invoke(deps.windowChrome, "setTitleBarOverlayTone", req(raw).isOverlayTone === true); },
