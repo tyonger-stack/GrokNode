@@ -14,7 +14,7 @@ import { SandAgentDb, type AwaitingUserResponse, type TranscriptEntry } from "./
 import { recoverAgentWithMissingDb, setAgentAvatarBytes } from "./session-mutations.js";
 import { getAgentAvatar, getAgentAvatarPng, getAgentProfileText, updateAgentProfile } from "./session-profile-files.js";
 import { listAgents, summarizeAgentById } from "./session-roster.js";
-import { buildSummary, loadAgentDbExtras, type DbExtras } from "./session-summaries.js";
+import { buildSummary, readSummaryAvatar, loadAgentDbExtras, type DbExtras } from "./session-summaries.js";
 import { SandConnectorSecretStore } from "./connector-secret-store.js";
 import { ensureConversationCapacityForTurn } from "./conversation-size-limits.js";
 import { expirePendingAutoReviewApprovalEntries, expirePendingLocalToolPermissionAskEntries } from "./pending-card-sweeps.js";
@@ -132,6 +132,7 @@ export class SandAgentSessionStore {
       ...(dbStats === undefined ? {} : { dbStats }),
       activeAgentId: session.id,
       includeBlank: true,
+      readAvatar: readSummaryAvatar,
       agentHasMemory: candidate => this.memory.agentHasContent(candidate),
     });
   }
@@ -154,6 +155,7 @@ export class SandAgentSessionStore {
       ...(dbStats === undefined ? {} : { dbStats }),
       ...(activeAgentId === undefined ? {} : { activeAgentId }),
       includeBlank: true,
+      readAvatar: readSummaryAvatar,
       agentHasMemory: candidate => this.memory.agentHasContent(candidate),
     });
   }

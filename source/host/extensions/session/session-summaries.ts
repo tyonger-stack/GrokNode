@@ -1,5 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { dirname } from "node:path";
+import { listConventionalAvatarFilenames, readAvatarWithinDir } from "../../agents/agent-avatar.js";
 import { getSandProfilePath, readSandProfileFile } from "../../agents/agent-profile.js";
 import { getSandSettingsPath, readSandSettingsFile } from "../../agents/settings-file.js";
 import { getLastEntryFromTranscript, getLastMessageFromTranscript, getSummaryUpdatedAt, seedActivityFromMtime } from "./session-projection.js";
@@ -8,6 +9,23 @@ import { ensureProfileFile, ensureSettingsFile } from "./session-recovery.js";
 export interface DbExtras { agentId: string; createdAt: number; updatedAt: number; hasTranscript: boolean; lastEntry: Record<string, unknown> | null; lastMessage: { id: string; preview: string } | null; newestEntryId: unknown; unreadState: { lastActivityAt: number; lastViewedAt: number; isManuallyUnread: boolean; unreadCount: number }; awaitingUserResponse: unknown; origin: unknown; purpose: unknown; conversationPartnerIds: string[]; legacyAvatarPath: string | null }
 export interface SummaryDb { get(key: string): unknown; getTranscriptEntries(): Record<string, unknown>[]; getUnreadState(): DbExtras["unreadState"]; getAwaitingUserResponse?(): unknown; getAgentOrigin?(): unknown; getAgentPurpose?(): unknown; getConversationPartnerIds?(): string[]; getSandProfile?(): { description: string; avatarPath: string | null } }
 export function loadAgentDbExtras(db: SummaryDb, dbPath: string, dirName: string, stats?: { mtimeMs: number }): DbExtras | null { ensureProfileFile(dbPath, db); return readDbExtras(db, dirName, stats); }
+/**
+ * The `readAvatar` callback `buildSummary` needs to populate `avatarVersion`.
+ *
+ * Without it a summary reports `avatarVersion: null`, and the renderer's lazy avatar
+ * loader — which only re-fetches through `getAgentAvatar` when the version differs from
+ * its cached one — never learns the picture changed. That is why setting an avatar wrote
+ * the file but left the UI on the default shape.
+ *
+ * The candidate is the conventional avatar filename on disk, not the db's `avatarPath`:
+ * the write path never sets that field (only the clear branch clears it), so it is null
+ * for any agent that gained a picture through the UI. `readAvatarWithinDir` resolves
+ * nothing for an empty candidate, which is exactly the silent failure.
+ */
+export const readSummaryAvatar = async (agentDir: string, legacyAvatarPath: string | null) => {
+  const name = listConventionalAvatarFilenames(agentDir)[0] ?? legacyAvatarPath;
+  return name == null ? null : readAvatarWithinDir(agentDir, name);
+};
 export function readDbExtras(db: SummaryDb, dirName: string, stats?: { mtimeMs: number }): DbExtras | null { try { const agentId=String(db.get("agentId")||dirName);seedActivityFromMtime(db as never,agentId,stats);const createdAt=Number(db.get("createdAt")||0),entries=db.getTranscriptEntries(),unread=db.getUnreadState();return{agentId,createdAt,updatedAt:getSummaryUpdatedAt({createdAt},unread),hasTranscript:entries.length>0,lastEntry:getLastEntryFromTranscript(entries),lastMessage:getLastMessageFromTranscript(entries),newestEntryId:entries.at(-1)?.id??null,unreadState:unread,awaitingUserResponse:db.getAwaitingUserResponse?.()??null,origin:db.getAgentOrigin?.()??"user",purpose:db.getAgentPurpose?.()??null,conversationPartnerIds:db.getConversationPartnerIds?.()??[],legacyAvatarPath:db.getSandProfile?.().avatarPath??null};}catch{return null} }
 const orNull=(value?:string|null):string|null=>value!=null&&value.length>0?value:null;
 export function minimalAgentSummary(args:{dirName:string;dbPath:string;dbStats?:{mtimeMs:number};activeAgentId?:string}){const profile=readSandProfileFile(getSandProfilePath(dirname(args.dbPath))),time=Math.floor(Number(args.dbStats?.mtimeMs??0));return{id:args.dirName,name:profile?.name?.trim()||"Grok",description:profile?.description??"",title:profile?.title??"",avatarDataUrl:null,avatarVersion:null,avatarShape:orNull(profile?.avatarShape),avatarColor:orNull(profile?.avatarColor),createdAt:time,updatedAt:time,path:args.dbPath,isActive:args.dirName===args.activeAgentId,isRunning:false,isComposingMessage:false,lastEntry:null,lastMessageId:null,lastMessagePreview:null,newestEntryId:null,hasUnread:false,unreadCount:0,lastViewedAt:0,lastActivityAt:0,awaitingUserResponse:null,notificationsEnabled:false,notifyOnUpdatesEnabled:true,isHiddenFromSidebar:false,origin:"user",isGroup:false,memberIds:[],conversationPartnerIds:[]}}
