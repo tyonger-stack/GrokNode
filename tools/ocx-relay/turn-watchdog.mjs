@@ -136,7 +136,7 @@ const state = loadState();
 const nameCache = new Map();
 
 function loadState() {
-  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {}, lastRepair: {}, lastRepairOk: {}, lastHostRestart: {}, canary: null, outageSince: null };
+  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {}, lastRepair: {}, lastRepairOk: {}, lastHostRestart: {}, canary: null, outageSince: null, lastProbeOkAt: 0, lastProbeFailAt: 0 };
   try {
     const parsed = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
     return {
@@ -150,6 +150,12 @@ function loadState() {
       lastHostRestart: parsed.lastHostRestart ?? {},
       canary: parsed.canary ?? null,
       outageSince: parsed.outageSince ?? null,
+      // The relay probe runs AFTER the inflight/outage check in the same loop,
+      // so its verdict must survive to the next loop - the watchdog is
+      // long-lived, but it also restarts, and a restart must not forget that
+      // the relay was already seen failing.
+      lastProbeOkAt: Number(parsed.lastProbeOkAt ?? 0),
+      lastProbeFailAt: Number(parsed.lastProbeFailAt ?? 0),
     };
   } catch {
     return fresh;
@@ -157,6 +163,8 @@ function loadState() {
 }
 
 function saveState() {
+  state.lastProbeOkAt = forwarderActivity.lastProbeOkAt;
+  state.lastProbeFailAt = forwarderActivity.lastProbeFailAt;
   try {
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 1));
   } catch { /* alerts still fire without persistence */ }
@@ -197,7 +205,15 @@ function readTail(file, bytes) {
 // Also records system-wide inference activity for the host-wedge check: a
 // wedged host produces neither in-flight requests nor fresh POST lines, while
 // a healthy-but-slow system shows at least an open `started` entry.
-const forwarderActivity = { inflight: 0, lastPostAt: 0, recentTerminal: [] };
+// Seeded from persisted state: the probe runs after the checks that read
+// these, so a fresh process must inherit the previous loop's verdict.
+const forwarderActivity = {
+  inflight: 0,
+  lastPostAt: 0,
+  recentTerminal: [],
+  lastProbeOkAt: state.lastProbeOkAt,
+  lastProbeFailAt: state.lastProbeFailAt,
+};
 // Window for the capacity-failure exemption: terminal outcomes younger than
 // this count toward the "all failures are capacity" verdict. It must cover
 // the wedge signature's own quiet window (HOST_WEDGE_STALL_MS of zero POST
@@ -257,6 +273,13 @@ function checkInflightStalls(now) {
   // dozens of "request N has hung" notices that all said the same thing and
   // none of which named the cause. Fold them into ONE outage notice and stay
   // quiet while it lasts; per-request detail goes to the log.
+  //
+  // Activity, not just completions, decides: a system that is still starting
+  // requests is a busy system, and a request that is genuinely stuck while
+  // the fleet is otherwise idle is a stuck request, not a network outage.
+  // Only "no request started AND none completed" is an outage.
+  const lastStartAt = [...startedAt.values()].reduce((max, ts) => Math.max(max, ts), 0);
+  const recentActivity = now - Math.max(lastStartAt, lastPostAt) < INFLIGHT_STALL_MS;
   const hung = [];
   for (const [id, ts] of startedAt) {
     if (finished.has(id)) continue;
@@ -271,14 +294,23 @@ function checkInflightStalls(now) {
     }
     return;
   }
-  // A network outage is different from a slow upstream: during one, nothing
-  // completes at all and the relay hop itself stops answering. Distinguish
-  // them by whether ANY inference completed recently.
-  const completing = terminals.some(
-    (t) => now - t.at < INFLIGHT_STALL_MS && t.code !== -1,
-  );
-  if (completing) {
-    // Upstream is still answering for some requests: keep the per-id detail.
+  // An outage is a POSITIVE finding, never an absence of evidence: the
+  // relay probe has to be seen failing. Silence alone must never open an
+  // outage, because "no traffic" is also what an idle night looks like, and
+  // a fleet that simply stopped dispatching is not a broken network.
+  // The relay probe answers while chat requests hang, so a RELAY that
+  // answers during hung requests is the clearest proof of a stuck request
+  // rather than a dead path.
+  const probeFailing =
+    forwarderActivity.lastProbeFailAt > 0
+    && now - forwarderActivity.lastProbeFailAt < INFLIGHT_STALL_MS * 2;
+  const probeAlive =
+    forwarderActivity.lastProbeOkAt > 0
+    && now - forwarderActivity.lastProbeOkAt < INFLIGHT_STALL_MS * 2;
+  if (!probeFailing && (recentActivity || probeAlive || lastPostAt === 0 || now - lastPostAt < INFLIGHT_STALL_MS)) {
+    // The upstream is demonstrably alive: requests are flowing, or a request
+    // finished recently enough to prove it. Report the stuck ones by id and
+    // leave outage state alone.
     state.outageSince = null;
     for (const { id, ts } of hung) {
       console.log(
@@ -445,6 +477,18 @@ async function agentName(agentId) {
 
 // Liveness: if the Mac-side forwarder is down every bot goes silent at once.
 function checkForwarderLiveness(now) {
+  // Test seam: the outage verdict depends on this probe, and the probe is a
+  // real socket to 11010 that a test cannot stand up. FORWARDER_PROBE_RESULT
+  // pins the outcome ("ok" | "fail") for tests; unset in production.
+  const pinned = process.env.FORWARDER_PROBE_RESULT;
+  if (pinned === "ok") {
+    forwarderActivity.lastProbeOkAt = Date.now();
+    return Promise.resolve();
+  }
+  if (pinned === "fail") {
+    forwarderActivity.lastProbeFailAt = Date.now();
+    return Promise.resolve();
+  }
   return new Promise((resolve) => {
     let token = "";
     try { token = fs.readFileSync(path.join(RELAY_DIR, "token"), "utf8").trim(); } catch { /* probe unauthenticated */ }
@@ -452,6 +496,11 @@ function checkForwarderLiveness(now) {
       { host: "127.0.0.1", port: 11010, path: "/v1/models", headers: token ? { "x-relay-token": token } : {}, timeout: 5000 },
       (res) => {
         res.resume();
+        // The probe answers while chat requests hang, so it separates a stuck
+        // request from a dead path. Both directions are recorded: an outage is
+        // only declared when the relay has been seen FAILING.
+        if (res.statusCode === 200) forwarderActivity.lastProbeOkAt = Date.now();
+        else forwarderActivity.lastProbeFailAt = Date.now();
         if (res.statusCode !== 200) {
           alert("forwarder-down", `中继 11010 探活异常（HTTP ${res.statusCode}）——所有 bot 推理可能已断。`);
         }
@@ -460,10 +509,12 @@ function checkForwarderLiveness(now) {
     );
     req.on("timeout", () => {
       req.destroy();
+      forwarderActivity.lastProbeFailAt = Date.now();
       alert("forwarder-down", `中继 11010 探活超时——所有 bot 推理可能已断（${new Date(now).toLocaleTimeString()}）。`);
       resolve();
     });
     req.on("error", (e) => {
+      forwarderActivity.lastProbeFailAt = Date.now();
       alert("forwarder-down", `中继 11010 探活失败（${e.message}）——所有 bot 推理可能已断。`);
       resolve();
     });

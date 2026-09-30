@@ -95,7 +95,7 @@ test("a full outage raises one aggregated notice, not one per request", async ()
   await writeFile(fx.forwarderLog, outageLog());
   await writeFile(fx.transcriptFile, `${transcriptLine(AGENT_A, 40)}\n`);
 
-  const stdout = await runLoop(fx);
+  const stdout = await runLoop(fx, { FORWARDER_PROBE_RESULT: "fail" });
   const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
 
   assert.ok(alerts.includes("upstream-outage"), `expected an outage notice, got: ${alerts}`);
@@ -115,13 +115,13 @@ test("an outage keeps quiet on later loops until it recovers", async () => {
   await writeFile(fx.forwarderLog, outageLog());
   await writeFile(fx.transcriptFile, `${transcriptLine(AGENT_A, 40)}\n`);
 
-  await runLoop(fx);
+  await runLoop(fx, { FORWARDER_PROBE_RESULT: "fail" });
   const first = await readFile(fx.alerts, "utf8").catch(() => "");
   assert.equal((first.match(/\[upstream-outage\]/g) || []).length, 1);
 
   // Two more loops while still down: the long outage cooldown keeps it to one.
-  await runLoop(fx);
-  await runLoop(fx);
+  await runLoop(fx, { FORWARDER_PROBE_RESULT: "fail" });
+  await runLoop(fx, { FORWARDER_PROBE_RESULT: "fail" });
   const later = await readFile(fx.alerts, "utf8").catch(() => "");
   assert.equal(
     (later.match(/\[upstream-outage\]/g) || []).length,
@@ -149,7 +149,7 @@ test("stall alerts are suppressed while the outage is active", async () => {
     lastAlert: {},
   }));
 
-  await runLoop(fx);
+  await runLoop(fx, { FORWARDER_PROBE_RESULT: "fail" });
   const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
 
   assert.ok(alerts.includes("upstream-outage"), "the root cause is still reported");
@@ -172,11 +172,38 @@ test("a completed request means a slow upstream, not an outage", async () => {
   ].join("\n"));
   await writeFile(fx.transcriptFile, `${transcriptLine(AGENT_A, 40)}\n`);
 
-  await runLoop(fx);
+  await runLoop(fx, { FORWARDER_PROBE_RESULT: "ok" });
   const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
 
   assert.ok(!alerts.includes("upstream-outage"), "a completing request rules out an outage");
   assert.ok(alerts.includes("inflight:cccc3333"), "the still-hung request keeps its own notice");
+});
+
+test("silence alone never opens an outage — it needs a seen-failing relay", async () => {
+  const fx = await makeFixtures();
+  // 2026-09-30 production false positive: one request wedged 40 minutes ago
+  // and the fleet then went quiet on its own, with the relay answering the
+  // whole time. Reporting that as an outage named the wrong cause.
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(60)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(40)} POST /v1/chat/completions started id=35ce8716 try=2 queued=0ms`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, `${transcriptLine(AGENT_A, 40)}\n`);
+  await writeFile(fx.stateFile, JSON.stringify({ hostLogBytes: 1000, lastSpawnSeen: {}, lastAlert: {} }));
+
+  // The relay-probe signal is recorded from the PREVIOUS loop (this check
+  // runs before the probe), so run twice before judging: an answering relay
+  // must keep the outage shut no matter how long the chat side is silent.
+  await runLoop(fx, { FORWARDER_PROBE_RESULT: "ok" });
+  await runLoop(fx, { FORWARDER_PROBE_RESULT: "ok" });
+  const state = JSON.parse(await readFile(fx.stateFile, "utf8"));
+  assert.equal(state.outageSince, null, "an answering relay must not open an outage");
+
+  // With the relay failing, the same silence IS an outage.
+  await runLoop(fx, { FORWARDER_PROBE_RESULT: "fail" });
+  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+  assert.ok(alerts.includes("upstream-outage"), `a failing relay must open an outage, got: ${alerts}`);
 });
 
 test("recovery is announced and clears the outage state", async () => {
@@ -184,7 +211,7 @@ test("recovery is announced and clears the outage state", async () => {
   await writeFile(fx.forwarderLog, outageLog());
   await writeFile(fx.transcriptFile, `${transcriptLine(AGENT_A, 40)}\n`);
 
-  await runLoop(fx);
+  await runLoop(fx, { FORWARDER_PROBE_RESULT: "fail" });
   const during = JSON.parse(await readFile(fx.stateFile, "utf8"));
   assert.ok(typeof during.outageSince === "number", "an active outage is persisted");
 
@@ -196,7 +223,7 @@ test("recovery is announced and clears the outage state", async () => {
     "",
   ].join("\n"));
 
-  const stdout = await runLoop(fx);
+  const stdout = await runLoop(fx, { FORWARDER_PROBE_RESULT: "ok" });
   const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
   assert.ok(stdout.includes("upstream recovered"), "recovery is logged");
   assert.ok(alerts.includes("upstream-recovered"), "recovery is announced once");
