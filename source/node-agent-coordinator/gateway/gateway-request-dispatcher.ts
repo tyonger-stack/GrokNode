@@ -17,11 +17,19 @@ export interface GatewayCommandClient {
   dispatchCommand(method: string, args: unknown, options: { signal?: AbortSignal }): Promise<unknown>;
 }
 
-export function createGatewayRequestDispatch(client: GatewayCommandClient, serves: (method: string) => boolean = isCoordinatorMethod) {
+/**
+ * Side effect run after a command succeeds, used to keep desktop-side mirrors of box state
+ * (see roster-avatar-store). It must never change the reply, so its failures are swallowed
+ * rather than surfaced: a mirror that cannot be written is not the caller's problem.
+ */
+export type GatewayCommandObserver = (method: string, args: unknown) => void | Promise<void>;
+
+export function createGatewayRequestDispatch(client: GatewayCommandClient, serves: (method: string) => boolean = isCoordinatorMethod, observe?: GatewayCommandObserver) {
   return async (method: string, args: unknown, signal?: AbortSignal): Promise<CoordinatorReplyOutcome> => {
     if (!serves(method)) return { status: "failed", failure: { code: COORDINATOR_UNKNOWN_METHOD, message: `no coordinator method named ${method}` } };
     try {
       const value = validateCoordinatorReply(method, await client.dispatchCommand(method, args, { ...(signal === undefined ? {} : { signal }) }));
+      if (observe != null) { try { await observe(method, args); } catch { /* mirror is best-effort */ } }
       return { status: "ok", value };
     } catch (error) {
       return { status: "failed", failure: failureFor(error) };

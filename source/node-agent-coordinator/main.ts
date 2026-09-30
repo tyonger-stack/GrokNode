@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 import { createRealExpiryPolicy, createRealPollingPolicy, createRealRetryPolicy, realClock } from "../internal/scheduling.js";
 import { COORDINATOR_TRANSPORT_STATE_FAMILY } from "../shared/rpc/coordinator-port.js";
+import { isCoordinatorMethod } from "../shared/rpc/coordinator.js";
 import { isCoordinatorMainMethod } from "../shared/rpc/coordinator-main.js";
 import { SAND_WEBAUTHN_HEARTBEAT_INTERVAL_MS, type WebAuthnCeremony } from "../shared/webauthn-gateway.js";
 import { adoptCarrier, type CarrierIntake } from "./carrier.js";
@@ -11,6 +12,7 @@ import { CoordinatorGatewayClient, HOST_ACCOUNT_SLOT, createCoordinatorGatewayCl
 import { createGatewayDnsDiagnosticReporter } from "./gateway/gateway-dns-diagnostics.js";
 import { coordinatorEventFamilyForSseChannel } from "./gateway/gateway-event-families.js";
 import { createGatewayRequestDispatch } from "./gateway/gateway-request-dispatcher.js";
+import { createRosterAvatarStore } from "./gateway/roster-avatar-store.js";
 import { SandHostSupervisor, createCoordinatorHostSupervisorTiming } from "./gateway/host-supervisor.js";
 import { createLocalExecDaemonRefreshPolicy, createLocalExecDaemonSupervisor } from "./local-exec/supervisor.js";
 import { McpOAuthForwarder } from "./oauth/mcp-oauth-forwarder.js";
@@ -123,6 +125,10 @@ export async function composeCoordinator(dependencies: ComposeCoordinatorDepende
     } catch (error) {
       process.stderr.write(`node-agent-coordinator: agents roster seed skipped: ${String(error)}\n`);
     }
+    // The roster is the only thing that knows which box agents already carry a picture, so
+    // the desktop-side mirror store is filled from here rather than from a second source of
+    // truth. Runs once per process and re-runs only after a failure.
+    void rosterAvatarStore.syncExistingAvatars();
   }
 
   function handleTransportEvent(raw: unknown): void {
@@ -151,6 +157,11 @@ export async function composeCoordinator(dependencies: ComposeCoordinatorDepende
     resolveTraceWindowTraceparent: () => command(commands, "getRpcTraceWindowTraceparent", {}),
     recordGatewayCommandSpan: (report) => recorder.recordGatewayCommandSpan(report),
     timing: createCoordinatorGatewayClientTiming()
+  });
+
+  const rosterAvatarStore = createRosterAvatarStore({
+    dataDir: bootstrap.processConfig.dataDir,
+    dispatch: (method, args) => gatewayClient.dispatchCommand(method, args)
   });
 
   const oauthForwarder = new McpOAuthForwarder({
@@ -210,7 +221,9 @@ export async function composeCoordinator(dependencies: ComposeCoordinatorDepende
     webauthnProvider.start();
   }
 
-  const gatewayDispatch = createGatewayRequestDispatch(gatewayClient);
+  const gatewayDispatch = createGatewayRequestDispatch(gatewayClient, isCoordinatorMethod, async (method, args) => {
+    if (method === "setAgentAvatarBytes") await rosterAvatarStore.mirrorSetAvatarArgs(args);
+  });
   const inferenceRouter = createCoordinatorInferenceRouter({
     dataDir: bootstrap.processConfig.dataDir,
     postEvent: (family, payload) => server.postEvent(family, payload),
