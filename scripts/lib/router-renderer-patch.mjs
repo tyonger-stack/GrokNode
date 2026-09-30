@@ -236,11 +236,14 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const channelStatusExtension = await buildChannelStatusRendererExtension();
   const pluginsDockExtension = await buildPluginsDockRendererExtension();
   const webhookCredentialExtension = await buildWebhookCredentialRendererExtension();
-  // The box updates block (vKn) lives in the shared chunk the registry imports from;
-  // find that file the same way as the registry/panel candidates: by anchor.
+  // The box updates block (vKn) may live either in its own shared chunk or in
+  // the registry chunk itself (both layouts exist across upstream extractions).
+  // Scan by anchor over every js asset; exclusions would silently miss the
+  // same-file layout, so candidates are allowed to overlap with the registry
+  // or panel candidate and the write loop below composes transforms per file.
   const boxUpdatesCandidates = [];
   for (const name of await readdir(assetsRoot)) {
-    if (!name.endsWith(".js") || registryCandidates.some((c) => c.name === name) || panelCandidates.some((c) => c.name === name)) continue;
+    if (!name.endsWith(".js")) continue;
     const target = path.join(assetsRoot, name);
     const source = await readFile(target, "utf8");
     if (source.includes(BOX_UPDATES_SECTION_BEFORE)) boxUpdatesCandidates.push({ name, target, source });
@@ -251,17 +254,33 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const approvalName = "view-QqBtBG74.js";
   const approvalTarget = path.join(assetsRoot, approvalName);
   const approvalCandidate = { name: approvalName, target: approvalTarget, source: await readFile(approvalTarget, "utf8") };
-  const changes = [];
+  // Group transforms by target file: several roles can land in the same chunk
+  // (vKn sits in the registry chunk in the current upstream layout). Each file
+  // is written exactly once from its pristine snapshot with every transform
+  // applied in order — separate writes would clobber each other's patches.
+  const transformsByFile = new Map();
+  const register = (role, candidate, transform) => {
+    const entry = transformsByFile.get(candidate.name) ?? { candidate, roles: [], transforms: [] };
+    entry.roles.push(role);
+    entry.transforms.push(transform);
+    transformsByFile.set(candidate.name, entry);
+  };
   for (const [role, candidate, transform] of [
     ["registry", registryCandidates[0], (source) => patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source)))],
     ["panel", panelCandidates[0], patchOriginalSettingsPanel],
     ["approval", approvalCandidate, patchOriginalAutoReviewApproval],
     ["box-updates", boxUpdatesCandidates[0], patchOriginalBoxUpdatesSection],
   ]) {
-    const registryExtensions = role === "registry" ? "\n;" + [botTemplateExtension, channelStatusExtension, pluginsDockExtension, webhookCredentialExtension].join("\n;") : "";
-    let patched = transform(candidate.source) + registryExtensions;
+    register(role, candidate, transform);
+  }
+  const changes = [];
+  for (const { candidate, roles, transforms } of transformsByFile.values()) {
+    const isRegistry = roles.includes("registry");
+    const registryExtensions = isRegistry ? "\n;" + [botTemplateExtension, channelStatusExtension, pluginsDockExtension, webhookCredentialExtension].join("\n;") : "";
+    let patched = candidate.source;
     let aboutVersionDialectUsed = null;
-    if (role === "registry") {
+    for (const transform of transforms) patched = transform(patched);
+    if (isRegistry) {
       // Fail closed: the registry chunk MUST carry one of the two known About dialects.
       // Silent pass-through previously shipped an un-pinned version line.
       const dialect = aboutVersionDialect(patched);
@@ -272,14 +291,21 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
       patched = patchOriginalAboutTitle(patched);
       aboutVersionDialectUsed = dialect;
     }
+    patched += registryExtensions;
     await writeFile(candidate.target, patched);
-    changes.push({
-      role,
-      path: `dist/renderer/assets/${candidate.name}`,
-      original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256(candidate.source) },
-      patched: { bytes: Buffer.byteLength(patched), sha256: sha256(patched) },
-      ...(aboutVersionDialectUsed == null ? {} : { aboutVersionDialect: aboutVersionDialectUsed }),
-    });
+    // One provenance row per role; when roles share a file, every row records
+    // the final composed artifact (the file's actual on-disk bytes) so the
+    // provenance hashes stay verifiable against what shipped.
+    for (const role of roles) {
+      changes.push({
+        role,
+        path: `dist/renderer/assets/${candidate.name}`,
+        ...(roles.length > 1 ? { sharesChunkWith: roles.filter((other) => other !== role) } : {}),
+        original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256(candidate.source) },
+        patched: { bytes: Buffer.byteLength(patched), sha256: sha256(patched) },
+        ...(aboutVersionDialectUsed == null ? {} : { aboutVersionDialect: aboutVersionDialectUsed }),
+      });
+    }
   }
   const record = {
     schemaVersion: 1,

@@ -123,6 +123,66 @@ test("a genuinely mismatched URL is rejected by runningStatus", async () => {
   );
 });
 
+test("an unknown seat cannot stream a fork URL (fail closed)", async () => {
+  const mod = await load("box-window-seat-token.mjs", hostBoxEntry);
+  // The inner box cannot report the agent's seat (undefined), but a fork URL
+  // is still cached. Fork displays are re-assigned dynamically, so the token
+  // cannot be proven to belong to this agent: shipping it is how a panel
+  // streamed another agent's desktop on display :5.
+  const box = new mod.HostBox({
+    getAgentWindowIndex: () => undefined,
+    runState: async () => "running",
+  });
+  box.vncUrls.set("a", "http://127.0.0.1:6080/vnc.html");
+  box.forkVncUrls.set("a", new Map([[5, forkUrl(5)]]));
+
+  assert.throws(
+    () => box.runningStatus("a", "http://127.0.0.1:6080/vnc.html"),
+    (error) => error instanceof mod.SandBoxWindowSeatMismatchError
+      && error.seatIndex === 0
+      && error.urlToken === 5,
+    "no seat held => no fork URL may ship",
+  );
+});
+
+test("an unknown seat still streams the primary URL", async () => {
+  const mod = await load("box-window-seat-token.mjs", hostBoxEntry);
+  // Primary (port 6080) URLs carry no display token, so an unknown seat does
+  // not make them unsafe — the guard must not break the single-window case.
+  const box = new mod.HostBox({
+    getAgentWindowIndex: () => undefined,
+    runState: async () => "running",
+  });
+  box.vncUrls.set("a", "http://127.0.0.1:6080/vnc.html");
+  const status = box.runningStatus("a", "http://127.0.0.1:6080/vnc.html");
+  assert.equal(status.state, "running");
+  assert.equal(status.vncUrl, "http://127.0.0.1:6080/vnc.html");
+});
+
+test("getStatus evicts a stale seat instead of streaming a stranger's display", async () => {
+  const mod = await load("box-window-seat-token.mjs", hostBoxEntry);
+  // The agent was re-assigned and the cached URLs no longer match any seat it
+  // holds. getStatus must report absent and clear the cache so the next
+  // ensure mints a seat-matching URL, never the stale one.
+  const box = new mod.HostBox({
+    getAgentWindowIndex: () => undefined,
+    runState: async () => "running",
+  });
+  box.vncUrls.set("a", "http://127.0.0.1:6080/vnc.html");
+  box.forkVncUrls.set("a", new Map([[5, forkUrl(5)]]));
+
+  const status = await box.getStatus(createContextForStatus(), "a");
+  assert.equal(status.state, "absent");
+  assert.equal(status.vncUrl, null);
+  assert.equal(box.vncUrls.has("a"), false, "the stale URL cache is evicted");
+  assert.equal(box.forkVncUrls.has("a"), false, "the stale fork cache is evicted");
+});
+
+function createContextForStatus() {
+  // getStatus only reads ctx.signal; a bare context suffices.
+  return { signal: new AbortController().signal };
+}
+
 test("loadAssignments reports a persisted seat that collides with a live one", async () => {
   const mod = await load("box-window-assignments.mjs", sharedEntry);
   const { createContext } = await load("box-window-context.mjs", "source/packages/context/core.ts");

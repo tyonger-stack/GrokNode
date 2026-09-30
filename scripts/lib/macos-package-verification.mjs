@@ -162,7 +162,12 @@ export async function verifyChecksumPinnedRendererPackage({
     const chunks = new Map();
     for (const row of parsed.chunks) {
       const relative = typeof row?.path === "string" && row.path.startsWith("dist/renderer/") ? row.path.slice("dist/renderer/".length) : null;
-      if (relative == null || !expectedFiles.has(relative) || chunks.has(relative) || !["registry", "panel", "approval"].includes(row.role)
+      // Several roles may legitimately share one chunk (the box-updates vKn
+      // component sits inside the registry chunk in the current upstream
+      // layout). Rows sharing a path must agree on original/patched identity
+      // — the composed write produces one artifact, so duplicate rows must
+      // describe the same bytes.
+      if (relative == null || !expectedFiles.has(relative) || !["registry", "panel", "approval", "box-updates"].includes(row.role)
         || (row.role === "approval" && relative !== "assets/view-QqBtBG74.js")
         || !Number.isInteger(row.original?.bytes) || !/^[0-9a-f]{64}$/.test(row.original?.sha256)
         || !Number.isInteger(row.patched?.bytes) || !/^[0-9a-f]{64}$/.test(row.patched?.sha256)) {
@@ -170,10 +175,14 @@ export async function verifyChecksumPinnedRendererPackage({
       }
       const expected = expectedFiles.get(relative);
       if (row.original.bytes !== expected.bytes || row.original.sha256 !== expected.sha256) throw new Error(`Renderer extension source identity drift at ${relative}`);
-      chunks.set(relative, row);
+      const seen = chunks.get(relative);
+      if (seen == null) chunks.set(relative, row);
+      else if (seen.original.sha256 !== row.original.sha256 || seen.patched.sha256 !== row.patched.sha256 || seen.patched.bytes !== row.patched.bytes) {
+        throw new Error(`Renderer extension roles disagree about the composed artifact at ${relative}`);
+      }
     }
     const approvalCount = [...chunks.values()].filter(row => row.role === "approval").length;
-    if (chunks.size < 1 || chunks.size > 2 + approvalCount) throw new Error("Renderer extension chunk cardinality is invalid");
+    if (chunks.size < 1 || chunks.size > 3 + approvalCount) throw new Error("Renderer extension chunk cardinality is invalid");
     rendererExtension = { bytes, parsed, chunks };
   } catch (error) {
     if (!(error instanceof Error) || !/not found in archive|Cannot find/.test(error.message)) throw error;

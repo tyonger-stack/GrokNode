@@ -89,11 +89,16 @@ export class HostBox {
   private assertWindowMatchesSeat(agentId: string, windows: Array<{ windowIndex: number; vncUrl: string }> | undefined): void {
     if (windows == null) return;
     const current = this.inner.getAgentWindowIndex?.(agentId);
-    if (current == null || current <= 0) return; // primary seat: no token to match
+    if (current != null && current <= 0) return; // primary seat: no token to match
     for (const { windowIndex, vncUrl } of windows) {
       const token = vncUrlDisplayToken(vncUrl);
-      if (token != null && token !== current) {
-        throw new SandBoxWindowSeatMismatchError(agentId, current, windowIndex, token);
+      if (token == null) continue;
+      // Unknown seat (current == null): fork displays are handed out dynamically
+      // and re-assigned, so a cached fork token cannot be proven to belong to
+      // this agent. Shipping it anyway is how a panel ended up streaming
+      // another agent's desktop; fail closed instead (seat 0 = no seat held).
+      if (current == null || token !== current) {
+        throw new SandBoxWindowSeatMismatchError(agentId, current ?? 0, windowIndex, token);
       }
     }
   }
@@ -196,7 +201,23 @@ export class HostBox {
   async loadMcpServers(ctx: Context, configJson: string): Promise<unknown> { return await boxLoadMcpServers(this.inner, ctx, configJson); }
   async mcpResourceAccessor(ctx: Context): Promise<unknown> { return await boxMcpResourceAccessor(this.inner, ctx); }
   uploadFile(ctx: Context, agentId: string, path: string, data: Uint8Array): Promise<void> { return this.inner.uploadFile(ctx, agentId, path, data); } downloadFile(ctx: Context, agentId: string, path: string): Promise<Uint8Array> { return this.inner.downloadFile(ctx, agentId, path); }
-  async getStatus(ctx: Context, agentId: string): Promise<BoxStatus> { const state = await this.inner.runState(ctx, agentId); if (state !== "running") { this.vncUrls.delete(agentId); this.forkVncUrls.delete(agentId); return this.report({ agentId, state, vncUrl: null, ...(this.imageUpdateAvailable === undefined ? {} : { imageUpdateAvailable: this.imageUpdateAvailable }) }); } const cached = this.vncUrls.get(agentId); return cached != null ? this.report(this.runningStatus(agentId, cached)) : this.report({ agentId, state: "absent", vncUrl: null, ...(this.imageUpdateAvailable === undefined ? {} : { imageUpdateAvailable: this.imageUpdateAvailable }) }); }
+  async getStatus(ctx: Context, agentId: string): Promise<BoxStatus> {
+    const state = await this.inner.runState(ctx, agentId);
+    if (state !== "running") { this.vncUrls.delete(agentId); this.forkVncUrls.delete(agentId); return this.report({ agentId, state, vncUrl: null, ...(this.imageUpdateAvailable === undefined ? {} : { imageUpdateAvailable: this.imageUpdateAvailable }) }); }
+    const cached = this.vncUrls.get(agentId);
+    if (cached == null) return this.report({ agentId, state: "absent", vncUrl: null, ...(this.imageUpdateAvailable === undefined ? {} : { imageUpdateAvailable: this.imageUpdateAvailable }) });
+    try {
+      return this.report(this.runningStatus(agentId, cached));
+    } catch (error) {
+      if (!(error instanceof SandBoxWindowSeatMismatchError)) throw error;
+      // The cached URL cannot be proven to stream this agent's seat. Evict the
+      // stale seat data and report absent so the next ensure mints a fresh,
+      // seat-matching URL instead of the panel streaming a stranger's desktop.
+      this.vncUrls.delete(agentId);
+      this.forkVncUrls.delete(agentId);
+      return this.report({ agentId, state: "absent", vncUrl: null, ...(this.imageUpdateAvailable === undefined ? {} : { imageUpdateAvailable: this.imageUpdateAvailable }) });
+    }
+  }
   getImageUpdateAvailable(): boolean | undefined { return this.imageUpdateAvailable; } async isBoxRunning(ctx: Context): Promise<boolean> { return await this.inner.runState(ctx, RUN_STATE_PROBE_AGENT_ID) === "running"; } async ensure(ctx: Context, agentId: string): Promise<BoxStatus> { const connection = await this.ensureReady(ctx, agentId); return this.runningStatus(agentId, connection.vncUrl); }
   async recreateInBox(ctx: Context, options: { preserveData: boolean; force?: boolean }): Promise<{ started: boolean; reason?: string }> { if (this.inner.recreateInBox == null) throw new SandBoxCapabilityError("This computer can't be recreated from inside the box."); return this.inner.recreateInBox(ctx, options); }
   getAgentWindowIndex(agentId: string): number | undefined { return this.inner.getAgentWindowIndex?.(agentId); }
