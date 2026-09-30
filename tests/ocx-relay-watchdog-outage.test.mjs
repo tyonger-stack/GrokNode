@@ -69,6 +69,7 @@ async function runLoop(fx, extraEnv = {}) {
           FORWARDER_LOG: fx.forwarderLog,
           FAKE_DOCKER_LOG: fx.log,
           FAKE_TRANSCRIPT_FILE: fx.transcriptFile,
+          INFLIGHT_SOURCE: "log",
           ...extraEnv,
         },
       },
@@ -84,8 +85,8 @@ async function runLoop(fx, extraEnv = {}) {
 function outageLog() {
   return [
     `${isoMinutesAgo(30)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
-    `${isoMinutesAgo(28)} POST /v1/chat/completions started id=aaaa1111 try=0 queued=0ms`,
-    `${isoMinutesAgo(26)} POST /v1/chat/completions started id=bbbb2222 try=0 queued=0ms`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions started id=aaaa1111 try=0 queued=0ms`,
+    `${isoMinutesAgo(12)} POST /v1/chat/completions started id=bbbb2222 try=0 queued=0ms`,
     "",
   ].join("\n");
 }
@@ -167,7 +168,7 @@ test("a completed request means a slow upstream, not an outage", async () => {
     `${isoMinutesAgo(3)} POST /v1/chat/completions -> 200 30000ms queued=0ms try=0 id=aaaa1111`,
     // A different request is still stuck, but the upstream as a whole is
     // demonstrably completing work — so this is not an outage.
-    `${isoMinutesAgo(27)} POST /v1/chat/completions started id=cccc3333 try=0 queued=0ms`,
+    `${isoMinutesAgo(12)} POST /v1/chat/completions started id=cccc3333 try=0 queued=0ms`,
     "",
   ].join("\n"));
   await writeFile(fx.transcriptFile, `${transcriptLine(AGENT_A, 40)}\n`);
@@ -179,31 +180,34 @@ test("a completed request means a slow upstream, not an outage", async () => {
   assert.ok(alerts.includes("inflight:cccc3333"), "the still-hung request keeps its own notice");
 });
 
-test("silence alone never opens an outage — it needs a seen-failing relay", async () => {
+test("a request older than the forwarder hard cap is an accounting error, not an outage", async () => {
   const fx = await makeFixtures();
-  // 2026-09-30 production false positive: one request wedged 40 minutes ago
-  // and the fleet then went quiet on its own, with the relay answering the
-  // whole time. Reporting that as an outage named the wrong cause.
+  // 2026-09-30 id=4209373a: the client left during a 429 retry, the forwarder
+  // wrote no terminal line, and the watchdog reported it as hung for 633
+  // minutes — then as an upstream outage of "1 request". The forwarder
+  // finishes every request by its own cap, so an older started-line is a
+  // missing log line.
   await writeFile(fx.forwarderLog, [
-    `${isoMinutesAgo(60)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(60)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4 total=900000ms)`,
     `${isoMinutesAgo(40)} POST /v1/chat/completions started id=35ce8716 try=2 queued=0ms`,
     "",
   ].join("\n"));
   await writeFile(fx.transcriptFile, `${transcriptLine(AGENT_A, 40)}\n`);
-  await writeFile(fx.stateFile, JSON.stringify({ hostLogBytes: 1000, lastSpawnSeen: {}, lastAlert: {} }));
+  await writeFile(fx.stateFile, JSON.stringify({ hostLogBytes: 1000, lastSpawnSeen: {}, lastAlert: {}, conditions: {} }));
 
-  // The relay-probe signal is recorded from the PREVIOUS loop (this check
-  // runs before the probe), so run twice before judging: an answering relay
-  // must keep the outage shut no matter how long the chat side is silent.
   await runLoop(fx, { FORWARDER_PROBE_RESULT: "ok" });
-  await runLoop(fx, { FORWARDER_PROBE_RESULT: "ok" });
-  const state = JSON.parse(await readFile(fx.stateFile, "utf8"));
-  assert.equal(state.outageSince, null, "an answering relay must not open an outage");
-
-  // With the relay failing, the same silence IS an outage.
   await runLoop(fx, { FORWARDER_PROBE_RESULT: "fail" });
+  const state = JSON.parse(await readFile(fx.stateFile, "utf8"));
   const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
-  assert.ok(alerts.includes("upstream-outage"), `a failing relay must open an outage, got: ${alerts}`);
+  assert.equal(state.outageSince, null, "an impossibly old started-line must not open an outage");
+  assert.ok(alerts.includes("inflight-accounting:35ce8716"), `expected an accounting notice, got: ${alerts}`);
+  assert.ok(!alerts.includes("upstream-outage"), `accounting must not be reported as an outage, got: ${alerts}`);
+  assert.ok(!alerts.includes("[inflight:35ce8716]"), "an impossibly old id must not be reported as still in flight");
+  assert.equal(
+    (alerts.match(/\[inflight-accounting:35ce8716\]/g) || []).length,
+    1,
+    "the accounting notice is one event, not one per loop",
+  );
 });
 
 test("recovery is announced and clears the outage state", async () => {

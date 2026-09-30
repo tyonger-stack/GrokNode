@@ -92,11 +92,11 @@ UPSTREAM_MAX_TOTAL_MS=900000
 
 | 检查 | 信号 | 阈值 |
 | --- | --- | --- |
-| 挂起的推理 | forwarder.log `started id=X` 无配对 `-> ... id=X` | `INFLIGHT_STALL_MS` 默认 10 分钟 |
-| 卡死的 bot 回合 | host log 出现 `spawned worker for agent <id>` 后该 agent transcript **零写入**（容错 `SPAWN_READ_LAG_MS` 默认 3 分钟轮询延迟；一旦 transcript 有写入即视为健康，停止追踪） | `TRANSCRIPT_STALL_MS` 默认 10 分钟，**从 spawn 起算**（窗口 `SPAWN_WINDOW_MS` 30 分钟） |
+| 挂起的推理 | 先问转发器 `GET /v1/relay/inflight`（带 token，只列进程内存里仍持有的请求）。问不到才退回日志，并且**超过 `total=` 硬上限（部署 15 分钟）加 2 分钟的 started 行不算在飞**，只报一次记账错误 | `INFLIGHT_STALL_MS` 默认 10 分钟 |
+| 卡死的 bot 回合 | host 每 15 秒写 `/tmp/sand-host-turns.json`（在飞回合）。文件新鲜时，**只有列在里面的回合**才可能卡死，计时从 host 的 `startedAt` 起算；文件缺失或超过 45 秒没更新，才退回「spawn 之后 transcript 零写入」 | `TRANSCRIPT_STALL_MS` 默认 10 分钟 |
 | 中继死亡 | 探活 `127.0.0.1:11010/v1/models`（带 token） | 非 200 / 超时即告警 |
 
-告警去向：`watchdog-alerts.log`（永远）→ macOS 通知（`MACOS_NOTIFY=1` 默认开；通知正文自带详情文件路径——Notification Center 可看全文。已实测 macOS 26 拒绝 terminal-notifier 的通知权限，故发送走 osascript；若装了 terminal-notifier 且将来权限放开，代码会优先用它并让点击直接打开告警日志）→ `ALERT_COMMAND`（默认空；配置后以 `/bin/zsh -c` 执行，占位符 `{message}` `{agent}` `{name}` 会替换为带引号的 JSON 字符串，可接 `lark-cli` 发飞书）。同一 key 冷却 30 分钟。
+告警去向：`watchdog-alerts.log`（永远）→ macOS 通知（`MACOS_NOTIFY=1` 默认开；通知正文自带详情文件路径——Notification Center 可看全文。已实测 macOS 26 拒绝 terminal-notifier 的通知权限，故发送走 osascript；若装了 terminal-notifier 且将来权限放开，代码会优先用它并让点击直接打开告警日志）→ `ALERT_COMMAND`（默认空；配置后以 `/bin/zsh -c` 执行，占位符 `{message}` `{agent}` `{name}` 会替换为带引号的 JSON 字符串，可接 `lark-cli` 发飞书）。持续状态（挂起、卡死、断网、中继探活失败）**出现时一条，之后按 15 分钟 / 1 小时 / 4 小时各再提醒一次就停，恢复时再一条**。慢回合和断网的提醒不会比原先的 30 分钟 / 1 小时更密。重启 host、容量豁免、恢复公告这类动作每次发生都发。Mac 睡眠（两轮之间的挂钟跳变超过 3 个巡检间隔）醒来的那一轮只把 spawn 时钟拨到现在，不告警、不重启。
 
 **静默必须从 spawn 起算，不能从上次 transcript 写入起算**（2026-09-26 误报风暴的教训）：例行任务唤醒一个空闲 bot 时，“距上次写入”可能包含几小时的空闲时间，旧算法把它当成卡死时长，导致每个正常完成后的 bot 都被误报「卡死 67 分钟」。新语义只看“这个回合派出后有没有产出”。
 

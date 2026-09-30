@@ -18,6 +18,14 @@ import { isTurnInterruptedFailure } from "./turn-runtime.js";
 import { ToolRepeatDetector } from "./tool-repeat-detector.js";
 import { SandRunScheduler, type RunLane } from "./run-scheduler.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
+import {
+  TURN_REPORT_HEARTBEAT_MS,
+  buildTurnReport,
+  turnReportEnabled,
+  turnReportPath,
+  writeTurnReport,
+  type HostTurnReportTurn,
+} from "./turn-report.js";
 
 export function isRunSchedulerDisabled(): boolean {
   return process.env.SAND_DISABLE_RUN_SCHEDULER === "1";
@@ -189,6 +197,7 @@ export class RunLifecycle {
   readonly lastRequestIdBySession = new Map<string, string>();
   readonly turnRequestIdsBySession = new Map<string, Set<string>>();
   readonly turnEndedSeqBySession = new Map<string, number>();
+  turnReportTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(readonly tm: TranscriptManagerLike) {
     this.runScheduler = isRunSchedulerDisabled()
@@ -256,6 +265,36 @@ export class RunLifecycle {
           onRunStart: (agentId) =>
             this.tm.sendPipeline.sendAttachmentBatchIds.delete(agentId),
         });
+    this.startTurnReportHeartbeat();
+  }
+
+  // Publish the in-flight set for the Mac watchdog. A missing or stale file
+  // means "no answer", and the watchdog keeps its transcript check; a fresh
+  // file with an empty `turns` array means the host is up and nothing is running.
+  publishTurnReport(): void {
+    if (!turnReportEnabled()) return;
+    const turns: HostTurnReportTurn[] = [];
+    for (const [session, inFlight] of this.inFlightRunCounts) {
+      const agentId = session?.id;
+      if (typeof agentId !== "string" || agentId.length === 0) continue;
+      turns.push({
+        agentId,
+        startedAt: this.runWindowStartedAt.get(session) ?? Date.now(),
+        inFlight,
+      });
+    }
+    try {
+      writeTurnReport(buildTurnReport(turns), turnReportPath());
+    } catch {
+      // best-effort: the watchdog falls back when the file is absent
+    }
+  }
+
+  startTurnReportHeartbeat(): void {
+    if (!turnReportEnabled() || this.turnReportTimer != null) return;
+    this.publishTurnReport();
+    this.turnReportTimer = setInterval(() => this.publishTurnReport(), TURN_REPORT_HEARTBEAT_MS);
+    this.turnReportTimer.unref?.();
   }
 
   async recordRequestId(
@@ -469,6 +508,7 @@ export class RunLifecycle {
     this.inFlightRunCounts.set(session, inFlight + 1);
     this.tm.sessions.liveSessions.set(session.id, session);
     this.activeRunSession = session;
+    this.publishTurnReport();
     void this.tm.roster.emitAgentUpdate(session.id);
   }
 
@@ -480,6 +520,7 @@ export class RunLifecycle {
     const remaining = (this.inFlightRunCounts.get(session) ?? 1) - 1;
     if (remaining > 0) {
       this.inFlightRunCounts.set(session, remaining);
+      this.publishTurnReport();
       return;
     }
     this.inFlightRunCounts.delete(session);
@@ -491,6 +532,7 @@ export class RunLifecycle {
     this.tm.sendPipeline.sendAttachmentBatchIds.delete(session.id);
     if (this.activeRunSession === session) this.activeRunSession = null;
     this.tm.ackObligations.scheduleAckRedriveAfterIdle(session.id);
+    this.publishTurnReport();
     void this.retireSession(session);
     void this.tm.roster.emitAgentUpdate(session.id);
   }

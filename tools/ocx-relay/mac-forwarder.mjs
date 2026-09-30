@@ -77,9 +77,13 @@ export function startForwarder(config) {
     maxConcurrency, maxQueue, queueTimeoutMs, retry429, retryMaxDelayMs,
     idleTimeoutMs, bodyBufferLimit,
     upstreamMaxTotalMs = 600000,
+    sweepIntervalMs = 15000,
   } = config;
 
   const pool = { active: 0, queue: [] };
+  // What this process is actually holding. The watchdog reads this table
+  // instead of deciding that a missing log line is still a live request.
+  const live = new Map();
 
   function safeRespond(res, code, headers, payload) {
     try {
@@ -96,8 +100,26 @@ export function startForwarder(config) {
       safeRespond(clientRes, 403, { "content-type": "application/json" }, JSON.stringify({ error: "relay token required" }));
       return;
     }
-    const isChat = clientReq.method === "POST"
-      && clientReq.url.split("?")[0] === CHAT_PATH;
+    const urlPath = (clientReq.url || "/").split("?")[0];
+    if (clientReq.method === "GET" && urlPath === "/v1/relay/inflight") {
+      const now = Date.now();
+      const entries = [];
+      for (const entry of live.values()) {
+        if (entry.finished || entry.released) continue;
+        entries.push({
+          id: entry.id,
+          started: entry.started,
+          ageMs: now - entry.started,
+          try: entry.tries,
+          phase: entry.phase || "upstream",
+        });
+      }
+      safeRespond(clientRes, 200, { "content-type": "application/json" }, JSON.stringify({
+        now, maxTotalMs: upstreamMaxTotalMs, entries,
+      }));
+      return;
+    }
+    const isChat = clientReq.method === "POST" && urlPath === CHAT_PATH;
     if (!isChat) return pipeThrough(clientReq, clientRes, started);
     handleChat(clientReq, clientRes, started).catch((e) => {
       log(`${new Date().toISOString()} POST ${clientReq.url} handler-error id=none ${e.message}`);
@@ -137,6 +159,7 @@ export function startForwarder(config) {
       method: clientReq.method, url: clientReq.url, started,
       tries: 0, queuedAt: 0, queueTimer: null, sleepTimer: null, totalTimer: null,
       upstream: null, clientGone: false, released: false, finished: false,
+      slotHeld: false, phase: "accepted", draining429: false,
       clientRes, headers: null, body: null,
     };
     const body = await readBody(clientReq, bodyBufferLimit);
@@ -151,9 +174,23 @@ export function startForwarder(config) {
       entry.clientGone = true;
       if (entry.queueTimer) clearTimeout(entry.queueTimer);
       if (entry.sleepTimer) clearTimeout(entry.sleepTimer);
+      entry.sleepTimer = null;
       if (entry.totalTimer) clearTimeout(entry.totalTimer);
       const queuedIndex = pool.queue.indexOf(entry);
-      if (queuedIndex >= 0) { pool.queue.splice(queuedIndex, 1); return; }
+      if (queuedIndex >= 0) {
+        pool.queue.splice(queuedIndex, 1);
+        entry.finished = true;
+        live.delete(entry.id);
+        return;
+      }
+      // Waiting out a 429 retry used to clear the sleep timer and return.
+      // The sleep callback was the only place that released the slot and it
+      // never wrote a terminal line, so the id stayed "in flight" in the log
+      // until the process restarted (2026-09-30 id=4209373a, 165 notices).
+      if (!entry.finished && !entry.released && entry.slotHeld) {
+        forceFinish(entry, entry.draining429 ? "client disconnected during retry" : "client disconnected");
+        return;
+      }
       if (entry.upstream) entry.upstream.destroy(new Error("client disconnected"));
     });
 
@@ -161,8 +198,11 @@ export function startForwarder(config) {
   }
 
   function admit(entry) {
+    live.set(entry.id, entry);
+    entry.phase = "queued";
     if (pool.active < maxConcurrency) {
       pool.active += 1;
+      entry.slotHeld = true;
       dispatch(entry);
       return;
     }
@@ -185,8 +225,12 @@ export function startForwarder(config) {
     while (pool.queue.length > 0 && pool.active < maxConcurrency) {
       const next = pool.queue.shift();
       if (next.queueTimer) clearTimeout(next.queueTimer);
-      if (next.clientGone || next.finished) continue;
+      if (next.clientGone || next.finished) {
+        live.delete(next.id);
+        continue;
+      }
       pool.active += 1;
+      next.slotHeld = true;
       dispatch(next);
     }
   }
@@ -194,12 +238,60 @@ export function startForwarder(config) {
   function releaseSlot(entry) {
     if (entry.released) return;
     entry.released = true;
+    live.delete(entry.id);
     pool.active -= 1;
     pump();
   }
 
+  // One exit for "this request is over and must not keep a slot or a log
+  // ghost". Idempotent: the deadline timer, the sweep, and a client leaving
+  // mid-retry can all reach it.
+  function forceFinish(entry, message) {
+    if (entry.released) {
+      live.delete(entry.id);
+      return;
+    }
+    if (entry.sleepTimer) clearTimeout(entry.sleepTimer);
+    entry.sleepTimer = null;
+    if (entry.queueTimer) clearTimeout(entry.queueTimer);
+    entry.queueTimer = null;
+    if (entry.totalTimer) clearTimeout(entry.totalTimer);
+    entry.totalTimer = null;
+    entry.draining429 = false;
+    const queuedIndex = pool.queue.indexOf(entry);
+    if (queuedIndex >= 0) pool.queue.splice(queuedIndex, 1);
+    if (!entry.finished) {
+      entry.finished = true;
+      log(`${new Date().toISOString()} POST ${entry.url} upstream-error id=${entry.id} ${message}`);
+      if (!entry.clientGone) {
+        safeRespond(entry.clientRes, 502, { "content-type": "application/json" }, JSON.stringify({ error: "upstream error", message }));
+      }
+    }
+    try { entry.upstream?.destroy(new Error(message)); } catch { /* socket already gone */ }
+    if (entry.slotHeld) releaseSlot(entry);
+    else live.delete(entry.id);
+  }
+
+  function sweep() {
+    const now = Date.now();
+    for (const entry of [...live.values()]) {
+      if (entry.released || entry.finished) {
+        live.delete(entry.id);
+        continue;
+      }
+      if (entry.clientGone && entry.slotHeld) {
+        forceFinish(entry, entry.draining429 ? "client disconnected during retry" : "client disconnected");
+        continue;
+      }
+      if (now - entry.started >= upstreamMaxTotalMs) {
+        forceFinish(entry, `upstream total deadline ${upstreamMaxTotalMs}ms exceeded`);
+      }
+    }
+  }
+
   function synthesize429(entry, reason) {
     entry.finished = true;
+    live.delete(entry.id);
     const queuedMs = entry.queuedAt ? Date.now() - entry.queuedAt : 0;
     log(`${new Date().toISOString()} POST ${entry.url} -> 429 ${Date.now() - entry.started}ms queued=${queuedMs}ms reason=${reason} id=${entry.id}`);
     if (entry.clientGone) return;
@@ -221,22 +313,10 @@ export function startForwarder(config) {
     // whole retry chain — live id=35e7fc81 ran 1403443ms against a 900000ms
     // budget — and parked one of only two concurrency slots for 23 minutes,
     // which is how the other bots got starved into relay queue-timeout 429s.
+    entry.phase = "upstream";
     if (entry.totalTimer === null) {
       entry.totalTimer = setTimeout(() => {
-        if (entry.finished || entry.released) return;
-        const message = `upstream total deadline ${upstreamMaxTotalMs}ms exceeded`;
-        // A retry sleep owns no upstream socket, so destroying entry.upstream
-        // here would land on the attempt that already ended and leave the client
-        // hanging. Terminate the request the way an upstream failure does.
-        if (entry.sleepTimer) {
-          clearTimeout(entry.sleepTimer);
-          entry.sleepTimer = null;
-          log(`${new Date().toISOString()} POST ${entry.url} upstream-error id=${entry.id} ${message}`);
-          safeRespond(entry.clientRes, 502, { "content-type": "application/json" }, JSON.stringify({ error: "upstream error", message }));
-          releaseSlot(entry);
-          return;
-        }
-        entry.upstream?.destroy(new Error(message));
+        forceFinish(entry, `upstream total deadline ${upstreamMaxTotalMs}ms exceeded`);
       }, upstreamMaxTotalMs);
       entry.totalTimer.unref?.();
     }
@@ -262,16 +342,26 @@ export function startForwarder(config) {
             if (drained) return;
             drained = true;
             clearTimeout(drainTimer);
+            if (entry.finished || entry.released || entry.clientGone) {
+              if (!entry.finished && !entry.released && entry.slotHeld) {
+                forceFinish(entry, "client disconnected during retry");
+              }
+              return;
+            }
             // Keep the draining flag until the next attempt dispatches: the
             // socket teardown from the deliberate destroy bubbles to the
             // request's error handler asynchronously, AFTER this callback
             // runs. Clearing it here would let that late error 502 a
             // request that is already on its way to retry.
+            entry.phase = "retry-sleep";
             entry.sleepTimer = setTimeout(() => {
               // Clear the marker as the sleep ends: the total-deadline path reads
               // it to tell "waiting to retry" from "streaming an attempt".
               entry.sleepTimer = null;
-              if (entry.clientGone || entry.finished) { entry.draining429 = false; releaseSlot(entry); return; }
+              if (entry.clientGone || entry.finished) {
+                if (!entry.finished && !entry.released) forceFinish(entry, "client disconnected during retry");
+                return;
+              }
               dispatch(entry);
             }, delay);
             if (entry.sleepTimer.unref) entry.sleepTimer.unref();
@@ -301,7 +391,7 @@ export function startForwarder(config) {
         upRes.on("error", () => {
           // Same guard as the upstream error handler: a 429-drain destroy
           // is deliberate and the retry is already scheduled.
-          if (entry.draining429) return;
+          if (entry.finished || entry.released || entry.draining429) return;
           safeRespond(entry.clientRes, 502, { "content-type": "application/json" }, JSON.stringify({ error: "upstream error" }));
           releaseSlot(entry);
         });
@@ -309,7 +399,7 @@ export function startForwarder(config) {
     );
     entry.upstream = upstream;
     upstream.on("error", (e) => {
-      if (entry.released) return;
+      if (entry.finished || entry.released) return;
       // A 429-body drain destroy is deliberate (see above): the retry is
       // already scheduled, so this error must not terminate the request.
       if (entry.draining429) return;
@@ -324,6 +414,9 @@ export function startForwarder(config) {
     upstream.end(entry.body);
   }
 
+  const sweeper = setInterval(sweep, Math.max(15, sweepIntervalMs));
+  sweeper.unref?.();
+  server.on("close", () => clearInterval(sweeper));
   server.listen(port, bind, () => {
     const address = server.address();
     log(`${new Date().toISOString()} relay listening on ${address.address}:${address.port} -> ${upstreamHost}:${upstreamPort} (chat slots=${maxConcurrency} queue=${maxQueue} queue-timeout=${queueTimeoutMs}ms retry=${retry429} idle=${idleTimeoutMs}ms total=${upstreamMaxTotalMs}ms)`);

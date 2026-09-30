@@ -114,6 +114,7 @@ async function runWatchdog(fx, extraEnv = {}) {
           FAKE_DOCKER_LOG: fx.log,
           FAKE_TRANSCRIPT_FILE: fx.transcriptFile,
           FAKE_PID_COUNTER: fx.pidCounter,
+          INFLIGHT_SOURCE: "log",
           ...extraEnv,
         },
       },
@@ -221,6 +222,164 @@ test("a dispatched canary clears the pending canary before it ever writes", asyn
   assert.ok(!alerts.includes("host-restart-canary-failed"), "a dispatched turn must not be reported as failed");
   const calls = await readFile(fx.log, "utf8");
   assert.equal((calls.match(/kill -TERM/g) || []).length, 1, "the canary verdict must not stack a second restart");
+});
+
+test("a log ghost older than the forwarder cap does not block the host restart", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  // The only unfinished id is impossibly old. A real in-flight request would
+  // suppress the restart; this one must not, or a leaked slot blocks recovery
+  // of every wedged bot (2026-09-30, id=4209373a).
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(50)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4 total=900000ms)`,
+    `${isoMinutesAgo(40)} POST /v1/chat/completions started id=4209373a try=0 queued=0ms`,
+    `${isoMinutesAgo(40)} POST /v1/chat/completions retry id=4209373a attempt=1 in=2295ms`,
+    `${isoMinutesAgo(20)} POST /v1/chat/completions started id=aaaa1111 try=0 queued=0ms`,
+    `${isoMinutesAgo(19)} POST /v1/chat/completions -> 200 30000ms queued=0ms try=0 id=aaaa1111`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  await runWatchdog(fx);
+
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(calls.includes("kill -TERM"), "a ghost started-line must not suppress the host restart");
+  const alerts = await readFile(fx.alerts, "utf8");
+  assert.ok(alerts.includes("host-wedge-restarted"), `expected a restart, got: ${alerts}`);
+  assert.ok(alerts.includes("inflight-accounting:4209373a"), "the ghost is reported as accounting");
+  assert.ok(!alerts.includes("[inflight:4209373a]"), "the ghost must not be reported as in flight");
+});
+
+test("a clock gap re-baselines spawn clocks and does not restart", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  const state = JSON.parse(await readFile(fx.stateFile, "utf8"));
+  state.lastLoopAt = Date.now() - 3 * 60 * 60_000;
+  await writeFile(fx.stateFile, JSON.stringify(state));
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(20)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(15)} POST /v1/chat/completions started id=aaaa1111 try=0 queued=0ms`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions -> 200 30000ms queued=0ms try=0 id=aaaa1111`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  const stdout = await runWatchdog(fx);
+  assert.ok(stdout.includes("re-baseline only"), `expected a re-baseline, got: ${stdout}`);
+  const calls = await readFile(fx.log, "utf8").catch(() => "");
+  assert.ok(!calls.includes("kill -TERM"), "the wake-up loop must not restart the host");
+  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+  assert.equal(alerts, "", `the wake-up loop must not alert, got: ${alerts}`);
+  const after = JSON.parse(await readFile(fx.stateFile, "utf8"));
+  const seenAt = after.lastSpawnSeen[AGENT_A];
+  const pinned = typeof seenAt === "number" ? seenAt : seenAt.seenAt;
+  assert.ok(Date.now() - pinned < 60_000, "spawn clocks are re-pinned to the wake-up");
+});
+
+test("a fresh host report with no turns is not a stall", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(20)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(15)} POST /v1/chat/completions started id=aaaa1111 try=0 queued=0ms`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions -> 200 30000ms queued=0ms try=0 id=aaaa1111`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  await runWatchdog(fx, {
+    TURN_REPORT_JSON: JSON.stringify({ writtenAt: Date.now(), pid: 1, turns: [] }),
+  });
+
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "an idle host must not be restarted");
+  const alerts = await readFile(fx.alerts, "utf8").catch(() => "");
+  assert.ok(!alerts.includes("疑似卡死"), `a quiet transcript is not a stall when the host says nothing is running, got: ${alerts}`);
+});
+
+test("a fresh host report listing the turn still restarts a silent one", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(20)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(15)} POST /v1/chat/completions started id=aaaa1111 try=0 queued=0ms`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions -> 200 30000ms queued=0ms try=0 id=aaaa1111`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+  const startedAt = Date.now() - 12 * 60_000;
+
+  await runWatchdog(fx, {
+    TURN_REPORT_JSON: JSON.stringify({
+      writtenAt: Date.now(),
+      pid: 1,
+      turns: [
+        { agentId: AGENT_A, startedAt, inFlight: 1 },
+        { agentId: AGENT_B, startedAt, inFlight: 1 },
+      ],
+    }),
+  });
+
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(calls.includes("kill -TERM"), "a turn the host still lists as running can restart the host");
+});
+
+test("a stale host report does not hide a stalled turn", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  await writeFile(fx.forwarderLog, [
+    `${isoMinutesAgo(20)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+    `${isoMinutesAgo(15)} POST /v1/chat/completions started id=aaaa1111 try=0 queued=0ms`,
+    `${isoMinutesAgo(14)} POST /v1/chat/completions -> 200 30000ms queued=0ms try=0 id=aaaa1111`,
+    "",
+  ].join("\n"));
+  await writeFile(fx.transcriptFile, [
+    transcriptLine(AGENT_A, 20),
+    transcriptLine(AGENT_B, 22),
+    "",
+  ].join("\n"));
+
+  await runWatchdog(fx, {
+    TURN_REPORT_JSON: JSON.stringify({
+      writtenAt: Date.now() - 10 * 60_000,
+      pid: 1,
+      turns: [],
+    }),
+  });
+
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(calls.includes("kill -TERM"), "a report the host stopped updating must not clear a stall");
 });
 
 test("an in-flight inference suppresses the wedge restart (slow, not wedged)", async () => {

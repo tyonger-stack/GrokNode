@@ -30,6 +30,10 @@ const ALERTS_LOG = process.env.WATCHDOG_ALERTS || path.join(RELAY_DIR, "watchdog
 const DOCKER = process.env.DOCKER || "/usr/local/bin/docker";
 const CONTAINER = process.env.CONTAINER || "grok-node-local-vm";
 const HOST_LOG = process.env.HOST_LOG || "/tmp/sand-host.log";
+const TURN_REPORT_PATH = process.env.TURN_REPORT_PATH || "/tmp/sand-host-turns.json";
+// The host rewrites this file every 15s. Older than three beats means the
+// process stopped answering, and the transcript check stays in force.
+const TURN_REPORT_MAX_AGE_MS = Number(process.env.TURN_REPORT_MAX_AGE_MS ?? "45000");
 const TRANSCRIPT_ROOT = process.env.TRANSCRIPT_ROOT || "/home/box/sand-data/agent-transcripts";
 const AGENT_ROOT = process.env.AGENT_ROOT || "/home/box/sand-data/agents";
 
@@ -51,6 +55,20 @@ const SLOW_STALL_ALERT_COOLDOWN_MS = Number(process.env.SLOW_STALL_ALERT_COOLDOW
 // An outage notice is a condition, not an event: it persists for as long as
 // the network is down, so it reports on a long cadence instead of every loop.
 const OUTAGE_ALERT_COOLDOWN_MS = Number(process.env.OUTAGE_ALERT_COOLDOWN_MS ?? "3600000");
+// A live forwarder always finishes a chat request by this age (relay-run.sh
+// sets 900000). Anything older is a missing terminal line, not a request.
+const UPSTREAM_MAX_TOTAL_MS = Number(process.env.UPSTREAM_MAX_TOTAL_MS ?? "900000");
+const ACCOUNTING_GRACE_MS = Number(process.env.ACCOUNTING_GRACE_MS ?? "120000");
+// Wall-clock jump bigger than this means the Mac slept (or this process was
+// not scheduled). Ages computed across that gap are not evidence.
+const SLEEP_GAP_MS = Number(process.env.SLEEP_GAP_MS ?? String(INTERVAL_MS * 3));
+// Reminders after the first notice, then silence until recovery. A class
+// cooldown below is a floor so a slow-turn or outage reminder is never
+// *more* frequent than it was before this schedule existed.
+const REMINDER_GAPS_MS = (process.env.REMINDER_GAPS_MS ?? "900000,3600000,14400000")
+  .split(",")
+  .map((part) => Number(part.trim()))
+  .filter((part) => Number.isFinite(part) && part >= 0);
 // How recently the forwarder must have seen inference traffic for a stalled
 // turn to count as "slow upstream" rather than "dead". Sized to cover a
 // legitimately long turn (multi-step tool chains run 90s+ per step).
@@ -136,7 +154,7 @@ const state = loadState();
 const nameCache = new Map();
 
 function loadState() {
-  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {}, lastRepair: {}, lastRepairOk: {}, lastHostRestart: {}, canary: null, outageSince: null, lastProbeOkAt: 0, lastProbeFailAt: 0 };
+  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {}, lastRepair: {}, lastRepairOk: {}, lastHostRestart: {}, canary: null, outageSince: null, lastProbeOkAt: 0, lastProbeFailAt: 0, conditions: {}, lastLoopAt: 0 };
   try {
     const parsed = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
     return {
@@ -156,6 +174,8 @@ function loadState() {
       // the relay was already seen failing.
       lastProbeOkAt: Number(parsed.lastProbeOkAt ?? 0),
       lastProbeFailAt: Number(parsed.lastProbeFailAt ?? 0),
+      conditions: parsed.conditions ?? {},
+      lastLoopAt: Number(parsed.lastLoopAt ?? 0),
     };
   } catch {
     return fresh;
@@ -220,13 +240,51 @@ const forwarderActivity = {
 // traffic), or the two gates can never agree: terminals old enough to trip
 // the wedge would already have aged out of a shorter capacity window.
 const CAPACITY_WINDOW_MS = Number(process.env.CAPACITY_WINDOW_MS ?? "1800000");
-function checkInflightStalls(now) {
+
+function fetchLiveInflight() {
+  if (process.env.INFLIGHT_SOURCE === "log") return Promise.resolve(null);
+  if (process.env.INFLIGHT_SOURCE === "json" || process.env.FORWARDER_INFLIGHT_JSON) {
+    const raw = process.env.FORWARDER_INFLIGHT_JSON;
+    if (!raw) return Promise.resolve(null);
+    try { return Promise.resolve(JSON.parse(raw)); } catch { return Promise.resolve(null); }
+  }
+  return new Promise((resolve) => {
+    let token = "";
+    try { token = fs.readFileSync(path.join(RELAY_DIR, "token"), "utf8").trim(); } catch { /* probe unauthenticated */ }
+    const req = http.get(
+      {
+        host: "127.0.0.1",
+        port: Number(process.env.FORWARDER_PORT ?? "11010"),
+        path: "/v1/relay/inflight",
+        headers: token ? { "x-relay-token": token } : {},
+        timeout: 2000,
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          if (res.statusCode !== 200) return resolve(null);
+          try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
+          catch { resolve(null); }
+        });
+      },
+    );
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
+  });
+}
+
+async function checkInflightStalls(now) {
+  const live = await fetchLiveInflight();
   const tail = readTail(FORWARDER_LOG, LOG_TAIL_BYTES);
   const startedAt = new Map();
   const finished = new Set();
   let lastPostAt = 0;
+  let capFromLog = 0;
   const terminals = [];
   for (const line of tail.split("\n")) {
+    const totalMatch = line.match(/\btotal=(\d+)ms\b/);
+    if (line.includes("relay listening") && totalMatch) capFromLog = Number(totalMatch[1]);
     if (line.includes("relay listening")) {
       // Forwarder (re)start: every request still marked in-flight belonged to
       // the previous process, which died without ever logging their terminal
@@ -265,30 +323,75 @@ function checkInflightStalls(now) {
       }
     }
   }
-  forwarderActivity.inflight = [...startedAt.keys()].filter((id) => !finished.has(id)).length;
   forwarderActivity.lastPostAt = lastPostAt;
   forwarderActivity.recentTerminal = terminals.filter((t) => now - t.at < CAPACITY_WINDOW_MS);
-  // 2026-09-30: during an outage every in-flight request hangs at once, and
-  // this loop alerted per request id — a morning of network loss produced
-  // dozens of "request N has hung" notices that all said the same thing and
-  // none of which named the cause. Fold them into ONE outage notice and stay
-  // quiet while it lasts; per-request detail goes to the log.
-  //
-  // Activity, not just completions, decides: a system that is still starting
-  // requests is a busy system, and a request that is genuinely stuck while
-  // the fleet is otherwise idle is a stuck request, not a network outage.
-  // Only "no request started AND none completed" is an outage.
+  const cap = Number(live?.maxTotalMs) || capFromLog || UPSTREAM_MAX_TOTAL_MS;
+  const accountingAfter = cap + ACCOUNTING_GRACE_MS;
+  // 2026-10-01: a missing terminal line is not a live request. The forwarder
+  // finishes every chat request by `cap` (and GET /v1/relay/inflight lists
+  // only what the process still holds). Older than that — 2026-09-30
+  // id=4209373a was still "hung" at 633 minutes — is an accounting error.
+  // It must not count as in flight, or it blocks the host-wedge restart and
+  // gets re-reported every loop.
+  const accounting = [];
+  const hung = [];
+  const seenAccounting = new Set();
+  function noteAccounting(id, ts) {
+    if (seenAccounting.has(id) || finished.has(id)) return;
+    seenAccounting.add(id);
+    accounting.push({ id, ts });
+  }
+  if (live && Array.isArray(live.entries)) {
+    const liveIds = new Set();
+    for (const entry of live.entries) {
+      if (!entry || typeof entry.id !== "string") continue;
+      liveIds.add(entry.id);
+      const age = Number.isFinite(entry.ageMs) ? entry.ageMs : now - Number(entry.started);
+      const ts = now - age;
+      if (age > accountingAfter) noteAccounting(entry.id, ts);
+      else if (age >= INFLIGHT_STALL_MS) hung.push({ id: entry.id, ts });
+    }
+    forwarderActivity.inflight = live.entries.length - accounting.filter((item) => liveIds.has(item.id)).length;
+    for (const [id, ts] of startedAt) {
+      if (finished.has(id) || liveIds.has(id)) continue;
+      if (now - ts >= INFLIGHT_STALL_MS) noteAccounting(id, ts);
+    }
+  } else {
+    let inflight = 0;
+    for (const [id, ts] of startedAt) {
+      if (finished.has(id)) continue;
+      if (now - ts > accountingAfter) noteAccounting(id, ts);
+      else {
+        inflight += 1;
+        if (now - ts >= INFLIGHT_STALL_MS) hung.push({ id, ts });
+      }
+    }
+    forwarderActivity.inflight = inflight;
+  }
+  for (const { id, ts } of accounting) {
+    const minutes = Math.round((now - ts) / 60000);
+    alert(
+      `inflight-accounting:${id}`,
+      `推理请求 id=${id} 在记录里已 ${minutes} 分钟没有终态，超过转发器 ${Math.round(cap / 60000)} 分钟硬上限，或转发器内存里已经没有它。这是记账错误，不是仍在进行的推理；不再计入 in-flight，也不会挡住 host 重启。`,
+    );
+  }
   const lastStartAt = [...startedAt.values()].reduce((max, ts) => Math.max(max, ts), 0);
   const recentActivity = now - Math.max(lastStartAt, lastPostAt) < INFLIGHT_STALL_MS;
-  const hung = [];
-  for (const [id, ts] of startedAt) {
-    if (finished.has(id)) continue;
-    if (now - ts >= INFLIGHT_STALL_MS) hung.push({ id, ts });
+  const hungIds = new Set(hung.map((item) => item.id));
+  for (const key of Object.keys(state.conditions ?? {})) {
+    if (key.startsWith("inflight-accounting:")) {
+      const id = key.slice("inflight-accounting:".length);
+      if (!seenAccounting.has(id)) clearCondition(key, `推理请求 id=${id} 的日志缺口已消失。`);
+    } else if (key.startsWith("inflight:")) {
+      const id = key.slice("inflight:".length);
+      if (!hungIds.has(id)) clearCondition(key, `推理请求 id=${id} 已结束，不再挂起。`);
+    }
   }
   if (hung.length === 0) {
     if (state.outageSince != null) {
       const minutes = Math.round((now - state.outageSince) / 60000);
       state.outageSince = null;
+      clearCondition("upstream-outage");
       console.log(`${new Date(now).toISOString()} upstream recovered after ${minutes}min`);
       alert("upstream-recovered", `上游已恢复响应（中断持续约 ${minutes} 分钟），推理链路重新可用。`);
     }
@@ -343,6 +446,29 @@ function checkInflightStalls(now) {
 // process itself is wedged, not just one slow bot).
 const stallReport = [];
 let lastTranscriptMtimes = new Map();
+
+async function readHostTurnReport(now) {
+  const pinned = process.env.TURN_REPORT_JSON;
+  let parsed = null;
+  if (pinned === "missing") return null;
+  if (pinned) {
+    try { parsed = JSON.parse(pinned); } catch { return null; }
+  } else {
+    try {
+      parsed = JSON.parse(await execInContainer(`cat ${TURN_REPORT_PATH}`));
+    } catch {
+      return null;
+    }
+  }
+  const writtenAt = Number(parsed?.writtenAt);
+  if (!Number.isFinite(writtenAt) || now - writtenAt > TURN_REPORT_MAX_AGE_MS) return null;
+  const turns = new Map();
+  for (const turn of parsed.turns ?? []) {
+    if (turn && typeof turn.agentId === "string" && turn.agentId.length > 0) turns.set(turn.agentId, turn);
+  }
+  return turns;
+}
+
 async function checkStalledTurns(now) {
   stallReport.length = 0;
   // Stale mtimes would let the canary verdict read a pre-restart write as
@@ -388,16 +514,30 @@ async function checkStalledTurns(now) {
     mtimes.set(agentId, Math.max(mtimes.get(agentId) ?? 0, ts));
   }
   lastTranscriptMtimes = mtimes;
+  // null: the host did not answer, so a quiet transcript still counts.
+  // a Map (possibly empty): the host answered, and only listed turns are alive.
+  const reportedTurns = await readHostTurnReport(now);
 
   for (const [agentId, tracked] of Object.entries(state.lastSpawnSeen)) {
     const { seenAt, baselineMtime } =
       typeof tracked === "number"
         ? { seenAt: tracked, baselineMtime: -1 }
         : { seenAt: tracked.seenAt ?? 0, baselineMtime: tracked.baselineMtime ?? -1 };
-    if (now - seenAt > SPAWN_WINDOW_MS) {
+    const reported = reportedTurns?.get(agentId) ?? null;
+    if (reportedTurns && !reported) {
+      // The host is up and this agent has no in-flight turn. A spawned worker
+      // plus a quiet transcript is not a stalled turn.
+      delete state.lastSpawnSeen[agentId];
+      const short = agentId.slice(0, 8);
+      clearCondition(`stall:${agentId}`, `bot ${short} 当前没有在跑的回合。`);
+      clearCondition(`stall-slow:${agentId}`);
+      continue;
+    }
+    if (!reported && now - seenAt > SPAWN_WINDOW_MS) {
       delete state.lastSpawnSeen[agentId];
       continue;
     }
+    const turnOrigin = Number.isFinite(reported?.startedAt) ? reported.startedAt : seenAt;
     const mtime = mtimes.get(agentId);
     if (mtime === undefined) {
       // A spawned agent with NO transcript file at all is the most wedged
@@ -405,7 +545,7 @@ async function checkStalledTurns(now) {
       // was skipped silently and never entered the wedge count; now it
       // counts with a stale epoch so a never-written turn still trips the
       // stall timer from its spawn sighting.
-      const turnAge = now - seenAt;
+      const turnAge = now - turnOrigin;
       if (turnAge >= TRANSCRIPT_STALL_MS) {
         const name = await agentName(agentId);
         stallReport.push({ agentId, seenAt, turnAge, noTranscript: true });
@@ -425,6 +565,9 @@ async function checkStalledTurns(now) {
     // acceptance is exactly what hid a wedged turn on a busy bot.)
     if (mtime > record.baselineMtime) {
       delete state.lastSpawnSeen[agentId];
+      const short = agentId.slice(0, 8);
+      clearCondition(`stall:${agentId}`, `bot ${short} 已恢复写入 transcript。`);
+      clearCondition(`stall-slow:${agentId}`, `bot ${short} 的长回合已有 transcript 写入。`);
       continue;
     }
     // Stall: the turn dispatched at seenAt has produced NOTHING for
@@ -432,7 +575,7 @@ async function checkStalledTurns(now) {
     // silence from the previous transcript write, which is usually idle time
     // BEFORE the turn — that made every routine wake-up on an idle bot look
     // like a 60+ minute stall (the 2026-09-26 false-alarm storm).
-    const turnAge = now - seenAt;
+    const turnAge = now - turnOrigin;
     if (turnAge >= TRANSCRIPT_STALL_MS) {
       // Slow-not-dead exemption (2026-09-29): a turn legitimately writes
       // nothing between dispatch and its first token, and a multi-step turn
@@ -499,8 +642,10 @@ function checkForwarderLiveness(now) {
         // The probe answers while chat requests hang, so it separates a stuck
         // request from a dead path. Both directions are recorded: an outage is
         // only declared when the relay has been seen FAILING.
-        if (res.statusCode === 200) forwarderActivity.lastProbeOkAt = Date.now();
-        else forwarderActivity.lastProbeFailAt = Date.now();
+        if (res.statusCode === 200) {
+          forwarderActivity.lastProbeOkAt = Date.now();
+          clearCondition("forwarder-down", "中继 11010 已恢复响应。");
+        } else forwarderActivity.lastProbeFailAt = Date.now();
         if (res.statusCode !== 200) {
           alert("forwarder-down", `中继 11010 探活异常（HTTP ${res.statusCode}）——所有 bot 推理可能已断。`);
         }
@@ -697,6 +842,7 @@ async function repairContainerRelay(now, key = "container-relay", options = {}) 
 async function checkContainerRelayLiveness(now) {
   const first = await probeContainerRelay();
   if (first.ok) {
+    clearCondition("container-relay-down", "容器内 10100 已恢复响应。");
     // Probe green is not the whole story: after a container rebuild the
     // platform relaunches the relay with a DHCP-derived address baked in. That
     // address happens to work right now and dies on the next network switch —
@@ -978,28 +1124,23 @@ function notifyMacOS(message) {
   osascriptNotify(withPointer);
 }
 
-function alert(key, message, fields = {}) {
-  const now = Date.now();
-  // Three cadences: a silent stall is actionable and repeats fast, a slow
-  // turn is background information and repeats rarely, everything else keeps
-  // the long catch-all cooldown.
-  const cooldown = key === "upstream-outage"
-    ? OUTAGE_ALERT_COOLDOWN_MS
-    : key.startsWith("stall-slow:")
-      ? SLOW_STALL_ALERT_COOLDOWN_MS
-      : key.startsWith("stall:")
-        ? STALL_ALERT_COOLDOWN_MS
-        : ALERT_COOLDOWN_MS;
-  if (now - (state.lastAlert[key] ?? 0) < cooldown) return;
-  // While an outage is active, its single notice IS the diagnosis. Every
-  // stall/inflight below it is a symptom of the same cause, and an hour of
-  // network loss must not produce an hour of per-bot notices.
-  if (
-    state.outageSince != null
-    && (key.startsWith("stall:") || key.startsWith("stall-slow:") || key.startsWith("inflight:"))
-  ) return;
-  state.lastAlert[key] = now;
-  const line = `${new Date(now).toISOString()} [${key}] ${message}`;
+const ACTION_KEYS = new Set([
+  "host-wedge-restarted",
+  "host-wedge-restart-failed",
+  "host-wedge-capacity",
+  "host-restart-canary-failed",
+  "upstream-recovered",
+]);
+
+function conditionFloor(key) {
+  if (key === "upstream-outage") return OUTAGE_ALERT_COOLDOWN_MS;
+  if (key.startsWith("stall-slow:")) return SLOW_STALL_ALERT_COOLDOWN_MS;
+  if (key.startsWith("stall:")) return STALL_ALERT_COOLDOWN_MS;
+  return ALERT_COOLDOWN_MS;
+}
+
+function emitAlert(key, message, fields = {}) {
+  const line = `${new Date().toISOString()} [${key}] ${message}`;
   console.log(`ALERT ${line}`);
   try { fs.appendFileSync(ALERTS_LOG, line + "\n"); } catch { /* non-fatal */ }
   if (MACOS_NOTIFY) notifyMacOS(message);
@@ -1008,7 +1149,6 @@ function alert(key, message, fields = {}) {
     // so they must NEVER be interpolated into a shell string — a bot named
     // `$(curl …)` would execute on the Mac. Pass values via argv/env on the
     // expanded template; keep the template itself a static operator string.
-    // {message} {agent} {name} are substituted with sanitized id-safe tokens.
     const safe = (value) => String(value ?? "unknown").replace(/[^\w.:/-]/g, "_").slice(0, 128);
     const parts = [ALERT_COMMAND, safe(key), safe(message).slice(0, 512), safe(fields.agent), safe(fields.name ?? fields.agent)];
     const shell = process.platform === "darwin" ? "/bin/zsh" : "/bin/sh";
@@ -1016,9 +1156,67 @@ function alert(key, message, fields = {}) {
   }
 }
 
+function clearCondition(key, recoveryMessage) {
+  const cond = state.conditions?.[key];
+  if (!cond?.open) return;
+  cond.open = false;
+  if (recoveryMessage) emitAlert(`${key}-recovered`, recoveryMessage);
+}
+
+function alert(key, message, fields = {}) {
+  const now = Date.now();
+  // While an outage is active, its single notice IS the diagnosis. Every
+  // stall/inflight below it is a symptom of the same cause, and an hour of
+  // network loss must not produce an hour of per-bot notices.
+  if (
+    state.outageSince != null
+    && (key.startsWith("stall:") || key.startsWith("stall-slow:") || key.startsWith("inflight:") || key.startsWith("inflight-accounting:"))
+  ) return;
+  // A restart or a recovery is an event. Ongoing conditions open once, remind
+  // a few times on a lengthening gap, then stay quiet until they clear.
+  if (ACTION_KEYS.has(key)) {
+    if (now - (state.lastAlert[key] ?? 0) < ALERT_COOLDOWN_MS) return;
+    state.lastAlert[key] = now;
+    emitAlert(key, message, fields);
+    return;
+  }
+  if (!state.conditions) state.conditions = {};
+  const cond = state.conditions[key];
+  if (!cond?.open) {
+    state.conditions[key] = { open: true, since: now, lastSent: now, reminders: 0 };
+    state.lastAlert[key] = now;
+    emitAlert(key, message, fields);
+    return;
+  }
+  const scheduled = REMINDER_GAPS_MS[cond.reminders];
+  if (scheduled == null) return;
+  const gap = Math.max(scheduled, conditionFloor(key));
+  if (now - cond.lastSent < gap) return;
+  cond.reminders += 1;
+  cond.lastSent = now;
+  state.lastAlert[key] = now;
+  emitAlert(key, message, fields);
+}
+
 async function runOnce() {
   const now = Date.now();
-  try { checkInflightStalls(now); } catch (e) { console.log(`checkInflightStalls failed: ${e.message}`); }
+  const prevLoop = Number(state.lastLoopAt ?? 0);
+  const gap = prevLoop ? now - prevLoop : 0;
+  state.lastLoopAt = now;
+  if (prevLoop && gap > SLEEP_GAP_MS) {
+    // The stall clock is "now minus seenAt". A lid-sleep makes every
+    // pre-sleep spawn look hours dead on the wake-up loop, and the log-tail
+    // ages jump with the wall clock too. Re-pin spawn clocks and decide
+    // nothing this round — including not restarting the host.
+    console.log(`${new Date(now).toISOString()} clock gap ${Math.round(gap / 1000)}s, re-baseline only`);
+    for (const [agentId, tracked] of Object.entries(state.lastSpawnSeen ?? {})) {
+      if (typeof tracked === "number") state.lastSpawnSeen[agentId] = now;
+      else state.lastSpawnSeen[agentId] = { ...tracked, seenAt: now };
+    }
+    saveState();
+    return;
+  }
+  try { await checkInflightStalls(now); } catch (e) { console.log(`checkInflightStalls failed: ${e.message}`); }
   try { await checkStalledTurns(now); } catch (e) { console.log(`checkStalledTurns failed: ${e.message}`); }
   // Order matters: the wedge check consumes stallReport (from stalled turns)
   // and forwarderActivity (from inflight), so it must run after both — and it

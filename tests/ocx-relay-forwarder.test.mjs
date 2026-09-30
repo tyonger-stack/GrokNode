@@ -443,6 +443,83 @@ test("the total deadline still fires on a live retried attempt", async () => {
   }
 });
 
+test("GET /v1/relay/inflight reports only what the process is holding", async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const upstream = await startMockUpstream(async (req, res) => {
+    await gate;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end('{"ok":true}');
+  });
+  const relay = await startRelay(upstream.port, { maxConcurrency: 1 });
+  try {
+    const pending = relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: CHAT_BODY });
+    const deadline = Date.now() + 2000;
+    while (!relay.logs.some((line) => line.includes(" started ")) && Date.now() < deadline) await sleep(20);
+    const denied = await relayRequest(relay.port, { path: "/v1/relay/inflight", token: "" });
+    assert.equal(denied.status, 403);
+    const snap = JSON.parse((await relayRequest(relay.port, { path: "/v1/relay/inflight" })).body.toString());
+    assert.equal(snap.entries.length, 1);
+    assert.equal(snap.entries[0].phase, "upstream");
+    assert.equal(typeof snap.maxTotalMs, "number");
+    release();
+    assert.equal((await pending).status, 200);
+    const after = JSON.parse((await relayRequest(relay.port, { path: "/v1/relay/inflight" })).body.toString());
+    assert.equal(after.entries.length, 0);
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
+test("a client abort during a 429 retry writes a terminal line and frees the slot", async () => {
+  let attempts = 0;
+  const upstream = await startMockUpstream(async (req, res) => {
+    attempts += 1;
+    if (attempts === 1) {
+      res.writeHead(429, { "content-type": "application/json" });
+      res.end('{"error":"slow down"}');
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end('{"done":true}');
+  });
+  const relay = await startRelay(upstream.port, { maxConcurrency: 1, retry429: 2, retryMaxDelayMs: 5000 });
+  try {
+    const aborting = http.request(
+      {
+        host: "127.0.0.1",
+        port: relay.port,
+        method: "POST",
+        path: "/v1/chat/completions",
+        headers: { "x-relay-token": TOKEN, "content-length": Buffer.byteLength(CHAT_BODY) },
+      },
+      () => {},
+    );
+    aborting.on("error", () => {});
+    aborting.end(CHAT_BODY);
+    const deadline = Date.now() + 2000;
+    while (!relay.logs.some((line) => line.includes(" retry ")) && Date.now() < deadline) await sleep(20);
+    assert.ok(relay.logs.some((line) => line.includes(" retry ")), "the 429 retry was not scheduled");
+    aborting.destroy();
+
+    const startedAt = Date.now();
+    const follower = await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: CHAT_BODY });
+    const elapsed = Date.now() - startedAt;
+    assert.equal(follower.status, 200);
+    assert.ok(elapsed < 1500, `follower took ${elapsed}ms; the retry still held the slot`);
+    assert.ok(
+      relay.logs.some((line) => line.includes("client disconnected during retry") && line.includes("id=")),
+      `missing terminal line: ${relay.logs.join("\n")}`,
+    );
+    const snap = JSON.parse((await relayRequest(relay.port, { path: "/v1/relay/inflight" })).body.toString());
+    assert.ok(!snap.entries.some((entry) => relay.logs.some((line) => line.includes(`id=${entry.id}`) && line.includes("client disconnected"))));
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
 test("a mid-stream client abort frees its slot for the next request", async () => {
   let seen = 0;
   const upstream = await startMockUpstream(async (req, res) => {
