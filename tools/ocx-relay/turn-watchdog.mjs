@@ -50,8 +50,9 @@ const ALERT_COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS ?? "180000");
 const STALL_ALERT_COOLDOWN_MS = Number(process.env.STALL_ALERT_COOLDOWN_MS ?? "180000");
 // Slow-turn notices are background information: the box is working, nobody
 // has to act. Reporting them as often as real stalls buries the actionable
-// signal (2026-09-29: 40+ notifications in one afternoon).
-const SLOW_STALL_ALERT_COOLDOWN_MS = Number(process.env.SLOW_STALL_ALERT_COOLDOWN_MS ?? "1800000");
+// signal (2026-09-29: 40+ notifications in one afternoon; 2026-10-01: even
+// 30 minutes per bot was still too chatty for a condition nobody acts on).
+const SLOW_STALL_ALERT_COOLDOWN_MS = Number(process.env.SLOW_STALL_ALERT_COOLDOWN_MS ?? "7200000");
 // An outage notice is a condition, not an event: it persists for as long as
 // the network is down, so it reports on a long cadence instead of every loop.
 const OUTAGE_ALERT_COOLDOWN_MS = Number(process.env.OUTAGE_ALERT_COOLDOWN_MS ?? "3600000");
