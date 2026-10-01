@@ -1,4 +1,4 @@
-# Grok 0.18 本地版
+# Grok node（Grok bot 本地版）
 
 
 本仓库是对公开发布的 Grok Bot 0.18.0 macOS 应用所做的非官方本地化改造：先对桌面
