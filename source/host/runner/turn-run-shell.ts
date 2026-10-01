@@ -11,6 +11,10 @@ import {
   type PromptExecutor,
 } from "./send-message-reminder-middleware.js";
 import { createStartOfTurnAckReminderMiddleware } from "./start-of-turn-ack-reminder-middleware.js";
+import {
+  createModelStreamWallClockMiddleware,
+  resolveModelStreamWallClockLimitMs,
+} from "./model-stream-wall-clock.js";
 import type { RetryPolicy } from "./transient-stream-error.js";
 import { SimplePromptToolExecutor } from "../../packages/agent/tool-stream-executor.js";
 import {
@@ -193,7 +197,11 @@ export async function createTurnAgentRunContext<ContextValue>(
   const profileUpdateForTurn = input.systemPromptAssembly?.getAgentProfileUpdateForTurn(
     profilePromptSnapshot,
   );
-  const baseExecutor = (): PromptExecutor => agent.getExecutor();
+  const applyModelStreamWallClockLimit = createModelStreamWallClockMiddleware(
+    resolveModelStreamWallClockLimitMs(),
+  );
+  const baseExecutor = (): PromptExecutor =>
+    applyModelStreamWallClockLimit(agent.getExecutor());
   const toolSession = {
     getExecutor: () => {
       const withDiskPressure = diskPressureReminderEpisodeId == null

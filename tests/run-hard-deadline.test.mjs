@@ -15,15 +15,22 @@ const cacheDir = path.join(root, "node_modules", ".cache");
 
 const lifecycleOut = path.join(cacheDir, "run-lifecycle-deadline.cjs");
 await build({ entryPoints: [path.join(root, "source/host/extensions/transcript/run-lifecycle.ts")], bundle: true, platform: "node", format: "cjs", outfile: lifecycleOut, logLevel: "error", plugins: [jsToTs] });
-const { RunLifecycle, withRunHardDeadline } = createRequire(import.meta.url)(lifecycleOut);
+const {
+  RunLifecycle,
+  RunProgressTracker,
+  withRunHardDeadline,
+  RUN_IDLE_DEADLINE_DEFAULT_MS,
+  RUN_HARD_DEADLINE_DEFAULT_MS,
+} = createRequire(import.meta.url)(lifecycleOut);
 
 const poolOut = path.join(cacheDir, "agent-worker-pool-deadline.cjs");
 await build({ entryPoints: [path.join(root, "source/host/agent-isolation/agent-worker-pool.ts")], bundle: true, platform: "node", format: "cjs", outfile: poolOut, logLevel: "error", plugins: [jsToTs] });
 const { AgentWorkerPool, AgentWorkerConnection, DEFAULT_RPC_DEADLINE_MS } = createRequire(import.meta.url)(poolOut);
 
-// Small deadline for every test in this file; the production default is
-// 30 minutes and would time the tests out instead. The tick floor stays at
-// its 1s default, so awaiting tests budget one full tick cycle of margin.
+// Small deadline for every test in this file; the production defaults
+// (10-minute idle, 2-hour total) would time the tests out instead. The tick
+// floor stays at its 1s default, so awaiting tests budget one full tick cycle
+// of margin.
 process.env.SAND_RUN_HARD_DEADLINE_MS = "150";
 
 // A worker that answers init and normal blobs, but never replies to the
@@ -248,6 +255,198 @@ test("a task that finishes beside an expired tick is not killed or notified", as
     else process.env.SAND_DISABLE_RUN_SCHEDULER = previousScheduler;
   }
 });
+
+async function withEnv(overrides, body) {
+  const previous = {};
+  for (const [key, value] of Object.entries(overrides)) {
+    previous[key] = process.env[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    return await body();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("defaults judge progress, not elapsed time: 10-minute idle, 2-hour total", () => {
+  assert.equal(RUN_IDLE_DEADLINE_DEFAULT_MS, 10 * 60_000);
+  assert.equal(RUN_HARD_DEADLINE_DEFAULT_MS, 2 * 60 * 60_000);
+});
+
+test("a run with no progress fails on the idle budget with a user-visible stall error", () =>
+  withEnv({ SAND_RUN_HARD_DEADLINE_MS: "3600000", SAND_RUN_IDLE_DEADLINE_MS: "1500" }, async () => {
+    const tracker = new RunProgressTracker();
+    const wrapped = withRunHardDeadline(
+      "agent-x",
+      "turn",
+      () => new Promise(() => {}),
+      () => false,
+      () => {},
+      (id) => tracker.snapshot(id),
+    );
+    let caught;
+    await assert.rejects(wrapped(), (error) => { caught = error; return true; });
+    assert.match(caught.message, /run stalled: no model output and no tool activity for 1500ms/);
+    assert.match(caught.message, /source: turn/);
+    for (const word of ["aborted", "cancel", "superseded", "interrupt", "watchdog"]) {
+      assert.ok(!caught.message.toLowerCase().includes(word), `message must not contain "${word}"`);
+    }
+  }));
+
+test("steady progress keeps a run alive past the idle budget, and silence then trips it", () =>
+  withEnv({ SAND_RUN_HARD_DEADLINE_MS: "3600000", SAND_RUN_IDLE_DEADLINE_MS: "1500" }, async () => {
+    const tracker = new RunProgressTracker();
+    const wrapped = withRunHardDeadline(
+      "agent-x",
+      "turn",
+      () => new Promise(() => {}),
+      () => false,
+      () => {},
+      (id) => tracker.snapshot(id),
+    );
+    const run = wrapped();
+    let caught;
+    run.catch((error) => { caught = error; });
+    for (let elapsed = 0; elapsed < 3500; elapsed += 250) {
+      tracker.record("agent-x", { type: "thinking-delta" });
+      await sleep(250);
+    }
+    assert.equal(caught, undefined, "a run streaming output must not be failed");
+    await run.catch(() => {});
+    assert.match(caught.message, /run stalled/);
+  }));
+
+test("progress credited to another agent does not keep this run alive", () =>
+  withEnv({ SAND_RUN_HARD_DEADLINE_MS: "3600000", SAND_RUN_IDLE_DEADLINE_MS: "1500" }, async () => {
+    const tracker = new RunProgressTracker();
+    const wrapped = withRunHardDeadline(
+      "agent-x",
+      "turn",
+      () => new Promise(() => {}),
+      () => false,
+      () => {},
+      (id) => tracker.snapshot(id),
+    );
+    const run = wrapped();
+    const feeder = setInterval(() => tracker.record("agent-y", { type: "text-delta", text: "hi" }), 200);
+    try {
+      await assert.rejects(run, /run stalled/);
+    } finally {
+      clearInterval(feeder);
+    }
+  }));
+
+test("a tool call in flight suspends the idle budget; the total cap still applies", () =>
+  withEnv({ SAND_RUN_HARD_DEADLINE_MS: "3600000", SAND_RUN_IDLE_DEADLINE_MS: "1500" }, async () => {
+    const tracker = new RunProgressTracker();
+    tracker.record("agent-x", { type: "tool-call", id: "call-1", name: "shell", status: "pending" });
+    const wrapped = withRunHardDeadline(
+      "agent-x",
+      "turn",
+      () => new Promise(() => {}),
+      () => false,
+      () => {},
+      (id) => tracker.snapshot(id),
+    );
+    const run = wrapped();
+    let caught;
+    run.catch((error) => { caught = error; });
+    await sleep(3200);
+    assert.equal(caught, undefined, "long tool work must not count as a stall");
+    tracker.record("agent-x", { type: "tool-call", id: "call-1", name: "shell", status: "done" });
+    await run.catch(() => {});
+    assert.match(caught.message, /run stalled/);
+  }));
+
+test("the total cap fails a run that keeps making progress forever", async () => {
+  const tracker = new RunProgressTracker();
+  const feeder = setInterval(() => tracker.record("agent-x", { type: "thinking-delta" }), 50);
+  try {
+    const wrapped = withRunHardDeadline(
+      "agent-x",
+      "turn",
+      () => new Promise(() => {}),
+      () => false,
+      () => {},
+      (id) => tracker.snapshot(id),
+    );
+    await assert.rejects(wrapped(), /run hard deadline exceeded \(150ms\)/);
+  } finally {
+    clearInterval(feeder);
+  }
+});
+
+test("RunProgressTracker counts model and tool events and tracks pending tools", () => {
+  const tracker = new RunProgressTracker();
+  assert.deepEqual(tracker.snapshot("a"), { progressSeq: 0, toolInFlight: false });
+  tracker.record("a", { type: "retrying" });
+  assert.equal(tracker.snapshot("a").progressSeq, 0, "retry bookkeeping is not progress");
+  tracker.record("a", { type: "tool-call", id: "t1", name: "x", status: "pending" });
+  tracker.record("a", { type: "tool-call", id: "t1", name: "x", status: "pending" });
+  tracker.record("a", { type: "tool-call", id: "t2", name: "y", status: "pending" });
+  assert.equal(tracker.snapshot("a").toolInFlight, true);
+  tracker.record("a", { type: "tool-call", id: "t1", name: "x", status: "done" });
+  assert.equal(tracker.snapshot("a").toolInFlight, true, "t2 still running");
+  tracker.record("a", { type: "tool-call", id: "t2", name: "y", status: "failed" });
+  assert.equal(tracker.snapshot("a").toolInFlight, false);
+  assert.equal(tracker.snapshot("a").progressSeq, 5);
+  tracker.record("a", { type: "tool-call", id: "t3", name: "z", status: "pending" });
+  tracker.record("a", { type: "turn-ended" });
+  assert.equal(tracker.snapshot("a").toolInFlight, false, "turn end clears dangling tools");
+  tracker.record("a", { type: "tool-call", id: "t4", name: "z", status: "pending" });
+  tracker.reset("a");
+  assert.equal(tracker.snapshot("a").toolInFlight, false, "a new run starts without inherited tools");
+  assert.deepEqual(tracker.snapshot("b"), { progressSeq: 0, toolInFlight: false });
+});
+
+test("enqueueExclusiveRun keeps a progressing run alive via trackProgressFromUpdate", () =>
+  withEnv(
+    { SAND_DISABLE_RUN_SCHEDULER: "1", SAND_RUN_HARD_DEADLINE_MS: "3600000", SAND_RUN_IDLE_DEADLINE_MS: "1500" },
+    async () => {
+      const agentId = "55555555-5555-4555-8555-555555555555";
+      const tm = makeFakeTm(agentId);
+      const lifecycle = new RunLifecycle(tm);
+      let finish;
+      const run = lifecycle.enqueueExclusiveRun(
+        agentId,
+        () => new Promise((resolve) => { finish = resolve; }),
+        { lane: "user", source: "turn" },
+      );
+      for (let elapsed = 0; elapsed < 3500; elapsed += 250) {
+        lifecycle.trackProgressFromUpdate({ type: "text-delta", text: "." }, agentId);
+        await sleep(250);
+      }
+      finish();
+      await run;
+      assert.deepEqual(tm.interrupts, [], "a progressing run must not be aborted");
+      assert.equal(tm.appended.length, 0, "no failure notice for a progressing run");
+    },
+  ));
+
+test("enqueueExclusiveRun fails a silent run on the idle budget and notifies", () =>
+  withEnv(
+    { SAND_DISABLE_RUN_SCHEDULER: "1", SAND_RUN_HARD_DEADLINE_MS: "3600000", SAND_RUN_IDLE_DEADLINE_MS: "1500" },
+    async () => {
+      const agentId = "66666666-6666-4666-8666-666666666666";
+      const tm = makeFakeTm(agentId);
+      const lifecycle = new RunLifecycle(tm);
+      // A tool left pending by an earlier run must not shield this one.
+      lifecycle.trackProgressFromUpdate({ type: "tool-call", id: "stale", name: "x", status: "pending" }, agentId);
+      const run = lifecycle.enqueueExclusiveRun(agentId, () => new Promise(() => {}), { lane: "user", source: "turn" });
+      await assert.rejects(run, /run stalled/);
+      assert.deepEqual(tm.interrupts, [agentId]);
+      const notice = tm.appended.find((entry) => entry.text?.includes("ended without a reply"));
+      assert.ok(notice, "expected a turn-failure notice");
+      assert.match(notice.text, /run stalled/);
+    },
+  ));
 
 test("a wedged worker RPC rejects, retires the connection, and the next op gets a fresh worker", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "agent-worker-deadline-"));

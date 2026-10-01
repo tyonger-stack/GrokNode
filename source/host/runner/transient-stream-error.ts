@@ -1,3 +1,5 @@
+import { isModelStreamWallClockLimitError } from "./model-stream-wall-clock.js";
+
 export const TRANSIENT_ERRNO_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "EPIPE", "ECONNABORTED", "ECONNREFUSED", "ENETRESET", "ENETDOWN", "ENETUNREACH", "EHOSTUNREACH", "EAI_AGAIN"]);
 export const TRANSIENT_MESSAGE_TOKENS = ["econnreset", "etimedout", "epipe", "econnaborted", "econnrefused", "enetreset", "enetunreach", "ehostunreach", "socket hang up", "premature close", "stream closed", "closed stream", "connection reset", "connection closed", "connection terminated", "network error", "the operation was aborted", "[aborted]", "[unavailable]", "[deadline_exceeded]"];
 
@@ -42,6 +44,7 @@ export class FirstTokenStallError extends Error {
 export function isFirstTokenStallError(error: unknown): boolean { return error instanceof FirstTokenStallError || asErrorLike(error)?.name === "FirstTokenStallError" || (asErrorLike(error) as { isFirstTokenStall?: unknown } | null)?.isFirstTokenStall === true; }
 export function shouldRetryTurnAttempt(input: { canceled: boolean; error: unknown; streamOutputProduced: boolean; resumeCheckpointAvailable: boolean; automationIsRetryable?: (error: unknown) => boolean }): boolean {
   if (input.canceled || asErrorLike(input.error)?.isTranscriptAppendAfterCheckpointError === true) return false;
+  if (isModelStreamWallClockLimitError(input.error)) return false;
   const safe = !input.streamOutputProduced || input.resumeCheckpointAvailable;
   if (safe && (isRetryableProviderError(input.error) || isFirstTokenStallError(input.error))) return true;
   return input.automationIsRetryable?.(input.error) ?? false;

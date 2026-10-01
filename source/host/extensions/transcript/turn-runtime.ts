@@ -764,6 +764,7 @@ export class TurnRuntime {
       runSession.id === this.tm.sessions.activeSession?.id;
     if (isForActiveAgent) this.tm.roster.applyAgentUpdateToOutline(update);
     if (runSession != null) {
+      this.tm.runLifecycle.trackProgressFromUpdate(update, runSession.id);
       this.tm.runLifecycle.trackComposingFromUpdate(update, runSession.id);
       this.tm.runLifecycle.trackRetryingFromUpdate(update, runSession);
       this.tm.runLifecycle.trackActivityFromUpdate(update, runSession.id);

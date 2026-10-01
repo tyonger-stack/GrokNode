@@ -48,7 +48,17 @@ export const RUN_WATCHDOG_GRACE_DEFAULT_MS = 30_000;
 // fires, and the next message or automation gets a real chance to run. The
 // wording deliberately avoids isTurnInterruptedFailure's interrupt vocabulary
 // so the failure stays user-visible.
-export const RUN_HARD_DEADLINE_DEFAULT_MS = 30 * 60_000;
+//
+// Two budgets, judged on progress rather than elapsed time (2026-10-01: a
+// fixed 30-minute ceiling killed healthy long research turns that were
+// streaming and calling tools the whole time; the official host has no
+// run-level duration cap at all and bounds provider silence instead):
+// - idle: no model output and no tool activity for this long means wedged.
+//   Suspended while a tool call is in flight, so long tool work never trips it.
+// - total: a generous active-time cap so a runaway loop cannot hold the queue
+//   forever.
+export const RUN_IDLE_DEADLINE_DEFAULT_MS = 10 * 60_000;
+export const RUN_HARD_DEADLINE_DEFAULT_MS = 2 * 60 * 60_000;
 // Time spent parked on the user (confirmation card, selection) does not count
 // against the hard deadline - the same anti-false-kill rule the run-queue
 // watchdog follows with its deferred_awaiting_user stage. A run waiting on a
@@ -64,16 +74,76 @@ const RUN_HARD_DEADLINE_TICK_FLOOR_MS = envPositiveInt(
   1_000
 );
 
+export interface RunProgressSnapshot {
+  /** Monotonic count of progress events (model output, tool activity). */
+  readonly progressSeq: number;
+  readonly toolInFlight: boolean;
+}
+
+const PROGRESS_UPDATE_TYPES = new Set([
+  "text-delta",
+  "thinking-delta",
+  "tool-call",
+  "send-message",
+  "turn-ended",
+]);
+
+/** Per-agent liveness signal for the idle deadline, fed from the runner's own
+ * update stream (each runner's transport carries its session explicitly, so
+ * concurrent bots never credit each other's progress). */
+export class RunProgressTracker {
+  private readonly seqByAgent = new Map<string, number>();
+  private readonly pendingToolsByAgent = new Map<string, Set<string>>();
+
+  record(agentId: string, update: ActivityUpdate): void {
+    if (!PROGRESS_UPDATE_TYPES.has(update.type)) return;
+    this.seqByAgent.set(agentId, (this.seqByAgent.get(agentId) ?? 0) + 1);
+    if (update.type === "turn-ended") {
+      this.pendingToolsByAgent.delete(agentId);
+      return;
+    }
+    if (update.type !== "tool-call") return;
+    const { id, status } = update as { id?: unknown; status?: unknown };
+    if (typeof id !== "string" || id.length === 0) return;
+    let pending = this.pendingToolsByAgent.get(agentId);
+    if (status === "pending") {
+      if (pending == null) this.pendingToolsByAgent.set(agentId, (pending = new Set()));
+      pending.add(id);
+    } else if (pending != null) {
+      pending.delete(id);
+      if (pending.size === 0) this.pendingToolsByAgent.delete(agentId);
+    }
+  }
+
+  /** A tool call left pending by an earlier run must not suspend the idle
+   * deadline of the next one. */
+  reset(agentId: string): void {
+    this.pendingToolsByAgent.delete(agentId);
+  }
+
+  snapshot(agentId: string): RunProgressSnapshot {
+    return {
+      progressSeq: this.seqByAgent.get(agentId) ?? 0,
+      toolInFlight: (this.pendingToolsByAgent.get(agentId)?.size ?? 0) > 0,
+    };
+  }
+}
+
 export function withRunHardDeadline(
   agentId: string,
   source: string,
   task: () => Promise<void>,
   isAwaitingUser: (agentId: string) => boolean = () => false,
-  onDeadlineFired: (agentId: string) => void = () => {}
+  onDeadlineFired: (agentId: string) => void = () => {},
+  readProgress: (agentId: string) => RunProgressSnapshot | undefined = () => undefined
 ): () => Promise<void> {
   const deadlineMs = envPositiveInt(
     "SAND_RUN_HARD_DEADLINE_MS",
     RUN_HARD_DEADLINE_DEFAULT_MS
+  );
+  const idleDeadlineMs = envPositiveInt(
+    "SAND_RUN_IDLE_DEADLINE_MS",
+    RUN_IDLE_DEADLINE_DEFAULT_MS
   );
   const awaitingCapMs = envPositiveInt(
     "SAND_RUN_HARD_DEADLINE_AWAITING_MAX_MS",
@@ -81,12 +151,21 @@ export function withRunHardDeadline(
   );
   const tickMs = Math.max(
     RUN_HARD_DEADLINE_TICK_FLOOR_MS,
-    Math.min(deadlineMs, RUN_HARD_DEADLINE_TICK_MS)
+    Math.min(deadlineMs, idleDeadlineMs, RUN_HARD_DEADLINE_TICK_MS)
   );
+  const probe = (): RunProgressSnapshot | undefined => {
+    try {
+      return readProgress(agentId);
+    } catch {
+      return undefined;
+    }
+  };
   return () =>
     new Promise<void>((resolve, reject) => {
       let activeMs = 0;
       let awaitingMs = 0;
+      let idleMs = 0;
+      let lastProgressSeq = probe()?.progressSeq;
       let lastTickAt = Date.now();
       let timer: NodeJS.Timeout | null = null;
       // The deadline check and the task's own settlement are two independent
@@ -120,7 +199,12 @@ export function withRunHardDeadline(
           finish(resolve, reject, new Error(message));
           onDeadlineFired(agentId);
         };
+        const progress = probe();
+        const progressed =
+          progress != null && progress.progressSeq !== lastProgressSeq;
+        lastProgressSeq = progress?.progressSeq;
         if (isAwaitingUser(agentId)) {
+          idleMs = 0;
           awaitingMs += delta;
           if (awaitingMs >= awaitingCapMs) {
             fail(
@@ -131,9 +215,17 @@ export function withRunHardDeadline(
         } else {
           awaitingMs = 0;
           activeMs += delta;
+          if (progressed || progress?.toolInFlight === true) idleMs = 0;
+          else idleMs += delta;
           if (activeMs >= deadlineMs) {
             fail(
               `run hard deadline exceeded (${deadlineMs}ms) for agent ${agentId} (source: ${source}): the run never settled and was failed so the queue can move on`
+            );
+            return;
+          }
+          if (idleMs >= idleDeadlineMs) {
+            fail(
+              `run stalled: no model output and no tool activity for ${idleDeadlineMs}ms for agent ${agentId} (source: ${source}); the run was failed so the queue can move on`
             );
             return;
           }
@@ -192,6 +284,7 @@ export class RunLifecycle {
   /** Observes tool-call loops per session (OpenMausBot RepeatDetector
    * equivalent). Observes only - a suspect hit never interrupts the turn. */
   readonly toolRepeatDetector = new ToolRepeatDetector();
+  readonly progressTracker = new RunProgressTracker();
   readonly sessionActivities = new Map<string, SandAgentActivity>();
   readonly sessionActivityHolds = new Map<string, NamedActivityHoldState>();
   readonly lastRequestIdBySession = new Map<string, string>();
@@ -423,7 +516,10 @@ export class RunLifecycle {
     const deadlinedTask = withRunHardDeadline(
       agentId,
       options.source,
-      task,
+      () => {
+        this.progressTracker.reset(agentId);
+        return task();
+      },
       id => this.isRunAwaitingUserSelection(id),
       id => {
         // Same escalation the run-queue watchdog uses: abort the runner we
@@ -441,7 +537,8 @@ export class RunLifecycle {
         } catch {
           // best-effort; the deadline itself already released the queue
         }
-      }
+      },
+      id => this.progressTracker.snapshot(id)
     );
     const guardedTask = TURN_FAILURE_NOTICE_SOURCES.has(options.source)
       ? () =>
@@ -678,6 +775,9 @@ export class RunLifecycle {
     if (isRetrying) this.retryingSessionIds.add(sessionId);
     else this.retryingSessionIds.delete(sessionId);
     void this.tm.roster.emitAgentUpdate(sessionId);
+  }
+  trackProgressFromUpdate(update: ActivityUpdate, sessionId: string): void {
+    this.progressTracker.record(sessionId, update);
   }
   trackRetryingFromUpdate(update: ActivityUpdate, session: any): void {
     if (update.type === "retrying") {

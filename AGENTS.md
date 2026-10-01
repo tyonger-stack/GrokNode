@@ -326,6 +326,18 @@ npm run frontend:build  # 构建可读 renderer 重建
 - **判断"回合是否真在推理"不能只看 HTTP 200**。forwarder 会把上游的错误体也按 200 透传——用 `model: "default"` 打一发，拿到的是 `400 invalid params, unknown model 'default'`。要判真伪得用 `settings.json` 里真实的 `openRouterModel`（当前 `zai/glm-5.3-flash`）打一发看 `choices[0].message`。
 - `zai/glm-5.3-flash` 会先吐 `reasoning_content` 再给正文，`max_tokens` 给小了会出现 `content: null` + `finish_reason: length`。Grok Bot 框架要求模型用 `send_message` 投递文字，遇到"只有 reasoning 没有 content"的回合要当心被误判成模型不回复。
 
+## run 超时改为按进展判定（2026-10-01，已打包部署）
+
+- **部署实测**：asar `fb972114…`（与 dist 逐字节相同，codesign 通过），101 个 chunk `node --check` 全过、`"(RLocT("` 0。容器随新 host bundle 自动重建；新 gateway pid → `/home/box/sand-host/host-main.cjs`，sha256 `18e216d4…` 与打包产物内 `dist/host/host-main.cjs` 一致，含 `run stalled` / `SAND_RUN_IDLE_DEADLINE_MS` / `SAND_MODEL_STREAM_WALL_CLOCK_LIMIT_MS`。`health-check.py` verdict OK。旧版备份 `~/Documents/grokbot/backups/Grok Node-before-run-idle-deadline-20261001-125919.app`。
+
+- **症状**：长任务（研报、多阶段排版）被 `run hard deadline exceeded (1800000ms)` 掐掉，而 bot 其实一直在推理、调工具。旧的 `withRunHardDeadline` 是 30 分钟**累计活跃时长**上限（等用户的时间不计），中途发消息不会重置。
+- **官方对照**（最新镜像 `sand-box-481ac31` 的 `/opt/sand/sand-host/host-main.cjs`）：**没有 run 级总时长上限**（`hard deadline`/`maxTurnDuration`/`turnTimeout` 命中 0）。官方用：首字超时 150s（重试）、流中断超时 90s（工具执行时暂停，服务端开关默认关）、单次推理墙钟 15min（`SAND_MODEL_STREAM_WALL_CLOCK_LIMIT_MS`，只限一次模型调用）、排队看门狗 120s+30s（只在有用户消息排队时启动）、步数 5000。桌面 asar 里没有 host，要查 host 行为得从镜像里 `docker cp`。
+- **改法**（`run-lifecycle.ts`）：新增 `RunProgressTracker`，由 `turn-runtime.handleAgentUpdate` → `trackProgressFromUpdate` 喂入 `text-delta`/`thinking-delta`/`tool-call`/`send-message`/`turn-ended`（`retrying` 不算进展）。**连续 10 分钟无进展**判卡死（`SAND_RUN_IDLE_DEADLINE_MS`），有 tool 处于 pending 时暂停计时；总上限放宽到 **2 小时活跃时长**（`SAND_RUN_HARD_DEADLINE_MS`）。新失败文案 `run stalled: no model output and no tool activity …`，同样避开 interrupt 词表，保证通知可见。每个 run 开始时 `reset` 掉上一轮遗留的 pending tool。事件归属靠 `runnerHooksFor(session)` 显式传入的 session，不会串到其他 bot。
+- **回归**：`tests/run-hard-deadline.test.mjs` 21 例（新增 9）。变异：去掉进展重置 → 3 例红。
+- **同批补了单次推理墙钟 15 分钟**（`source/host/runner/model-stream-wall-clock.ts`，照官方 `ModelStreamWallClockMiddleware`）：在 `turn-run-shell.ts` 里包住 `agent.getExecutor()`，Codex / OpenRouter 两条路径都覆盖。同一回合**第一次**超时抛 `ModelStreamWallClockCutError`（继承 `OutputTokensLimitExceededError`，走 `runWithMaxTokensRetry` 的“回复被截断，请继续”提醒），**第二次**抛 `ModelStreamWallClockLimitError`，`shouldRetryTurnAttempt` 明确不重试。计数器每回合一份（工厂建在 `createTurnAgentRunContext` 作用域）。`SAND_MODEL_STREAM_WALL_CLOCK_LIMIT_MS` 可调，0 关闭。**坑**：中间件改写后的 `response` 必须挂静默 catch——`consumeStream` 只吃 `fullStream`，没人 await 的 rejection 会让 host 进程崩溃（测试首版就因此 unhandledRejection）。`turn-agent-composition.ts` 的 `createTurnToolSession` 没有调用方，是死代码，真实接线点在 `turn-run-shell.ts`。回归 `tests/model-stream-wall-clock.test.mjs` 7 例，变异（第二次也可重试 / 删掉不重试守卫）均红。**未在真实 15 分钟长流上端到端验证**。
+- 全量 638/638。
+- **注意**：host 跑在容器里，**要重新打包 + 重建容器才生效**；重建会打断正在跑的回合。
+
 ## rakazo 对标后的 M 批加固（63cb265，运维件，已部署）
 
 对标另一款同类实现（rakazo）后的采纳项——它用 **DB 租约 + 单调 fence + 30s reconciler** 取代内存队列（数学上无"永久占位"），另有 **TTFB/空闲/backoff 三分法**与**容量错误绝不重启进程**约定。我们不做租约重写（run 硬死线已把"永久"变"有限"），采纳后两项：
