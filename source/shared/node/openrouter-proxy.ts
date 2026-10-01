@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -10,7 +10,7 @@ export const OPENCODEX_CONTAINER_RELAY_PORT = 10100;
 
 /**
  * Reasoning-effort ladder offered by Settings → Router → Model → Effort.
- * Wire values match the Codex ladder (`low`/`medium`/`high`/`xhigh`/`max`) so an
+ * Wire values match the Codex ladder (`low`/`medium`/`high`/`xhigh`/`max`/`ultra`) so an
  * OpenAI-compatible upstream (including the local opencodex relay) reads them
  * without a mapping table. `undefined` (never set) means "omit the field" — the
  * endpoint then applies its own per-model default, which is the pre-existing
@@ -22,7 +22,8 @@ export const OPENROUTER_REASONING_EFFORTS = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
   { value: "xhigh", label: "Extra high" },
-  { value: "max", label: "Max" }
+  { value: "max", label: "Max" },
+  { value: "ultra", label: "Ultra" }
 ] as const;
 
 export type OpenRouterReasoningEffort = (typeof OPENROUTER_REASONING_EFFORTS)[number]["value"];
@@ -89,6 +90,63 @@ export function resolveOpenRouterTransport(persistedOverride?: string | null, in
     }
   } catch {}
   return { baseUrl };
+}
+
+// The catalog is ~1.6 MB and the host consults it on every request; re-parse only when it changes.
+let catalogCache: { path: string; mtimeMs: number; models: unknown[] | null } | null = null;
+function readCatalogModels(): unknown[] | null {
+  const path = join(codexHome(), "opencodex-catalog.json");
+  const mtimeMs = statSync(path).mtimeMs;
+  if (catalogCache?.path === path && catalogCache.mtimeMs === mtimeMs) return catalogCache.models;
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as { models?: unknown };
+  catalogCache = { path, mtimeMs, models: Array.isArray(parsed.models) ? parsed.models : null };
+  return catalogCache.models;
+}
+
+export interface OpenRouterModelReasoning {
+  /** Supported efforts in ladder order; never empty. */
+  readonly levels: readonly OpenRouterReasoningEffort[];
+  readonly defaultLevel: OpenRouterReasoningEffort | null;
+}
+
+/**
+ * Per-model effort ladder from the opencodex catalog (`supported_reasoning_levels` /
+ * `default_reasoning_level`) — the same data the Codex app uses to offer only the efforts a
+ * model accepts. `null` when the catalog is missing or does not know the model, in which case
+ * callers keep the full ladder.
+ */
+export function readOpenRouterModelReasoning(model: string | null | undefined): OpenRouterModelReasoning | null {
+  const wanted = model?.trim();
+  if (!wanted) return null;
+  try {
+    const models = readCatalogModels();
+    if (models == null) return null;
+    const entry = models.find((candidate): candidate is Record<string, unknown> =>
+      typeof candidate === "object" && candidate != null && typeof (candidate as { slug?: unknown }).slug === "string" && (candidate as { slug: string }).slug.trim() === wanted);
+    if (entry == null || !Array.isArray(entry.supported_reasoning_levels)) return null;
+    const supported = new Set(entry.supported_reasoning_levels
+      .map((level) => normalizeOpenRouterReasoningEffort((level as { effort?: unknown } | null)?.effort))
+      .filter((level): level is OpenRouterReasoningEffort => level != null));
+    const levels = OPENROUTER_REASONING_EFFORTS.map((ladder) => ladder.value).filter((value) => supported.has(value));
+    if (levels.length === 0) return null;
+    const defaultLevel = normalizeOpenRouterReasoningEffort(entry.default_reasoning_level);
+    return { levels, defaultLevel: defaultLevel != null && supported.has(defaultLevel) ? defaultLevel : null };
+  } catch { return null; }
+}
+
+/** The efforts to offer for `model`: its catalog ladder, or the full ladder when unknown. */
+export function openRouterEffortOptionsFor(model: string | null | undefined): Array<{ value: OpenRouterReasoningEffort; label: string }> {
+  const reasoning = readOpenRouterModelReasoning(model);
+  return OPENROUTER_REASONING_EFFORTS
+    .filter((entry) => reasoning == null || reasoning.levels.includes(entry.value))
+    .map((entry) => ({ value: entry.value, label: entry.label }));
+}
+
+/** Drops an effort the catalog says `model` does not accept, so the endpoint default applies instead of a rejection. */
+export function effortSupportedByModel(effort: OpenRouterReasoningEffort | null, model: string | null | undefined): OpenRouterReasoningEffort | null {
+  if (effort == null) return null;
+  const reasoning = readOpenRouterModelReasoning(model);
+  return reasoning == null || reasoning.levels.includes(effort) ? effort : null;
 }
 
 function readCatalogModelSlugs(): string[] {

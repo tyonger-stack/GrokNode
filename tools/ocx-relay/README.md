@@ -37,6 +37,21 @@ UPSTREAM_MAX_TOTAL_MS=900000
 
 **可逆且可观测**：若上游真开始限流，forwarder.log 里会出现带 `try=` 的 429（与 `reason=queue full` 明确可分，见下节），届时把 `MAX_CONCURRENCY` 调回 3 即可，不需要改代码。
 
+**2026-10-01 起按模型分池**（配合 bot 属性页的「模型」覆盖）：单一全局池改为「每模型一个 FIFO 池 + 全局上限」。原先所有 bot 共用 `MAX_CONCURRENCY` 个槽位，给 bot 换模型也照样排在同一条队里。现在：
+
+```sh
+MAX_CONCURRENCY=6               # 全局上限（所有模型合计在途数）
+MAX_CONCURRENCY_PER_MODEL=2     # 每个模型的默认槽位
+MODEL_CONCURRENCY='{"minimax-cn/MiniMax-M3.1-Flash-Preview":3}'   # 可选：单模型覆盖（JSON）
+MAX_QUEUE=12                    # 现在是「每个模型」的队列上限
+QUEUE_TIMEOUT_MS=75000          # 每个请求的排队上限，不变
+```
+
+- 池键取请求体的 `model` 字段；缺失或解析失败归入 `_unknown` 池。
+- 派发时在「还有空槽的模型」中挑排队最久的那个——某个模型满了，不会挡住别的模型的队列。
+- 日志每行末尾多一个 `model=<id>`（`upstream-error` 行放在消息之前，避免消息里的 `retry` 被 watchdog 误读为重试行）；`/v1/relay/inflight` 每条多一个 `model` 字段。
+- 不在 env 里写 `MAX_CONCURRENCY_PER_MODEL` 时，代码默认 2。
+
 ## forwarder：行为契约与新增
 
 **不变的部分**：env 契约（`RELAY_BIND/RELAY_PORT/UPSTREAM_HOST/UPSTREAM_PORT/RELAY_TOKEN`）、Host 重写、hop-by-hop 剥离、403 令牌门禁、完成日志格式 `-> <code> <ms>ms`。非 chat 请求（如 `/v1/models` 探活轮询）完全走原直通路径，永不排队。
@@ -44,7 +59,7 @@ UPSTREAM_MAX_TOTAL_MS=900000
 **chat completions POST 的新路径**：
 
 1. 请求体缓冲（上限 `BODY_BUFFER_LIMIT`，默认 64MiB）后进入槽位/队列。
-2. 并发闸 `MAX_CONCURRENCY`（默认 2）：在途 chat 请求超过即 FIFO 排队，队列上限 `MAX_QUEUE`（默认 8）。
+2. 并发闸：按请求体 `model` 分池，每池上限 `MAX_CONCURRENCY_PER_MODEL`（默认 2，`MODEL_CONCURRENCY` 可逐模型覆盖），所有池合计不超过 `MAX_CONCURRENCY`（默认 2）。超出即进该模型的 FIFO 队列，每池队列上限 `MAX_QUEUE`（默认 8）。
 3. 队列等待超 `QUEUE_TIMEOUT_MS`（默认 120s）或队满 → **合成 429 + `Retry-After: 5`** 立即退回。排队永远有上界，不会变成新的卡死点；host 侧 ai-sdk 自带重试（默认 2 次）会接住。
 4. 上游 429 且未向客户端发出任何字节 → 消费掉，按 `min(Retry-After, RETRY_MAX_DELAY_MS=30s)+抖动` 退避后原样重发（`RETRY_429` 默认 2 次）。重试判定只发生在上游响应头时刻，SSE 一旦开始绝不重放。
 5. 上游空闲超时 `UPSTREAM_IDLE_TIMEOUT_MS`（默认 300s）：上游 5 分钟不吐任何字节就断开返回 502——把"无限挂起"变成"可见的失败"。重思考模型单请求实测最长 164s，5 分钟阈值不会误伤。
@@ -66,7 +81,7 @@ UPSTREAM_MAX_TOTAL_MS=900000
 
 | 类别 | 日志指纹 | 归属 | 处置 |
 | --- | --- | --- | --- |
-| `relay-queue-timeout` / `relay-queue-full` | 带 `reason=queue timeout\|queue full`，`queued=` ≈ `QUEUE_TIMEOUT_MS`，**且无 `try=` 字段** | **我们自己的容量问题**，与上游无关 | 调 `MAX_CONCURRENCY` / `MAX_QUEUE`，或缩短上游耗时 |
+| `relay-queue-timeout` / `relay-queue-full` | 带 `reason=queue timeout\|queue full`，`queued=` ≈ `QUEUE_TIMEOUT_MS`，**且无 `try=` 字段**；`model=` 指出是哪个模型的池满了 | **我们自己的容量问题**，与上游无关 | 只集中在一个 `model=` 上 → 调该模型的 `MODEL_CONCURRENCY` 或给部分 bot 换模型；各模型都有 → 调 `MAX_CONCURRENCY` / `MAX_QUEUE`，或缩短上游耗时 |
 | `upstream-rate-limit` | 带 `try=` 字段（走过重试路径），`queued=0ms` | 上游真实限流 | 交给 `RETRY_429` 退避重试；重试耗尽才透传给客户端 |
 | `provider-quota-exhausted` | 429 正文是 `Throttling.AllocationQuota` 一类，**几乎立刻返回（<0.1s）** | 上游账号/套餐配额耗尽 | **重试无意义**，只能换模型或等配额重置 |
 

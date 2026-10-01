@@ -184,8 +184,8 @@ export async function createTurnAgentRunContext<ContextValue>(
     ...(input.lineage === undefined ? {} : { lineage: input.lineage }),
   };
   const inferenceProvider = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getInferenceProvider();
-  const agent = createProviderPromptSession(inferenceProvider) as unknown as TurnAgentPromptSession;
-  const summarization = createProviderPromptSession(inferenceProvider) as unknown as SummarizationPromptSession;
+  const agent = createProviderPromptSession(inferenceProvider, { agentId: input.conversationId }) as unknown as TurnAgentPromptSession;
+  const summarization = createProviderPromptSession(inferenceProvider, { agentId: input.conversationId }) as unknown as SummarizationPromptSession;
   const profilePromptSnapshot = input.profilePromptSnapshot
     ?? input.systemPromptAssembly?.prepareAgentProfilePromptSnapshot(
       input.profilePromptSnapshotStore,

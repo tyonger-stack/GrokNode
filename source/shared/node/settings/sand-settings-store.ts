@@ -40,6 +40,9 @@ export interface SandStoredSettings {
   localToolPermission?: SandLocalToolPermission; localToolPermissionCeiling?: SandLocalToolPermission;
   inferenceProvider?: SandInferenceProvider; inferenceRouterUsage?: SandInferenceRouterUsage;
   openRouterModel?: string;
+  /** Per-bot TokenHub model overrides keyed by agent id; a missing entry means the bot follows `openRouterModel`. */
+  openRouterAgentModels?: StringMap;
+  openRouterAgentEfforts?: Record<string, OpenRouterReasoningEffort>;
   openRouterBaseUrl?: string;
   /** Reasoning effort for TokenHub chat requests; unset means "omit the field" so the endpoint default applies. */
   openRouterEffort?: OpenRouterReasoningEffort;
@@ -65,6 +68,24 @@ export function normalizeOpenRouterBaseUrl(value: string): string {
   let trimmed = value.trim();
   while (trimmed.endsWith("/")) trimmed = trimmed.slice(0, -1);
   return trimmed;
+}
+
+export function normalizeOpenRouterAgentModels(raw: unknown): StringMap {
+  const normalized: StringMap = {};
+  for (const [agentId, model] of Object.entries(stringMap(raw))) {
+    const id = agentId.trim(); const value = model.trim();
+    if (id.length > 0 && value.length > 0) normalized[id] = value;
+  }
+  return normalized;
+}
+
+export function normalizeOpenRouterAgentEfforts(raw: unknown): Record<string, OpenRouterReasoningEffort> {
+  const normalized: Record<string, OpenRouterReasoningEffort> = {};
+  for (const [agentId, effort] of Object.entries(stringMap(raw))) {
+    const id = agentId.trim(); const value = normalizeOpenRouterReasoningEffort(effort);
+    if (id.length > 0 && value != null) normalized[id] = value;
+  }
+  return normalized;
 }
 
 function normalizeInferenceProvider(value: unknown): SandInferenceProvider { return value === "codex" || value === "openrouter" ? value : "openrouter"; }
@@ -100,6 +121,8 @@ function parseSettings(value: unknown): SandStoredSettings | null {
   if (isSandLocalToolPermission(raw.localToolPermissionCeiling)) result.localToolPermissionCeiling = raw.localToolPermissionCeiling;
   result.inferenceProvider = normalizeInferenceProvider(raw.inferenceProvider);
   if (typeof raw.openRouterModel === "string" && raw.openRouterModel.trim().length > 0) result.openRouterModel = raw.openRouterModel.trim();
+  { const agentModels = normalizeOpenRouterAgentModels(raw.openRouterAgentModels); if (Object.keys(agentModels).length > 0) result.openRouterAgentModels = agentModels; }
+  { const agentEfforts = normalizeOpenRouterAgentEfforts(raw.openRouterAgentEfforts); if (Object.keys(agentEfforts).length > 0) result.openRouterAgentEfforts = agentEfforts; }
   if (typeof raw.openRouterBaseUrl === "string" && raw.openRouterBaseUrl.trim().length > 0) result.openRouterBaseUrl = normalizeOpenRouterBaseUrl(raw.openRouterBaseUrl);
   {
     const effort = normalizeOpenRouterReasoningEffort(raw.openRouterEffort);
@@ -207,6 +230,14 @@ export class SandSettingsStore {
   getLocalMcpServers(): Record<string, McpServerConfig> { return this.load().localMcpServers ?? {}; }
   setLocalMcpServers(servers: Record<string, McpServerConfig>): void { this.update((s) => ({ ...s, localMcpServers: { ...servers } })); }
   setOpenRouterModel(value?: string): void { this.update((s) => { const { openRouterModel: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed ? { ...rest, openRouterModel: trimmed } : rest; }); }
+  getOpenRouterAgentModels(): StringMap { return { ...(this.load().openRouterAgentModels ?? {}) }; }
+  getOpenRouterAgentModel(agentId: string): string | undefined { return this.load().openRouterAgentModels?.[agentId.trim()]; }
+  setOpenRouterAgentModel(agentId: string, model?: string | null): void { const id = agentId.trim(); if (id.length === 0) return; this.update((s) => { const next = { ...(s.openRouterAgentModels ?? {}) }; const value = model?.trim(); if (value) next[id] = value; else delete next[id]; const { openRouterAgentModels: _old, ...rest } = s; return Object.keys(next).length === 0 ? rest : { ...rest, openRouterAgentModels: next }; }); }
+  getOpenRouterAgentEfforts(): Record<string, OpenRouterReasoningEffort> { return { ...(this.load().openRouterAgentEfforts ?? {}) }; }
+  getOpenRouterAgentEffort(agentId: string): OpenRouterReasoningEffort | undefined { return this.load().openRouterAgentEfforts?.[agentId.trim()]; }
+  setOpenRouterAgentEffort(agentId: string, effort?: string | null): void { const id = agentId.trim(); if (id.length === 0) return; this.update((s) => { const next = { ...(s.openRouterAgentEfforts ?? {}) }; const value = normalizeOpenRouterReasoningEffort(effort); if (value != null) next[id] = value; else delete next[id]; const { openRouterAgentEfforts: _old, ...rest } = s; return Object.keys(next).length === 0 ? rest : { ...rest, openRouterAgentEfforts: next }; }); }
+  setOpenRouterAgentEfforts(value: unknown): void { const next = normalizeOpenRouterAgentEfforts(value); this.update((s) => { const { openRouterAgentEfforts: _old, ...rest } = s; return Object.keys(next).length === 0 ? rest : { ...rest, openRouterAgentEfforts: next }; }); }
+  setOpenRouterAgentModels(value: unknown): void { const next = normalizeOpenRouterAgentModels(value); this.update((s) => { const { openRouterAgentModels: _old, ...rest } = s; return Object.keys(next).length === 0 ? rest : { ...rest, openRouterAgentModels: next }; }); }
   getOpenRouterBaseUrl(): string | undefined { return this.load().openRouterBaseUrl; }
   setOpenRouterBaseUrl(value?: string): void { this.update((s) => { const { openRouterBaseUrl: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed ? { ...rest, openRouterBaseUrl: normalizeOpenRouterBaseUrl(trimmed) } : rest; }); }
   getOpenRouterEffort(): OpenRouterReasoningEffort | undefined { return this.load().openRouterEffort; }

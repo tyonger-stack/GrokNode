@@ -24,6 +24,10 @@ const UPSTREAM_HOST = process.env.UPSTREAM_HOST || "127.0.0.1";
 const UPSTREAM_PORT = Number(process.env.UPSTREAM_PORT || "10100");
 const TOKEN = process.env.RELAY_TOKEN || "";
 const MAX_CONCURRENCY = Math.max(1, Number(process.env.MAX_CONCURRENCY ?? "2"));
+// Per-model slots inside the global cap: bots on different models no longer
+// queue behind each other, while one model still cannot take every slot.
+const MAX_CONCURRENCY_PER_MODEL = Math.max(1, Number(process.env.MAX_CONCURRENCY_PER_MODEL ?? "2"));
+const MODEL_CONCURRENCY = parseModelConcurrency(process.env.MODEL_CONCURRENCY);
 const MAX_QUEUE = Math.max(0, Number(process.env.MAX_QUEUE ?? "8"));
 const QUEUE_TIMEOUT_MS = Math.max(1, Number(process.env.QUEUE_TIMEOUT_MS ?? "120000"));
 const RETRY_429 = Math.max(0, Number(process.env.RETRY_429 ?? "2"));
@@ -45,6 +49,38 @@ const HOP = new Set([
 function tokenFingerprint(value) {
   if (typeof value !== "string") return "invalid";
   return createHash("sha256").update(value).digest("hex").slice(0, 12);
+}
+
+export const UNKNOWN_MODEL = "_unknown";
+
+/** `{"provider/model": 3}` from MODEL_CONCURRENCY; malformed JSON or non-positive counts are ignored. */
+export function parseModelConcurrency(raw) {
+  if (typeof raw !== "string" || raw.trim().length === 0) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed == null || Array.isArray(parsed)) return {};
+    const result = {};
+    for (const [model, value] of Object.entries(parsed)) {
+      const count = Number(value);
+      if (model.length > 0 && Number.isInteger(count) && count > 0) result[model] = count;
+    }
+    return result;
+  } catch { return {}; }
+}
+
+/** The pool key: the request body's `model`, or UNKNOWN_MODEL when absent or unparsable. */
+export function requestModel(body) {
+  try {
+    const parsed = JSON.parse(body.toString("utf8"));
+    const model = parsed?.model;
+    return typeof model === "string" && model.trim().length > 0 ? model.trim() : UNKNOWN_MODEL;
+  } catch { return UNKNOWN_MODEL; }
+}
+
+// Log lines are parsed by turn-watchdog (` started `, ` retry `, `id=`, `-> <code>`);
+// keep the model token free of spaces and of anything that could mimic those.
+function logModel(model) {
+  return String(model).replace(/[^\w./:@+-]/g, "_").slice(0, 120);
 }
 
 export function retryDelayMs(retryAfterHeader, attempt, maxDelayMs) {
@@ -78,9 +114,32 @@ export function startForwarder(config) {
     idleTimeoutMs, bodyBufferLimit,
     upstreamMaxTotalMs = 600000,
     sweepIntervalMs = 15000,
+    maxConcurrencyPerModel = maxConcurrency,
+    modelConcurrency = {},
   } = config;
 
-  const pool = { active: 0, queue: [] };
+  // One FIFO pool per model under a global cap. maxQueue / queueTimeoutMs are per model.
+  const pools = new Map();
+  const pool = {
+    get active() { return globalActive; },
+    get queued() { let total = 0; for (const p of pools.values()) total += p.queue.length; return total; },
+    pools,
+  };
+  let globalActive = 0;
+  function modelPool(model) {
+    let found = pools.get(model);
+    if (!found) {
+      found = { model, active: 0, queue: [], limit: Math.max(1, modelConcurrency[model] ?? maxConcurrencyPerModel) };
+      pools.set(model, found);
+    }
+    return found;
+  }
+  function removeQueued(entry) {
+    const queue = entry.pool?.queue;
+    const index = queue ? queue.indexOf(entry) : -1;
+    if (index >= 0) queue.splice(index, 1);
+    return index >= 0;
+  }
   // What this process is actually holding. The watchdog reads this table
   // instead of deciding that a missing log line is still a live request.
   const live = new Map();
@@ -112,6 +171,7 @@ export function startForwarder(config) {
           ageMs: now - entry.started,
           try: entry.tries,
           phase: entry.phase || "upstream",
+          model: entry.model,
         });
       }
       safeRespond(clientRes, 200, { "content-type": "application/json" }, JSON.stringify({
@@ -160,12 +220,14 @@ export function startForwarder(config) {
       tries: 0, queuedAt: 0, queueTimer: null, sleepTimer: null, totalTimer: null,
       upstream: null, clientGone: false, released: false, finished: false,
       slotHeld: false, phase: "accepted", draining429: false,
-      clientRes, headers: null, body: null,
+      clientRes, headers: null, body: null, model: UNKNOWN_MODEL, pool: null,
     };
     const body = await readBody(clientReq, bodyBufferLimit);
     if (entry.clientGone) return;
     if (body === null) return pipeThrough(clientReq, clientRes, started);
     entry.body = body;
+    entry.model = requestModel(body);
+    entry.pool = modelPool(entry.model);
     entry.headers = sanitizeHeaders(clientReq);
     entry.headers["content-length"] = String(body.length);
 
@@ -176,9 +238,7 @@ export function startForwarder(config) {
       if (entry.sleepTimer) clearTimeout(entry.sleepTimer);
       entry.sleepTimer = null;
       if (entry.totalTimer) clearTimeout(entry.totalTimer);
-      const queuedIndex = pool.queue.indexOf(entry);
-      if (queuedIndex >= 0) {
-        pool.queue.splice(queuedIndex, 1);
+      if (removeQueued(entry)) {
         entry.finished = true;
         live.delete(entry.id);
         return;
@@ -197,41 +257,54 @@ export function startForwarder(config) {
     admit(entry);
   }
 
+  function hasFreeSlot(target) {
+    return globalActive < maxConcurrency && target.active < target.limit;
+  }
+
+  function takeSlot(entry) {
+    entry.pool.active += 1;
+    globalActive += 1;
+    entry.slotHeld = true;
+    dispatch(entry);
+  }
+
   function admit(entry) {
     live.set(entry.id, entry);
     entry.phase = "queued";
-    if (pool.active < maxConcurrency) {
-      pool.active += 1;
-      entry.slotHeld = true;
-      dispatch(entry);
+    const target = entry.pool;
+    if (target.queue.length === 0 && hasFreeSlot(target)) {
+      takeSlot(entry);
       return;
     }
-    if (pool.queue.length >= maxQueue) {
+    if (target.queue.length >= maxQueue) {
       synthesize429(entry, "queue full");
       return;
     }
     entry.queuedAt = Date.now();
     entry.queueTimer = setTimeout(() => {
-      const queuedIndex = pool.queue.indexOf(entry);
-      if (queuedIndex >= 0) {
-        pool.queue.splice(queuedIndex, 1);
-        synthesize429(entry, "queue timeout");
-      }
+      if (removeQueued(entry)) synthesize429(entry, "queue timeout");
     }, queueTimeoutMs);
-    pool.queue.push(entry);
+    target.queue.push(entry);
   }
 
+  // Oldest waiting request among models that still have a slot, so a saturated
+  // model never blocks another model's queue.
   function pump() {
-    while (pool.queue.length > 0 && pool.active < maxConcurrency) {
-      const next = pool.queue.shift();
-      if (next.queueTimer) clearTimeout(next.queueTimer);
-      if (next.clientGone || next.finished) {
-        live.delete(next.id);
-        continue;
+    while (globalActive < maxConcurrency) {
+      let next = null;
+      for (const candidate of pools.values()) {
+        while (candidate.queue.length > 0 && (candidate.queue[0].clientGone || candidate.queue[0].finished)) {
+          const dead = candidate.queue.shift();
+          if (dead.queueTimer) clearTimeout(dead.queueTimer);
+          live.delete(dead.id);
+        }
+        if (candidate.queue.length === 0 || candidate.active >= candidate.limit) continue;
+        if (next === null || candidate.queue[0].queuedAt < next.queue[0].queuedAt) next = candidate;
       }
-      pool.active += 1;
-      next.slotHeld = true;
-      dispatch(next);
+      if (next === null) return;
+      const entry = next.queue.shift();
+      if (entry.queueTimer) clearTimeout(entry.queueTimer);
+      takeSlot(entry);
     }
   }
 
@@ -239,7 +312,10 @@ export function startForwarder(config) {
     if (entry.released) return;
     entry.released = true;
     live.delete(entry.id);
-    pool.active -= 1;
+    if (entry.slotHeld) {
+      entry.pool.active -= 1;
+      globalActive -= 1;
+    }
     pump();
   }
 
@@ -258,11 +334,10 @@ export function startForwarder(config) {
     if (entry.totalTimer) clearTimeout(entry.totalTimer);
     entry.totalTimer = null;
     entry.draining429 = false;
-    const queuedIndex = pool.queue.indexOf(entry);
-    if (queuedIndex >= 0) pool.queue.splice(queuedIndex, 1);
+    removeQueued(entry);
     if (!entry.finished) {
       entry.finished = true;
-      log(`${new Date().toISOString()} POST ${entry.url} upstream-error id=${entry.id} ${message}`);
+      log(`${new Date().toISOString()} POST ${entry.url} upstream-error id=${entry.id} model=${logModel(entry.model)} ${message}`);
       if (!entry.clientGone) {
         safeRespond(entry.clientRes, 502, { "content-type": "application/json" }, JSON.stringify({ error: "upstream error", message }));
       }
@@ -293,7 +368,7 @@ export function startForwarder(config) {
     entry.finished = true;
     live.delete(entry.id);
     const queuedMs = entry.queuedAt ? Date.now() - entry.queuedAt : 0;
-    log(`${new Date().toISOString()} POST ${entry.url} -> 429 ${Date.now() - entry.started}ms queued=${queuedMs}ms reason=${reason} id=${entry.id}`);
+    log(`${new Date().toISOString()} POST ${entry.url} -> 429 ${Date.now() - entry.started}ms queued=${queuedMs}ms reason=${reason} id=${entry.id} model=${logModel(entry.model)}`);
     if (entry.clientGone) return;
     safeRespond(entry.clientRes, 429, {
       "content-type": "application/json",
@@ -306,7 +381,7 @@ export function startForwarder(config) {
     // A fresh attempt owns a fresh socket: the previous attempt's deliberate
     // 429-drain destroy must not shield this attempt's genuine errors.
     entry.draining429 = false;
-    log(`${new Date().toISOString()} POST ${entry.url} started id=${entry.id} try=${entry.tries} queued=${queuedMs}ms`);
+    log(`${new Date().toISOString()} POST ${entry.url} started id=${entry.id} try=${entry.tries} queued=${queuedMs}ms model=${logModel(entry.model)}`);
     // The total budget belongs to the request, not to each attempt: arm it once
     // when the slot is acquired and let every retry share what is left of it.
     // Re-arming per attempt let a retried request outlive upstreamMaxTotalMs by a
@@ -336,7 +411,7 @@ export function startForwarder(config) {
           entry.draining429 = true;
           entry.tries += 1;
           const delay = retryDelayMs(upRes.headers["retry-after"], entry.tries, retryMaxDelayMs);
-          log(`${new Date().toISOString()} POST ${entry.url} retry id=${entry.id} attempt=${entry.tries} in=${delay}ms`);
+          log(`${new Date().toISOString()} POST ${entry.url} retry id=${entry.id} attempt=${entry.tries} in=${delay}ms model=${logModel(entry.model)}`);
           let drained = false;
           const proceed = () => {
             if (drained) return;
@@ -383,7 +458,7 @@ export function startForwarder(config) {
           if (entry.finished) return;
           entry.finished = true;
           if (entry.totalTimer) clearTimeout(entry.totalTimer);
-          log(`${new Date().toISOString()} POST ${entry.url} -> ${status} ${Date.now() - entry.started}ms queued=${queuedMs}ms try=${entry.tries} id=${entry.id}`);
+          log(`${new Date().toISOString()} POST ${entry.url} -> ${status} ${Date.now() - entry.started}ms queued=${queuedMs}ms try=${entry.tries} id=${entry.id} model=${logModel(entry.model)}`);
           releaseSlot(entry);
         });
         entry.clientRes.writeHead(status, upRes.headers);
@@ -404,7 +479,7 @@ export function startForwarder(config) {
       // already scheduled, so this error must not terminate the request.
       if (entry.draining429) return;
       if (entry.totalTimer) clearTimeout(entry.totalTimer);
-      log(`${new Date().toISOString()} POST ${entry.url} upstream-error id=${entry.id} ${e.message}`);
+      log(`${new Date().toISOString()} POST ${entry.url} upstream-error id=${entry.id} model=${logModel(entry.model)} ${e.message}`);
       safeRespond(entry.clientRes, 502, { "content-type": "application/json" }, JSON.stringify({ error: "upstream error", message: e.message }));
       releaseSlot(entry);
     });
@@ -419,7 +494,7 @@ export function startForwarder(config) {
   server.on("close", () => clearInterval(sweeper));
   server.listen(port, bind, () => {
     const address = server.address();
-    log(`${new Date().toISOString()} relay listening on ${address.address}:${address.port} -> ${upstreamHost}:${upstreamPort} (chat slots=${maxConcurrency} queue=${maxQueue} queue-timeout=${queueTimeoutMs}ms retry=${retry429} idle=${idleTimeoutMs}ms total=${upstreamMaxTotalMs}ms)`);
+    log(`${new Date().toISOString()} relay listening on ${address.address}:${address.port} -> ${upstreamHost}:${upstreamPort} (chat slots=${maxConcurrency} queue=${maxQueue} queue-timeout=${queueTimeoutMs}ms retry=${retry429} idle=${idleTimeoutMs}ms total=${upstreamMaxTotalMs}ms per-model=${maxConcurrencyPerModel} model-overrides=${JSON.stringify(modelConcurrency)})`);
   });
   return { server, pool };
 }
@@ -435,6 +510,8 @@ if (isMain) {
     upstreamPort: UPSTREAM_PORT,
     token: TOKEN,
     maxConcurrency: MAX_CONCURRENCY,
+    maxConcurrencyPerModel: MAX_CONCURRENCY_PER_MODEL,
+    modelConcurrency: MODEL_CONCURRENCY,
     maxQueue: MAX_QUEUE,
     queueTimeoutMs: QUEUE_TIMEOUT_MS,
     retry429: RETRY_429,

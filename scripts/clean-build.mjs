@@ -43,6 +43,7 @@ import { applyOriginalRendererSelectionAddToPrompt } from "./lib/selection-add-t
 import { applyOriginalRendererSkillDetail } from "./lib/skill-detail-renderer-patch.mjs";
 import { applyOriginalRendererTeachSuccessPath } from "./lib/teach-success-path-renderer-patch.mjs";
 import { applyOriginalRendererInfoPaneSplit } from "./lib/info-pane-split-renderer-patch.mjs";
+import { applyOriginalRendererAgentModel } from "./lib/agent-model-renderer-patch.mjs";
 import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patch.mjs";
 import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
@@ -318,6 +319,9 @@ export async function buildFidelityReconstructedAsar({
   // block and five clamps, adds and removes no string literal and touches no JSX, so it is
   // order-free against both the header passes above and the i18n passes below.
   await applyOriginalRendererInfoPaneSplit({ stageRoot });
+  // Experimental per-bot model card in the bot properties panel (h3n). Its labels are
+  // already RLocT calls, so it needs the RLocT runtime that main-i18n appends below.
+  await applyOriginalRendererAgentModel({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });

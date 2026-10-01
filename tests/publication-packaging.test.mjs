@@ -96,7 +96,7 @@ test("Router settings and inference packaging expose only local providers", asyn
 
   assert.match(providers, /OpenRouter needs OPENROUTER_API_KEY/);
   assert.doesNotMatch(turnShell, /inferenceProvider === "cursor"/);
-  assert.match(turnShell, /createProviderPromptSession\(inferenceProvider\)/);
+  assert.match(turnShell, /createProviderPromptSession\(inferenceProvider[,)]/);
   assert.match(coordinator, /method !== "sendPrompt" \|\| provider === "codex" \|\| provider === "openrouter"/);
   assert.doesNotMatch(coordinator, /createRoutedMcpBridge/);
   assert.match(coordinator, /executeTool: async \(definition, toolArgs, toolCallId\)/);

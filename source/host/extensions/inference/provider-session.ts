@@ -8,7 +8,7 @@ import { jsonSchema, streamText, tool, type CoreMessage, type LanguageModelV1, t
 
 import { BasePromptBuilder, BasePromptExecutor } from "../../../packages/chat-inference/base.js";
 import type { SandInferenceProvider } from "../../../shared/inference-router.js";
-import { isOpenRouterProxyMode, readCodexConfigValue, resolveOpenRouterTransport } from "../../../shared/node/openrouter-proxy.js";
+import { effortSupportedByModel, isOpenRouterProxyMode, normalizeOpenRouterReasoningEffort, readCodexConfigValue, resolveOpenRouterTransport } from "../../../shared/node/openrouter-proxy.js";
 import { classifyOpenRouterError, openRouterOkStatus } from "../../../shared/openrouter-channel-status.js";
 import { DEFAULT_FIRST_TOKEN_STALL_DEADLINE_MS, resolveFirstTokenStallDeadlineMs } from "../../runner/transient-stream-error.js";
 import { getSandRootDir } from "../../host-paths.js";
@@ -118,9 +118,9 @@ function errorLooksLikeQuotaExhaustion(provider: RoutedProvider, error: unknown)
   return QUOTA_WORDS.some((word) => haystack.includes(word));
 }
 
-function recordRoutedQuotaExhausted(provider: RoutedProvider, error: unknown): void {
+function recordRoutedQuotaExhausted(provider: RoutedProvider, error: unknown, openRouterModelId?: string): void {
   if (!errorLooksLikeQuotaExhaustion(provider, error)) return;
-  const model = provider === "codex" ? configuredCodexModel() : resolveOpenRouterModel();
+  const model = provider === "codex" ? configuredCodexModel() : openRouterModelId ?? resolveOpenRouterModel();
   try {
     new SandSettingsStore(join(getSandRootDir(), "settings.json")).recordQuotaExhausted(provider, model);
   } catch { /* usage bookkeeping must never break the turn */ }
@@ -150,8 +150,17 @@ function readPersistedOpenRouterBaseUrl(): string | null {
   } catch { return null; }
 }
 
-export function resolveOpenRouterModel(): string {
-  return process.env.SAND_OPENROUTER_MODEL?.trim() || readPersistedOpenRouterModel() || readCodexConfigValue("openrouter_model") || "openai/gpt-5.2";
+function readPersistedOpenRouterAgentModel(agentId: string | undefined): string | null {
+  if (agentId == null || agentId.trim().length === 0) return null;
+  try {
+    const stored = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getOpenRouterAgentModel(agentId);
+    return typeof stored === "string" && stored.trim().length > 0 ? stored.trim() : null;
+  } catch { return null; }
+}
+
+/** `agentId` selects the bot's own override (Bot properties → Model); without one the bot follows the Router default. */
+export function resolveOpenRouterModel(agentId?: string): string {
+  return process.env.SAND_OPENROUTER_MODEL?.trim() || readPersistedOpenRouterAgentModel(agentId) || readPersistedOpenRouterModel() || readCodexConfigValue("openrouter_model") || "openai/gpt-5.2";
 }
 
 /** Reasoning effort chosen in Settings → Router → Model → Effort. `null` omits the field so the endpoint default applies. */
@@ -164,6 +173,25 @@ function readPersistedOpenRouterEffort(): string | null {
 
 export function resolveOpenRouterEffort(): string | null {
   return process.env.SAND_OPENROUTER_EFFORT?.trim() || readPersistedOpenRouterEffort();
+}
+
+/**
+ * The effort sent for `modelId`: the bot's own effort (Bot properties → Effort), else the
+ * Settings → Router value. Either way an effort the catalog says this model does not accept is
+ * omitted and the endpoint default applies. The env override is a debug knob and is sent as is.
+ */
+export function effortForModel(modelId: string, agentId?: string): string | null {
+  const override = process.env.SAND_OPENROUTER_EFFORT?.trim();
+  if (override) return override;
+  const requested = readPersistedOpenRouterAgentEffort(agentId) ?? readPersistedOpenRouterEffort();
+  return effortSupportedByModel(normalizeOpenRouterReasoningEffort(requested), modelId);
+}
+
+function readPersistedOpenRouterAgentEffort(agentId: string | undefined): string | null {
+  if (agentId == null || agentId.trim().length === 0) return null;
+  try {
+    return new SandSettingsStore(join(getSandRootDir(), "settings.json")).getOpenRouterAgentEffort(agentId) ?? null;
+  } catch { return null; }
 }
 
 function openRouterCredential(): string {
@@ -444,7 +472,7 @@ function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: Rout
 const finiteTokenCount = (value: unknown): number => typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 const CHAT_IDLE_TIMEOUT_MS = resolveFirstTokenStallDeadlineMs() || DEFAULT_FIRST_TOKEN_STALL_DEADLINE_MS;
 
-function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void, signal?: AbortSignal) {
+function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void, signal?: AbortSignal, modelId?: string, agentId?: string) {
   const chatStartedAt = Date.now();
   const chatStatusStore = new SandSettingsStore(join(getSandRootDir(), "settings.json"));
   let recordedChatStatusSignature = "";
@@ -463,15 +491,15 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     // The channel-status write covers the status light; the usage-store write
     // covers the Usage panel (which has no other quota signal). Both fire
     // from the same classification so they can never disagree.
-    if (status.state === "out_of_quota") recordRoutedQuotaExhausted("openrouter", error);
+    if (status.state === "out_of_quota") recordRoutedQuotaExhausted("openrouter", error, id);
     writeChatStatus(status);
   }
   const transport = resolveOpenRouterTransport(readPersistedOpenRouterBaseUrl());
-  const id = resolveOpenRouterModel();
+  const id = modelId ?? resolveOpenRouterModel();
   const headers: Record<string, string> = { "HTTP-Referer": "https://github.com/grok-bot-reconstructed", "X-Title": "Grok Bot Reconstructed" };
   if (transport.hostHeader) headers["Host"] = transport.hostHeader;
   let model: LanguageModelV1;
-  const effort = resolveOpenRouterEffort();
+  const effort = effortForModel(id, agentId);
   try {
     // The effort has to go through the model settings, not `providerOptions`: the bundled
     // @ai-sdk/openai reads `providerMetadata.openai.reasoningEffort` (namespace hard-coded to
@@ -525,17 +553,18 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
 }
 
 class ProviderPromptExecutor extends BasePromptExecutor<ProviderMessage> {
-  constructor(readonly provider: RoutedProvider, initialMessages?: readonly ProviderMessage[], readonly onUsage?: (usage: UsageRecord) => void) { super(new BasePromptBuilder(initialMessages)); }
+  constructor(readonly provider: RoutedProvider, initialMessages?: readonly ProviderMessage[], readonly onUsage?: (usage: UsageRecord) => void, readonly openRouterModelId?: string, readonly agentId?: string) { super(new BasePromptBuilder(initialMessages)); }
   stream(ctx: unknown, invocationId = crypto.randomUUID(), definitions?: readonly Loose[]) {
     const signal = contextSignal(ctx);
     if (this.provider === "codex") return codexExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage, signal);
-    return openRouterExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage, signal);
+    return openRouterExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage, signal, this.openRouterModelId, this.agentId);
   }
 }
 
-export function createProviderPromptSession(provider: RoutedProvider): { getModelId(): string; getExecutor(state?: unknown): PromptExecutor } {
-  const modelId = provider === "codex" ? configuredCodexModel() : resolveOpenRouterModel();
-  return { getModelId: () => modelId, getExecutor: state => new ProviderPromptExecutor(provider, Array.isArray(state) ? state as ProviderMessage[] : undefined, usage => recordRoutedUsage(provider, usage)) };
+export function createProviderPromptSession(provider: RoutedProvider, options?: { readonly agentId?: string }): { getModelId(): string; getExecutor(state?: unknown): PromptExecutor } {
+  const modelId = provider === "codex" ? configuredCodexModel() : resolveOpenRouterModel(options?.agentId);
+  const openRouterModelId = provider === "codex" ? undefined : modelId;
+  return { getModelId: () => modelId, getExecutor: state => new ProviderPromptExecutor(provider, Array.isArray(state) ? state as ProviderMessage[] : undefined, usage => recordRoutedUsage(provider, usage), openRouterModelId, options?.agentId) };
 }
 
 export async function runRoutedProviderText(provider: RoutedProvider, messages: readonly ProviderMessage[], options?: {

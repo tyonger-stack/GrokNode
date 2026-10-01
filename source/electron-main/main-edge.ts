@@ -10,7 +10,7 @@ import { reportDesktopEdgeFailure } from "./desktop-edge-failures.js";
 import { isSandInferenceProvider } from "../shared/inference-router.js";
 import { getLocalInferenceCliStatus } from "../shared/node/inference-router-local.js";
 import { isSandBoxRuntime } from "../shared/box-runtime.js";
-import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_MAC_FORWARDER_PORT, OPENROUTER_REASONING_EFFORTS, isOpenRouterProxyMode, listOpenRouterProxyModels, normalizeOpenRouterReasoningEffort, probeOpenRouterChannel, resolveOpenRouterBaseUrl } from "../shared/node/openrouter-proxy.js";
+import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_MAC_FORWARDER_PORT, effortSupportedByModel, isOpenRouterProxyMode, listOpenRouterProxyModels, normalizeOpenRouterReasoningEffort, openRouterEffortOptionsFor, readOpenRouterModelReasoning, probeOpenRouterChannel, resolveOpenRouterBaseUrl } from "../shared/node/openrouter-proxy.js";
 import { mergeOpenRouterChannelStatus, normalizeOpenRouterChannelStatus } from "../shared/openrouter-channel-status.js";
 import { getLocalDockerStatus, probeLocalDockerRelay, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
 
@@ -172,6 +172,73 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       }
       return { model: model.trim() };
     },
+    getAgentOpenRouterModel: async (raw) => {
+      const agentId = req(raw).agentId;
+      invariant(typeof agentId === "string" && agentId.trim().length > 0, "Choose a Bot.");
+      const persistedBaseUrl = persistedOpenRouterBaseUrl(deps.settingsStore);
+      const stored = invoke(deps.settingsStore, "getOpenRouterAgentModel", agentId.trim());
+      const fallback = invoke(deps.settingsStore, "getOpenRouterModel");
+      const provider = invoke(deps.settingsStore, "getInferenceProvider");
+      let models: string[] = [];
+      let error: string | null = null;
+      try { models = await listOpenRouterProxyModels(OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, persistedBaseUrl); } catch (reason) { error = String((reason as { message?: unknown })?.message ?? reason); }
+      return {
+        agentId: agentId.trim(),
+        selected: typeof stored === "string" && stored.trim().length > 0 ? stored.trim() : null,
+        defaultModel: typeof fallback === "string" && fallback.trim().length > 0 ? fallback.trim() : null,
+        provider: isSandInferenceProvider(provider) ? provider : "openrouter",
+        models,
+        error,
+      };
+    },
+    setAgentOpenRouterModel: async (raw) => {
+      const { agentId, model } = req(raw);
+      invariant(typeof agentId === "string" && agentId.trim().length > 0, "Choose a Bot.");
+      invariant(model === null || typeof model === "string", "The model must be a string.");
+      const id = agentId.trim();
+      const selected = typeof model === "string" && model.trim().length > 0 ? model.trim() : null;
+      invoke(deps.settingsStore, "setOpenRouterAgentModel", id, selected);
+      const all = invoke(deps.settingsStore, "getOpenRouterAgentModels") as Record<string, string>;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try { const applied = await deps.syncHostSettingsToBox({ openRouterAgentModels: all }); if (((applied?.openRouterAgentModels as Record<string, string> | undefined)?.[id] ?? null) === selected) break; } catch (error) { reportDesktopEdgeFailure("host-settings", "openrouter-agent-model-retry", error); }
+        await (deps.delay ?? sleep)(250 * (attempt + 1));
+      }
+      return { agentId: id, selected };
+    },
+    getAgentOpenRouterEffort: async (raw) => {
+      const agentId = req(raw).agentId;
+      invariant(typeof agentId === "string" && agentId.trim().length > 0, "Choose a Bot.");
+      const id = agentId.trim();
+      const own = invoke(deps.settingsStore, "getOpenRouterAgentModel", id);
+      const global = invoke(deps.settingsStore, "getOpenRouterModel");
+      const model = typeof own === "string" && own.trim().length > 0 ? own.trim() : typeof global === "string" && global.trim().length > 0 ? global.trim() : null;
+      const stored = normalizeOpenRouterReasoningEffort(invoke(deps.settingsStore, "getOpenRouterAgentEffort", id));
+      const globalEffort = normalizeOpenRouterReasoningEffort(invoke(deps.settingsStore, "getOpenRouterEffort"));
+      return {
+        agentId: id,
+        model,
+        selected: effortSupportedByModel(stored, model),
+        storedEffort: stored,
+        defaultEffort: effortSupportedByModel(globalEffort, model),
+        modelDefault: readOpenRouterModelReasoning(model)?.defaultLevel ?? null,
+        options: openRouterEffortOptionsFor(model),
+      };
+    },
+    setAgentOpenRouterEffort: async (raw) => {
+      const { agentId, effort } = req(raw);
+      invariant(typeof agentId === "string" && agentId.trim().length > 0, "Choose a Bot.");
+      invariant(effort === null || typeof effort === "string", "The effort must be a string.");
+      const id = agentId.trim();
+      const selected = normalizeOpenRouterReasoningEffort(effort);
+      invariant(effort === null || selected != null, "Unknown reasoning effort.");
+      invoke(deps.settingsStore, "setOpenRouterAgentEffort", id, selected);
+      const all = invoke(deps.settingsStore, "getOpenRouterAgentEfforts") as Record<string, string>;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try { const applied = await deps.syncHostSettingsToBox({ openRouterAgentEfforts: all }); if (((applied?.openRouterAgentEfforts as Record<string, string> | undefined)?.[id] ?? null) === selected) break; } catch (error) { reportDesktopEdgeFailure("host-settings", "openrouter-agent-effort-retry", error); }
+        await (deps.delay ?? sleep)(250 * (attempt + 1));
+      }
+      return { agentId: id, effort: selected };
+    },
     getOpenRouterBaseUrl: async () => {
       const persisted = persistedOpenRouterBaseUrl(deps.settingsStore);
       return { baseUrl: resolveOpenRouterBaseUrl(persisted), baseUrlOverride: persisted };
@@ -189,8 +256,12 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       return { baseUrl: resolveOpenRouterBaseUrl(persisted), baseUrlOverride: persisted };
     },
     getOpenRouterEffort: async () => {
-      const effort = normalizeOpenRouterReasoningEffort(invoke(deps.settingsStore, "getOpenRouterEffort"));
-      return { effort, options: OPENROUTER_REASONING_EFFORTS.map((entry) => ({ value: entry.value, label: entry.label })) };
+      const stored = normalizeOpenRouterReasoningEffort(invoke(deps.settingsStore, "getOpenRouterEffort"));
+      const selectedModel = invoke(deps.settingsStore, "getOpenRouterModel");
+      const model = typeof selectedModel === "string" && selectedModel.trim().length > 0 ? selectedModel.trim() : null;
+      const reasoning = readOpenRouterModelReasoning(model);
+      // An effort the current model does not accept is not sent (see provider-session), so show it as "Model default".
+      return { effort: effortSupportedByModel(stored, model), storedEffort: stored, model, modelDefault: reasoning?.defaultLevel ?? null, options: openRouterEffortOptionsFor(model) };
     },
     setOpenRouterEffort: async (raw) => {
       const requested = req(raw).effort;

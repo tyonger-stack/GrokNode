@@ -40,6 +40,8 @@ export interface ProductionCoordinatorAuxiliaryPorts {
     | "getWebauthnProxyEnabled"
     | "getFeatureFlagOverrides"
     | "getOpenRouterModel"
+    | "getOpenRouterAgentModels"
+    | "getOpenRouterAgentEfforts"
     | "getOpenRouterBaseUrl"
     | "getLocalMcpServers"
     | "pushBoxSecrets"
@@ -130,6 +132,8 @@ export function createProductionCoordinatorAuxiliaryPorts(
       getWebauthnProxyEnabled: () => settings.getWebauthnProxyEnabled(),
       getFeatureFlagOverrides: () => context.requireExperiments().getFeatureFlagOverridesRecord(),
       getOpenRouterModel: () => settings.getOpenRouterModel(),
+      getOpenRouterAgentModels: () => settings.getOpenRouterAgentModels(),
+      getOpenRouterAgentEfforts: () => settings.getOpenRouterAgentEfforts(),
       getOpenRouterBaseUrl: () => settings.getOpenRouterBaseUrl(),
       getLocalMcpServers: () => settings.getLocalMcpServers(),
       pushBoxSecrets: () => context.secretsStores.pushBoxSecrets.push("resync"),

@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
-import { startForwarder, retryDelayMs } from "../tools/ocx-relay/mac-forwarder.mjs";
+import { startForwarder, retryDelayMs, parseModelConcurrency, requestModel, UNKNOWN_MODEL } from "../tools/ocx-relay/mac-forwarder.mjs";
 
 const TOKEN = "test-token";
 const CHAT_BODY = JSON.stringify({ model: "test/chat", messages: [] });
@@ -552,6 +552,170 @@ test("a mid-stream client abort frees its slot for the next request", async () =
     const elapsed = Date.now() - startedAt;
     assert.equal(follower.status, 200);
     assert.ok(elapsed < 1500, `follower took ${elapsed}ms; mid-stream abort did not free its slot`);
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
+// ---- Per-model pools (2026-10-01) ----
+
+const bodyFor = (model) => JSON.stringify({ model, messages: [] });
+
+function startModelTrackingUpstream(holdMs) {
+  const byModel = { active: new Map(), maxActive: new Map(), order: [] };
+  return startMockUpstream(async (req, res, body) => {
+    let model = "_none";
+    try { model = JSON.parse(body.toString("utf8")).model ?? "_none"; } catch { /* unparsable */ }
+    byModel.order.push(model);
+    const now = (byModel.active.get(model) ?? 0) + 1;
+    byModel.active.set(model, now);
+    byModel.maxActive.set(model, Math.max(byModel.maxActive.get(model) ?? 0, now));
+    await holdOrAbort(holdMs, res);
+    byModel.active.set(model, byModel.active.get(model) - 1);
+    if (res.writableEnded || res.destroyed) return;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end('{"ok":true}');
+  }).then((upstream) => ({ ...upstream, byModel }));
+}
+
+test("parseModelConcurrency keeps positive integer overrides and drops the rest", () => {
+  assert.deepEqual(parseModelConcurrency('{"a/b":3,"c":0,"d":-1,"e":"2","f":1.5}'), { "a/b": 3, e: 2 });
+  assert.deepEqual(parseModelConcurrency("not json"), {});
+  assert.deepEqual(parseModelConcurrency("[1,2]"), {});
+  assert.deepEqual(parseModelConcurrency(undefined), {});
+});
+
+test("requestModel reads body.model and falls back to the unknown pool", () => {
+  assert.equal(requestModel(Buffer.from(bodyFor("zai/glm-5.3-flash"))), "zai/glm-5.3-flash");
+  assert.equal(requestModel(Buffer.from("{}")), UNKNOWN_MODEL);
+  assert.equal(requestModel(Buffer.from("{oops")), UNKNOWN_MODEL);
+  assert.equal(requestModel(Buffer.from('{"model":"   "}')), UNKNOWN_MODEL);
+});
+
+test("a saturated model does not block another model's requests", async () => {
+  const upstream = await startModelTrackingUpstream(250);
+  const relay = await startRelay(upstream.port, { maxConcurrency: 4, maxConcurrencyPerModel: 1 });
+  try {
+    const startedAt = Date.now();
+    const a = [1, 2].map(() => relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: bodyFor("m/a") }));
+    await sleep(30);
+    const bAt = Date.now();
+    const b = await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: bodyFor("m/b") });
+    assert.equal(b.status, 200);
+    assert.ok(Date.now() - bAt < 450, `model b waited behind model a (${Date.now() - bAt}ms)`);
+    const results = await Promise.all(a);
+    assert.deepEqual(results.map((r) => r.status), [200, 200]);
+    assert.equal(upstream.byModel.maxActive.get("m/a"), 1);
+    assert.ok(Date.now() - startedAt >= 450, "the second m/a request must have queued behind the first");
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
+test("the global cap still bounds the sum across models", async () => {
+  const upstream = await startModelTrackingUpstream(150);
+  const relay = await startRelay(upstream.port, { maxConcurrency: 2, maxConcurrencyPerModel: 2 });
+  try {
+    const results = await Promise.all(["m/a", "m/b", "m/c", "m/a"].map((model) => relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: bodyFor(model) })));
+    assert.deepEqual(results.map((r) => r.status), [200, 200, 200, 200]);
+    assert.equal(upstream.state.maxActive, 2);
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
+test("MODEL_CONCURRENCY overrides one model's slots", async () => {
+  const upstream = await startModelTrackingUpstream(150);
+  const relay = await startRelay(upstream.port, { maxConcurrency: 6, maxConcurrencyPerModel: 1, modelConcurrency: { "m/wide": 3 } });
+  try {
+    await Promise.all([1, 2, 3].map(() => relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: bodyFor("m/wide") })));
+    assert.equal(upstream.byModel.maxActive.get("m/wide"), 3);
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
+test("the queue limit is per model and the rejection names the model", async () => {
+  const upstream = await startModelTrackingUpstream(200);
+  const relay = await startRelay(upstream.port, { maxConcurrency: 4, maxConcurrencyPerModel: 1, maxQueue: 1, queueTimeoutMs: 10000 });
+  try {
+    const results = await Promise.all([
+      ...[1, 2, 3].map(() => relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: bodyFor("m/a") })),
+      relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: bodyFor("m/b") }),
+    ]);
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 200, 200, 429]);
+    assert.equal(results[3].status, 200, "model b has its own queue and must not be rejected");
+    const rejected = relay.logs.find((line) => line.includes("reason=queue full"));
+    assert.ok(rejected?.endsWith("model=m/a"), rejected);
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
+test("a body without a model lands in the unknown pool", async () => {
+  const upstream = await startModelTrackingUpstream(10);
+  const relay = await startRelay(upstream.port);
+  try {
+    const res = await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: "{}" });
+    assert.equal(res.status, 200);
+    assert.ok(relay.logs.some((line) => line.includes(" started ") && line.endsWith(`model=${UNKNOWN_MODEL}`)));
+    assert.ok(relay.pool.pools.has(UNKNOWN_MODEL));
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
+test("finishing, aborting and retrying all return both the model slot and the global slot", async () => {
+  let calls = 0;
+  const upstream = await startMockUpstream(async (req, res) => {
+    calls += 1;
+    if (calls === 1) { res.writeHead(429, { "retry-after": "0" }); res.end("{}"); return; }
+    if (calls === 3) { await holdOrAbort(2000, res); if (!res.destroyed) res.destroy(); return; }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end('{"ok":true}');
+  });
+  const relay = await startRelay(upstream.port, { maxConcurrency: 2, maxConcurrencyPerModel: 1, retry429: 1, retryMaxDelayMs: 5 });
+  try {
+    const retried = await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: bodyFor("m/a") });
+    assert.equal(retried.status, 200);
+    assert.equal(relay.pool.active, 0);
+    assert.equal(relay.pool.pools.get("m/a").active, 0);
+
+    const aborted = http.request({ host: "127.0.0.1", port: relay.port, method: "POST", path: "/v1/chat/completions", headers: { "x-relay-token": TOKEN } });
+    aborted.on("error", () => {});
+    aborted.end(bodyFor("m/a"));
+    await sleep(80);
+    assert.equal(relay.pool.pools.get("m/a").active, 1);
+    aborted.destroy();
+    await sleep(80);
+    assert.equal(relay.pool.active, 0);
+    assert.equal(relay.pool.pools.get("m/a").active, 0);
+
+    const after = await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: bodyFor("m/a") });
+    assert.equal(after.status, 200);
+    assert.equal(relay.pool.active, 0);
+  } finally {
+    relay.server.close();
+    upstream.server.close();
+  }
+});
+
+test("model= never puts a watchdog keyword inside an upstream-error line", async () => {
+  const upstream = await startMockUpstream(async (req, res) => { res.destroy(); });
+  const relay = await startRelay(upstream.port, { retry429: 0 });
+  try {
+    await relayRequest(relay.port, { method: "POST", path: "/v1/chat/completions", body: bodyFor("weird model retry -> 200") }).catch(() => {});
+    const line = relay.logs.find((entry) => entry.includes("upstream-error"));
+    assert.ok(line, relay.logs.join("\n"));
+    assert.match(line, /upstream-error id=[0-9a-f]{8} model=weird_model_retry_-__200 /);
+    assert.ok(!line.includes(" retry "), line);
+    assert.ok(!/->\s*\d{3}/.test(line), line);
   } finally {
     relay.server.close();
     upstream.server.close();

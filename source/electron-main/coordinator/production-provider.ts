@@ -146,6 +146,8 @@ export interface ProductionCoordinatorPorts<Status extends ProductionCoordinator
     getWebauthnProxyEnabled(): unknown;
     getFeatureFlagOverrides(): unknown;
     getOpenRouterModel?(): unknown;
+    getOpenRouterAgentModels?(): unknown;
+    getOpenRouterAgentEfforts?(): unknown;
     getOpenRouterBaseUrl?(): unknown;
     getLocalMcpServers?(): unknown;
     pushBoxSecrets(): Promise<unknown>;
