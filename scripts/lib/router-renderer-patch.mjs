@@ -212,10 +212,43 @@ export function patchOriginalWebhookTriggerFormGuard(source) {
  *  the container too (snapshot restore → docker recreate), which strands the pinned
  *  digest + bind-mounted host exactly like an update would. */
 const BOX_UPDATES_SECTION_BEFORE = 'function vKn(n){const e=he.c(53)';
+// The stub opens vKn's body, and _vKnRemoved opens a second brace wrapping the
+// original body. The original body's final "}" used to close vKn itself; now it
+// closes only _vKnRemoved, so the replacement must append one extra "}" to close
+// the outer vKn. Without it the chunk never parses (SyntaxError at the trailing
+// export statement) and the whole renderer boots to a black screen.
 const BOX_UPDATES_SECTION_AFTER = 'function vKn(n){return null;function _vKnRemoved(){const e=he.c(53)';
 
 export function patchOriginalBoxUpdatesSection(source) {
-  return replaceExactlyOnce(source, BOX_UPDATES_SECTION_BEFORE, BOX_UPDATES_SECTION_AFTER, "box updates section removal");
+  const patched = replaceExactlyOnce(source, BOX_UPDATES_SECTION_BEFORE, BOX_UPDATES_SECTION_AFTER, "box updates section removal");
+  return closeStubbedOuterFunction(patched, "box updates section removal");
+}
+
+/**
+ * replaceExactlyOnce gives us the text right after the anchor, which is the
+ * original function body. That body's matching close brace is the one that has
+ * to be duplicated for the outer wrapper. We locate the end of the wrapped
+ * body with a brace/paren scan from the _vKnRemoved opening brace (string and
+ * template literals are already closed at this point in the minified chunk —
+ * verified against the current upstream layout) and insert the extra "}".
+ */
+function closeStubbedOuterFunction(source, label) {
+  const marker = "function _vKnRemoved(){";
+  const open = source.indexOf(marker);
+  if (open < 0) throw new Error(`${label} anchor is missing or ambiguous`);
+  let i = open + marker.length - 1; // position of the opening "{"
+  let depth = 0;
+  for (; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) break;
+    }
+  }
+  if (depth !== 0) throw new Error(`${label}: unbalanced body while closing the outer stub`);
+  // i is the "}" that closes _vKnRemoved; the outer vKn needs one more.
+  return source.slice(0, i + 1) + "}" + source.slice(i + 1);
 }
 
 export async function applyOriginalRendererRouterPatch({ stageRoot }) {
