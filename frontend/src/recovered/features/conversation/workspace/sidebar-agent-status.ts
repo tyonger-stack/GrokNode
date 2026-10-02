@@ -10,11 +10,23 @@ import { createElement, type CSSProperties, type HTMLAttributes, type ReactNode,
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=1445196 (sand-agent-item__trailing marker region; Windows SHA256 80464803b50f478598080bdc1b91da3996c6b74168e2351ea26f620f2ec62ba5)
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=1442566 (d4e row activity branch; Windows SHA256 80464803b50f478598080bdc1b91da3996c6b74168e2351ea26f620f2ec62ba5)
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=1445669 (sand-agent-item__activity carrier; Windows SHA256 80464803b50f478598080bdc1b91da3996c6b74168e2351ea26f620f2ec62ba5)
+//
+// The "main" corner value and the isMain input are a PORT from a later official build: 0.18
+// has no main-bot concept at all (isMain: 0 hits in src/app/dist/renderer).
+// @port /Applications/Grok Bot.app (0.66.0, built 2026-10-01T18:23:52Z) →
+// @port renderer/assets/index-ZYxf-aBb.js, row layout resolver s1e (~byteOffset 239712) and
+// @port accessible-name builder DI: `if (isMain) parts.push(t({id:"V8a0q9"}))` — i18n
+// @port "V8a0q9" is 「主 Bot」 / "Main Bot", appended to the row name with ", ".
 
 export type SidebarAgentRowLayout = "expanded" | "collapsed" | "pinned";
 export type SidebarAgentStatusMarker = "blocked" | "unread" | null;
-export type SidebarAgentStatusCorner = "marker" | "ring" | "running" | null;
+export type SidebarAgentStatusCorner = "marker" | "ring" | "running" | "main" | null;
 export type SidebarStatusDotStatus = "working" | "needs-attention" | "offline" | "error" | "info";
+
+/** Ported: official i18n id "V8a0q9". Chinese upstream is 「主 Bot」. */
+export const MAIN_BOT_BADGE_LABEL = "Main Bot";
+/** Ported: official i18n id "3VAome" / "EE2rtW" — the chooser's own headings. */
+export const MAIN_BOT_DIALOG_LABEL = "Select main Bot";
 
 const STATUS_DOT_CLASSES: Record<SidebarStatusDotStatus, string> = {
   working: "sand-1rm5x0x",
@@ -54,6 +66,8 @@ export interface SidebarAgentStatusInput {
   readonly isRunning?: boolean;
   /** True only when the shipped row has a named activity preview. */
   readonly isActivityNamed?: boolean;
+  /** Ported: this row is the user's main bot (主 Bot). */
+  readonly isMain?: boolean;
 }
 
 export interface SidebarAgentStatusProjection {
@@ -83,18 +97,23 @@ export function SidebarAgentActivity({ preview, previewTitle }: SidebarAgentActi
   }, preview ?? null);
 }
 
-export function projectSidebarAgentStatus({ layout = "expanded", waitingReason, hasUnread = false, isRunning = false, isActivityNamed = false }: SidebarAgentStatusInput): SidebarAgentStatusProjection {
+export function projectSidebarAgentStatus({ layout = "expanded", waitingReason, hasUnread = false, isRunning = false, isActivityNamed = false, isMain = false }: SidebarAgentStatusInput): SidebarAgentStatusProjection {
   const marker: SidebarAgentStatusMarker = waitingReason != null ? "blocked" : hasUnread ? "unread" : null;
   const isWorking = waitingReason == null && isRunning;
-  const runningState: Exclude<SidebarAgentStatusCorner, "marker" | null> | null = isWorking ? (isActivityNamed ? "ring" : "running") : null;
+  const runningState: Exclude<SidebarAgentStatusCorner, "marker" | "main" | null> | null = isWorking ? (isActivityNamed ? "ring" : "running") : null;
   const markerLabel = marker === "blocked" ? "Needs attention" : marker === "unread" ? "Unread activity" : undefined;
 
   const markerCorner: SidebarAgentStatusCorner = marker == null ? null : "marker";
+  // Ported verbatim from official 0.66.0 s1e: `const r = isMain ? "main" : null`, then
+  //     layout !== "expanded" ? { corner: marker != null ? "marker" : (running ?? main) }
+  //                           : { corner: running === "running" ? "running" : main }
+  // i.e. main is the LAST resort corner — a blocked/unread marker or a running dot wins it.
+  const mainCorner: SidebarAgentStatusCorner = isMain ? "main" : null;
   return {
     marker,
     markerLabel,
     isWorking,
-    corner: layout === "expanded" ? (runningState === "running" ? "running" : null) : markerCorner ?? runningState,
+    corner: layout === "expanded" ? (runningState === "running" ? "running" : mainCorner) : markerCorner ?? runningState ?? mainCorner,
     trailing: layout === "expanded" && marker != null ? "marker" : null
   };
 }
@@ -111,6 +130,17 @@ export function SidebarAgentStatusCorner({ layout = "expanded", renderIndicator,
   const pinned = layout === "pinned";
   const size = pinned ? 10 : 8;
   const status = projection.markerLabel == null ? undefined : projection.markerLabel;
+  // Ported: official 0.66.0 renders the main-bot corner as a badge, not a status dot, and
+  // labels it 「主 Bot」 ("Main Bot", i18n V8a0q9). It occupies the same corner slot, which is
+  // why the projection above only ever yields it when no marker/running state outranks it.
+  if (projection.corner === "main") {
+    return createElement("span", {
+      "aria-label": MAIN_BOT_BADGE_LABEL,
+      className: "sand-agent-item__main-badge",
+      role: "status",
+      style: { right: 0, bottom: 0 }
+    }, createElement("span", { "aria-hidden": true, className: "sand-agent-item__main-badge-star" }));
+  }
   const className = [
     "sand-agent-item__corner-dot",
     CORNER_ROOT_CLASS,

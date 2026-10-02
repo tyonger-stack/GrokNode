@@ -91,6 +91,13 @@ export function createElectronProductionMainRpcBinding(
             return null;
           }
         },
+        requestMainAgent: async (method, args) => {
+          const call = context.coordinatorLegs.legs[method];
+          if (typeof call !== "function") throw new Error("Main Bot host command is unavailable.");
+          const result: unknown = await call(args);
+          if (typeof result !== "object" || result === null || Array.isArray(result)) throw new Error("Invalid Main Bot host response.");
+          return Object.fromEntries(Object.entries(result));
+        },
         readHostSettingsFromBox: async () => {
           const settings = await context.coordinatorResync.readHostSettings();
           if (typeof settings !== "object" || settings == null || Array.isArray(settings)) {

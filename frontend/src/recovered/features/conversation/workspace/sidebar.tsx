@@ -13,7 +13,8 @@ import {
   type SidebarSectionDeleteConfirmation,
   type SidebarSectionMovePosition
 } from "./sidebar-sections-state";
-import { projectSidebarAgentStatus, SidebarAgentActivity, SidebarAgentStatusCorner, SidebarAgentStatusView, SidebarStatusDot, type SidebarStatusDotStatus } from "./sidebar-agent-status";
+import { projectSidebarAgentStatus, MAIN_BOT_BADGE_LABEL, SidebarAgentActivity, SidebarAgentStatusCorner, SidebarAgentStatusView, SidebarStatusDot, type SidebarStatusDotStatus } from "./sidebar-agent-status";
+import { isGrokBotMainAgent, normalizeGrokBotMainAgentId, type GrokBotMainAgentPointer } from "../../../../../../source/shared/node/grok-bot-main-agent";
 import { AgentPreviewCompositor } from "./sidebar-agent-preview-content";
 import type { AgentPreviewAvatarProjection } from "./sidebar-agent-preview-header";
 import { SidebarSectionHeader } from "./sidebar-section-header";
@@ -44,6 +45,8 @@ export interface ConversationSidebarProps {
   agents: readonly SidebarAgent[];
   sections?: readonly SidebarSectionProjection<SidebarAgent>[];
   pinnedAgentIds?: readonly string[];
+  /** Ported: the user's main bot (主 Bot). Drives the corner badge and the replace action. */
+  mainAgentId?: string | null;
   activeAgentId: string;
   onNewChat(): void;
   onOpenAgent(agentId: string): void;
@@ -54,6 +57,8 @@ export interface ConversationSidebarProps {
   onDuplicateAgent?(agentId: string): void;
   onTogglePin?(agentId: string, isPinned: boolean): void;
   onReorderPinnedAgents?(movedId: string, targetId: string, position: "before" | "after"): void;
+  /** Ported: open the main-bot chooser from a main bot's row action. */
+  onReplaceMainAgent?(): void;
   onToggleSectionCollapsed?(sectionId: string, collapsed: boolean): void;
   onStartRenameSection?(sectionId: string): void;
   onRenameSection?(sectionId: string, name: string): void;
@@ -192,6 +197,9 @@ export interface AgentSidebarItemProps {
   onCopyAgentId?: (agentId: string) => void;
   onDuplicateAgent?: (agentId: string) => void;
   onTogglePin?: (agentId: string, isPinned: boolean) => void;
+  /** Ported: this row is the user's main bot (主 Bot). */
+  isMain?: boolean;
+  onReplaceMainAgent?: (agentId: string) => void;
   onReorderPinnedAgents?: (movedId: string, targetId: string, position: "before" | "after") => void;
   onSetAgentUnread?: (agentId: string, isUnread: boolean) => void;
   onOpenProfile?: (agentId: string) => void;
@@ -201,10 +209,10 @@ export interface AgentSidebarItemProps {
   isPreviewEnabled?: boolean;
 }
 
-export function AgentSidebarItem({ agent, active, now, isCollapsed = false, isSelected = false, selectionEnabled = false, sourceSectionId, sections, onMoveAgentToSection, onMoveAgentToNewSection, onToggleSelect, onRangeSelect, onOpen, onHide, onRequestDelete, onRename, onCopyAgentId, onDuplicateAgent, onTogglePin, onReorderPinnedAgents, onSetAgentUnread, onOpenProfile, onShowFullConversation, onShowAsyncTasks, isHostReachable = false, isPreviewEnabled = true }: AgentSidebarItemProps) {
+export function AgentSidebarItem({ agent, active, now, isCollapsed = false, isSelected = false, selectionEnabled = false, sourceSectionId, sections, onMoveAgentToSection, onMoveAgentToNewSection, onToggleSelect, onRangeSelect, onOpen, onHide, onRequestDelete, onRename, onCopyAgentId, onDuplicateAgent, onTogglePin, onReorderPinnedAgents, onSetAgentUnread, onOpenProfile, onShowFullConversation, onShowAsyncTasks, isHostReachable = false, isPreviewEnabled = true, isMain = false, onReplaceMainAgent }: AgentSidebarItemProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const activity = activityLabel(agent);
-  const status = projectSidebarAgentStatus({ hasUnread: agent.hasUnread, isRunning: agent.isRunning, layout: agent.isPinned === true ? "pinned" : isCollapsed ? "collapsed" : "expanded", waitingReason: agent.waitingReason });
+  const status = projectSidebarAgentStatus({ hasUnread: agent.hasUnread, isRunning: agent.isRunning, layout: agent.isPinned === true ? "pinned" : isCollapsed ? "collapsed" : "expanded", waitingReason: agent.waitingReason, isMain });
   const rowLayout = agent.isPinned === true ? "pinned" : isCollapsed ? "collapsed" : "expanded";
   const canMoveToSection = !agent.isPinned && sourceSectionId != null && onMoveAgentToSection != null;
   const detail = agent.draftPrompt?.trim()
@@ -213,7 +221,7 @@ export function AgentSidebarItem({ agent, active, now, isCollapsed = false, isSe
         ? <>Waiting for you: {agent.waitingReason}</>
       : agent.lastMessage ?? null;
   const row = <button
-    aria-label={agent.name}
+    aria-label={isMain ? `${agent.name}, ${MAIN_BOT_BADGE_LABEL}` : agent.name}
     aria-current={active ? "page" : undefined}
     aria-pressed={selectionEnabled ? isSelected : undefined}
     className="sand-agent-item"
@@ -267,7 +275,7 @@ export function AgentSidebarItem({ agent, active, now, isCollapsed = false, isSe
   >
     <span className="sand-agent-item__avatar">
       <span aria-hidden="true"><AgentAvatar agentId={agent.id} kind={agent.isSharedRoom === true || agent.raw?.isSharedRoom === true ? "shared-room" : agent.isGroup === true ? "group" : "agent"} memberIds={agent.memberIds} dataUrl={agent.avatarDataUrl} color={agent.avatarColor} shape={agent.avatarShape} currentActivity={agent.currentActivity} isComposingMessage={agent.isComposingMessage} isRunning={agent.isRunning} awaitingUserResponse={agent.awaitingUserResponse} size="md" /></span>
-      <SidebarAgentStatusCorner hasUnread={agent.hasUnread} isRunning={agent.isRunning} layout={rowLayout} waitingReason={agent.waitingReason} />
+      <SidebarAgentStatusCorner hasUnread={agent.hasUnread} isMain={isMain} isRunning={agent.isRunning} layout={rowLayout} waitingReason={agent.waitingReason} />
     </span>
     {isCollapsed ? null : <>
       <span className="sand-agent-item__body">
@@ -291,7 +299,7 @@ export function AgentSidebarItem({ agent, active, now, isCollapsed = false, isSe
     renderAvatar={(avatar) => renderPreviewAvatar(agent, avatar)}
     renderStatus={renderPreviewStatus}
   >{row}</AgentPreviewCompositor>;
-  return onHide == null ? preview : <AgentRowActions agentId={agent.id} agentName={agent.name} currentSectionId={sourceSectionId} hasUnread={agent.hasUnread} isGroup={agent.isGroup} isPinned={agent.isPinned} onCopyConversationId={onCopyAgentId} onDuplicateAgent={agent.isGroup ? undefined : onDuplicateAgent} onHideFromSidebar={onHide} onMoveToNewSection={onMoveAgentToNewSection == null ? undefined : () => onMoveAgentToNewSection([agent.id])} onMoveToSection={onMoveAgentToSection == null ? undefined : (sectionId) => onMoveAgentToSection([agent.id], sectionId)} onOpenProfile={agent.isGroup ? undefined : onOpenProfile} onShowAsyncTasks={onShowAsyncTasks} onShowFullConversation={onShowFullConversation} onRequestDelete={onRequestDelete} onSetAgentUnread={onSetAgentUnread} onTogglePin={onTogglePin} sections={sections}>{preview}</AgentRowActions>;
+  return onHide == null ? preview : <AgentRowActions agentId={agent.id} agentName={agent.name} currentSectionId={sourceSectionId} hasUnread={agent.hasUnread} isGroup={agent.isGroup} isMain={isMain} isPinned={agent.isPinned} onCopyConversationId={onCopyAgentId} onDuplicateAgent={agent.isGroup ? undefined : onDuplicateAgent} onHideFromSidebar={onHide} onMoveToNewSection={onMoveAgentToNewSection == null ? undefined : () => onMoveAgentToNewSection([agent.id])} onMoveToSection={onMoveAgentToSection == null ? undefined : (sectionId) => onMoveAgentToSection([agent.id], sectionId)} onOpenProfile={agent.isGroup ? undefined : onOpenProfile} onReplaceMainAgent={onReplaceMainAgent == null ? undefined : () => onReplaceMainAgent(agent.id)} onShowAsyncTasks={onShowAsyncTasks} onShowFullConversation={onShowFullConversation} onRequestDelete={onRequestDelete} onSetAgentUnread={onSetAgentUnread} onTogglePin={onTogglePin} sections={sections}>{preview}</AgentRowActions>;
 }
 
 export interface SidebarResizeHandleProps {
@@ -433,19 +441,25 @@ function SidebarSectionNameEditor({ initialValue, onCommit, onExit }: { initialV
   />;
 }
 
-export function ConversationSidebar({ agents, sections, pinnedAgentIds = [], activeAgentId, onBroadcast, onNewChat, onOpenAgent, onHideAgent, onRequestDeleteAgent, onRenameAgent, onCopyAgentId, onDuplicateAgent, onTogglePin, onReorderPinnedAgents, onSetAgentUnread, onToggleSectionCollapsed, onStartRenameSection, onRenameSection, onRequestDeleteSection, onMoveSection, onOpenNetwork, onOpenSearch, onOpenProfile, onShowFullConversation, onShowAsyncTasks, onMoveAgentToSection, onMoveAgentToNewSection, selectedAgentIds = [], onToggleAgentSelection, onRangeSelectAgent, onDeleteSelectedAgents, onClearAgentSelection, onMoveSelectedAgentsToSection, onMoveSelectedAgentsToNewSection, sidebarLayout, onResize, onResizeEnd, listStatus, isHostReachable = false, isPreviewEnabled = true }: ConversationSidebarProps) {
+export function ConversationSidebar({ agents, sections, pinnedAgentIds = [], mainAgentId = null, activeAgentId, onBroadcast, onNewChat, onOpenAgent, onHideAgent, onRequestDeleteAgent, onRenameAgent, onCopyAgentId, onDuplicateAgent, onTogglePin, onReorderPinnedAgents, onSetAgentUnread, onToggleSectionCollapsed, onStartRenameSection, onRenameSection, onRequestDeleteSection, onMoveSection, onOpenNetwork, onOpenSearch, onOpenProfile, onShowFullConversation, onShowAsyncTasks, onReplaceMainAgent, onMoveAgentToSection, onMoveAgentToNewSection, selectedAgentIds = [], onToggleAgentSelection, onRangeSelectAgent, onDeleteSelectedAgents, onClearAgentSelection, onMoveSelectedAgentsToSection, onMoveSelectedAgentsToNewSection, sidebarLayout, onResize, onResizeEnd, listStatus, isHostReachable = false, isPreviewEnabled = true }: ConversationSidebarProps) {
   const now = Date.now();
   const isCollapsed = sidebarLayout?.isCollapsed ?? false;
   const sidebarWidth = isCollapsed ? SIDEBAR_LAYOUT_BOUNDS.collapsedWidth : sidebarLayout?.expandedWidth;
   const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
   const [dropSectionId, setDropSectionId] = useState<string | null>(null);
   const { pinned: orderedPinned, unpinned } = partitionSidebarAgents(agents, pinnedAgentIds);
+  // Ported from official 0.66.0 (see source/shared/node/grok-bot-main-agent.ts). The pointer is
+  // the user's main_agent_id: a null id here means "no main bot yet", which upstream renders
+  // as kind "known" — resolved, but empty — so the badge and the replace action both apply.
+  const mainAgentPointer: GrokBotMainAgentPointer = { kind: "known", agentId: normalizeGrokBotMainAgentId(mainAgentId) };
+  // Upstream's otherCandidateCount (`x.length`): how many OTHER bots could be picked instead.
+  const otherMainAgentCandidates = mainAgentPointer.agentId == null ? agents.length : agents.filter((agent) => agent.id !== mainAgentPointer.agentId).length;
   const selectedIds = new Set(selectedAgentIds);
   const selectedSectionableCount = agents.filter((agent) => selectedIds.has(agent.id) && !agent.isPinned).length;
   const createSectionForSelection = onMoveSelectedAgentsToNewSection == null ? undefined : (agentIds: readonly string[]) => {
     return onMoveSelectedAgentsToNewSection(agentIds);
   };
-  const renderAgent = (agent: SidebarAgent, sourceSectionId?: string) => <AgentSidebarItem active={agent.id === activeAgentId} agent={agent} isCollapsed={isCollapsed} isHostReachable={isHostReachable} isPreviewEnabled={isPreviewEnabled} key={agent.id} now={now} onCopyAgentId={onCopyAgentId} onDuplicateAgent={onDuplicateAgent} onHide={onHideAgent} onMoveAgentToNewSection={onMoveAgentToNewSection == null ? undefined : (agentIds) => {
+  const renderAgent = (agent: SidebarAgent, sourceSectionId?: string) => <AgentSidebarItem active={agent.id === activeAgentId} agent={agent} isCollapsed={isCollapsed} isHostReachable={isHostReachable} isMain={isGrokBotMainAgent({ pointer: mainAgentPointer, agentId: agent.id, otherCandidateCount: otherMainAgentCandidates })} isPreviewEnabled={isPreviewEnabled} key={agent.id} now={now} onCopyAgentId={onCopyAgentId} onDuplicateAgent={onDuplicateAgent} onHide={onHideAgent} onReplaceMainAgent={onReplaceMainAgent} onMoveAgentToNewSection={onMoveAgentToNewSection == null ? undefined : (agentIds) => {
     const createdSectionId = onMoveAgentToNewSection(agentIds);
     if (createdSectionId != null) setRenamingSectionId(createdSectionId);
     return createdSectionId;

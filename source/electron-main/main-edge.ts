@@ -3,6 +3,7 @@ import { normalizeSandAutoReviewInstructions } from "../shared/sand-auto-review-
 import { isSandLocalToolAction, normalizeSandLocalToolPermission } from "../shared/local-tool-permission.js";
 import { isSandThemePreference } from "../shared/desktop.js";
 import { isLanguagePreference } from "../shared/node/i18n/locale.js";
+import { normalizeGrokBotMainAgentId } from "../shared/node/grok-bot-main-agent.js";
 import { isSandUpdateTrack } from "../shared/update-track.js";
 import { isValidIanaTimeZone } from "../shared/timezone.js";
 import { sandWebauthnProxyMirroredEnablement } from "../shared/webauthn-proxy-availability.js";
@@ -52,6 +53,7 @@ export interface MainEdgeDeps {
   readonly experiments: UnknownRecord;
   readonly syncHostSettingsToBox: (settings: UnknownRecord) => Promise<UnknownRecord | null>;
   readonly readHostSettingsFromBox: () => Promise<UnknownRecord>;
+  readonly requestMainAgent?: (method: "getMainAgent" | "setMainAgent" | "ensureDefaultMainAgent", args: UnknownRecord) => Promise<UnknownRecord>;
   readonly recordLocalToolApproval: (approval: { id: string; action: string; target: string }) => Promise<void>;
   readonly clearLocalToolApprovals: () => Promise<void>;
   readonly getComputerUseModelOverride: () => unknown;
@@ -64,6 +66,11 @@ export interface MainEdgeDeps {
   readonly platform: NodeJS.Platform;
   readonly delay?: (milliseconds: number) => Promise<void>;
   readonly detectTimeZone?: () => string | null | undefined;
+}
+
+async function mainAgentRequest(deps: MainEdgeDeps, method: "getMainAgent" | "setMainAgent" | "ensureDefaultMainAgent", args: UnknownRecord): Promise<UnknownRecord> {
+  if (deps.requestMainAgent === undefined) throw new SandHostSettingsUnreachableError("The computer is unavailable for main Bot selection.");
+  return deps.requestMainAgent(method, args);
 }
 
 function invariant(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
@@ -145,6 +152,20 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     setComputerUseModel: (raw) => { const requested = req(raw).model; const model = requested === null ? null : parseAgentModel(requested, true); if (requested === null || model != null) { invoke(deps.agentPrefsStore, "setComputerUseModel", model ?? undefined); void deps.syncHostSettingsToBox({ computerUseModel: invoke(deps.agentPrefsStore, "getComputerUseModel") ?? null }); } return computerUseModel(deps); },
     getHostPinnedAgents: async () => (await deps.readHostSettingsFromBox()).pinnedAgentIds ?? null,
     setHostPinnedAgents: (raw) => echo(deps, "pinnedAgentIds", req(raw).pinnedAgentIds, "pinned agents"),
+    // Main bot (主 Bot) — the three-method shape the official desktop facade uses
+    // (getGrokBotUserRuntimeSettings / setGrokBotMainAgent / ensureGrokBotDefaultMainAgent).
+    // `get` never needs the gate; `set` is refused by the HOST while the gate is off, which
+    // is upstream's server-side admission and the only place a mutation can happen, so this
+    // edge deliberately does not gate anything itself.
+    getHostMainAgent: async () => normalizeGrokBotMainAgentId((await mainAgentRequest(deps, "getMainAgent", {})).agentId),
+    setHostMainAgent: async (raw) => {
+      const requested = normalizeGrokBotMainAgentId(req(raw).agentId);
+      const saved = await mainAgentRequest(deps, "setMainAgent", { agentId: requested });
+      return normalizeGrokBotMainAgentId(saved.agentId);
+    },
+    ensureHostMainAgent: async () => {
+      return mainAgentRequest(deps, "ensureDefaultMainAgent", {});
+    },
     getHostSidebarSections: async () => (await deps.readHostSettingsFromBox()).sidebarSections ?? null,
     setHostSidebarSections: (raw) => echo(deps, "sidebarSections", req(raw).sections, "sidebar sections"),
     getAvailableModels: () => deps.fetchAvailableModels(),

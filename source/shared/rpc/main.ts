@@ -66,6 +66,12 @@ export const MAIN_METHOD_TABLE = {
   setComputerUseModel: { args: "object" },
   getHostPinnedAgents: { args: "none" },
   setHostPinnedAgents: { args: "object" },
+  // Main bot (主 Bot). This table is the desktop edge's exposure whitelist: a handler
+  // that is missing here is never published on `window.desktop`, so the preload bridge
+  // calls `mainEdge[method]!()` on undefined and throws at the first use.
+  getHostMainAgent: { args: "none" },
+  setHostMainAgent: { args: "object" },
+  ensureHostMainAgent: { args: "none" },
   getHostSidebarSections: { args: "none" },
   setHostSidebarSections: { args: "object" },
   getAvailableModels: { args: "none" },

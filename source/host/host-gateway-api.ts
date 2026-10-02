@@ -7,6 +7,8 @@ import type { BotTemplateManualContents } from "../shared/bot-template.js";
 import { bindAgentBoxPrewarmPort } from "./attachment-runtime-ports.js";
 import { applyLocalBotTemplateContents } from "./extensions/transcript/local-bot-template-contents.js";
 import type { SandAgentDb } from "./extensions/session/agent-db.js";
+import { z } from "zod";
+import { MainAgentService, MAIN_AGENT_PROFILE } from "./main-agent-service.js";
 
 export const HOST_CAPABILITIES = [
   "orderedReplicasV1",
@@ -94,6 +96,35 @@ export function createHostGatewayApi(
   const boxPrewarm = bindAgentBoxPrewarmPort(deps.extensions.api("forever-box"));
   const now = deps.now ?? Date.now;
   const createAgentMintsByNonce = new Map<string, Promise<any>>();
+  const mainSettings = z.object({ mainAgentId: z.string().nullable().optional(), defaultMainAgentId: z.string().nullable().optional(), pinnedAgentIds: z.array(z.string()).optional() });
+  const mainAgent = new MainAgentService({
+    readSettings: () => mainSettings.parse(method(settings, "getHostSettings")()),
+    writeSettings: update => { method(settings, "setHostSettings")({ ...update, ...(update.pinnedAgentIds === undefined ? {} : { pinnedAgentIds: [...update.pinnedAgentIds] }) }); },
+    listAgents: async () => method(manager, "listAgents")(),
+    createDefault: async () => {
+      // `isKickstartRequested` is read only by createAgent (agent-lifecycle.ts); the
+      // background variant never opens the new agent, which is why the explicit
+      // kickstartCreatedAgent below is the thing that actually starts it. Passing it here
+      // would be a no-op that reads as if it did something.
+      // The introduction is suppressed because the two seeded transcript lines below ARE
+      // the introduction; without it mintAgentSession also flips introductionPending and
+      // the bot greets itself twice.
+      const created = await method(manager, "createBackgroundAgent")(MAIN_AGENT_PROFILE, "user", {
+        isIntroductionSuppressed: true,
+        configureAgentDir: (_dir: string, db: SandAgentDb) => {
+          const timestampMs = now();
+          db.appendTranscriptEntries([
+            { id: "primary-welcome", kind: "send-message", timestampMs, message: { type: "text", content: "你好，我是 Grok Node，你的主 Bot。把任务交给我，我会完成它，或交给合适的 Bot。" } },
+            { id: "primary-intro-seed", kind: "send-message", timestampMs, message: { type: "text", content: "我会先看看有什么可以帮你处理的事，稍后回来告诉你。" } }
+          ]);
+        }
+      });
+      const agent = z.object({ agent: z.object({ id: z.string(), name: z.string() }) }).parse(created).agent;
+      boxPrewarm.prewarm({ id: agent.id });
+      void method(manager, "kickstartCreatedAgent")(agent.id);
+      return agent;
+    }
+  });
 
   const markActive = (reason: "user_action" | "app_open") => {
     method(telemetry.analytics, "markActive")(reason);
@@ -197,6 +228,9 @@ export function createHostGatewayApi(
   };
 
   return {
+    getMainAgent: () => mainAgent.get(),
+    setMainAgent: (args: { readonly agentId?: unknown }) => mainAgent.set(args.agentId),
+    ensureDefaultMainAgent: () => mainAgent.ensure(),
     getTranscript: () => method(manager, "ensureLoaded")(),
     getAgentTranscript: (args: any) =>
       method(manager, "getAgentTranscript")(args.id),
@@ -339,6 +373,7 @@ export function createHostGatewayApi(
     deleteAgent: async (args: any) => {
       await method(sharing, "noteAgentDeleted")(args.id);
       const result = await method(manager, "deleteAgent")(args.id);
+      method(settings, "clearDeletedMainAgent")([args.id]);
       method(deps.extensions.api("session"), "forgetHandoff")(args.id);
       await method(automations, "deleteAgentSchedules")(args.id).catch(
         () => undefined
@@ -356,6 +391,7 @@ export function createHostGatewayApi(
         await method(sharing, "noteAgentDeleted")(id);
       }
       const result = await method(manager, "deleteAgents")(args.ids);
+      method(settings, "clearDeletedMainAgent")(args.ids);
       for (const id of args.ids) {
         method(deps.extensions.api("session"), "forgetHandoff")(id);
         await method(automations, "deleteAgentSchedules")(id).catch(

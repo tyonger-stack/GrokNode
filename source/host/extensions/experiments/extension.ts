@@ -3,6 +3,8 @@ import { getSandRootDir } from "../../host-paths.js";
 import { resolveMultitaskEnabled } from "../../sand-multitask.js";
 import { resolveSpotlightEnabled } from "../../../shared/sand-spotlight.js";
 import { SandExperimentService } from "../../../shared/node/experiments/cursor-experiments.js";
+import { GROK_BOT_FORCE_MAIN_AGENT_SELECTION_GATE, GROK_BOT_MAIN_AGENT_GATE } from "../../../shared/node/grok-bot-main-agent.js";
+import { pinGrokBotMainAgentGateReader } from "../settings/main-agent-gate.js";
 import { HostExtensions } from "../extension-ids.generated.js";
 
 interface AuthApi { getAccessToken(options: { backendUrl: string }): Promise<string>; getMachineId(): Promise<string>; peekAccessToken(): string | null; subscribeToRenewal(listener: (event: { outcome: string; isFirstCredential: boolean }) => void): () => void; }
@@ -14,6 +16,11 @@ export const experimentsExtension = defineHostExtension({
     const service = new SandExperimentService({ getAccessToken: auth.getAccessToken, getMachineId: auth.getMachineId, getCacheDir: () => getSandRootDir(), isDevBuild: process.env.SAND_PACKAGED !== "1" || process.env.SAND_HOST_DEV_ERROR_DETAIL === "1" });
     service.start(); context.onStop(() => service.dispose()); context.onStop(auth.subscribeToRenewal((event) => { if (event.outcome === "renewed" && (event.isFirstCredential || !service.hasAuthenticatedStatsigBootstrap())) service.handleAuthChange(); }));
     if (auth.peekAccessToken() !== null) service.handleAuthChange(); context.onStop(settings.subscribeToFeatureFlagOverrides((overrides) => service.replaceFeatureFlagOverrides(overrides)));
+    // The settings extension enforces upstream's server-side admission for main-agent writes
+    // and cannot depend on us (we already depend on it), so hand it a live gate reader here.
+    // Read live, not captured once: a rollout that flips while the host runs must take effect.
+    pinGrokBotMainAgentGateReader((name) => service.checkFeatureGate(name as Parameters<typeof service.checkFeatureGate>[0]));
+    context.onStop(() => pinGrokBotMainAgentGateReader(null));
     return {
       checkFeatureGate: (name: Parameters<typeof service.checkFeatureGate>[0]) => service.checkFeatureGate(name), getFeatureGateProperty: (name: Parameters<typeof service.getFeatureGateProperty>[0]) => service.getFeatureGateProperty(name),
       checkGate: (name: Parameters<typeof service.checkGate>[0], options?: { timeoutMs?: number }) => service.checkGate(name, options), getDynamicConfig: (name: Parameters<typeof service.getDynamicConfig>[0]) => service.getDynamicConfig(name), subscribe: (listener: Parameters<typeof service.subscribe>[0]) => service.subscribe(listener),
@@ -21,7 +28,11 @@ export const experimentsExtension = defineHostExtension({
       hasAuthenticatedStatsigBootstrap: () => service.hasAuthenticatedStatsigBootstrap(), getSandModelExperimentState: () => service.getSandModelExperimentState(), logSandModelExperimentExposure: () => service.logSandModelExperimentExposure(), getConfiguredDefaultModel: () => service.getConfiguredDefaultModel(), getConfiguredAutomationsModel: () => service.getConfiguredAutomationsModel(), getComputerUseModelOverride: () => service.getComputerUseModelOverride(), getBrowserUseModelOverride: () => service.getBrowserUseModelOverride(),
       isAgentNetworkEnabled: () => service.checkFeatureGate("sand_agent_network"), isMcpMultiAccountEnabled: () => service.checkFeatureGate("mcp_multi_account"), isSparsePluginClonesEnabled: () => service.checkFeatureGate("enable_sparse_plugin_clones"),
       isMultitaskEnabled: () => resolveMultitaskEnabled(process.env.SAND_MULTITASK, () => service.checkFeatureGate("sand_multitask")), isSendMessageDeliveryOwedEnabled: () => service.checkFeatureGate("sand_send_message_delivery_owed"), isDynamicToolsEnabled: () => service.checkFeatureGate("grok_bot_dynamic_tools"), isBrowserUseSubagentEnabled: () => service.checkFeatureGate("sand_browser_use_subagent"),
-      isSpotlightEnabled: () => resolveSpotlightEnabled(process.env.SAND_SPOTLIGHT, () => service.checkFeatureGate("sand_spotlight")), isUnicodeTypingEnabled: () => service.checkFeatureGate("sand_computer_use_unicode_typing"), isUaTokenKillSwitchEnabled: () => service.checkFeatureGate("sand_browser_ua_token_kill_switch")
+      isSpotlightEnabled: () => resolveSpotlightEnabled(process.env.SAND_SPOTLIGHT, () => service.checkFeatureGate("sand_spotlight")), isUnicodeTypingEnabled: () => service.checkFeatureGate("sand_computer_use_unicode_typing"), isUaTokenKillSwitchEnabled: () => service.checkFeatureGate("sand_browser_ua_token_kill_switch"),
+      // Main bot (主 Bot): the write-path gate, and the separate gate that lets the client
+      // open the chooser by itself. The chooser needs BOTH — upstream's own comment on the
+      // second one says it "only" opens together with the first.
+      isGrokBotMainAgentEnabled: () => service.checkFeatureGate(GROK_BOT_MAIN_AGENT_GATE as Parameters<typeof service.checkFeatureGate>[0]), isGrokBotForceMainAgentSelectionEnabled: () => service.checkFeatureGate(GROK_BOT_FORCE_MAIN_AGENT_SELECTION_GATE as Parameters<typeof service.checkFeatureGate>[0])
     };
   }
 });

@@ -321,6 +321,11 @@ export function createDesktopPreloadBridge(options: {
     agent: {
       getPinnedAgents: () => edge("getHostPinnedAgents"),
       setPinnedAgents: (pinnedAgentIds: readonly string[]) => edge("setHostPinnedAgents", { pinnedAgentIds }),
+      // Main bot (主 Bot). `get` always answers; `set` is refused by the host while the
+      // feature gate is off (upstream's server-side admission).
+      getMainAgent: () => edge("getHostMainAgent"),
+      setMainAgent: (agentId: string | null) => edge("setHostMainAgent", { agentId }),
+      ensureMainAgent: () => edge("ensureHostMainAgent"),
       getSidebarSections: () => edge("getHostSidebarSections"),
       setSidebarSections: (sections: readonly unknown[]) => edge("setHostSidebarSections", { sections }),
       getDefaultModel: () => edge("getAgentDefaultModel"),

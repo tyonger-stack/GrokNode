@@ -9,6 +9,7 @@ import {
   isDuplicateAgentAction,
   isHideFromSidebarAction,
   isMarkAgentUnreadAction,
+  isReplaceMainAgentAction,
   isTogglePinAction,
   markAgentUnreadValue,
   togglePinValue
@@ -24,6 +25,9 @@ export interface AgentRowActionsProps {
   agentName: string;
   isGroup?: boolean;
   isPinned?: boolean;
+  /** Ported: this row is the user's main bot (主 Bot), which swaps Delete for "Replace". */
+  isMain?: boolean;
+  onReplaceMainAgent?(agentId: string): void;
   hasUnread?: boolean;
   isHidden?: boolean;
   onHideFromSidebar(agentId: string): void;
@@ -42,10 +46,10 @@ export interface AgentRowActionsProps {
   children: ReactNode;
 }
 
-export function AgentRowActions({ agentId, agentName, isPinned = false, hasUnread = false, isGroup, isHidden = false, onHideFromSidebar, onCopyConversationId, onDuplicateAgent, onTogglePin, onRequestDelete, onSetAgentUnread, sections, currentSectionId, onMoveToSection, onMoveToNewSection, onOpenProfile, onShowFullConversation, onShowAsyncTasks, children }: AgentRowActionsProps) {
+export function AgentRowActions({ agentId, agentName, isPinned = false, isMain = false, hasUnread = false, isGroup, isHidden = false, onHideFromSidebar, onCopyConversationId, onDuplicateAgent, onTogglePin, onReplaceMainAgent, onRequestDelete, onSetAgentUnread, sections, currentSectionId, onMoveToSection, onMoveToNewSection, onOpenProfile, onShowFullConversation, onShowAsyncTasks, children }: AgentRowActionsProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [moveMenuOpen, setMoveMenuOpen] = useState(false);
-  const actions = agentRowActions({ hasUnread, isHidden, isPinned, includeCopy: onCopyConversationId != null, includeDelete: onRequestDelete != null, includeDuplicate: onDuplicateAgent != null, includeMarkUnread: onSetAgentUnread != null, includePin: onTogglePin != null });
+  const actions = agentRowActions({ hasUnread, isHidden, isPinned, isMain, includeCopy: onCopyConversationId != null, includeDelete: onRequestDelete != null, includeDuplicate: onDuplicateAgent != null, includeMarkUnread: onSetAgentUnread != null, includePin: onTogglePin != null, includeReplaceMainAgent: onReplaceMainAgent != null });
 
   const openAt = (x: number, y: number) => {
     if (actions.length === 0) return;
@@ -85,9 +89,11 @@ export function AgentRowActions({ agentId, agentName, isPinned = false, hasUnrea
     </> : <SandButton onClick={() => { closeMenu(); onMoveToNewSection?.(); }} role="menuitem" size="sm" variant="secondary">Move to new section</SandButton> : null}
     {actions.map((action) => <SandButton
       key={action.id}
+      leadingIcon={isReplaceMainAgentAction(action) ? "arrow-swap" : undefined}
       onClick={() => {
         closeMenu();
         if (isTogglePinAction(action)) onTogglePin?.(agentId, togglePinValue(action));
+        else if (isReplaceMainAgentAction(action)) onReplaceMainAgent?.(agentId);
         else if (isDuplicateAgentAction(action)) onDuplicateAgent?.(agentId);
         else if (isCopyConversationIdAction(action)) onCopyConversationId?.(agentId);
         else if (isMarkAgentUnreadAction(action)) onSetAgentUnread?.(agentId, markAgentUnreadValue(action));

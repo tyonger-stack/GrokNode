@@ -12,6 +12,7 @@ import { createTranscriptAcknowledgementController } from "../recovered/features
 import { createReplyThreadController, type ReplySelection } from "../recovered/features/conversation/workspace/reply-thread-controller";
 import type { ComposerReplyTarget } from "../recovered/features/conversation/workspace/reply-preview";
 import { ConversationSidebar } from "../recovered/features/conversation/workspace/sidebar";
+import { MainAgentChooserDialog } from "../recovered/features/conversation/workspace/main-agent-chooser";
 import { createSidebarProfileAction } from "../recovered/features/conversation/workspace/sidebar-profile-action";
 import { createSidebarSearchTrigger } from "../recovered/features/conversation/workspace/sidebar-search-trigger";
 import { ConversationAgentHeader } from "../recovered/features/conversation/workspace/chat-header";
@@ -843,6 +844,12 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
   const [transport, setTransport] = useState<TransportState>("connecting");
   const [agents, setAgents] = useState<RendererAgent[]>([]);
   const [pinnedAgentIds, setPinnedAgentIds] = useState<string[]>([]);
+  // Ported: the user's main bot (主 Bot). Read-only on the render side; writes go through
+  // bridge.agent.setMainAgent, which the host refuses while the main-bot gate is off.
+  const [mainAgentId, setMainAgentId] = useState<string | null>(null);
+  const [mainAgentChooserOpen, setMainAgentChooserOpen] = useState(false);
+  const [mainAgentChooserBusy, setMainAgentChooserBusy] = useState(false);
+  const [mainAgentChooserError, setMainAgentChooserError] = useState<string | null>(null);
   const [hasLoadedAgents, setHasLoadedAgents] = useState(false);
   const activeAgentId = useSyncExternalStore(
     selectionStore.subscribe,
@@ -2439,8 +2446,28 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       pinnedAgentIdsRef.current = value;
       setPinnedAgentIds(value);
     }).catch(() => {});
+    void bridge.agent.getMainAgent().then((value) => {
+      if (!active) return;
+      setMainAgentId(value);
+    }).catch(() => {});
     return () => { active = false; };
   }, [bridge, pinnedAccountKey]);
+
+  // Ported: "Replace with different Bot" → the chooser → setMainAgent. The host answers with
+  // the stored id, which is what the sidebar badge then keys off.
+  const chooseMainAgent = (agentId: string) => {
+    if (bridge == null) return;
+    setMainAgentChooserBusy(true);
+    setMainAgentChooserError(null);
+    void bridge.agent.setMainAgent(agentId).then((value) => {
+      setMainAgentId(value);
+      setMainAgentChooserOpen(false);
+    }).catch((error: unknown) => {
+      setMainAgentChooserError(error instanceof Error ? error.message : String(error));
+    }).finally(() => {
+      setMainAgentChooserBusy(false);
+    });
+  };
 
   useEffect(() => {
     let active = true;
@@ -3449,7 +3476,16 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
         <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto auto auto", minHeight: 0 }}>
           <div style={{ display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", minHeight: 0 }}>
             {connectionController == null ? null : <CoordinatorConnectionHost controller={connectionController} />}
-            <ConversationSidebar activeAgentId={activeAgentId} agents={visibleAgents} isHostReachable={transport === "connected"} sections={projectedSidebarSections} sidebarLayout={renderedSidebarLayout} onResize={resizeSidebar} onResizeEnd={finishSidebarResize} onToggleSectionCollapsed={(sectionId, collapsed) => sidebarCollapseStore.setSectionCollapsed(sectionId, collapsed)} listStatus={rosterListStatus} pinnedAgentIds={pinnedAgentIds} onCopyAgentId={copyAgentId} onDuplicateAgent={(agentId) => void duplicateAgent(agentId)} onHideAgent={(agentId) => void hideAgent(agentId)} onNewChat={() => void createAgent()} onOpenAgent={(agentId) => void openAgent(agentId)} onOpenNetwork={agentNetworkTrigger} onOpenProfile={sidebarProfileAction.onSelect} onShowAsyncTasks={account?.kind === "logged-in" && account.isAnysphereUser === true ? openAsyncTasks : undefined} onShowFullConversation={openConversationOutline} onOpenSearch={sidebarSearchTrigger} onRenameAgent={(agentId, name) => void renameAgent(agentId, name)} onReorderPinnedAgents={reorderPinnedAgents} onRequestDeleteAgent={(agent) => setDeleteAgent({ id: agent.id, name: agent.name, isGroup: agent.isGroup })} onRenameSection={renameSection} onRequestDeleteSection={requestDeleteSection} onMoveSection={moveSection} onMoveAgentToSection={moveAgentsToSection} onMoveAgentToNewSection={moveAgentsToNewSection} onSetAgentUnread={(agentId, isUnread) => void setAgentUnread(agentId, isUnread)} onTogglePin={toggleAgentPin} />
+            <ConversationSidebar activeAgentId={activeAgentId} agents={visibleAgents} isHostReachable={transport === "connected"} sections={projectedSidebarSections} sidebarLayout={renderedSidebarLayout} onResize={resizeSidebar} onResizeEnd={finishSidebarResize} onToggleSectionCollapsed={(sectionId, collapsed) => sidebarCollapseStore.setSectionCollapsed(sectionId, collapsed)} listStatus={rosterListStatus} mainAgentId={mainAgentId} pinnedAgentIds={pinnedAgentIds} onCopyAgentId={copyAgentId} onDuplicateAgent={(agentId) => void duplicateAgent(agentId)} onHideAgent={(agentId) => void hideAgent(agentId)} onNewChat={() => void createAgent()} onOpenAgent={(agentId) => void openAgent(agentId)} onOpenNetwork={agentNetworkTrigger} onOpenProfile={sidebarProfileAction.onSelect} onShowAsyncTasks={account?.kind === "logged-in" && account.isAnysphereUser === true ? openAsyncTasks : undefined} onShowFullConversation={openConversationOutline} onOpenSearch={sidebarSearchTrigger} onRenameAgent={(agentId, name) => void renameAgent(agentId, name)} onReorderPinnedAgents={reorderPinnedAgents} onRequestDeleteAgent={(agent) => setDeleteAgent({ id: agent.id, name: agent.name, isGroup: agent.isGroup })} onRenameSection={renameSection} onRequestDeleteSection={requestDeleteSection} onMoveSection={moveSection} onMoveAgentToSection={moveAgentsToSection} onMoveAgentToNewSection={moveAgentsToNewSection} onSetAgentUnread={(agentId, isUnread) => void setAgentUnread(agentId, isUnread)} onTogglePin={toggleAgentPin} onReplaceMainAgent={() => setMainAgentChooserOpen(true)} />
+            {/* Ported from official 0.66.0: primary-bot chooser (see main-agent-chooser.tsx). */}
+            <MainAgentChooserDialog
+              busy={mainAgentChooserBusy}
+              candidates={visibleAgents.filter((agent) => !agent.isGroup).map((agent) => ({ id: agent.id, name: agent.name }))}
+              error={mainAgentChooserError}
+              onClose={() => setMainAgentChooserOpen(false)}
+              onConfirm={chooseMainAgent}
+              open={mainAgentChooserOpen}
+            />
           </div>
           {hiddenAgents.length > 0 && visibleAgents.length > 0 ? <SandButton aria-haspopup="dialog" onClick={() => setOverlay("hidden-chats")} size="sm" variant="secondary"><span>{UI_TEXT.hiddenBots}</span><SandBadge aria-label={`${hiddenAgents.length} hidden bots`}>{hiddenAgents.length}</SandBadge></SandButton> : null}
           {/* @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=2602084 (s0n Plugins footer button/icon/text composition) */}

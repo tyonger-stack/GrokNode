@@ -1,4 +1,5 @@
 import type { BotTemplateBridge } from "../../../../source/shared/bot-template";
+import type { GrokBotDefaultMainAgentResolution } from "../../../../source/shared/node/grok-bot-main-agent";
 /**
  * Renderer-facing API exposed by the shipped 0.18 Electron preload.
  *
@@ -370,6 +371,14 @@ export interface TelemetryDesktopBridge {
 export interface AgentDesktopBridge {
   getPinnedAgents(): Promise<string[] | null>;
   setPinnedAgents(pinnedAgentIds: readonly string[]): Promise<string[] | null>;
+  /**
+   * Main bot (主 Bot). `getMainAgent` resolves even while the feature gate is off — the id
+   * stays readable, upstream's own rule. `setMainAgent` rejects in that state. `null` clears.
+   * `ensureMainAgent` only reports; it never picks or creates anything on the user's behalf.
+   */
+  getMainAgent(): Promise<string | null>;
+  setMainAgent(agentId: string | null): Promise<string | null>;
+  ensureMainAgent(): Promise<GrokBotDefaultMainAgentResolution>;
   getSidebarSections(): Promise<SidebarSection[] | null>;
   setSidebarSections(sections: readonly SidebarSection[]): Promise<SidebarSection[] | null>;
   getDefaultModel(): Promise<AgentModelSelection | null>;

@@ -6,6 +6,8 @@ import { normalizeSandLocalToolPermission, type SandLocalToolPermission } from "
 import type { SandAutoReviewInstructions } from "../../../shared/sand-auto-review-instructions.js";
 import type { SidebarSection } from "../../../shared/sidebar-sections.js";
 import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
+import { GrokBotMainAgentRefusedError, normalizeGrokBotMainAgentId } from "../../../shared/node/grok-bot-main-agent.js";
+import { isGrokBotMainAgentEnabled } from "./main-agent-gate.js";
 import { isSandInferenceProvider, type SandInferenceProvider } from "../../../shared/inference-router.js";
 import type { McpServerConfig } from "../../../shared/node/mcp/mcp-display-runtime.js";
 import { normalizeOpenRouterChannelStatus, type OpenRouterChannelStatus } from "../../../shared/openrouter-channel-status.js";
@@ -20,6 +22,9 @@ export interface HostSettingsUpdate {
   autoReviewInstructions?: SandAutoReviewInstructions; localToolPermission?: unknown; webauthnProxyEnabled?: boolean; pinnedAgentIds?: string[];
   sidebarSections?: SidebarSection[]; hasSeenOnboarding?: boolean; featureFlagOverrides?: Record<string, boolean>; inferenceProvider?: unknown;
   openRouterModel?: string | null; openRouterAgentModels?: Record<string, string> | null; openRouterAgentEfforts?: Record<string, string> | null; openRouterBaseUrl?: string | null; openRouterEffort?: string | null; openRouterChatStatus?: OpenRouterChannelStatus | null;
+  /** The user's main bot (主 Bot). `null` clears it. Gated: refused while the feature gate is off. */
+  mainAgentId?: string | null;
+  defaultMainAgentId?: string;
 }
 
 export class SettingsService {
@@ -35,7 +40,13 @@ export class SettingsService {
     const scope = this.store.getMcpCustomInstructionsAccountScope(); const pinnedAgentIds = this.store.getPinnedAgentIds();
     const sidebarSections = this.store.getSidebarSections(); const hasSeenOnboarding = this.store.getHasSeenOnboarding();
     const chatStatus = this.store.getOpenRouterChatStatus();
-    return { notifications: this.store.getNotificationConfig(), mcpCustomInstructions: this.store.getMcpCustomInstructions(), mcpCustomInstructionsByServerId: this.store.getMcpCustomInstructionsByServerId(), mcpDisabledToolsByServerId: this.store.getMcpDisabledToolsByServerId(), ...(scope === undefined ? {} : { mcpCustomInstructionsAccountScope: scope }), mcpBoxServers: this.store.getMcpBoxServers(), autoReviewInstructions: this.store.getAutoReviewInstructions(), localToolPermission: this.store.getLocalToolPermission(), webauthnProxyEnabled: this.store.getWebauthnProxyEnabled(), inferenceProvider: this.store.getInferenceProvider(), inferenceRouterUsage: this.store.getInferenceRouterUsage(), openRouterModel: this.store.getOpenRouterModel() ?? null, openRouterAgentModels: this.store.getOpenRouterAgentModels(), openRouterAgentEfforts: this.store.getOpenRouterAgentEfforts(), openRouterBaseUrl: this.store.getOpenRouterBaseUrl() ?? null, openRouterEffort: this.store.getOpenRouterEffort() ?? null, ...(chatStatus === undefined ? {} : { openRouterChatStatus: chatStatus }), ...(userTimeZone === undefined ? {} : { userTimeZone }), ...(userTimeZoneOverride === undefined ? {} : { userTimeZoneOverride }), ...(agentDefaultModel === undefined ? {} : { agentDefaultModel }), ...(computerUseModel === undefined ? {} : { computerUseModel }), ...(pinnedAgentIds === undefined ? {} : { pinnedAgentIds }), sidebarSections: sidebarSections ?? [], ...(hasSeenOnboarding === undefined ? {} : { hasSeenOnboarding }) };
+    const mainAgentId = normalizeGrokBotMainAgentId(this.store.getMainAgentId());
+    const defaultMainAgentId = this.store.getDefaultMainAgentId();
+    return { notifications: this.store.getNotificationConfig(), mcpCustomInstructions: this.store.getMcpCustomInstructions(), mcpCustomInstructionsByServerId: this.store.getMcpCustomInstructionsByServerId(), mcpDisabledToolsByServerId: this.store.getMcpDisabledToolsByServerId(), ...(scope === undefined ? {} : { mcpCustomInstructionsAccountScope: scope }), mcpBoxServers: this.store.getMcpBoxServers(), autoReviewInstructions: this.store.getAutoReviewInstructions(), localToolPermission: this.store.getLocalToolPermission(), webauthnProxyEnabled: this.store.getWebauthnProxyEnabled(), inferenceProvider: this.store.getInferenceProvider(), inferenceRouterUsage: this.store.getInferenceRouterUsage(), openRouterModel: this.store.getOpenRouterModel() ?? null, openRouterAgentModels: this.store.getOpenRouterAgentModels(), openRouterAgentEfforts: this.store.getOpenRouterAgentEfforts(), openRouterBaseUrl: this.store.getOpenRouterBaseUrl() ?? null, openRouterEffort: this.store.getOpenRouterEffort() ?? null, ...(chatStatus === undefined ? {} : { openRouterChatStatus: chatStatus }), ...(userTimeZone === undefined ? {} : { userTimeZone }), ...(userTimeZoneOverride === undefined ? {} : { userTimeZoneOverride }), ...(agentDefaultModel === undefined ? {} : { agentDefaultModel }), ...(computerUseModel === undefined ? {} : { computerUseModel }), ...(pinnedAgentIds === undefined ? {} : { pinnedAgentIds }), sidebarSections: sidebarSections ?? [], ...(hasSeenOnboarding === undefined ? {} : { hasSeenOnboarding }), mainAgentId, defaultMainAgentId };
+  }
+  clearDeletedMainAgent(ids: readonly string[]): void {
+    const id = this.store.getMainAgentId();
+    if (id !== undefined && ids.includes(id)) this.store.setMainAgentId(undefined);
   }
   setHostSettings(update: HostSettingsUpdate) {
     const previousUserTimeZone = this.store.getUserTimeZone(); this.store.setNotificationConfig(update.notifications ?? {});
@@ -52,6 +63,15 @@ export class SettingsService {
     if (update.localToolPermission !== undefined) this.store.setLocalToolPermission(normalizeSandLocalToolPermission(update.localToolPermission));
     if (update.webauthnProxyEnabled !== undefined) this.store.setWebauthnProxyEnabled(update.webauthnProxyEnabled);
     if (update.pinnedAgentIds !== undefined) this.store.setPinnedAgentIds(update.pinnedAgentIds);
+    // Upstream admission, in upstream's own split: reading main_agent_id never needs the
+    // gate ("a client can read it without the gate"), but every write is refused while it
+    // is off ("When OFF (the default) both RPCs are refused"). This host is the server in
+    // this rebuild, so the refusal belongs here rather than on the desktop.
+    if (update.mainAgentId !== undefined) {
+      if (!isGrokBotMainAgentEnabled()) throw new GrokBotMainAgentRefusedError();
+      this.store.setMainAgentId(normalizeGrokBotMainAgentId(update.mainAgentId) ?? undefined);
+    }
+    if (update.defaultMainAgentId !== undefined) this.store.setDefaultMainAgentId(update.defaultMainAgentId);
     if (update.sidebarSections !== undefined) this.store.setSidebarSections(update.sidebarSections);
     if (update.hasSeenOnboarding !== undefined) this.store.setHasSeenOnboarding(update.hasSeenOnboarding);
     if (isSandInferenceProvider(update.inferenceProvider)) this.store.setInferenceProvider(update.inferenceProvider);

@@ -118,6 +118,12 @@ export const SAND_GATEWAY_COMMANDS = {
   readAttachmentChunk: (api: GatewayApi, body: string) => api.readAttachmentChunk(parseCommandArgs(body)),
   getHostSettings: (api: GatewayApi) => api.getHostSettings(),
   setHostSettings: (api: GatewayApi, body: string) => api.setHostSettings(parseCommandArgs(body)),
+  // Main bot (主 Bot). This table is the gateway's dispatch whitelist: a method the
+  // gateway API returns but this table does not name is answered with
+  // "unknown gateway method", even though the implementation is wired end to end.
+  getMainAgent: (api: GatewayApi) => api.getMainAgent(),
+  setMainAgent: (api: GatewayApi, body: string) => api.setMainAgent(parseCommandArgs(body)),
+  ensureDefaultMainAgent: (api: GatewayApi) => api.ensureDefaultMainAgent(),
   setBoxSecrets: (api: GatewayApi, body: string) => api.setBoxSecrets(parseCommandArgs(body)),
   getBoxSecretsStatus: (api: GatewayApi) => api.getBoxSecretsStatus(),
   completeMcpOAuth: (api: GatewayApi, body: string) => api.completeMcpOAuth(parseCommandArgs(body)),

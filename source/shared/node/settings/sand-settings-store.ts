@@ -51,6 +51,14 @@ export interface SandStoredSettings {
   localMcpServers?: Record<string, McpServerConfig>;
   boxRuntime?: SandBoxRuntime;
   mcpCustomInstructionsAccountScope?: string; pinnedAgentIds?: string[]; sidebarSections?: SidebarSection[];
+  /**
+   * The user's main bot (主 Bot). Upstream keeps this on the server and names it
+   * `main_agent_id`; it is readable without the feature gate and only writable with it.
+   * Stored under the Sand root next to the other per-user settings rather than in the
+   * agent store, because it is a property of the user, not of any one agent.
+   */
+  mainAgentId?: string;
+  defaultMainAgentId?: string;
 }
 
 export function emptySettings(): SandStoredSettings {
@@ -149,6 +157,10 @@ function parseSettings(value: unknown): SandStoredSettings | null {
     result.inferenceRouterUsage = usage;
   }
   if (Array.isArray(raw.pinnedAgentIds)) result.pinnedAgentIds = [...new Set(stringArray(raw.pinnedAgentIds).filter((id) => id.length > 0))];
+  // parseSettings is a strict field-by-field whitelist: a field that is not read here is
+  // silently dropped on load, so the main agent has to be admitted explicitly.
+  if (typeof raw.mainAgentId === "string" && raw.mainAgentId.trim().length > 0) result.mainAgentId = raw.mainAgentId.trim();
+  if (typeof raw.defaultMainAgentId === "string" && raw.defaultMainAgentId.trim().length > 0) result.defaultMainAgentId = raw.defaultMainAgentId.trim();
   if (Array.isArray(raw.sidebarSections)) result.sidebarSections = SidebarSections.carryFolds({ sections: raw.sidebarSections.filter((entry): entry is SidebarSection => typeof entry === "object" && entry != null && typeof (entry as { id?: unknown }).id === "string" && typeof (entry as { name?: unknown }).name === "string" && Array.isArray((entry as { agentIds?: unknown }).agentIds)) });
   return result;
 }
@@ -269,6 +281,11 @@ export class SandSettingsStore {
   setLocalToolPermissionCeiling(value?: SandLocalToolPermission): void { this.update((s) => { const { localToolPermissionCeiling: _old, ...rest } = s; return value === undefined ? rest : { ...rest, localToolPermissionCeiling: value }; }); }
   getPinnedAgentIds(): string[] | undefined { return this.load().pinnedAgentIds; }
   setPinnedAgentIds(ids: readonly string[]): void { this.update((s) => ({ ...s, pinnedAgentIds: [...new Set(ids)] })); }
+  /** The user's main bot id (主 Bot). Undefined means "never chosen"; callers normalize empty to null. */
+  getMainAgentId(): string | undefined { return this.load().mainAgentId; }
+  setMainAgentId(agentId: string | undefined): void { this.update((s) => { const { mainAgentId: _old, ...rest } = s; return agentId === undefined ? rest : { ...rest, mainAgentId: agentId }; }); }
+  getDefaultMainAgentId(): string | undefined { return this.load().defaultMainAgentId; }
+  setDefaultMainAgentId(agentId: string): void { this.update((s) => ({ ...s, defaultMainAgentId: agentId })); }
   static storable(args: { sections: readonly SidebarSection[]; stored?: readonly SidebarSection[] }): SidebarSection[] { return SidebarSections.carryFolds(args).map((s) => ({ id: s.id, name: s.name, agentIds: [...s.agentIds], isCollapsed: s.isCollapsed ?? false })); }
   getSidebarSections(): SidebarSection[] | undefined { const stored = this.load().sidebarSections; return stored === undefined ? undefined : SidebarSections.carryFolds({ sections: stored }); }
   setSidebarSections(sections: readonly SidebarSection[]): void { this.update((s) => ({ ...s, sidebarSections: SandSettingsStore.storable(s.sidebarSections === undefined ? { sections } : { sections, stored: s.sidebarSections }) })); }

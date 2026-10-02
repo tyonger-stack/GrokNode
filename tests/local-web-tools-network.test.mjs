@@ -5,13 +5,17 @@
 // fail them. Run them locally with `npm test`, or on demand with
 // `gh workflow run repository checks` — the `network` job below is
 // workflow_dispatch-only.
+//
+// The loader's cache filename is deliberately NOT shared with local-web-tools.test.mjs:
+// `node --test` runs test files in parallel, and both files rebuilding the same outfile
+// means one can import the other's half-written bundle and see missing exports.
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import { load } from "./support/local-web-tools-loader.mjs";
 
 test("the local web search service returns real documents", async () => {
-  const mod = await load("local-web-tools.mjs");
+  const mod = await load("local-web-tools-network.mjs");
   const service = mod.createLocalWebSearchService();
   const result = await service({}, { searchTerm: "codex cli" });
   assert.ok(Array.isArray(result.documents), "documents must be an array");
@@ -27,7 +31,7 @@ test("the local web search service returns real documents", async () => {
 });
 
 test("the local web search service also answers a Chinese query", async () => {
-  const mod = await load("local-web-tools.mjs");
+  const mod = await load("local-web-tools-network.mjs");
   const service = mod.createLocalWebSearchService();
   const result = await service({}, { searchTerm: "阶跃星辰 大模型" });
   assert.ok(result.documents.length > 0, "a Chinese query must return documents");
@@ -35,7 +39,7 @@ test("the local web search service also answers a Chinese query", async () => {
 });
 
 test("the local web fetch service reads a real page and strips markup", async () => {
-  const mod = await load("local-web-tools.mjs");
+  const mod = await load("local-web-tools-network.mjs");
   const service = mod.createLocalWebFetchService();
   const result = await service({}, "https://example.com/");
   assert.ok(!("error" in result), `fetch must succeed: ${JSON.stringify(result)}`);

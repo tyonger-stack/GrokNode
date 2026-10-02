@@ -49,6 +49,8 @@ import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
 import { applyTeachGateRestorePatch } from "./lib/teach-gate-restore-patch.mjs";
+import { applyGrokMainAgentGatePatch } from "./lib/grok-main-agent-gate-patch.mjs";
+import { applyMainAgentRendererPatch } from "./lib/main-agent-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -322,6 +324,7 @@ export async function buildFidelityReconstructedAsar({
   // Experimental per-bot model card in the bot properties panel (h3n). Its labels are
   // already RLocT calls, so it needs the RLocT runtime that main-i18n appends below.
   await applyOriginalRendererAgentModel({ stageRoot });
+  await applyMainAgentRendererPatch({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
@@ -330,6 +333,9 @@ export async function buildFidelityReconstructedAsar({
   // renderer chunk and the host bundle's bundled FLAGS default, neither of which the i18n
   // passes read or write. It must land before the packaging audit snapshots the stage.
   await applyTeachGateRestorePatch({ stageRoot });
+  // Also last: registers two NEW entries in the same bundled FLAGS table the pass above
+  // touches. Independent anchors, and the two passes do not read each other's output.
+  await applyGrokMainAgentGatePatch({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);

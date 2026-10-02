@@ -11,6 +11,7 @@ node_modules/
 *.log
 
 # Machine-local harness and inspection scratch.
+/.scratch/
 /.tmp*/
 /.grok-*/
 /.playwright-cli/
