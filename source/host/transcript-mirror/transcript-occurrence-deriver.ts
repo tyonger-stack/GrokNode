@@ -137,25 +137,20 @@ implements TranscriptDeriver<TranscriptOccurrenceBlobStore> {
         "durable agent user message changed after checkpoint",
       );
     }
-    if (
-      previousAgent != null
-      && current.steps.length < previousAgent.steps.length
-    ) {
-      throw new TranscriptJournalCorruptionError(
-        "durable agent steps moved backwards",
-      );
-    }
-
+    // A redispatched turn re-executes from its base state, so its step list
+    // can be shorter than, or diverge anywhere in, the committed one. The
+    // mirror must follow the current checkpoint instead of rejecting: a
+    // reject fails the turn's checkpoint and strands the conversation behind
+    // a banner the user cannot clear (2026-10-02: every redispatched
+    // multi-step follow-up died with "steps moved backwards" this way).
     let firstChangedStep = previousAgent?.steps.length ?? 0;
     if (previousAgent != null) {
       for (let index = 0; index < previousAgent.steps.length; index += 1) {
-        if (bytesEqual(previousAgent.steps[index]!, current.steps[index]!)) {
+        if (
+          current.steps[index] == null
+          || bytesEqual(previousAgent.steps[index]!, current.steps[index]!)
+        ) {
           continue;
-        }
-        if (index + 1 !== previousAgent.steps.length) {
-          throw new TranscriptJournalCorruptionError(
-            "durable agent step changed before the checkpoint tail",
-          );
         }
         firstChangedStep = index;
         break;
@@ -194,7 +189,12 @@ implements TranscriptDeriver<TranscriptOccurrenceBlobStore> {
       stepIndex < current.steps.length;
       stepIndex += 1
     ) {
-      const previousStepBlob = previousAgent?.steps[stepIndex];
+      // Only the first diverging step has a committed counterpart worth
+      // comparing; steps past the divergence belong to the new attempt and
+      // are emitted fresh.
+      const previousStepBlob = stepIndex === firstChangedStep
+        ? previousAgent?.steps[stepIndex]
+        : undefined;
       const previousStep = previousStepBlob == null
         ? undefined
         : this.codec.decodeStep(await requiredBlob(
@@ -209,11 +209,6 @@ implements TranscriptDeriver<TranscriptOccurrenceBlobStore> {
         current.steps[stepIndex]!,
         "conversation-step",
       ));
-      if (previousStep != null && previousStep.case !== step.case) {
-        throw new TranscriptJournalCorruptionError(
-          "durable conversation step changed kind",
-        );
-      }
 
       if (
         !finalizeTurn
@@ -236,41 +231,15 @@ implements TranscriptDeriver<TranscriptOccurrenceBlobStore> {
         continue;
       }
       if (step.case !== "tool") continue;
-      if (previousStep != null && previousStep.case !== "tool") {
-        throw new TranscriptJournalCorruptionError(
-          "durable conversation step changed into a tool call",
-        );
-      }
-      if (previousStep?.case === "tool") {
-        if (
-          previousStep.name !== step.name
-          || !sameToolInput(previousStep.input, step.input)
-        ) {
-          throw new TranscriptJournalCorruptionError(
-            "durable tool call changed after checkpoint",
-          );
-        }
-        if (previousStep.result !== undefined) {
-          // A completed call reappearing with a NEW result is the signature
-          // of a redispatched turn: the queue re-ran it from its base state,
-          // the model re-issued the same call, and it completed again. The
-          // mirror must follow the current checkpoint — rejecting this
-          // strands the whole conversation behind a banner the user cannot
-          // clear (2026-10-02: every redispatched background-task follow-up
-          // failed this way). A re-emitted call with NO result is different:
-          // the new attempt has not caught up to this step yet, and dropping
-          // the already-seen completion would corrupt readers that saw it.
-          if (step.result === undefined) {
-            throw new TranscriptJournalCorruptionError(
-              "completed durable tool call changed after checkpoint",
-            );
-          }
-          occurrences.push({
-            id: `turn:${turnIndex}:step:${stepIndex}:tool-result`,
-            line: formatToolLine("tool", step.name, step.result),
-          });
-          continue;
-        }
+      if (
+        previousStep?.case === "tool"
+        && previousStep.name === step.name
+        && sameToolInput(previousStep.input, step.input)
+      ) {
+        // The new attempt re-issued the same call. The tool-use line is
+        // already in the journal; only a completion the journal has not
+        // seen is new. A re-issued call without a result emits nothing and
+        // waits for the completion commit.
         if (step.result !== undefined) {
           occurrences.push({
             id: `turn:${turnIndex}:step:${stepIndex}:tool-result`,
