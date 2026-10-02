@@ -203,56 +203,6 @@ export function patchOriginalWebhookTriggerFormGuard(source) {
   return replaceExactlyOnce(patched, WEBHOOK_FORM_GUARD_BEFORE, WEBHOOK_FORM_GUARD_AFTER, "webhook trigger form guard");
 }
 
-/** Hide the "Grok Bot's Computer" block (Update / Reset cards) in Settings → Updates.
- *  The block is vKn in the shared chunk (exported `as dc`, imported by the registry chunk
- *  as `qs` and rendered inside the `x==="beta"` branch). vKn renders the whole section —
- *  aDn title container + "Update Grok Bot's Computer" card + "Reset Grok Bot's Computer"
- *  card — so stubbing it to null removes the cards AND the section heading in one shot.
- *  Belt-and-suspenders with main-edge's `updateComputer` refusal: the button can no
- *  longer be misclicked, and even another entry point (footer Update pill) is refused
- *  process-side. The Reset card is removed together with Update because Reset recreates
- *  the container too (snapshot restore → docker recreate), which strands the pinned
- *  digest + bind-mounted host exactly like an update would. */
-const BOX_UPDATES_SECTION_BEFORE = 'function vKn(n){const e=he.c(53)';
-// The stub opens vKn's body, and _vKnRemoved opens a second brace wrapping the
-// original body. The original body's final "}" used to close vKn itself; now it
-// closes only _vKnRemoved, so the replacement must append one extra "}" to close
-// the outer vKn. Without it the chunk never parses (SyntaxError at the trailing
-// export statement) and the whole renderer boots to a black screen.
-const BOX_UPDATES_SECTION_AFTER = 'function vKn(n){return null;function _vKnRemoved(){const e=he.c(53)';
-
-export function patchOriginalBoxUpdatesSection(source) {
-  const patched = replaceExactlyOnce(source, BOX_UPDATES_SECTION_BEFORE, BOX_UPDATES_SECTION_AFTER, "box updates section removal");
-  return closeStubbedOuterFunction(patched, "box updates section removal");
-}
-
-/**
- * replaceExactlyOnce gives us the text right after the anchor, which is the
- * original function body. That body's matching close brace is the one that has
- * to be duplicated for the outer wrapper. We locate the end of the wrapped
- * body with a brace/paren scan from the _vKnRemoved opening brace (string and
- * template literals are already closed at this point in the minified chunk —
- * verified against the current upstream layout) and insert the extra "}".
- */
-function closeStubbedOuterFunction(source, label) {
-  const marker = "function _vKnRemoved(){";
-  const open = source.indexOf(marker);
-  if (open < 0) throw new Error(`${label} anchor is missing or ambiguous`);
-  let i = open + marker.length - 1; // position of the opening "{"
-  let depth = 0;
-  for (; i < source.length; i += 1) {
-    const ch = source[i];
-    if (ch === "{") depth += 1;
-    else if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) break;
-    }
-  }
-  if (depth !== 0) throw new Error(`${label}: unbalanced body while closing the outer stub`);
-  // i is the "}" that closes _vKnRemoved; the outer vKn needs one more.
-  return source.slice(0, i + 1) + "}" + source.slice(i + 1);
-}
-
 export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const assetsRoot = path.join(stageRoot, "dist", "renderer", "assets");
   const registryCandidates = [];
@@ -271,28 +221,13 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const channelStatusExtension = await buildChannelStatusRendererExtension();
   const pluginsDockExtension = await buildPluginsDockRendererExtension();
   const webhookCredentialExtension = await buildWebhookCredentialRendererExtension();
-  // The box updates block (vKn) may live either in its own shared chunk or in
-  // the registry chunk itself (both layouts exist across upstream extractions).
-  // Scan by anchor over every js asset; exclusions would silently miss the
-  // same-file layout, so candidates are allowed to overlap with the registry
-  // or panel candidate and the write loop below composes transforms per file.
-  const boxUpdatesCandidates = [];
-  for (const name of await readdir(assetsRoot)) {
-    if (!name.endsWith(".js")) continue;
-    const target = path.join(assetsRoot, name);
-    const source = await readFile(target, "utf8");
-    if (source.includes(BOX_UPDATES_SECTION_BEFORE)) boxUpdatesCandidates.push({ name, target, source });
-  }
-  if (boxUpdatesCandidates.length !== 1) {
-    throw new Error(`Expected one shared chunk carrying the box updates section, found ${boxUpdatesCandidates.length}.`);
-  }
   const approvalName = "view-QqBtBG74.js";
   const approvalTarget = path.join(assetsRoot, approvalName);
   const approvalCandidate = { name: approvalName, target: approvalTarget, source: await readFile(approvalTarget, "utf8") };
-  // Group transforms by target file: several roles can land in the same chunk
-  // (vKn sits in the registry chunk in the current upstream layout). Each file
-  // is written exactly once from its pristine snapshot with every transform
-  // applied in order — separate writes would clobber each other's patches.
+  // Group transforms by target file: should several roles ever land in the same
+  // chunk again, each file is still written exactly once from its pristine
+  // snapshot with every transform applied in order — separate writes would
+  // clobber each other's patches.
   const transformsByFile = new Map();
   const register = (role, candidate, transform) => {
     const entry = transformsByFile.get(candidate.name) ?? { candidate, roles: [], transforms: [] };
@@ -304,7 +239,6 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     ["registry", registryCandidates[0], (source) => patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source)))],
     ["panel", panelCandidates[0], patchOriginalSettingsPanel],
     ["approval", approvalCandidate, patchOriginalAutoReviewApproval],
-    ["box-updates", boxUpdatesCandidates[0], patchOriginalBoxUpdatesSection],
   ]) {
     register(role, candidate, transform);
   }
@@ -346,8 +280,8 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     schemaVersion: 1,
     mode: "original-renderer-settings-extension",
     chunks: changes,
-    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy", "routine-row-toggle", "routine-detail-panel", "box-updates-section-removed"],
-    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "routine-list-row-switch", "routine-detail-surface", "fail-closed-always-allow", "remove-box-updates-section"],
+    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy", "routine-row-toggle", "routine-detail-panel"],
+    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "routine-list-row-switch", "routine-detail-surface", "fail-closed-always-allow"],
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-router-extension.json");
   await writeFile(provenancePath, `${JSON.stringify(record, null, 2)}\n`);
