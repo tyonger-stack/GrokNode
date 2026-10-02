@@ -22,6 +22,8 @@ import {
   LAYOUT_018_DRAG_HELPER_PATCHED,
   LAYOUT_CONSTANTS_AFTER,
   LAYOUT_CONSTANTS_BEFORE,
+  OPEN_FIT_SITES,
+  OPEN_PANE_CSS_CLAMP,
   PERSISTENCE_UPPER_BOUND,
   REFERENCE_062_DRAG_HELPER,
   REMOVED_INFO_PANE_MAX,
@@ -94,6 +96,100 @@ test("the pinned chunk still carries every anchor this patch depends on", async 
   for (const site of CLAMP_SITES) {
     assert.ok(source.includes(site.before), `clamp site "${site.id}" anchor drifted`);
   }
+  for (const site of OPEN_FIT_SITES) {
+    assert.ok(source.includes(site.before), `open-fit site "${site.id}" anchor drifted`);
+  }
+});
+
+/**
+ * The window-fit predicates, run for real with the argument shape IDn hands them.
+ *
+ * The shipped wedge: 0.18's IDn passed the PERSISTED width (`u`) into `uan`/`dan`, so a
+ * stored 1216px width on a 1728px window made the pane permanently unopenable. 0.66.0's
+ * ZRe/QRe only ever ask whether the window holds the 280px MINIMUM pane. The call sites are
+ * what this patch changes, so the test evaluates the predicates against the width the call
+ * site actually passes — extracted from the chunk, not restated from memory.
+ */
+function extractPredicateDefinitions(source) {
+  const names = ["jlt", "Dlt", "uan", "dan"];
+  const bodies = [];
+  for (const name of names) {
+    const start = source.indexOf(`function ${name}(`);
+    assert.ok(start >= 0, `${name} not found in the chunk`);
+    const next = source.indexOf("function ", start + 10);
+    bodies.push(source.slice(start, next < 0 ? undefined : next).trim().replace(/;$/, ""));
+  }
+  return `${bodies.join("\n")};
+    const SIDEBAR = { isCollapsed: false, expandedWidth: 400 };
+    return {
+      fitsAt: paneWidth => uan({ windowWidth: 1728, sidebar: SIDEBAR, paneWidth }),
+      fitsTinyWindowAt: paneWidth => uan({ windowWidth: 1000, sidebar: SIDEBAR, paneWidth }),
+      growByAt: paneWidth => dan({ windowWidth: 1000, sidebar: SIDEBAR, paneWidth }),
+    };`;
+}
+
+/** The width each `uan`/`dan` call site passes, taken from the chunk's own call text. */
+function paneWidthTheOpenPathPasses(source) {
+  const subscribe = source.match(/uan\(\{windowWidth:window\.innerWidth,sidebar:m,paneWidth:(\w+)\}\)/);
+  const grow = source.match(/dan\(\{windowWidth:H,sidebar:m,paneWidth:(\w+)\}\)/);
+  assert.ok(subscribe, "the fits-subscribe call site is missing");
+  assert.ok(grow, "the grow-by call site is missing");
+  return { fits: subscribe[1], grow: grow[1] };
+}
+
+const evalPredicates = (source) => {
+  // eslint-disable-next-line no-new-func
+  const fn = new Function("Jlt", "DQ", "dme", extractPredicateDefinitions(source));
+  return fn(SIDEBAR_COLLAPSED, INFO_PANE_MIN, MIN_CHAT_COLUMN);
+};
+
+test("the open path consults the minimum pane width, never the persisted one", async () => {
+  const source = await readPinnedChunk();
+  const patched = patchOriginalInfoPaneSplit(source);
+
+  // The shipped chunk passed the persisted width at both sites — that is the wedge.
+  assert.equal(paneWidthTheOpenPathPasses(source).fits, "u");
+  assert.equal(paneWidthTheOpenPathPasses(source).grow, "u");
+  // 0.18 with a persisted 1216px width on a 1728px window: the pane "does not fit".
+  assert.equal(evalPredicates(source).fitsAt(1216), false);
+
+  // The patched chunk asks about the 280px minimum at both sites.
+  const passed = paneWidthTheOpenPathPasses(patched);
+  assert.equal(passed.fits, "DQ", "the fits predicate still reads the persisted width");
+  assert.equal(passed.grow, "DQ", "the grow-by computation still reads the persisted width");
+  // With minimum-width semantics the same window fits: sidebar 400 + chat 424 + pane 280 = 1104.
+  // The predicate itself is unchanged — what changed is that the call sites stop feeding it
+  // the persisted width, so a full-screen window now fits even with 1216px persisted.
+  const predicates = evalPredicates(patched);
+  assert.equal(predicates.fitsAt(280), true, "a full-screen window fits a minimum pane");
+  assert.equal(predicates.fitsAt(1216), false, "the predicate still rejects a 1216px pane — the call site is the fix");
+  // A genuinely tiny window still does not fit, and asks to grow by exactly the shortfall.
+  assert.equal(predicates.fitsTinyWindowAt(280), false);
+  assert.equal(predicates.growByAt(280), 400 + 424 + 280 - 1000);
+});
+
+test("reverting either open-fit site reintroduces the wedge the patch exists to remove", async () => {
+  const patched = patchOriginalInfoPaneSplit(await readPinnedChunk());
+  // Mutant 1: the subscribe site back on the persisted width — the exact 0.18 behaviour.
+  const subscribeReverted = patched.replace(OPEN_FIT_SITES[0].after, OPEN_FIT_SITES[0].before);
+  assert.throws(() => assertInfoPaneSplitShape(subscribeReverted), /fits-subscribe/);
+  assert.equal(paneWidthTheOpenPathPasses(subscribeReverted).fits, "u");
+  // Mutant 2: the grow-by site back on the persisted width.
+  const growReverted = patched.replace(OPEN_FIT_SITES[1].after, OPEN_FIT_SITES[1].before);
+  assert.throws(() => assertInfoPaneSplitShape(growReverted), /grow-by/);
+  assert.equal(paneWidthTheOpenPathPasses(growReverted).grow, "u");
+});
+
+test("the render-time clamp the open-fit port leans on is present in chunk and CSS", async () => {
+  const patched = patchOriginalInfoPaneSplit(await readPinnedChunk());
+  // The open pane's class pair carries the max-width clamp; without it an oversized stored
+  // width would squeeze the chat column below its 424px minimum.
+  assert.ok(patched.includes(OPEN_PANE_CSS_CLAMP.classSetPair), "the open class pair lost the clamp class");
+  const css = await readFile(
+    path.join(REPO_ROOT, "src/app/dist/renderer/assets/index-lCyB53CO.css"),
+    "utf8",
+  );
+  assert.ok(css.includes(OPEN_PANE_CSS_CLAMP.rule), "the pinned CSS lost the open-pane max-width rule");
 });
 
 test("the patch is byte-exact against 0.62.0: the drag helper differs only by the 480 term", () => {
@@ -269,6 +365,22 @@ test("a chunk carrying two copies of the target is rejected as ambiguous", () =>
   );
 });
 
+test("apply fails closed when no stylesheet is staged to validate the open-pane clamp", async (t) => {
+  const stageRoot = path.join(REPO_ROOT, ".test-tmp-info-pane-split-nocss");
+  const assetsRoot = path.join(stageRoot, "dist", "renderer", "assets");
+  const { mkdir, rm, writeFile: writeFileStage } = await import("node:fs/promises");
+  await mkdir(assetsRoot, { recursive: true });
+  t.after(async () => {
+    await rm(stageRoot, { recursive: true, force: true });
+  });
+  await writeFileStage(path.join(assetsRoot, "index-UbX-y3il.js"), await readPinnedChunk());
+  await assert.rejects(
+    () => applyOriginalRendererInfoPaneSplit({ stageRoot }),
+    /no renderer stylesheet/i,
+    "a staged tree without the CSS must not pass the open-fit guard silently",
+  );
+});
+
 test("applyOriginalRendererInfoPaneSplit rewrites the staged chunk and records provenance", async (t) => {
   const stageRoot = path.join(REPO_ROOT, ".test-tmp-info-pane-split");
   const assetsRoot = path.join(stageRoot, "dist", "renderer", "assets");
@@ -279,14 +391,31 @@ test("applyOriginalRendererInfoPaneSplit rewrites the staged chunk and records p
   });
   const original = await readPinnedChunk();
   await writeFileStage(path.join(assetsRoot, "index-UbX-y3il.js"), original);
+  // The apply step also guards the stylesheet side of the open-fit port: stage the pinned CSS
+  // (found by name, like the build does) so the guard runs against the real rule.
+  const { readdir } = await import("node:fs/promises");
+  const pinnedCssName = (await readdir(path.join(REPO_ROOT, "src/app/dist/renderer/assets")))
+    .find(name => /^index-.*\.css$/.test(name));
+  assert.ok(pinnedCssName, "no pinned renderer stylesheet found next to the chunk");
+  await writeFileStage(
+    path.join(assetsRoot, pinnedCssName),
+    await readFile(path.join(REPO_ROOT, "src/app/dist/renderer/assets", pinnedCssName), "utf8"),
+  );
   // A second chunk that merely looks similar must not be mistaken for the target.
   await writeFileStage(path.join(assetsRoot, "chunk-other.js"), "export const unrelated = 1;\n");
 
   const result = await applyOriginalRendererInfoPaneSplit({ stageRoot });
   assert.equal(result.mode, "original-renderer-info-pane-split");
   assert.equal(result.layout.infoPaneMaxPx, null);
+  assert.equal(result.layout.openFitPaneWidthPx, INFO_PANE_MIN);
+  assert.equal(result.openFit.behaviourChange, true);
+  assert.deepEqual(
+    result.transformations,
+    ["info-pane-removes-fixed-480px-maximum", "info-pane-open-fit-uses-minimum-pane-width"],
+  );
   assert.equal(result.chunks[0].path, "dist/renderer/assets/index-UbX-y3il.js");
   assert.equal(result.chunks[0].clampSites, CLAMP_SITES.length);
+  assert.equal(result.chunks[0].openFitSites, OPEN_FIT_SITES.length);
   assert.notEqual(result.chunks[0].original.sha256, result.chunks[0].patched.sha256);
 
   const staged = await readFile(path.join(assetsRoot, "index-UbX-y3il.js"), "utf8");

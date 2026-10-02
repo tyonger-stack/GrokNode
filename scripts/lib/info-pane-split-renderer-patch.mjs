@@ -119,6 +119,56 @@ export const LAYOUT_CONSTANTS_AFTER =
 /** The value 0.62.0 deleted, kept as a named export so the tests can assert on it directly. */
 export const REMOVED_INFO_PANE_MAX = 480;
 
+// --- 0.66.0 open-fit semantics ---------------------------------------------------------------
+//
+// The five clamp sites above remove the fixed ceiling, and 0.62.0 shipped nothing to replace
+// it with — but 0.62.0 also stopped being the newest evidence. The installed official app
+// moved on to 0.66.0 (verified 2026-10-02, CFBundleShortVersionString 0.66.0,
+// renderer chunks index-ZYxf-aBb.js + index.eager-app-Cj5f8Gby.js), and 0.66.0 answers the
+// question 0.62.0's bytes could not: what happens when the PERSISTED width is wider than the
+// window can hold?
+//
+// 0.18 feeds the persisted width into its window-fit predicates, and that is a wedge:
+//
+//     h = uan({windowWidth, sidebar, paneWidth: u /* persisted */})   // false when stored > fits
+//     A(): if (!h) { G = dan({…, paneWidth: u}); if (G > 0) { …grow the window by G… } }
+//          return d(!0), V                                             // reached late or never
+//
+// With sidebar 400 + min chat 424, a 1728px full-screen window fits at most a 904px pane. A
+// persisted 1216px width (exactly what this build shipped after a wide drag) makes `uan`
+// false forever; the auto-grow cannot widen a full-screen window; and `Rlt()` — the one-shot
+// lock that dedupes grow attempts — returns false on every later click, so `A()` returns
+// before `d(!0)`. The user-visible effect: clicking the conversation-details control does
+// nothing at all, silently, every time. Measured live on this build 2026-10-02.
+//
+// 0.66.0's predicates never read the persisted width:
+//
+//     index.eager-app-Cj5f8Gby.js:  const ii = 280        // the MINIMUM pane width
+//     function F_(e){return e.isCollapsed?R_:e.expandedWidth}
+//     function B_(e,t){return F_(e)+Fa+t}                 // sidebar + minChat(424) + t
+//     function ZRe(e){return e.windowWidth>=B_(e.sidebar,ii)}     // fits a MINIMUM pane?
+//     function QRe(e){return Math.max(0,B_(e.sidebar,ii)-e.windowWidth)}  // grow-by
+//
+// So the grow machinery survives in 0.66.0, but it only ever asks for enough window to hold
+// a 280px pane; a fat persisted width can no longer block the open. What the fat width does
+// instead is purely presentational, and 0.18 already ships the clamp that handles it — the
+// open pane's class set carries `sand-9c3od3 sand-1uxagwj`, and the pinned stylesheet has
+//
+//     .sand-1uxagwj:not(#\#)… { max-width: max(0px, calc(100vw
+//         - var(--sand-sidebar-width,280px) - var(--sand-chat-min-width,424px))) }
+//
+// byte-identical in both versions (the class set and the rule were verified in 0.18's pinned
+// chunk/CSS and in 0.66.0's on 2026-10-02). Live proof on the real 0.66.0 app: persisted
+// width forced to 1216, window 1728, sidebar 400 — one click on 查看对话详情 opens the pane
+// instantly at a computed 904px (`grid: 400px 424px 904px`, chat column keeps its 424px
+// minimum, no errors). That is the behaviour this port reproduces: swap the two IDn call
+// sites from the persisted width to the 280px minimum, `DQ`, and let the CSS clamp do what
+// 0.66.0 lets it do.
+//
+// `e3e` (a `min(persisted, window-derived)` helper that also exists in 0.66.0's
+// eager-app chunk) is dead code there — defined, never called — and is recorded here only so
+// a future reader does not mistake it for the mechanism.
+
 /** The five clamp sites. Each is (before, after) and each must match exactly once. */
 export const CLAMP_SITES = Object.freeze([
   {
@@ -147,6 +197,30 @@ export const CLAMP_SITES = Object.freeze([
     after: "const t=Math.max(DQ,n.maxWidth);",
   },
 ]);
+
+/**
+ * The two IDn call sites that fed the persisted width into the fit/grow predicates. Both
+ * become 0.66.0's semantics by asking about the 280px minimum (`DQ`) instead.
+ */
+export const OPEN_FIT_SITES = Object.freeze([
+  {
+    id: "fits-subscribe",
+    before: "()=>uan({windowWidth:window.innerWidth,sidebar:m,paneWidth:u})",
+    after: "()=>uan({windowWidth:window.innerWidth,sidebar:m,paneWidth:DQ})",
+  },
+  {
+    id: "grow-by",
+    before: "G=dan({windowWidth:H,sidebar:m,paneWidth:u})",
+    after: "G=dan({windowWidth:H,sidebar:m,paneWidth:DQ})",
+  },
+]);
+
+/** The pane's render-time ceiling: 0.18 and 0.66.0 share the class and the rule verbatim. */
+export const OPEN_PANE_CSS_CLAMP = Object.freeze({
+  classSetPair: "sand-9c3od3 sand-1uxagwj",
+  rule:
+    ".sand-1uxagwj:not(#\\#):not(#\\#):not(#\\#):not(#\\#){max-width:max(0px,calc(100vw - var(--sand-sidebar-width,280px) - var(--sand-chat-min-width,424px)))}",
+});
 
 /**
  * The four persistence-layer sites have no window in scope, so their upper bound becomes
@@ -191,6 +265,9 @@ export function patchOriginalInfoPaneSplit(source) {
   for (const site of CLAMP_SITES) {
     patched = replaceExactlyOnce(patched, site.before, site.after, `info-pane clamp (${site.id})`);
   }
+  for (const site of OPEN_FIT_SITES) {
+    patched = replaceExactlyOnce(patched, site.before, site.after, `info-pane open fit (${site.id})`);
+  }
   return patched;
 }
 
@@ -219,6 +296,20 @@ export function assertInfoPaneSplitShape(patched) {
       throw new Error(`Info-pane split patch lost the ${site.id} clamp.`);
     }
   }
+  for (const site of OPEN_FIT_SITES) {
+    if (patched.includes(site.before)) {
+      throw new Error(`Info-pane split patch left the ${site.id} call reading the persisted width.`);
+    }
+    if (!patched.includes(site.after)) {
+      throw new Error(`Info-pane split patch lost the ${site.id} 0.66.0 minimum-width call.`);
+    }
+  }
+  // The render-time ceiling is what makes an oversized persisted width harmless, so the open
+  // class pair must keep carrying the clamp class. Dropping it would still build and open
+  // the pane — squeezing the chat column below its 424px minimum instead.
+  if (!patched.includes(OPEN_PANE_CSS_CLAMP.classSetPair)) {
+    throw new Error("Info-pane split patch lost the open pane's CSS max-width clamp class pair.");
+  }
   if (!patched.includes(LAYOUT_018_DRAG_HELPER_PATCHED)) {
     throw new Error("Info-pane split patch did not reduce the drag helper to the 0.62.0 shape.");
   }
@@ -230,6 +321,8 @@ export function assertInfoPaneSplitShape(patched) {
     ["const k3n=244,zUe=140;", "collapse threshold and zoom correction"],
     ["function han(n){return n.windowWidth-dme-jlt(n.sidebar)}", "window-derived pane maximum"],
     ["dme=424", "424px minimum chat column"],
+    ["function uan(n){return n.windowWidth>=Dlt(n.sidebar,n.paneWidth)}", "fit predicate definition"],
+    ["function dan(n){return Math.max(0,Dlt(n.sidebar,n.paneWidth)-n.windowWidth)}", "grow-by definition"],
     ['"sand-info-pane__resize-handle"', "resize handle class"],
     ['role:"separator"', "resize handle separator role"],
     ['cursor:"col-resize"', "resize handle cursor"],
@@ -239,7 +332,7 @@ export function assertInfoPaneSplitShape(patched) {
       throw new Error(`Info-pane split patch lost its ${what}.`);
     }
   }
-  return { clampSites: CLAMP_SITES.length };
+  return { clampSites: CLAMP_SITES.length, openFitSites: OPEN_FIT_SITES.length };
 }
 
 export async function applyOriginalRendererInfoPaneSplit({ stageRoot }) {
@@ -263,6 +356,22 @@ export async function applyOriginalRendererInfoPaneSplit({ stageRoot }) {
   const candidate = candidates[0];
   const patched = patchOriginalInfoPaneSplit(candidate.source);
   const checked = assertInfoPaneSplitShape(patched);
+  // The open-fit port leans on the stylesheet: an oversized persisted width is harmless only
+  // because the open pane carries sand-1uxagwj. Fail the build if the pinned CSS drops it.
+  let sawStylesheet = false;
+  for (const name of await readdir(assetsRoot)) {
+    if (!name.endsWith(".css")) continue;
+    sawStylesheet = true;
+    const css = await readFile(path.join(assetsRoot, name), "utf8");
+    if (!css.includes(OPEN_PANE_CSS_CLAMP.rule)) {
+      throw new Error(
+        `Info-pane split patch found no pinned stylesheet rule for the open pane's max-width clamp (${name}).`,
+      );
+    }
+  }
+  if (!sawStylesheet) {
+    throw new Error("Info-pane split patch found no renderer stylesheet to validate the open-pane clamp against.");
+  }
   await writeFile(candidate.target, patched);
   const record = {
     schemaVersion: 1,
@@ -274,6 +383,7 @@ export async function applyOriginalRendererInfoPaneSplit({ stageRoot }) {
         original: { bytes: Buffer.byteLength(candidate.source), sha256: createHash("sha256").update(candidate.source).digest("hex") },
         patched: { bytes: Buffer.byteLength(patched), sha256: createHash("sha256").update(patched).digest("hex") },
         clampSites: checked.clampSites,
+        openFitSites: checked.openFitSites,
       },
     ],
     layout: {
@@ -285,9 +395,15 @@ export async function applyOriginalRendererInfoPaneSplit({ stageRoot }) {
       sidebarCollapsedPx: 88,
       sidebarExpandedPx: 280,
       collapseThresholdPx: 244,
+      openFitPaneWidthPx: 280,
     },
-    features: ["info-pane-width-follows-window"],
-    transformations: ["info-pane-removes-fixed-480px-maximum"],
+    openFit: {
+      behaviourChange: true,
+      evidence: "Grok Bot 0.66.0 ZRe/QRe (index.eager-app-Cj5f8Gby.js) fit the window to the 280px minimum pane, never to the persisted width; live 0.66.0 with a persisted 1216px width on a 1728px window opens at a CSS-clamped 904px",
+      wedge: "0.18 fed the persisted width into uan/dan; with 1216px persisted on a 1728px full-screen window the pane could never open and later clicks no-opped inside the Rlt() one-shot",
+    },
+    features: ["info-pane-width-follows-window", "info-pane-open-never-blocked-by-stored-width"],
+    transformations: ["info-pane-removes-fixed-480px-maximum", "info-pane-open-fit-uses-minimum-pane-width"],
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-info-pane-split-extension.json");
   await writeFile(provenancePath, `${JSON.stringify(record, null, 2)}\n`);
