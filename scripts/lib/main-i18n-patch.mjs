@@ -1086,6 +1086,76 @@ export const MAIN_I18N_ANCHORED = [
 
 // Whole-block shapes the pair matcher cannot safely localize. Where 0.61.0
 // retains a matching message, its ID is recorded; the reply label is 0.18-only.
+//
+// The three activity-label rows (gJn/_pt/hJn) are the "<Bot> is working" line
+// the transcript shows while an agent is busy. The pair matcher cannot reach
+// them for two independent reasons: `is working` and `are ${s}` live in
+// template text (which the engine never matches, so it stays raw by
+// construction), and `return"Typing…"` is a bare return with no display-prop,
+// ternary, throw or expression-colon shape. That is why `Typing…` was already
+// localized everywhere except here — the 0.61 row (PxYAul) hit only the
+// `i==="typing"?(RLocT("Typing…"…` occurrence, leaving this one English.
+//
+// Translations are byte-sourced from the installed official Grok Bot 0.66.0
+// macOS app (bundle com.anysphere.sand, CFBundleShortVersionString 0.66.0,
+// built 2026-10-01T18:23:52.620Z, read from app.asar on 2026-10-02):
+//   * EN catalog:   dist/renderer/assets/index.eager-app-Cj5f8Gby.js
+//   * zh-CN:        dist/renderer/assets/chunk-chat-CnTosbE8.js
+//                   (rbijNi, Q5ywLe, yQopUI, OmANKk, PxYAul)
+//                   dist/renderer/assets/chunk-core-BgFz4Gtw.js
+//                   (uqs8Gd, rbijNi)
+// Each entry is either `<id>:[["name"]," 正在工作"]`-shaped upstream, or the
+// singular/plural split that zh-CN collapses to one form — official ships no
+// is/are and no working/typing distinction in Chinese, so neither do we.
+// Nothing here is authored translation.
+//
+// The activity-verb row (the `Ja(verb,text,icon)` labels `dse` produces — the
+// "Searching the web" / "Thinking" line) is a separate surface reached by the
+// same two blind spots: every label is a bare function argument, so no pair
+// shape matches, and 14 of the 18 are duplicates of a label that also appears
+// in a quotable position. `Ja` is the single funnel for all of them, so the
+// rewrite is one anchor plus a table rather than 18 edits. Two labels reach
+// their text by a route that bypasses `Ja` (the dynamic `Messaging <name>` /
+// `Connecting to <service>` branches) and are anchored separately.
+//
+// The table carries seventeen labels. Fifteen of them are byte-sourced from
+// official 0.66.0, as are the two dynamic forms and the one static sibling that
+// an existing pair already handles (MGn904, listed here so the count of the row
+// is checkable — it is deliberately NOT in the table, because the pair has
+// already rewritten that call site and the table is idempotent for it):
+//   AUV+TY  Thinking                          思考中
+//   b4itZn  Working                          工作中
+//   AyoeWR  Searching the web                正在搜索网页
+//   BaNnTc  Reading the web                  正在阅读网页
+//   ZCUi1J  Reading file                     正在读取文件
+//   z50Vh1  Drafting the file                正在起草文件
+//   e7QvdT  On your computer                 正在使用你的电脑
+//   8GgDX+  Running commands                 正在运行命令
+//   P4dc6s  Organizing files                 正在整理文件
+//   VMTxcE  Waiting on a command             正在等待命令完成
+//   lZ/iKB  Generating a photo               正在生成图片
+//   voyxge  On its computer                  正在使用它的电脑
+//   vtZ0lQ  Messaging                        正在发送消息
+//   +YZ9td  Browsing the web                 正在浏览网页
+//   oxsp1W  Connecting to a third party app  正在连接第三方应用
+//   (dynamic, anchored separately) Messaging <name>            正在给 <name> 发消息
+//   (dynamic, anchored separately) Connecting to <service>     正在连接 <service>
+//   MGn904   Messaging another assistant     正在给另一个助手发消息
+//
+// Two of the seventeen have no byte-source and were translated under explicit
+// user authorization (2026-10-02), recorded here so the choice is auditable:
+//   Coding  -> 正在编写代码. Official 0.66.0 carries this English string under
+//     TWO ids with two different Chinese forms — 5PXDWI "编码" and i2BTio
+//     "正在编写代码" — and neither id is ever referenced by name anywhere in the
+//     0.66 renderer bundle, so which one the activity row uses cannot be read
+//     off the artifact. i2BTio was chosen because every sibling in this row is
+//     a progressive 正在… form and a bare "编码" reads as a state, not an
+//     activity.
+//   Waiting on another agent -> 正在等待另一个 Bot. The string has no
+//     counterpart in the 0.66.0 catalog (retired upstream), so there is nothing
+//     to copy. "Bot" matches how 0.66.0 zh-CN renders an agent elsewhere
+//     (n8K1yO "Waiting for an agent to pause before updating" ->
+//     "正在等待 Bot 暂停后再更新").
 export const MAIN_I18N_LOCAL_ANCHORED = [
   {
     id: "local-reply-action",
@@ -1110,6 +1180,42 @@ export const MAIN_I18N_LOCAL_ANCHORED = [
     note: "localized relative date headings",
     anchor: "function ept(n){const e=new Date(n),t=new Date,s=FIn(e);if(ZTe(e,t))return`Today ${s}`;const r=new Date(t);return r.setDate(t.getDate()-1),ZTe(e,r)?`Yesterday ${s}`:e.getFullYear()===t.getFullYear()?`${DIn.format(e)} ${s}`:`${RIn.format(e)} ${s}`}",
     replacement: "function ept(n){const e=new Date(n),t=new Date,s=FIn(e);if(ZTe(e,t))return`${RLocT(\"Today\",\"今天\")} ${s}`;const r=new Date(t);return r.setDate(t.getDate()-1),ZTe(e,r)?`${RLocT(\"Yesterday\",\"昨天\")} ${s}`:e.getFullYear()===t.getFullYear()?`${DIn.format(e)} ${s}`:`${RIn.format(e)} ${s}`}",
+  },
+  {
+    id: "rbijNi/PxYAul",
+    note: "activity-mark label: `<name> is working` and its `Typing…` sibling",
+    anchor: "function gJn(n,e){if(n===\"working\"){const t=e?.trim();return t!=null&&t.length>0?`${t} is working`:null}return\"Typing…\"}",
+    replacement: "function gJn(n,e){if(n===\"working\"){const t=e?.trim();return t!=null&&t.length>0?`${t} ${RLocT(\"is working\",\"正在工作\")}`:null}return(RLocT(\"Typing…\",\"正在输入…\"))}",
+  },
+  {
+    id: "rbijNi/Q5ywLe/yQopUI/OmANKk",
+    note: "activity-mark label for one and for many members; official zh collapses the is/are and working/typing distinction into a bare predicate",
+    anchor: "function _pt(n,e,t){const s=n===\"typing\"?\"typing\":\"working\";return e.length>1?`${hJn(e)} are ${s}`:`${e[0]?.name??(t?.trim()||\"Grok Bot\")} is ${s}`}",
+    replacement: "function _pt(n,e,t){const s=n===\"typing\"?RLocT(\"typing\",\"正在输入\"):RLocT(\"working\",\"正在工作\");return e.length>1?`${hJn(e)}${RLocT(\" are \",\" \")}${s}`:`${e[0]?.name??(t?.trim()||\"Grok Bot\")}${RLocT(\" is \",\" \")}${s}`}",
+  },
+  {
+    id: "uqs8Gd",
+    note: "overflow member count for the group activity label; official zh puts the counter after the noun",
+    anchor: "function hJn(n){const e=n.map(r=>r.name);if(e.length<=qGe+1)return jGe(e);const t=e.slice(0,qGe),s=e.length-t.length;return jGe([...t,`${s} ${s===1?\"other\":\"others\"}`])}",
+    replacement: "function hJn(n){const e=n.map(r=>r.name);if(e.length<=qGe+1)return jGe(e);const t=e.slice(0,qGe),s=e.length-t.length;return jGe([...t,RLocOthersCount(s)])}function RLocOthersCount(e){return RLocT(`${e} ${e===1?\"other\":\"others\"}`,`另外 ${e} 个`)}",
+  },
+  {
+    id: "AUV+TY..oxsp1W + 2 local",
+    note: "activity-verb row: every Ja() label localized through one table at the single funnel. Three of the eighteen (Thinking, Working, Messaging another assistant) are already branched by existing pairs, so the table carries them too and is idempotent for them",
+    anchor: "function Ja(n,e,t){return{verb:n,text:XCe(e),icon:{kind:\"glyph\",name:t}}}",
+    replacement: "function Ja(n,e,t){return{verb:n,text:XCe(RLocActivityText(e)),icon:{kind:\"glyph\",name:t}}}const RLocActivityTextZh={\"Thinking\":\"思考中\",\"Working\":\"工作中\",\"Searching the web\":\"正在搜索网页\",\"Reading the web\":\"正在阅读网页\",\"Reading file\":\"正在读取文件\",\"Drafting the file\":\"正在起草文件\",\"On your computer\":\"正在使用你的电脑\",\"Running commands\":\"正在运行命令\",\"Organizing files\":\"正在整理文件\",\"Waiting on a command\":\"正在等待命令完成\",\"Generating a photo\":\"正在生成图片\",\"On its computer\":\"正在使用它的电脑\",\"Messaging\":\"正在发送消息\",\"Browsing the web\":\"正在浏览网页\",\"Connecting to a third party app\":\"正在连接第三方应用\",\"Coding\":\"正在编写代码\",\"Waiting on another agent\":\"正在等待另一个 Bot\"};function RLocActivityText(e){return RLocT(e,RLocActivityTextZh[e]??e)}",
+  },
+  {
+    id: "qIhBkq",
+    note: "activity-verb row: the dynamic `Messaging <name>` half. The static `Messaging another assistant` sibling is already branched by the MGn904 pair, so this anchor is narrowed to the template branch and must match the post-pair bytes",
+    anchor: "?`Messaging ${r.trim()}`:",
+    replacement: "?RLocT(`Messaging ${r.trim()}`,`正在给 ${r.trim()} 发消息`):",
+  },
+  {
+    id: "c7hvQd",
+    note: "activity-verb row: dynamic `Connecting to <service>` branch, which builds its text without going through Ja()",
+    anchor: "function Zon(n){return n==null?Ja(\"connecting\",\"Connecting to a third party app\",\"plug\"):{verb:\"connecting\",text:XCe(`Connecting to ${Yon(n)}`),icon:{kind:\"connector\",service:n}}}",
+    replacement: "function Zon(n){return n==null?Ja(\"connecting\",\"Connecting to a third party app\",\"plug\"):{verb:\"connecting\",text:XCe(RLocT(`Connecting to ${Yon(n)}`,`正在连接 ${Yon(n)}`)),icon:{kind:\"connector\",service:n}}}",
   },
   {
     id: "local-transcript-date-locale",
