@@ -105,6 +105,12 @@ npm run frontend:build  # 构建可读 renderer 重建
   - **OpenRouter**：需 API key（Settings → Router 或 `OPENROUTER_API_KEY`）。
 - **本地 Docker VM**：`SandBoxRuntime` **只剩 `"local-docker"` 一个值**（remote 已整体移除，勿再按"默认 remote"理解；2026-09-28 核实）。打包版容器 `grok-node-local-vm`（开发身份 `grok-bot-local-vm`），**镜像按 digest 钉死**（`universal@sha256:f9dff5cd…`，git-sha `12c7367`，见 `LOCAL_DOCKER_BOX_IMAGE_DIGEST`；**2026-10-01 起不再用移动 tag `:sand-box-latest` 创建容器**，原因见下方陷阱表），`--platform linux/amd64`（Apple Silicon 上的兼容执行由容器引擎处理），6 端口全绑 `127.0.0.1`，schema v6，host-sha256 内容寻址，`READY_TIMEOUT_MS=180000`（**不覆盖** `docker run` 内的首次拉镜像）。`~/.codex` 以**只读**挂载复用登录态（`localAuthMountArguments()`，目前仅此一项）。附件链路排障用 `node scripts/attachment-diagnostics.mjs [agentId|latest]`。
 
+## 主 Bot 是哪一个（2026-10-02 用户确认，**不要当残留清理**）
+
+- 当前主 Bot 是**名为 `Grok Node` 的那个 bot**（2026-10-02 15:07 创建）。用户在另一会话里主动把它设为主 Bot 并**明确认可、要求保留**。它曾一度是「大秘Bot」，后被换成 Grok Node。
+- **「名字叫 Grok Node、创建时间 15:07」不是误建的测试 bot**。曾有人（包括 AI 助手）据此提议删除，被用户否掉。清理侧栏 / 重置 bot 列表时**不要顺手动它**。
+- 想知道当前到底是哪一个，**别猜、别读文档**（会过期），直接问运行时：`window.desktop.agent.getMainAgent()` 返回 agent id；`source/shared/node/grok-bot-main-agent.ts` 是唯一决策点。选主 Bot 的 UI 是侧栏主 Bot 行右键 →「替换为其他 Bot」（2026-10-02 已按官方 0.66.0 复刻，见 `scripts/lib/main-agent-renderer-components.mjs`）。
+
 ## 本地未提交改动（工作区脏，接手先确认）
 
 `git status` 有 7 个文件改动，分**三条独立线**（别混为一谈）：

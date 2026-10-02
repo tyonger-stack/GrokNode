@@ -24,9 +24,9 @@
  *         onboardingFinished && mainAgentEnabled && forceSelection && pointerIsResolvedAndEmpty
  *     where the pointer is the server's main_agent_id, and "resolved but empty" means
  *     kind === "known" && agentId === null. An unresolved pointer is kind === "unknown"
- *     and can never open the chooser. Reproduced verbatim in
- *     isGrokBotMainAgentSelectionEligible() so the ported rule is testable without a
- *     renderer.
+ *     and can never open the chooser. isGrokBotMainAgentSelectionEligible() states that rule
+ *     so it is testable without a renderer. Note it is the RULE, not the wiring: the shipped
+ *     renderer hard-codes the two gate terms to satisfied (see the scope note below).
  *   * The desktop-side facade is three methods (official 0.66 electron-main/main-app.cjs):
  *         get()    -> { agentId: (await getGrokBotUserRuntimeSettings()).settings?.mainAgentId ?? null }
  *         set(id)  -> { agentId: (await setGrokBotMainAgent({agentId})).settings?.mainAgentId ?? null }
@@ -34,13 +34,33 @@
  *   * ensure's outcome enum, from the official proto mapper (electron-main/proto.cjs):
  *         created | present | hasMainAgent | tombstoned | pinnedFull | busy
  *
- * Scope note for this local-only build: upstream puts Set/Ensure admission on the
- * SERVER, which in this rebuild is the Sand host (the box). A single-user local box is
- * permanently an "existing user" — there is no new-user onboarding path that could mint
- * a main bot server-side — so `ensure` never returns `created`, and never invents a bot
- * on the user's behalf. Those server-side-only outcomes are kept in the type so the
- * contract stays complete, and resolveGrokBotDefaultMainAgentOutcome() is the single
- * place that decides between them.
+ * Scope note for this local-only build, corrected 2026-10-02 after reading the service:
+ * an earlier version of this comment claimed `ensure` "never returns `created`, and never
+ * invents a bot on the user's behalf". That is false. Upstream puts Set/Ensure admission
+ * on the SERVER, which in this rebuild is the Sand host (the box), and
+ * source/host/main-agent-service.ts `MainAgentService.ensureOnce()` does exactly what
+ * upstream describes: with no main agent and no recorded defaultMainAgentId it calls
+ * `ports.createDefault()` — which creates a real Bot through
+ * `createBackgroundAgent(MAIN_AGENT_PROFILE, …)`, seeds two transcript lines and returns
+ * `created`. A fresh user who answers the introduction with 「创建主 Bot」 therefore gets a
+ * genuinely new Bot, and this build is not an exception to upstream's rule.
+ *
+ * Because of that, the pure helpers below are NOT the production decision point and must
+ * not be read as one:
+ *   * the chooser's real condition is the injected renderer block in
+ *     scripts/lib/main-agent-renderer-components.mjs (`RMainRoot`), which polls every 5s
+ *     and opens the forced introduction when `agentId === null && seen === true`;
+ *   * the write path's real gate check is `MainAgentService.assertEnabled()`.
+ * The helpers here are the readable form of the contract, exercised by
+ * tests/grok-bot-main-agent.test.mjs, so the rules can be asserted without a box. Keep them
+ * in step with the service rather than treating them as the implementation.
+ *
+ * One gap worth knowing: the renderer does not consult either gate. Official's four-way AND
+ * includes `mainAgentEnabled && forceSelection`, and this build collapses them to `true` by
+ * pinning both flags to `default: true` at packaging time
+ * (scripts/lib/grok-main-agent-gate-patch.mjs). That is equivalent while the flags stay on,
+ * but turning either off would stop the host from accepting writes without stopping the
+ * dialog from appearing. Gating the renderer is the fix if that ever matters.
  */
 
 /** Feature gate that admits the main-bot WRITE path. OFF means every set/ensure is refused. */
@@ -177,13 +197,11 @@ export interface GrokBotDefaultMainAgentResolution {
 }
 
 /**
- * The single decision point for ensureGrokBotDefaultMainAgent.
- *
- * `present` is the honest answer for this build: upstream's server only auto-creates a
- * main bot for a brand-new user's onboarding bot, and "an existing user with none picks
- * one, or adds Grok Bot, in the client's chooser". So when nothing is set and the gate is
- * on, the outcome is `present` — a main agent is available to be chosen, and the client
- * chooser is what completes the flow.
+ * A readable form of the outcome table `MainAgentService.ensureOnce()` implements, kept
+ * beside the contract so it can be asserted without a box. It is deliberately NOT that
+ * method: the service mints a Bot when nothing is recorded, so its `created` branch is
+ * reachable and this model stops at `present` because it has no port to create one with.
+ * When the two disagree, the service is right and this needs updating.
  */
 export function resolveGrokBotDefaultMainAgentOutcome(args: {
   readonly gateEnabled: boolean;
