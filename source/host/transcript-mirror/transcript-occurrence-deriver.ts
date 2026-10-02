@@ -251,9 +251,25 @@ implements TranscriptDeriver<TranscriptOccurrenceBlobStore> {
           );
         }
         if (previousStep.result !== undefined) {
-          throw new TranscriptJournalCorruptionError(
-            "completed durable tool call changed after checkpoint",
-          );
+          // A completed call reappearing with a NEW result is the signature
+          // of a redispatched turn: the queue re-ran it from its base state,
+          // the model re-issued the same call, and it completed again. The
+          // mirror must follow the current checkpoint — rejecting this
+          // strands the whole conversation behind a banner the user cannot
+          // clear (2026-10-02: every redispatched background-task follow-up
+          // failed this way). A re-emitted call with NO result is different:
+          // the new attempt has not caught up to this step yet, and dropping
+          // the already-seen completion would corrupt readers that saw it.
+          if (step.result === undefined) {
+            throw new TranscriptJournalCorruptionError(
+              "completed durable tool call changed after checkpoint",
+            );
+          }
+          occurrences.push({
+            id: `turn:${turnIndex}:step:${stepIndex}:tool-result`,
+            line: formatToolLine("tool", step.name, step.result),
+          });
+          continue;
         }
         if (step.result !== undefined) {
           occurrences.push({
