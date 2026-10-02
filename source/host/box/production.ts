@@ -238,6 +238,17 @@ export function createProductionBoxInner<
         agentId,
         reason: `display :${windowIndex} is already held by ${heldBy}`
       });
+    },
+    onStaleSeatCleanup({ agentId, windowIndex, probe, released }) {
+      reportHostDiagnostic({
+        kind: "window_stale_seat_reclaimed",
+        stage: "rollback_failed_bringup",
+        agentId,
+        windowIndex,
+        probe,
+        released,
+        reason: `display :${windowIndex} executor stopped answering (${probe}); release ${released ? "call completed" : "did not complete"}${released ? "" : " - check loopback seat_release_skipped telemetry for whether stop-window actually ran"}`
+      });
     }
   });
   return composed;

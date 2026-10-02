@@ -346,6 +346,53 @@ test("an explicit window startup is coalesced and deletion fences its late cache
   assert.equal(host.forkVncUrls.has("a"), false);
 });
 
+test("an established seat is reclaimed when its executor stops answering", async () => {
+  const probes = [];
+  const cleanups = [];
+  const f = fixture({
+    probeWindow: async (_ctx, _agentId, windowIndex) => { probes.push(windowIndex); return "unreachable"; },
+  }, { onStaleSeatCleanup: detail => cleanups.push(detail) });
+  await f.host.ensureReady(createContext(), "a");
+  assert.equal(f.shared.getAgentWindowIndex("a"), 2);
+  assert.equal(f.stops.length, 0);
+  // The seat is now a zombie: the next turn's bring-up fails, and the rollback
+  // must stop treating the agent as a healthy caller of a live seat.
+  f.inner.ensureWindow = async () => { throw new Error("start-window exited -1, signal SIGTERM"); };
+  await assert.rejects(() => f.host.ensureReady(createContext(), "a"), /SIGTERM/);
+  assert.deepEqual(probes, [2], "rollback probes the seat's executor");
+  assert.deepEqual(cleanups, [{ agentId: "a", windowIndex: 2, probe: "unreachable", released: true }]);
+  assert.equal(f.stops.length, 1, "the zombie seat is actually released");
+});
+
+test("an established seat is left alone while its executor answers", async () => {
+  const cleanups = [];
+  const f = fixture({ probeWindow: async () => "reachable" }, { onStaleSeatCleanup: detail => cleanups.push(detail) });
+  await f.host.ensureReady(createContext(), "a");
+  f.inner.ensureWindow = async () => { throw new Error("transient failure"); };
+  await assert.rejects(() => f.host.ensureReady(createContext(), "a"), /transient failure/);
+  assert.equal(f.stops.length, 0, "a live seat still belongs to its healthy caller");
+  assert.equal(cleanups.length, 0);
+  assert.equal(f.shared.getAgentWindowIndex("a"), 2);
+});
+
+test("a backend that cannot probe keeps the established-seat behavior", async () => {
+  const f = fixture();
+  await f.host.ensureReady(createContext(), "a");
+  f.inner.ensureWindow = async () => { throw new Error("transient failure"); };
+  await assert.rejects(() => f.host.ensureReady(createContext(), "a"), /transient failure/);
+  assert.equal(f.stops.length, 0, "no probe capability means no reclaim");
+  assert.equal(f.shared.getAgentWindowIndex("a"), 2);
+});
+
+test("a throwing probe is treated as unknown, never as a dead seat", async () => {
+  const f = fixture({ probeWindow: async () => { throw new Error("probe exploded"); } });
+  await f.host.ensureReady(createContext(), "a");
+  f.inner.ensureWindow = async () => { throw new Error("transient failure"); };
+  await assert.rejects(() => f.host.ensureReady(createContext(), "a"), /transient failure/);
+  assert.equal(f.stops.length, 0);
+  assert.equal(f.shared.getAgentWindowIndex("a"), 2);
+});
+
 function loopback(operations = {}, options = {}) {
   const commands = [];
   const accessor = { get: () => ({ execute: async (_ctx, args) => { commands.push(args.command); return { result: { case: "success", value: { exitCode: 0, stderr: "" } } }; } }) };
@@ -356,6 +403,77 @@ function loopback(operations = {}, options = {}) {
   });
   return { box, commands };
 }
+
+test("a release skipped on an unreachable primary is reported, not silent", async () => {
+  const reports = [];
+  const { box, commands } = loopback({
+    ping: async (_ctx, endpoint) => ({ outcome: endpoint.port === EXEC_DAEMON_PORT ? "refused" : "ok" }),
+  });
+  box.setTelemetry({ reportDaemonPing: report => reports.push(report) });
+  await box.releaseWindow(createContext(), "a", 4);
+  assert.equal(commands.length, 0, "no stop-window can run without the primary daemon");
+  const skipped = reports.find(report => report.readinessState === "window_primary-unreachable");
+  assert.ok(skipped, "the skipped release must be retrievable from telemetry");
+  assert.match(skipped.causeSummary, /primary_ping=refused/);
+  assert.match(skipped.target, /window-4/);
+});
+
+test("a release whose probe throws is reported and still stops the seat", async () => {
+  const reports = [];
+  let probes = 0;
+  const { box, commands } = loopback({
+    ping: async (_ctx, endpoint) => {
+      if (endpoint.port !== EXEC_DAEMON_PORT) return { outcome: "ok" };
+      probes += 1;
+      if (probes === 1) throw new Error("probe socket blew up");
+      return { outcome: "ok" };
+    },
+  });
+  box.setTelemetry({ reportDaemonPing: report => reports.push(report) });
+  await box.releaseWindow(createContext(), "a", 5);
+  assert.equal(commands.length, 0);
+  const skipped = reports.find(report => report.readinessState === "window_probe-threw");
+  assert.ok(skipped, "a throwing probe must not fail silently");
+  assert.match(skipped.causeSummary, /probe socket blew up/);
+});
+
+test("releaseWindow probes the fork endpoint for seat liveness", async () => {
+  const targets = [];
+  const { box } = loopback({
+    ping: async (_ctx, endpoint) => { targets.push(`${endpoint.port}:${endpoint.headers?.["x-sand-display"] ?? "-"}`); return { outcome: "ok" }; },
+  });
+  assert.equal(await box.probeWindow(createContext(), "a", 6), "reachable");
+  assert.deepEqual(targets, ["1339:6"], "probes the fork router with the window's display token");
+});
+
+test("an unreachable fork endpoint reports the seat as unreachable", async () => {
+  const { box } = loopback({ ping: async () => ({ outcome: "timeout" }) });
+  assert.equal(await box.probeWindow(createContext(), "a", 7), "unreachable");
+  assert.equal(await box.probeWindow(createContext(), "a", 0), "unknown", "the primary seat is never probed as a fork");
+});
+
+test("a fork router that refuses the probe counts as unreachable", async () => {
+  const { box } = loopback({ ping: async () => { throw new Error("router gone"); } });
+  assert.equal(await box.probeWindow(createContext(), "a", 8), "unreachable");
+});
+
+test("a probe that fails only because the caller aborted stays unknown, not dead", async () => {
+  // An abort is the caller's decision, not evidence about the seat. Reporting
+  // "unreachable" here would let a canceled turn reclaim a healthy window -
+  // the exact cross-agent symptom the seat reclaiming exists to prevent.
+  const { box } = loopback({ ping: async () => { throw new Error("probe canceled"); } });
+  const [ctx, cancel] = createContext().withCancel();
+  cancel(new Error("caller stopped waiting"));
+  assert.equal(await box.probeWindow(ctx, "a", 9), "unknown");
+});
+
+test("a probe that fails for a real reason after the abort is still unreachable", async () => {
+  // Guard the other side of the branch: only a live context reports a dead
+  // seat, so a genuinely vanished executor is not masked by an idle abort.
+  const { box } = loopback({ ping: async () => { throw new Error("router gone"); } });
+  const [ctx] = createContext().withCancel();
+  assert.equal(await box.probeWindow(ctx, "a", 10), "unreachable");
+});
 
 test("loopback readiness aborts the polling sleep promptly and passes its signal", async () => {
   const sleeping = deferred();

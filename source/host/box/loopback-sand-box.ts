@@ -9,6 +9,7 @@ import { agentMediaReadScopeKey, assertPathOutsideProtectedRoots } from "./prote
 import type { BoxEnvironmentUpdate } from "./box-env.js";
 import { BoxFileUnreadableError, resolveBoxWorkspacePath } from "./box-transfer.js";
 import { SAND_BOX_DISPLAY_HEADER, SAND_BOX_FORK_ROUTER_PORT, SAND_BOX_MAX_WINDOWS, SAND_BOX_WINDOW_OWNER_HEADER, clearAgentWindowConnections, primarySandBoxWindow, runStartWindow, runStopWindow, sandBoxDisplayToken, sandBoxWindowKey, type ShellAccessor } from "./box-windows.js";
+import type { WindowSeatProbe } from "./shared-desktop-sand-box.js";
 
 export const EXEC_DAEMON_PORT = 1337;
 export const VNC_PORT = SAND_BOX_PRIMARY_NOVNC_PORT;
@@ -81,16 +82,39 @@ export class LoopbackSandBox<Accessor extends ShellAccessor = ShellAccessor> {
     this.windowConnections.set(key, ownerToken == null ? { window, endpoint } : { window, endpoint, ownerToken });
     return window;
   }
+  async probeWindow(ctx: Context, agentId: string, windowIndex: number): Promise<WindowSeatProbe> {
+    if (isPrimaryWindowIndex(windowIndex)) return "unknown";
+    const cached = this.windowConnections.get(sandBoxWindowKey(agentId, windowIndex));
+    const headers: Record<string, string> = { [SAND_BOX_DISPLAY_HEADER]: sandBoxDisplayToken(windowIndex) };
+    if (cached?.ownerToken != null) headers[SAND_BOX_WINDOW_OWNER_HEADER] = cached.ownerToken;
+    const endpoint: BoxEndpoint = { host: this.host, port: SAND_BOX_FORK_ROUTER_PORT, authToken: this.authToken, headers };
+    try { const probe = await this.waitFor(ctx, this.options.operations.ping(ctx, endpoint)); return probe.outcome === "ok" ? "reachable" : "unreachable"; }
+    catch (error) { return ctx.signal.aborted ? "unknown" : "unreachable"; }
+  }
   async releaseWindow(ctx: Context, agentId: string, windowIndex: number): Promise<void> {
     if (windowIndex == null || isPrimaryWindowIndex(windowIndex)) return;
     this.windowConnections.delete(sandBoxWindowKey(agentId, windowIndex));
     // Never make deletion pay a full ready timeout when the daemon is already
-    // unreachable: a quick liveness probe decides whether stop can run.
-    try {
-      const probe = await this.waitFor(ctx, this.options.operations.ping(ctx, this.primaryEndpoint()));
-      if (probe.outcome !== "ok") return;
-    } catch { return; }
-    try { await runStopWindow(ctx, (await this.ensureReady(ctx, agentId)).remoteAccessor, windowIndex); } catch {}
+    // unreachable: a quick liveness probe decides whether stop can run. When the
+    // probe fails the seat may still be holding a display, so report it instead
+    // of returning silently - a skipped stop leaves a zombie seat that the next
+    // turn keeps colliding with, and nothing else would record that it happened.
+    let probe: PingResult | undefined;
+    try { probe = await this.waitFor(ctx, this.options.operations.ping(ctx, this.primaryEndpoint())); }
+    catch (error) { this.logSeatRelease(windowIndex, "probe-threw", error); return; }
+    if (probe.outcome !== "ok") {
+      this.logSeatRelease(windowIndex, "primary-unreachable", undefined, probe.outcome);
+      // The primary daemon is what runs stop-window, so there is nothing left to
+      // run it with. Clearing the cached connection is still correct and done
+      // above; the box-level owner keeps the seat out of the allocator.
+      return;
+    }
+    try { await runStopWindow(ctx, (await this.ensureReady(ctx, agentId)).remoteAccessor, windowIndex); }
+    catch (error) { this.logSeatRelease(windowIndex, "stop-window-failed", error); }
+  }
+  private logSeatRelease(windowIndex: number, reason: string, error?: unknown, probeOutcome?: string): void {
+    if (!this.hasTelemetry) return;
+    this.telemetry.reportDaemonPing({ outcome: "seat_release_skipped", attempts: 1, durationMs: 0, unreadyDurationMs: 0, readinessState: `window_${reason}`, target: `${this.host}:window-${windowIndex}`, ...(probeOutcome == null ? {} : { causeSummary: `primary_ping=${probeOutcome}` }), ...(error == null ? {} : { causeSummary: `error=${error instanceof Error ? error.message : String(error)}` }) });
   }
   async hibernate(_ctx: Context, agentId: string): Promise<void> { clearAgentWindowConnections(this.windowConnections, agentId); } async runState(): Promise<"running"> { return "running"; } async listBoxes(): Promise<Array<{ agentId: string; running: boolean }>> { return [{ agentId: "", running: true }]; }
   async dispose(): Promise<void> { this.daemonWatchdogAbort.abort(); await this.daemonWatchdogRun; }

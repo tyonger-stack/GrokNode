@@ -14,8 +14,11 @@ export interface ParsedAssignments { assignments: Map<string, number>; tokens: M
 export function parseAssignments(bytes: Uint8Array, maxWindowCount: number): ParsedAssignments { const assignments = new Map<string, number>(), tokens = new Map<string, string>(); let parsed: unknown; try { parsed = JSON.parse(new TextDecoder().decode(bytes)); } catch { return { assignments, tokens, isCorrupt: true }; } if (typeof parsed !== "object" || parsed == null || Array.isArray(parsed)) return { assignments, tokens, isCorrupt: false }; const root = parsed as Record<string, unknown>, raw = root.assignments; if (typeof raw !== "object" || raw == null || Array.isArray(raw)) return { assignments, tokens, isCorrupt: false }; const rawTokens = typeof root.tokens === "object" && root.tokens != null && !Array.isArray(root.tokens) ? root.tokens as Record<string, unknown> : undefined, usedForks = new Set<number>(); for (const agentId of Object.keys(raw).sort()) { const index = (raw as Record<string, unknown>)[agentId]; if (typeof index !== "number" || !Number.isInteger(index) || index < 1 || index > maxWindowCount) continue; if (index >= SAND_BOX_FIRST_FORK_WINDOW_INDEX) { if (usedForks.has(index)) continue; usedForks.add(index); } assignments.set(agentId, index); const token = rawTokens?.[agentId]; if (typeof token === "string" && token.length > 0) tokens.set(agentId, token); } return { assignments, tokens, isCorrupt: false }; }
 export function resolveSharedBoxId(explicit?: string, env: Record<string, string | undefined> = process.env): string { if (explicit) return explicit; return env.SAND_SHARED_BOX_ID?.trim() || DEFAULT_SHARED_BOX_ID; }
 
-export interface SharedInnerBox<Accessor = unknown> extends CapableBox { ensureReady(ctx: Context, agentId: string): Promise<{ remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }>; ensureWindow?(ctx: Context, agentId: string, windowIndex: number, options?: { ownerToken?: string }): Promise<{ windowIndex: number; computerUse: Accessor; vncUrl: string }>; releaseWindow?(ctx: Context, agentId: string, windowIndex: number): Promise<void>; recreateInBox?(ctx: Context, options: { preserveData: boolean; force?: boolean }): Promise<{ started: boolean; reason?: string }>; runState(ctx: Context, agentId: string): Promise<string>; listBoxes(): Promise<Array<{ agentId: string; running: boolean }>>; uploadFile(ctx: Context, agentId: string, path: string, data: Uint8Array): Promise<void>; downloadFile(ctx: Context, agentId: string, path: string): Promise<Uint8Array>; dispose?(): Promise<void> }
-export interface SharedDesktopOptions<Accessor> { sharedBoxId?: string; persistAssignments?: boolean; now?: () => number; sleep?: (ms: number, signal?: AbortSignal) => Promise<void>; gateComputerUse?: (primary: { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }) => { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }; reportPersistFailure?: (error: unknown) => void; onAssignmentConflict?: (detail: { agentId: string; windowIndex: number; heldBy: string }) => void }
+export interface SharedInnerBox<Accessor = unknown> extends CapableBox { ensureReady(ctx: Context, agentId: string): Promise<{ remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }>; ensureWindow?(ctx: Context, agentId: string, windowIndex: number, options?: { ownerToken?: string }): Promise<{ windowIndex: number; computerUse: Accessor; vncUrl: string }>; releaseWindow?(ctx: Context, agentId: string, windowIndex: number): Promise<void>; probeWindow?(ctx: Context, agentId: string, windowIndex: number): Promise<WindowSeatProbe>; recreateInBox?(ctx: Context, options: { preserveData: boolean; force?: boolean }): Promise<{ started: boolean; reason?: string }>; runState(ctx: Context, agentId: string): Promise<string>; listBoxes(): Promise<Array<{ agentId: string; running: boolean }>>; uploadFile(ctx: Context, agentId: string, path: string, data: Uint8Array): Promise<void>; downloadFile(ctx: Context, agentId: string, path: string): Promise<Uint8Array>; dispose?(): Promise<void> }
+/** Whether a fork seat's executor still answers. "unknown" means the backend
+ * cannot tell, and callers must then assume the seat is healthy. */
+export type WindowSeatProbe = "reachable" | "unreachable" | "unknown";
+export interface SharedDesktopOptions<Accessor> { sharedBoxId?: string; persistAssignments?: boolean; now?: () => number; sleep?: (ms: number, signal?: AbortSignal) => Promise<void>; gateComputerUse?: (primary: { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }) => { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }; reportPersistFailure?: (error: unknown) => void; onAssignmentConflict?: (detail: { agentId: string; windowIndex: number; heldBy: string }) => void; onStaleSeatCleanup?: (detail: { agentId: string; windowIndex: number; probe: WindowSeatProbe; released: boolean }) => void }
 interface AssignmentsLoad { ctx: Context; cancel(reason?: unknown): void; waiters: Set<symbol>; promise: Promise<void> }
 
 export class SharedDesktopSandBox<Accessor = unknown> {
@@ -136,15 +139,34 @@ export class SharedDesktopSandBox<Accessor = unknown> {
   assignWindow(agentId: string): number | undefined { return this.agentWindows.get(agentId) ?? this.takeFreeForkIndex(agentId); }
   migrateLegacyPrimarySeat(agentId: string, assigned: number): number { if (!isPrimaryWindowIndex(assigned) || this.inner.ensureWindow == null) return assigned; const current = this.agentWindows.get(agentId) ?? assigned; return !isPrimaryWindowIndex(current) ? current : this.takeFreeForkIndex(agentId) ?? current; }
   private async restorePrimarySeat(ctx: Context, agentId: string, forkIndex: number): Promise<void> { await this.rollbackFailedBringup(ctx, agentId, { isNewAssignment: false, forkBringupAttempted: true }); if (this.agentWindows.get(agentId) !== forkIndex) return; this.agentWindows.set(agentId, SAND_BOX_PRIMARY_WINDOW_INDEX); this.agentWindowTokens.delete(agentId); this.queuePersistAssignments(ctx); }
+  private async probeSeat(ctx: Context, agentId: string, index: number): Promise<WindowSeatProbe> {
+    if (this.inner.probeWindow == null) return "unknown";
+    try { return await this.inner.probeWindow(ctx, this.sharedBoxId, index); }
+    catch { return "unknown"; }
+  }
   private async rollbackFailedBringup(ctx: Context, agentId: string, opts: { isNewAssignment: boolean; forkBringupAttempted: boolean }): Promise<void> {
     const cleanupCtx = ctx.withDetached();
     const index = this.agentWindows.get(agentId), isFork = index != null && index >= SAND_BOX_FIRST_FORK_WINDOW_INDEX;
-    // Existing successful seats belong to healthy callers, even if this later ensure was canceled.
-    if (this.establishedForks.has(agentId)) return;
+    // Existing successful seats belong to healthy callers, even if this later
+    // ensure was canceled - unless the seat's executor has stopped answering.
+    // A bring-up killed mid-flight (a wedged turn SIGTERMing start-window) leaves
+    // a half-started seat that still answers ownership checks, so the next turn
+    // re-collides with it forever; probing is what separates "healthy caller"
+    // from "once established, now dead".
+    const staleSeat = this.establishedForks.has(agentId);
+    if (staleSeat) {
+      if (!isFork || index == null) return;
+      const probe = await this.probeSeat(cleanupCtx, agentId, index);
+      if (probe !== "unreachable") return;
+      this.establishedForks.delete(agentId);
+    }
     if (opts.forkBringupAttempted && isFork && index != null) {
       this.windowsTearingDown.add(index);
-      try { await this.inner.releaseWindow?.(cleanupCtx, this.sharedBoxId, index); } catch {}
+      let released = false;
+      try { await this.inner.releaseWindow?.(cleanupCtx, this.sharedBoxId, index); released = true; }
+      catch {}
       finally { this.windowsTearingDown.delete(index); }
+      if (staleSeat) this.options.onStaleSeatCleanup?.({ agentId, windowIndex: index, probe: "unreachable", released });
     }
     if (opts.isNewAssignment) {
       this.agentWindows.delete(agentId);
