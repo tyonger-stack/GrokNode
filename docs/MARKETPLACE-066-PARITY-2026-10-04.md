@@ -199,11 +199,32 @@ categoryKeys: plugin.curatedCategoryKeys.filter((v) => v.length > 0),
 
 ### 对 PORT §7 的更正
 
-PORT §7 写「条目级仅 6/14 完全一致」，该数字已过期（D13 修复前）。修复后为 **8/12**。
+PORT §7 原先写「条目级仅 6/14 完全一致」，该数字在 D13 修复前已过期；PORT 后续已同步更新为
+**9/12**。本文件的「复现」一节原先给出的 8/12 同样是 `categoryKeys` 修复**之前**的读数，
+两次重测后的真实数字是 **9/12**（13 个共有区块里 10 个逐行一致，剔除「市场」容器后 9/12）。
 PORT §3 的 D2 把 `为你推荐` 判为「降级为非差异」，本次对拍**不支持这个结论** ——
 官方确实渲染出 4 个不同条目，其中 `Agent Compatibility` 本地 catalog 根本没有。
 
 ## 复现
+
+**首选：仓库内一条命令**（静态核验 + 实机对拍一起做，提交 `1095dca`）：
+
+```sh
+# 两个 app 都要带 CDP 端口在跑
+/Applications/Grok\ Bot.app/Contents/MacOS/Grok\ Bot --remote-debugging-port=9224 &
+open -a "/Applications/Grok Node.app" --args --remote-debugging-port=9232
+
+node scripts/verify-marketplace-parity.mjs
+```
+
+该脚本静态核验上游 `Le`/`Te`/`Ce` 与本地转写逐条一致、部署版 `categoryKeys` 是否穿过**两层**投影、
+101 个 renderer chunk 逐个 `node --check`；再实机读两个 app 的弹窗做逐区块对拍。当前输出：
+**13 个共有区块，10 个逐行一致**（剔除「市场」容器即 9/12）。
+
+> 两个易踩的坑已写进脚本：esbuild 把非 ASCII 转义成 `\uXXXX`，不还原就 grep 中文必然 0 命中；
+> 弹窗会被上一个探测脚本留在别的页面，脚本先关掉重开并等 catalog 到位再读。
+
+**原始 dump 对照**（下面这段依赖一次性的 scratchpad 脚本，不在仓库内，仅供追溯）：
 
 ```sh
 cd "<scratchpad>"
