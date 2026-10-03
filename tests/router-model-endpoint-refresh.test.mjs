@@ -199,6 +199,33 @@ test("saving the endpoint re-pulls, prefers the real list, and heals stale selec
   assert.deepEqual(runtime.state.models, ["MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed"]);
 });
 
+test("saving the endpoint records the per-bot reset count in the card note and survives the re-pull", async () => {
+  const { desktop, calls } = makeDesktop({
+    agent: {
+      getOpenRouterModelOptions: async () => ({ models: ["bridge-1"], selected: null, baseUrl: "https://api.minimax.cn/v1", error: null }),
+      setOpenRouterModel: async (model) => { calls.push(["setOpenRouterModel", model]); return { model }; },
+      setOpenRouterBaseUrl: async (value) => { calls.push(["setOpenRouterBaseUrl", value]); return { baseUrl: value ?? null, resetAgents: 3 }; },
+    },
+  });
+  const runtime = mountHook({ desktop });
+  await settle(runtime);
+  const [, , saveEndpoint] = runtime.render();
+  await saveEndpoint("https://other.example/v1");
+  await settle(runtime);
+  assert.match(runtime.state.endpointNote, /已将 3 个 Bot 的专属模型与推理强度恢复为跟随全局/);
+  assert.deepEqual(runtime.state.models, ["MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed"], "保存后仍重新拉取真实列表");
+});
+
+test("endpoint save without resets leaves no note", async () => {
+  const { desktop } = makeDesktop(); // 桩不带 resetAgents
+  const runtime = mountHook({ desktop });
+  await settle(runtime);
+  const [, , saveEndpoint] = runtime.render();
+  await saveEndpoint("https://api.minimax.cn/v1");
+  await settle(runtime);
+  assert.equal(runtime.state.endpointNote, null);
+});
+
 test("endpoint probe failure falls back to the bridge list and surfaces a note instead of silence", async () => {
   const { desktop } = makeDesktop({
     fetchEndpointModels: async () => ({ models: [], error: "HTTP 401" }),

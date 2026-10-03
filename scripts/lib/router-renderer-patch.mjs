@@ -58,7 +58,7 @@ function RRouterCredential({provider:s,state:e,keys:t,onSaved:n}){const[r,i]=de.
 function RRouterUsageRows({usage:s}){const q=s.quotaExhaustedAt?RRouterLoc("Quota exhausted","配额已耗尽")+" · "+new Date(s.quotaExhaustedAt).toLocaleString()+(s.quotaExhaustedModel?" · "+s.quotaExhaustedModel:""):null;return a.jsxs("div",{children:[a.jsx(ie,{label:RRouterLoc("Requests","请求数"),variant:"card",children:a.jsx(se,{as:"span",color:"secondary",size:"sm",children:RRouterNumber(s.requests)})}),a.jsx(ie,{divided:!0,label:RRouterLoc("Input tokens","输入 Token"),variant:"card",children:a.jsx(se,{as:"span",color:"secondary",size:"sm",children:RRouterNumber(s.inputTokens)})}),a.jsx(ie,{divided:!0,label:RRouterLoc("Output tokens","输出 Token"),variant:"card",children:a.jsx(se,{as:"span",color:"secondary",size:"sm",children:RRouterNumber(s.outputTokens)})}),a.jsx(ie,{divided:!0,label:RRouterLoc("Cache tokens","缓存 Token"),variant:"card",children:a.jsx(se,{as:"span",color:"secondary",size:"sm",children:RRouterNumber(s.cacheReadTokens+s.cacheWriteTokens)})}),a.jsx(ie,{divided:!0,label:RRouterLoc("Last used","最近使用"),variant:"card",children:a.jsx(se,{as:"span",color:"secondary",size:"sm",children:s.lastUsedAt?new Date(s.lastUsedAt).toLocaleString():RRouterLoc("Not used yet","尚未使用")})}),q?a.jsx(ie,{divided:!0,label:RRouterLoc("Quota status","配额状态"),variant:"card",children:a.jsx(se,{as:"span",color:"red",size:"sm",children:q})}):null]})}
 function RBoxRuntime(){const[s,e]=de.useState({mode:"local-docker",status:null,error:null,busy:!0});de.useEffect(()=>{let t=!0;window.desktop.agent.getBoxRuntime().then(n=>{t&&e({...n,error:null,busy:!1})}).catch(n=>{t&&e(r=>({...r,error:String(n?.message??n),busy:!1}))});return()=>{t=!1}},[]);return a.jsx("div",{children:a.jsx(ie,{description:s.error??s.status?.detail??RRouterLoc("Shell, files and computer use run in a Docker container on this Mac.","Shell、文件与电脑操作都在这台 Mac 的 Docker 容器中运行。"),label:RRouterLoc("Local Docker VM","本地 Docker 虚拟机"),variant:"card",children:a.jsx(se,{as:"span",color:s.status?.ready?"primary":"secondary",size:"sm",children:s.error?RRouterLoc("Unavailable","不可用"):s.status?.ready?RRouterLoc("Ready","就绪"):RRouterLoc("Starting…","启动中…")})})})}
 function RRouterOpenRouterModel(provider){
-  const[s,e]=de.useState({models:[],selected:null,baseUrl:null,error:null,note:null,busy:!1});
+  const[s,e]=de.useState({models:[],selected:null,baseUrl:null,error:null,note:null,endpointNote:null,busy:!1});
   const t=async i=>{
     e(o=>({...o,busy:!0,error:null,note:null}));
     try{await window.desktop.agent.setOpenRouterModel(i);e(o=>({...o,selected:i,busy:!1,error:null}))}
@@ -75,17 +75,22 @@ function RRouterOpenRouterModel(provider){
       const merged=RRouterMergeEndpointModels(stored,i.models,endpointResult);
       const models=merged.models;
       const selected=merged.keep?stored:heal?null:stored;
-      e({models,selected,baseUrl,error:bridgeError&&!merged.note?bridgeError:null,note:merged.note,busy:!1});
+      e(o=>({...o,models,selected,baseUrl,error:bridgeError&&!merged.note?bridgeError:null,note:merged.note,busy:!1}));
     }catch(o){e(n=>({...n,busy:!1,error:String(o?.message??o)}))}
   };
   const u=async v=>{
     e(o=>({...o,busy:!0,error:null}));
-    try{await window.desktop.agent.setOpenRouterBaseUrl(v.trim().length>0?v.trim():null);await pull(!0)}
+    try{
+      const r=await window.desktop.agent.setOpenRouterBaseUrl(v.trim().length>0?v.trim():null);
+      const reset=typeof r.resetAgents==="number"?r.resetAgents:0;
+      e(o=>({...o,baseUrl:typeof r.baseUrl==="string"?r.baseUrl:null,endpointNote:reset>0?RRouterLoc("Reset "+reset+" bot(s) to follow the global model/effort","已将 "+reset+" 个 Bot 的专属模型与推理强度恢复为跟随全局"):null,busy:!1,error:null}));
+      await pull(!0);
+    }
     catch(o){e(n=>({...n,busy:!1,error:String(o?.message??o)}))}
   };
   const y=()=>{void pull(!0)};
   de.useEffect(()=>{
-    if(provider!=="openrouter"){e({models:[],selected:null,baseUrl:null,error:null,note:null,busy:!1});return()=>{}}
+    if(provider!=="openrouter"){e({models:[],selected:null,baseUrl:null,error:null,note:null,endpointNote:null,busy:!1});return()=>{}}
     void pull(!1);
     return()=>{};
   },[provider]);
@@ -98,7 +103,7 @@ function RRouterEndpointCard({state:s,save:e,busy:t}){
   const[n,r]=de.useState(s.baseUrl??"");
   de.useEffect(()=>{r(s.baseUrl??"")},[s.baseUrl]);
   const i=async()=>{await e(n)};
-  return a.jsx(ie,{description:s.baseUrl?s.baseUrl:RRouterLoc("Defaults to the TokenHub cloud endpoint.","默认使用 TokenHub 云端端点。"),label:RRouterLoc("API address","API 地址"),variant:"card",children:a.jsxs("div",{className:"sand-9f619 sand-78zum5 sand-6s0dn4 sand-h8yej3",style:{width:360},children:[a.jsx("input",{"aria-label":RRouterLoc("TokenHub API address","TokenHub API 地址"),className:RRouterInputClass,disabled:t,onChange:o=>r(o.currentTarget.value),placeholder:"https://openrouter.ai/api/v1",style:{fontSize:13,height:34,minWidth:0,padding:"0 10px",width:270},type:"text",value:n}),a.jsx(oe,{disabled:t||n.trim()===(s.baseUrl??""),onClick:i,shape:"rectangular",size:"sm",variant:"secondary",children:t?RRouterLoc("Saving…","保存中…"):RRouterLoc("Save","保存")})]})})
+  return a.jsx(ie,{description:s.baseUrl?s.baseUrl+(s.endpointNote?" · "+s.endpointNote:""):RRouterLoc("Defaults to the TokenHub cloud endpoint.","默认使用 TokenHub 云端端点。"),label:RRouterLoc("API address","API 地址"),variant:"card",children:a.jsxs("div",{className:"sand-9f619 sand-78zum5 sand-6s0dn4 sand-h8yej3",style:{width:360},children:[a.jsx("input",{"aria-label":RRouterLoc("TokenHub API address","TokenHub API 地址"),className:RRouterInputClass,disabled:t,onChange:o=>r(o.currentTarget.value),placeholder:"https://openrouter.ai/api/v1",style:{fontSize:13,height:34,minWidth:0,padding:"0 10px",width:270},type:"text",value:n}),a.jsx(oe,{disabled:t||n.trim()===(s.baseUrl??""),onClick:i,shape:"rectangular",size:"sm",variant:"secondary",children:t?RRouterLoc("Saving…","保存中…"):RRouterLoc("Save","保存")})]})})
 }
 function RRouterModelCard({state:s,pick:e,refresh:r}){
   const[t,n]=de.useState(!1),[u,o]=de.useState("");

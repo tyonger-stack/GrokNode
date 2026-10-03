@@ -267,14 +267,31 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     setOpenRouterBaseUrl: async (raw) => {
       const requested = req(raw).baseUrl;
       invariant(requested === null || typeof requested === "string", "The TokenHub endpoint must be a string.");
+      // 换端点后，各 Bot 的专属模型/推理强度是旧端点的配置（如 glm 系 slug 对新端点
+      // 是 unknown model），恢复为跟随全局默认；全局模型与强度由用户在面板上自选，不动。
+      const previousOverride = persistedOpenRouterBaseUrl(deps.settingsStore);
       invoke(deps.settingsStore, "setOpenRouterBaseUrl", typeof requested === "string" ? requested : undefined);
       const syncedBaseUrl = typeof requested === "string" && requested.trim().length > 0 ? requested.trim() : null;
+      const endpointChanged = (previousOverride ?? null) !== syncedBaseUrl;
+      let resetAgents = 0;
+      const syncPatch: UnknownRecord = { openRouterBaseUrl: syncedBaseUrl };
+      if (endpointChanged) {
+        const agentModels = invoke(deps.settingsStore, "getOpenRouterAgentModels") as Record<string, string>;
+        const agentEfforts = invoke(deps.settingsStore, "getOpenRouterAgentEfforts") as Record<string, string>;
+        resetAgents = new Set([...Object.keys(agentModels ?? {}), ...Object.keys(agentEfforts ?? {})]).size;
+        if (resetAgents > 0) {
+          invoke(deps.settingsStore, "setOpenRouterAgentModels", {});
+          invoke(deps.settingsStore, "setOpenRouterAgentEfforts", {});
+          syncPatch.openRouterAgentModels = {};
+          syncPatch.openRouterAgentEfforts = {};
+        }
+      }
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        try { const applied = await deps.syncHostSettingsToBox({ openRouterBaseUrl: syncedBaseUrl }); if ((applied?.openRouterBaseUrl ?? null) === syncedBaseUrl) break; } catch (error) { reportDesktopEdgeFailure("host-settings", "openrouter-baseurl-retry", error); }
+        try { const applied = await deps.syncHostSettingsToBox(syncPatch); if ((applied?.openRouterBaseUrl ?? null) === syncedBaseUrl) break; } catch (error) { reportDesktopEdgeFailure("host-settings", "openrouter-baseurl-retry", error); }
         await (deps.delay ?? sleep)(250 * (attempt + 1));
       }
       const persisted = persistedOpenRouterBaseUrl(deps.settingsStore);
-      return { baseUrl: resolveOpenRouterBaseUrl(persisted), baseUrlOverride: persisted };
+      return { baseUrl: resolveOpenRouterBaseUrl(persisted), baseUrlOverride: persisted, resetAgents };
     },
     getOpenRouterEffort: async () => {
       const stored = normalizeOpenRouterReasoningEffort(invoke(deps.settingsStore, "getOpenRouterEffort"));
