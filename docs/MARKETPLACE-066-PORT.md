@@ -177,7 +177,8 @@
 
 ### 验证强度（更正）
 
-- typecheck / `source:typecheck` 干净；**872/872 测试通过**（含 3 条锚定实机对拍的新守卫）
+- typecheck / `source:typecheck` 干净；**876/876 测试通过**（含 3 条锚定实机对拍的新守卫；
+  数字以最后一次全量 `npm test` 实测为准，早期版本记的 872 已过期）
 - **部署版 asar 的 101 个 renderer chunk 逐个 `node --check`，0 错误**（从 `/Applications`
   已部署字节抽出）。⚠️ asar 内 `.js` 总数是 209，但那是含 108 个 `node_modules` 与主进程
   bundle 的全量口径，**语法验证对象是 101**
