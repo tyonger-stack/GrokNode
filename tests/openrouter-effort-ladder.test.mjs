@@ -138,7 +138,7 @@ test("the env override is a debug knob and is sent as is", () => {
 
 test("the Router panel refetches efforts when the model changes and offers Ultra in its fallback", async () => {
   const patch = await readFile(path.join(repoRoot, "scripts/lib/router-renderer-patch.mjs"), "utf8");
-  assert.match(patch, /RRouterOpenRouterEffort\(s\.provider,m\.selected\)/);
+  assert.match(patch, /RRouterOpenRouterEffort\(s\.provider,m\.selected,m\.baseUrl\)/, "panel also passes the resolved endpoint so effort picks can be probed");
   assert.match(patch, /\},\[provider,model\]\);/);
   assert.match(patch, /\{value:"ultra",label:RRouterLoc\("Ultra","极致"\)\}/);
   assert.match(patch, /s\.options\.map\(o=>L\.find\(x=>x\.value===o\.value\)\?\?o\)/, "catalog options get the localized labels too");

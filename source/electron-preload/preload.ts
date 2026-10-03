@@ -367,6 +367,55 @@ export function createDesktopPreloadBridge(options: {
         }, (error) => done([], String((error as { message?: unknown })?.message ?? error)));
       } catch (error) { done([], String((error as { message?: unknown })?.message ?? error)); }
     }),
+    // 推理强度档位校验：选定档位时用 1-token 请求探测端点是否接受该模型的
+    // reasoning_effort。被拒时尝试从报错里解析 allowed 列表（如 MiniMax 的
+    // "allowed: low, medium, ..."），供 UI 直接展示；密钥同样不出 preload。
+    probeEffortSupport: (baseUrl: string, model: string, effort: string): Promise<{ ok: boolean; error: string | null; allowed: Array<string> | null }> => new Promise((resolve) => {
+      const done = (ok: boolean, error: string | null, allowed: Array<string> | null) => resolve({ ok, error, allowed });
+      try {
+        const raw = String(baseUrl ?? "").trim().replace(/\/+$/, "");
+        const id = String(model ?? "").trim();
+        const value = String(effort ?? "").trim();
+        let target: URL;
+        try { target = new URL(`${raw}/chat/completions`); } catch { done(false, "invalid base url", null); return; }
+        if (target.protocol !== "https:" && target.protocol !== "http:") { done(false, "unsupported protocol", null); return; }
+        if (id.length === 0 || value.length === 0) { done(false, "model and effort are required", null); return; }
+        void Promise.resolve(ipc.invoke("sand:secrets-reveal", { key: "OPENROUTER_API_KEY" })).then((revealed) => {
+          const token = typeof revealed === "string" ? revealed.trim() : "";
+          if (token.length === 0) { done(true, null, null); return; }
+          const send = target.protocol === "https:" ? nodeHttpsRequest : nodeHttpRequest;
+          const payload = JSON.stringify({ model: id, messages: [{ role: "user", content: "hi" }], max_tokens: 1, reasoning_effort: value });
+          const request = send(
+            {
+              hostname: target.hostname,
+              port: target.port === "" ? undefined : Number(target.port),
+              path: `${target.pathname}${target.search}`,
+              method: "POST",
+              headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json" },
+              timeout: 15_000,
+            },
+            (response) => {
+              const chunks: Array<Buffer> = [];
+              response.on("data", (chunk: Buffer) => chunks.push(chunk));
+              response.on("end", () => {
+                try {
+                  if (response.statusCode === 200) { done(true, null, null); return; }
+                  const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { error?: { message?: unknown } };
+                  const message = typeof body?.error?.message === "string" ? body.error.message : `HTTP ${response.statusCode ?? "unknown"}`;
+                  const match = /allowed:\s*([^)]+)/i.exec(message);
+                  const allowed = match ? match[1]!.split(",").map((item) => item.trim()).filter((item) => item.length > 0) : null;
+                  done(false, message, allowed);
+                } catch (error) { done(false, String((error as { message?: unknown })?.message ?? error), null); }
+              });
+            },
+          );
+          request.on("timeout", () => request.destroy(new Error("timed out")));
+          request.on("error", (error) => done(false, String((error as { message?: unknown })?.message ?? error), null));
+          request.write(payload, "utf8");
+          request.end();
+        }, (error) => done(false, String((error as { message?: unknown })?.message ?? error), null));
+      } catch (error) { done(false, String((error as { message?: unknown })?.message ?? error), null); }
+    }),
     agent: {
       getPinnedAgents: () => edge("getHostPinnedAgents"),
       setPinnedAgents: (pinnedAgentIds: readonly string[]) => edge("setHostPinnedAgents", { pinnedAgentIds }),
