@@ -1,4 +1,10 @@
-# 市场页条目级对拍（2026-10-04 05:1x，两个 app 同时跑）
+# 市场页条目级对拍（2026-10-04，两个 app 同时跑）
+
+> **最终结论（修复部署后重测）**：12 个共有区块里 **9 个逐行完全一致**，
+> 剩下 3 处差异**全部是 catalog 缺条目**（`google-slides` / `oh-my-claudecode` /
+> `Agent Compatibility`），**已无算法差异**。其中「通信」这一处原本是最难的谜团
+> （官方显示 `Bird` 而非 `Adapter`），补上 `categoryKeys` 后**自动解开**。
+
 
 > 这是一次**独立于** `MARKETPLACE-066-PORT.md` 的实测记录。PORT §7 写的「条目级仅 6/14 完全一致」
 > 是在 Cursor agent 的 D13 厂商 override 修复**之前**测的；那份产物已于 05:05 部署上线
@@ -126,11 +132,11 @@ categoryKeys: plugin.curatedCategoryKeys.filter((v) => v.length > 0),
 
 官方 13 个区块，本地 12 个：**缺 `登录与凭据管理`**（D11）。区块**顺序完全一致**。
 
-**条目级一致率：6/14 → 8/12**（分母只算两边都有的区块）。
+**条目级一致率：6/14 → 8/12 → 9/12**（分母只算两边都有的区块）。
 
-> ⚠️ 这个数字的**成因**已被上面「更正」一节推翻：8/12 里有两处是靠上游不存在的 override 凑出来的。
-> 一旦按 `categoryKeys` 修好数据侧并删掉补偿，这个数字会变成**真实**的一致率。区块级结构结论
-> （顺序一致、缺 `登录与凭据管理`、3 处为 catalog 缺口）不受影响。
+> 中间那个 8/12 的**成因**已被「更正」一节推翻：当时有两处是靠上游不存在的 override 凑出来的。
+> 补上 `categoryKeys`、让拟合补偿自动让位后重测：**通信 逐行一致**，8/12 变成真实的 9/12。
+> 剩下的 3 处全部指向我们 catalog 里缺的那几个条目，不再有任何规则层面的差异。
 
 ## 剩余 4 处差异的性质分类（决定性实验）
 
@@ -211,3 +217,54 @@ for k in o:
     if k in l: print(('✅' if o[k]==l[k] else '❌'), k, o[k], l[k])
 PY
 ```
+
+---
+
+## 修复部署后的重测（`d2e793d` + 重新打包部署）
+
+asar `80ad3559`，重测结果：
+
+```
+official: 为你推荐(4) 精选插件(4) 团队插件(1) 登录与凭据管理(1) 效率(4) 通信(4)
+          设计(4) 代码(4) 数据(4) 销售(4) 财务(4) 研究(4) 支持(3)          total=45
+local:    为你推荐(4) 精选插件(4) 团队插件(0)               效率(4) 通信(4)
+          设计(4) 代码(4) 数据(4) 销售(4) 财务(4) 研究(4) 支持(3)          total=43
+
+一致 9/12   差异: ['为你推荐', '团队插件', '设计']
+```
+
+**通信 逐行一致了** —— 之前判为「无法解释」的那一处，正是被 `categoryKeys` 解开的：
+
+- `Bird.categoryKeys = ["AGENT_ORCHESTRATION","INBOX_AND_COLLABORATION"]`
+  → 第一个 key 不在 `Le` 表里被丢弃，第二个 key 把它送进 通信；
+- `Adapter.categoryKeys = ["AGENT_ORCHESTRATION"]` → 整个条目**任何桶都进不去**，
+  所以官方的 通信 里没有它。
+
+运行时抽样核对，本地透传出来的数组与官方**逐条相同**：
+
+| 条目 | 官方 | 本地（修复后） |
+| --- | --- | --- |
+| canva | `PRODUCTIVITY, DESIGN` | `PRODUCTIVITY, DESIGN` |
+| bird | `AGENT_ORCHESTRATION, INBOX_AND_COLLABORATION` | 同左 |
+| adapter | `AGENT_ORCHESTRATION` | 同左 |
+| figma | `PRODUCTIVITY, DESIGN` | 同左 |
+| slack | `FEATURED, PRODUCTIVITY` | 同左 |
+| notion-workspace | `FEATURED, PRODUCTIVITY, DOCUMENTS_AND_FILES` | 同左 |
+
+### 剩余 3 处：全部是 catalog 缺条目，无一是规则差异
+
+| 差异 | 分歧条目 | 本地 catalog |
+| --- | --- | --- |
+| 设计 | `Google Slides` vs `Mobbin` | **缺** `google-slides`（该桶本地 5 条 / 官方 6 条） |
+| 团队插件 | `oh-my-claudecode` | **缺** |
+| 为你推荐 | `Agent Compatibility` | **缺**（叠加：官方是登录账号、有团队热度数据） |
+
+按上游规则重算，设计桶的字母序前 4 是 Canva / Docs Canvas / Figma / **Google Slides**；
+我们第 4 位是 Mobbin，**唯一原因就是少了那一条**。等 catalog 补齐这 11 条，三处会同时归位。
+
+### 踩到并修掉的第二个投影
+
+`categoryKeys` 在 `toPlugin`（第一次投影）里补上后，运行时**仍然看不到**。原因是
+`marketplacePluginToView()` 还有第二次投影，把字段又丢了一次
+（`source/shared/node/mcp/mcp-marketplace.ts:42`）。两次投影都要透传，缺一不可。
+教训：改了「数据形状」类修复，**必须去运行时验一次字段真的到位**，源码里看到字段不等于渲染器收到了。

@@ -46,6 +46,13 @@ export function marketplacePluginToView(plugin: SandMarketplacePlugin) {
     displayName: plugin.displayName,
     description: plugin.description,
     category: plugin.category,
+    // Upstream's renderer receives both the first curated key and the whole array — the homepage's
+    // bucketing (`Re()`) is driven by the array, and a key missing from the bucket table is dropped
+    // rather than defaulted. This view is the second projection between the wire and the renderer
+    // (the first is `toPlugin`), so both fields have to be carried here too or the renderer silently
+    // falls back to the single human-readable label.
+    categoryKey: plugin.categoryKey,
+    categoryKeys: plugin.categoryKeys,
     homepage: plugin.homepage,
     iconUrl: plugin.logoUrl,
     connectors: plugin.connectors,
