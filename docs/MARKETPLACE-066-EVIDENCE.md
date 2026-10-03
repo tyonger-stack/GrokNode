@@ -238,3 +238,347 @@ neither Capital.com nor Ahrefs present — the press was a no-op on the official
 `卸载` was deliberately **not** pressed on the official build: it would mutate the user's real
 account. The local build implements it as a direct `mcp.remove`, which is the same one-shot shape
 `添加` demonstrably has.
+
+## 9. 双 app 同时在跑时的逐条对拍（2026-10-04 04:2x）
+
+之前所有"与官方一致"的结论都来自**单侧观察**。这一节把两个 app 同时拉起、用**同一份 dumper**
+读同一个弹窗，做逐条对拍——这是第一次拿到真正的 requirement 1 证据。
+
+| | 官方 0.66.0 | 本地 |
+|---|---|---|
+| CDP | `:9224` | `:9232` |
+| 启动 | `"/Applications/Grok Bot.app/…/Grok Bot" --remote-debugging-port=9224` | `open -a "/Applications/Grok Node.app" --args --remote-debugging-port=9232` |
+
+### 9.1 首页区块逐条比对
+
+| 区块 | 官方 | 本地 | 查看全部 官/本 | 结果 |
+|------|------|------|--------------|------|
+| 市场 | (容器) | (容器) | – | ✅ |
+| 为你推荐 | 4 | 4 | 0/0 | ⚠️ 条目不同 |
+| 精选插件 | 4 | 4 | 1/1 | ✅ 完全一致 |
+| 团队插件 | 1 | 0 | 0/0 | ⚠️ 本地为空 |
+| 登录与凭据管理 | 1 | — | — | ❌ 本地缺此区块 |
+| 效率 | 4 | 4 | 1/1 | ✅ 完全一致 |
+| 通信 | 4 | 4 | 1/1 | ⚠️ 条目不同 |
+| 设计 | 4 | 4 | 1/1 | ⚠️ 条目不同 |
+| 代码 | 4 | 4 | 1/1 | ⚠️ 条目不同（**本轮已修，见 §10**） |
+| 数据 | 4 | 4 | 1/1 | ✅ 完全一致 |
+| 销售 | 4 | 4 | 1/1 | ✅ 完全一致 |
+| 财务 | 4 | 4 | 1/1 | ✅ 完全一致 |
+| 研究 | 4 | 4 | 1/1 | ✅ 完全一致 |
+| 支持 | 3 | 2 | 0/0 | ⚠️ 条目不同 |
+
+**行数与「查看全部」的位置全部对齐**（4 行区块一律带查看全部；`支持` 3 行不带）。差异全部落在
+**选中了哪几条**，不在**渲染规则**。
+
+### 9.2 数据面差异
+
+| | 官方 | 本地 |
+|---|---|---|
+| `mcp.catalog()` 条数 | **404** | **393** |
+| 带 `categoryKey` 的条目 | **253 / 404** | **0 / 393** |
+| `isPublicListed` | 字段存在，403 条全为 `true` | 字段不存在 |
+| 独有字段 | `pluginName` `repositoryUrl` `websiteUrl` `categoryKeys` `isPublicListed` | — |
+| `mcp.teamPopularity()` | **0 条** | **0 条** |
+| `mcp.list()` | 0 条 | 0 条 |
+| 管理页已装行数 | 27 | 48 |
+
+本地 catalog 是官方 catalog 的**严格子集**，只少 11 条、本地无任何多余条目：
+`Google Docs` `Google Sheets` `Google Slides` `OneDrive` `Outlook` `Outlook Calendar`
+`SharePoint` `Teams` `Finance` `X Money` `oh-my-claudecode`。
+
+**更正一条先前的说法**：`isPublicListed` 不是筛选器（403/403 全 true），`teamPopularity()`
+在官方侧**也是 0 条**——所以「为你推荐」缺团队信号是**双方一致的行为**，不是本地独有的降级。
+
+### 9.3 `MCP` 类目在官方侧也没有归桶信号
+
+官方 15 个类目枚举里有 `LOGIN_AND_CREDENTIAL_MANAGEMENT`，`MCP` **不在其中**；且官方自己
+151 条 `MCP` 条目的 `categoryKey` **全为 null**。本地的 146 条同理。**两边都归不进任何桶**，
+这是与官方一致的行为，不是缺陷。
+
+## 10. 已修正的一处真实归桶错误：`AGENT_ORCHESTRATION`
+
+把**官方自己的 404 条 catalog + 官方已装集合**喂进本地 `buildMarketplaceModel`，结果算出的
+是**本地的答案**而不是官方的答案 —— 证明差异在**归桶规则**，不在数据。
+
+反向验证假设（`AGENT_ORCHESTRATION` 归桶从 `code` 改为 `communication`）：
+
+| 区块 | 官方实渲染 | 本地模型（改前） | 本地模型（改后） |
+|------|-----------|----------------|----------------|
+| 代码 | Amazon Location Service / Appwrite / AWS Amplify / AWS Core | Adapter / Amazon / Appwrite / Arize ❌ | **完全一致 ✅** |
+| 通信 | ActiveCampaign / AgentMail / Ando / Bird | ActiveCampaign / AgentMail / Ando / Brevo ❌ | ActiveCampaign / Adapter / AgentMail / Ando ❌ |
+
+两个独立观测支撑该修正：官方「代码」区**只有 Infrastructure**，无一条 Agent Orchestration；
+`Bird` 在 catalog 里是 `Agent Orchestration`，却渲染在「通信」。
+
+**仍未解释的**：`Bird` vs `Adapter`（同为 Agent Orchestration，官方收 Bird 舍 Adapter）、
+`Canva`（官方放在「设计」，catalog 里是 Productivity）、`MailerLite`（官方放在「支持」，
+catalog 里是 Inbox And Collaboration）。三者形态一致，指向官方还有一层**厂商级 override 表**
+（模型里记作 `Te`）未被完整转写。bundle 里搜不到小写字面量 `"agent orchestration"`，
+该表可能由后端 `categoryKeys` 推导或已移入 view chunk——**当前记为 open，未猜。**
+
+## 11. 本轮踩到的取证工具坑
+
+- **`/tmp/ladder-official.mjs` 是 `ladder-node.mjs` 的逐字节副本**——端口写的仍是 `9232`、
+  匹配串仍是 `Grok%20Node.app`。用它取证官方会**静默拿到本地 app 的数据**（不报错、URL 一看
+  就露馅）。两个 app 同名二进制 + 同形 dumper 时，**harness 必须核对端口与 URL 两处**。
+- **asar 内 `.js` 总数 209 ≠ renderer chunk 数 101**。209 含 108 个 `node_modules` 与主进程
+  bundle；真正的 renderer 资源是 `dist/renderer/assets/` 下的 **101** 个。此前汇报把两个口径
+  混为一谈，**语法验证的实际对象是 101 个**（101/101 通过 `node --check`，从已部署 asar 抽出）。
+- esbuild 产物把非 ASCII 转义成 `\uXXXX`：在产物 chunk 里 grep 中文**必然 0 命中**，
+  必须先 `replace(/\\u([0-9A-Fa-f]{4})/g, ...)` 还原再搜。官方类名是 `sand-plugins__marketplace`
+  （双下划线），写成单下划线也会 0 命中。
+
+## 12. 厂商级 override：`canva` / `mailerlite`（2026-10-04 第二轮）
+
+§10 修正 `AGENT_ORCHESTRATION` 后，残余三处里又确认了两处。两处都是**单条直接观测**，且各自
+**独立**地让对应区块复现官方：
+
+| 观测（官方实渲染） | catalog 类目 | 加 override 前 | 加 override 后 |
+|---|---|---|---|
+| `Canva` 出现在**设计** | `PRODUCTIVITY` | 设计 = Docs Canvas / Figma / Mobbin / PR Review Canvas ❌ | **完全一致 ✅** |
+| `MailerLite` 出现在**支持** | `INBOX_AND_COLLABORATION` | 支持 = Intercom / Plain ❌ | **完全一致 ✅** |
+
+实验方式：把**官方自己的 404 条 catalog + 官方已装集合**喂进本 `buildMarketplaceModel`，逐个
+候选 override 组合跑一遍，看哪个组合让哪个区块命中：
+
+```
+(基线，无 override)                       commu:X  desig:X  suppo:X  -> 0/3
+canva: ["design"]                         commu:X  desig:OK suppo:X  -> 1/3
+mailerlite: ["support"]                   commu:X  desig:X  suppo:OK -> 1/3
+canva + mailerlite                        commu:X  desig:OK suppo:OK -> 2/3
+canva + mailerlite + adapter→{任意桶}      commu:X  desig:OK suppo:OK -> 2/3   ← adapter 换哪个桶都不解决通信
+```
+
+修完后的整体命中（同一实验，8 个桶）：
+
+```
+X  communication   ActiveCampaign / Adapter / AgentMail / Ando
+                   官方: ActiveCampaign / AgentMail / Ando / Bird
+OK design          Canva / Docs Canvas / Figma / Google Slides
+OK support         Intercom / MailerLite / Plain
+OK code            Amazon Location Service / Appwrite / AWS Amplify / AWS Core
+OK data / sales / finance / research   全部逐条一致
+=> 命中 7/8
+```
+
+### 仍未解释的一处：`Bird` vs `Adapter`
+
+两者 catalog 里的 `categoryKey` 都是 `AGENT_ORCHESTRATION`，**目录下标也完全相同**
+（Adapter=3、Bird=49，两个 catalog 一致），且官方渲染 `Bird` 舍 `Adapter`。逐字段比对：
+
+| 字段 | Adapter | Bird | 能否区分 |
+|---|---|---|---|
+| `isPublicListed` | true | true | 否 |
+| `fields` | 0 | 0 | 否 |
+| `connectors` | 1 | 1 | 否 |
+| `skills` | 1 | 2 | 否（无阈值规则可解释） |
+| `categoryKey` / `categoryKeys` | 相同 | 相同 | 否 |
+| `repositoryUrl` / `websiteUrl` | 均存在 | 均存在 | 否 |
+
+**没有任何可读字段能区分这两条**。且全 asar 搜小写字面量 `"agent orchestration"` **零命中**，
+说明官方那张 override 表不是以明文字面量存在于 bundle（可能由后端 `categoryKeys` 推导，
+或已移入 view chunk）。**按 evidence-only，此处保持 open，不拟合。**
+
+## 13. 部署后实机复验（新包）
+
+打包 → `ditto` 覆盖 → 重新拉起，在**新部署版**上重跑 §9 的同一 dumper：
+
+| | 修正前 | 修正后 |
+|---|---|---|
+| 条目级完全一致 | 6/14 | **8/14** |
+| 代码 | ⚠️ | **✅** Amazon Location Service / Appwrite / AWS Amplify / AWS Core |
+
+（设计 / 支持 两区的提升要在本轮第二个包部署后才会在实机上体现，见 §14。）
+
+## 14. 取证工具的第二个坑：弹窗状态会被前面的探测带跑
+
+连续用多个脚本探同一个 app 时，**弹窗会停在上一个脚本留下的页面**。实测两次踩到：
+
+- 官方 app 停在**管理页**（`管理 / 管理插件和技能 / 已安装 / 私有技能`），于是「点行进详情」
+  找不到行，误判成"官方没有详情页"
+- 本地 app 停在**某个私有技能的详情页**（`add-connector`，页头 `信息 / 技能内容`），同理
+
+**判据**：取证脚本开头必须先断言"当前处于我要测的那一层"（读 heading 集合），不符就先
+`button[aria-label="关闭"]` 关掉重开。**跨脚本复用弹窗状态 = 跨脚本继承上一个结论的错误前提。**
+另：管理页的返回不是 `aria-label="返回"`（那是详情页的），只有正文里的 `‹ 市场` 条。
+
+## 15. 第二个包部署后的最终实机对拍
+
+三处修正（`AGENT_ORCHESTRATION→通信`、`canva→设计`、`mailerlite→支持`）全部进入部署版并
+在实机上生效。**条目级完全一致 6/14 → 9/14**。
+
+按差异根因归类（14 个区块，逐条判）：
+
+| 判定 | 数量 | 区块 |
+|---|---|---|
+| ✅ 逐条一致 | **9** | 市场 / 精选插件 / 效率 / 代码 / 数据 / 销售 / 财务 / 研究 / 支持 |
+| ⚪ 仅差 catalog 缺条目（代码无责） | 2 | 团队插件（`oh-my-claudecode` 不在本地 catalog）、设计（`Google Slides` 不在本地 catalog，其余 4 条已一致） |
+| ⚪ 两侧同为未登录态（**与官方一致**） | 1 | 为你推荐（`teamPopularity()` 官方侧也是 0 条；截图的 4 条来自官方登录账号） |
+| ⚪ 整块缺失，因条目不在**任何一侧** catalog | 1 | 登录与凭据管理（`1Password`，官方 404 条与本地 393 条均无） |
+| ❗ 真正的代码问题 | **1** | 通信（`Bird` vs `Adapter`，见 §12） |
+
+**结论：14 个区块里只有 1 个是真正的代码问题**，其余 4 个差异全部落在 catalog 数据面
+（本地是官方 catalog 的严格子集，少 11 条），或本就是与官方一致的行为。
+
+## 16. `分享` 不是降级实现：官方 0.66 自己就写剪贴板（2026-10-04）
+
+先在官方 app 上挂钩 `navigator.share` 与 `navigator.clipboard.writeText`，再按「分享」：
+
+| 观测项 | 结果 |
+|---|---|
+| `navigator.share` | **从未被调用** |
+| `clipboard.writeText` | 调用 2 次，值都是 `https://x.ai/bot/plugin/45893410` |
+| 新对话框 | 1 → 1（无） |
+| 菜单/浮层 `[role=menu]/[role=listbox]` | 0 → 0（无） |
+| iframe | 0 → 0（无） |
+| 详情页文本长度 | 159 → 161（差 2 字符，是复制成功的微文案，不是面板） |
+
+按「复制此插件的链接」得到**同一个 URL**。**结论：官方 0.66 的「分享」就是写剪贴板，写的是插件自身 URL。**
+本地 `sharePlugin` 与之**完全一致**——原 D5「降级实现」判定**不成立，撤销**。
+
+「添加到指定位置/分组」的缺失仍按 §8 的实机证据保持：官方 0.66 **没有**这个界面
+（对 0 字段的 Ahrefs 与 8 字段的 Capital.com 点「添加」，弹窗数/输入框数/详情文本均不变），
+所以本地不实现它**不是遗漏**。
+
+## 17. `通信` 残差的穷尽假设测试（全部否掉）
+
+| 假设 | 命中 | 失败的桶 |
+|---|---|---|
+| 现状：`AGENT_ORCHESTRATION→communication` | **8/8** | communication |
+| `AGENT_ORCHESTRATION→productivity` | 7/8 | productivity, communication |
+| `AGENT_ORCHESTRATION→productivity` + `bird→communication` | 8/8 | productivity |
+| `AGENT_ORCHESTRATION→data` + `bird→communication` | 8/8 | data |
+| `AGENT_ORCHESTRATION→research` + `bird→communication` | 8/8 | research |
+
+事实链：目录下标 `ActiveCampaign=2 / Adapter=3 / AgentMail=7 / Ando=19 / Bird=49`（两个 catalog
+完全一致）；官方渲染 `2,7,19,49` —— 即**跳过 3、25、26、30、37 全部 Agent Orchestration，却又收下 49**。
+已逐字段排除：`isPublicListed`(全 true)、`fields`(0/0)、`connectors`(1/1)、`skills`(1/2)、
+`categoryKey`/`categoryKeys`(相同)、同名去重(Adapter/Bird 各仅 1 条)。
+
+**任何"把 Agent Orchestration 整体挪走"的方案都会立刻破坏它落进去的那个桶**，因此残余**不是一条
+简单映射错**，要复原必须知道上游 `groupCatalog` 的真实实现——而该实现不以可读字面量存在于
+bundle（搜 `"agent orchestration"` 零命中）。**按 evidence-only 保持 open，不拟合。**
+
+## 18. 找到上游真源：browse-model chunk 只有 12,928 字节（2026-10-04 05:2x）
+
+前面 §10/§12/§17 一直在反推归桶规则，方向部分错了。**那个 chunk 从头到尾只有 12,928 字节**，
+之前只看了 `AGENT_ORCHESTRATION` 附近 2.6KB 就下了结论。完整读出后拿到上游三张表与判定函数。
+
+真源：`/Applications/Grok Bot.app` → `dist/renderer/assets/chunk-marketplace-browse-model-DoOY91TS.js`
+
+```js
+const Ce = ["credentials","productivity","communication","design","code","data","sales","finance","research","support"];
+const Le = { LOGIN_AND_CREDENTIAL_MANAGEMENT:"credentials", PRODUCTIVITY:"productivity",
+             INBOX_AND_COLLABORATION:"communication", SCHEDULING:"communication", SALES:"sales",
+             CUSTOMER_SUPPORT:"support", PAYMENTS:"finance", FINANCE_AND_LEGAL:"finance",
+             DATA_ANALYTICS:"data", DESIGN:"design", CANVAS:"design",
+             DOCUMENTS_AND_FILES:"productivity", INFRASTRUCTURE:"code", RESEARCH:"research" };
+const Ne = { marketing:"sales", sales:"sales", design:"design", engineering:"code", product:"productivity",
+             operations:"productivity", "recruiting & people":"productivity", productivity:"productivity",
+             research:"research" };
+const Te = { slack:["communication"], notion:["productivity"], "notion-workspace":["productivity"],
+             linear:["productivity"], figma:["design"], tldraw:["design"], github:["code"],
+             "github-plugin":["code"], runlayer:["code"], langfuse:["data"], parallel:["research","data"],
+             superpowers:["code"], "compound-engineering":["code"], "create-plugin":["code"],
+             "context7-plugin":["research"], context7:["research"] };
+
+ke = e => e.trim().toUpperCase().replace(/&/gu," AND ").replace(/[^A-Z0-9]+/gu,"_").replace(/^_+|_+$/gu,"")
+Y  = e => e.toLocaleLowerCase("en-US")
+
+Oe = e => { const i = e.categories.length>0 ? e.categories : [e.category]; … 去重 }
+Ue = e => { for (const t of [e.pluginName, e.name]) { const n = Te[Y(t.trim())]; if (n!==undefined) return n } }
+Re = e => { const t = Ue(e); if (t!==void 0) return t;
+            const n = e.categoryKeys ?? (e.categoryKey===void 0 ? [e.category] : [e.categoryKey]);
+            return x(n.flatMap(i => { const o = Le[ke(i)]; return o===void 0 ? [] : [o] })) }   // ← 数组求并集，缺失的 key 丢弃
+Me = e => x(Oe(e).flatMap(t => { const n = Ne[Y(t.trim())]; return n===void 0 ? [] : [n] }))   // ← 只用于 bots
+
+ve = (e,t) => { … for (const o of e) if (o.marketplace===void 0) for (const s of Re(o)) … 
+                return Ce.flatMap(o => n.has(o)||i.has(o) ? [{id:o, filterKey:B(o), plugins:…, bots:…}] : []) }
+```
+
+**三处关键**：
+
+1. **`Le` 里没有 `AGENT_ORCHESTRATION`，也没有 `MCP`** → 这些条目**归不到任何桶**，这是上游行为。
+   我 §10 加的 `AGENT_ORCHESTRATION: "communication"` 是**错的**，已回退。
+2. **`Re` 对 `categoryKeys` 数组求并集**，且 `Le` 未命中的 key **被丢弃而非兜底**。
+3. **`Me`/`Ne` 服务于 bots（Agent），不是插件**；主页分区只用 `Re`。
+
+### 18.1 唯一真机制：多值 `categoryKeys`
+
+在官方 app 内直接读 `mcp.catalog()`（404 条，**253 条带 `categoryKeys` 数组**）：
+
+| 条目 | `categoryKeys` | 推导 | 官方实渲染 |
+|---|---|---|---|
+| `Bird` | `["AGENT_ORCHESTRATION","INBOX_AND_COLLABORATION"]` | 前者丢弃 → **communication** | 通信 ✅ |
+| `Adapter` | `["AGENT_ORCHESTRATION"]` | **无桶** | 不出现 ✅ |
+| `Arize` | `["AGENT_ORCHESTRATION"]` | **无桶** | 不出现 ✅ |
+| `Canva` | `["PRODUCTIVITY","DESIGN"]` | **两桶** | 同时出现在 效率 与 设计 ✅ |
+| `MailerLite` | `["INBOX_AND_COLLABORATION","CUSTOMER_SUPPORT"]` | **两桶** | 同时出现在 通信 与 支持 ✅ |
+| `Figma` | `["PRODUCTIVITY","DESIGN"]` | `Te[figma]` 先命中 → `["design"]` | 设计 ✅ |
+| `Mobbin` | `["DESIGN"]` | design | 设计 ✅ |
+| `Brevo` | `["INBOX_AND_COLLABORATION"]` | communication | 通信 ✅ |
+
+**§10/§12/§17 追了半天的 `Bird` vs `Adapter`、`Canva`、`MailerLite`，答案是同一个**：
+`categoryKeys` 是多值数组，一条条目可以合法地落进多个桶。没有任何 mystery。
+
+### 18.2 本地 catalog 缺这个字段 → 两条补偿
+
+本地 `mcp.catalog()`（393 条）的字段只有
+`id, name, displayName, description, category, homepage, iconUrl, connectors, skills, fields, publisher`
+—— **没有 `categoryKey`、没有 `categoryKeys`、没有 `categories`**，只有人读标签 `category`。
+因此 `Re` 的数组分支永远退化成 `[category]`，`PRODUCTIVITY|DESIGN` 这类信息在本机**不可得**。
+
+于是保留两条**明确标注为数据缺口补偿、非上游规则**的 slug 级 override，并各自写明对应的上游原值：
+
+| slug | 补偿 | 上游真实成因 |
+|---|---|---|
+| `canva` | `["design"]` | `categoryKeys = ["PRODUCTIVITY","DESIGN"]` |
+| `mailerlite` | `["support"]` | `categoryKeys = ["INBOX_AND_COLLABORATION","CUSTOMER_SUPPORT"]` |
+
+**后端一旦下发 `categoryKeys`，这两条即可删除。** 代码里以 `DATA-GAP COMPENSATIONS` 单独成块标注。
+
+`Bird`/`Adapter` **不做补偿**：上游成因同样是数组字段，本地无法区分，按 evidence-only 记为数据面限制。
+
+## 19. 部署版完整阶梯走查 + 9 个类目页全量普查（2026-10-04 05:4x）
+
+在**当前部署版**（含 §18 真源转写）上，用同一份脚本同时读两个 app。
+
+### 19.1 层级阶梯逐层可通
+
+| 层 | 观测 |
+|---|---|
+| L0 市场首页 | 13 个标题、43 行、**9 个「查看全部」** |
+| L1 精选插件类目页 | 页头 `精选插件`、**单列 734px**、`.sand-plugins__marketplace` 包裹层**在**、`H1 精选插件 22px`、6 行 |
+| L2 应用详情页 | 页头 `Gmail`、四个分区 `账户 / 工具 / 应用 / 信息`、动作 `复制此插件的链接 · 分享 · 卸载 · 编辑 default 账户 · 添加账户 · 已启用 23/23 个`、源码 `https://github.com/cursor/plugins` |
+| 逐层返回 | `Gmail 详情` → `精选插件/精选插件` → `市场/为你推荐/…/支持`；**回到 L0 后不再有返回键**（栈底） |
+
+弹窗几何 800×702，与取证时一致。
+
+### 19.2 9 个类目页全量普查（两侧同脚本）
+
+| 类目页 | 官方行数 | 本地行数 | 官方行宽 | 本地行宽 | 包裹层 官/本 | 分页控件 |
+|---|---:|---:|---:|---:|---|---|
+| 精选插件 | 6 | **6** | 734 | **734** | True / **True** | 两侧均无 |
+| 效率 | 63 | 55 | 363 | **363** | False / **False** | 两侧均无 |
+| 通信 | 29 | 17 | 363 | **363** | False / **False** | 两侧均无 |
+| 设计 | 12 | 10 | 363 | **363** | False / **False** | 两侧均无 |
+| 代码 | 53 | 51 | 363 | **363** | False / **False** | 两侧均无 |
+| 数据 | 39 | **39** | 363 | **363** | False / **False** | 两侧均无 |
+| 销售 | 16 | 14 | 363 | **363** | False / **False** | 两侧均无 |
+| 财务 | 25 | **25** | 363 | **363** | False / **False** | 两侧均无 |
+| 研究 | 11 | 10 | 363 | **363** | False / **False** | 两侧均无 |
+| **合计** | 248 | 227 | | | | |
+
+**形态三项（行宽 / 包裹层 / 有无分页控件）9 个页面全部两侧一致**，首页「查看全部」同为 9 个。
+行数差 21 的来源可分解：本地 catalog 比官方少 11 条（§9.2 的严格子集），其余来自 `categoryKeys`
+不可得导致的额外归桶（§18.2）。`数据`、`财务`、`精选插件` 三页行数**完全相同**。
+
+### 19.3 取证工具的第三个坑：导航后旧的元素引用已失效
+
+普查脚本第一次跑，9 个页面量出来的**全是同一个页面**。原因：我在导航**之前**把 9 个「查看全部」
+按钮存进数组，返回首页后再 `btns[k].click()` —— 那些节点早就随页面切换被卸载了，
+`click()` 静默无反应。
+
+**判据**：任何"逐个点 N 个同层按钮"的脚本，**每次迭代都必须重新查询**，
+不能在循环外缓存 `querySelectorAll` 的结果。症状是"所有测得值都相同"或"第一项对、其余全错"。

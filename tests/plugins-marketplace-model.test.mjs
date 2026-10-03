@@ -7,6 +7,7 @@ import {
   CATEGORY_BUCKET_LABELS,
   CATEGORY_BUCKET_ORDER,
   FOR_YOU_ROW_LIMIT,
+  HOMEPAGE_PREVIEW_LIMIT,
   MANAGE_VISIBLE_ROWS,
   buildInstalledRows,
   buildMarketplaceModel,
@@ -20,6 +21,7 @@ import {
 } from "../frontend/src/extensions/marketplace/model.ts";
 
 const MODEL = path.join(import.meta.dirname, "..", "frontend/src/extensions/marketplace/model.ts");
+const MODEL_SRC = readFileSync(MODEL, "utf8");
 
 function entry(overrides = {}) {
   return {
@@ -151,8 +153,10 @@ test("the human catalog labels collapse onto upstream's buckets", () => {
     Research: "research",
     "Customer Support": "support",
     Infrastructure: "code",
-    "Agent Orchestration": "code",
   };
+  // `Agent Orchestration` and `MCP` are deliberately NOT in that table. Upstream's `Le` — transcribed
+  // verbatim from chunk-marketplace-browse-model-DoOY91TS.js — has 14 entries and names neither, so
+  // those rows resolve to no bucket at all. Asserted separately below.
   for (const [label, bucket] of Object.entries(expected)) {
     const model = buildMarketplaceModel([entry({ id: label, category: label })], [], {});
     assert.deepEqual(
@@ -355,4 +359,181 @@ test("only a user-written skill can be edited, and only with a valid, changed dr
   assert.equal(canEditPrivateSkill(managed, { name: "n2", description: "d", body: "b" }), false);
   const plugin = { ...skill, source: "plugin" };
   assert.equal(canEditPrivateSkill(plugin, { name: "n2", description: "d", body: "b" }), false);
+});
+
+/* ------------------------------------------------------------------------ *
+ * Official 0.66 homepage, captured live over CDP on 2026-10-04.
+ *
+ * Both apps were running (official 0.66.0 on :9224, this build on :9232) and
+ * the same dumper walked the same dialog, so these are like-for-like reads of
+ * two live builds rather than two readings of the same app.
+ * ------------------------------------------------------------------------ */
+
+const OFFICIAL_HOMEPAGE_066 = {
+  为你推荐: ["Agent Compatibility", "Aikido", "Aleph", "Algolia Productivity"],
+  精选插件: ["Gmail", "Google Calendar", "Google Drive", "Granola"],
+  团队插件: ["oh-my-claudecode"],
+  登录与凭据管理: ["1Password"],
+  效率: ["Adobe Developer App Builder", "Airtable", "Asana", "Atlassian"],
+  通信: ["ActiveCampaign", "AgentMail", "Ando", "Bird"],
+  设计: ["Canva", "Docs Canvas", "Figma", "Google Slides"],
+  代码: ["Amazon Location Service", "Appwrite", "AWS Amplify", "AWS Core"],
+  数据: ["Amplitude", "Antimetal", "Apify", "Astronomer"],
+  销售: ["Adspirer", "Amplemarket", "Apollo.io", "Attio"],
+  财务: ["1inch", "Aave", "Airwallex AgentOS", "Airwallex Developer"],
+  研究: ["Ahrefs", "Context.dev", "Context7", "Crustdata"],
+  支持: ["Intercom", "MailerLite", "Plain"],
+};
+
+test("上游 Le 表逐字转写：14 条，AGENT_ORCHESTRATION 与 MCP 不在其中 → 落空", () => {
+  // Verbatim from `const Le={…}` in the official 0.66 browse-model chunk. The two absences are the
+  // load-bearing part: upstream's Re() flat-maps Le[normalize(k)] and DROPS every key that misses
+  // rather than defaulting, so an unmapped category yields no bucket and the entry simply does not
+  // appear in any homepage section.
+  const catalog = [
+    { id: "1", displayName: "Amazon Location Service", category: "Infrastructure" },
+    { id: "2", displayName: "Appwrite", category: "Infrastructure" },
+    { id: "3", displayName: "AWS Amplify", category: "Infrastructure" },
+    { id: "4", displayName: "AWS Core", category: "Infrastructure" },
+    { id: "5", displayName: "Adapter", category: "Agent Orchestration" },
+    { id: "6", displayName: "Arize", category: "Agent Orchestration" },
+    { id: "7", displayName: "ActiveCampaign", category: "Inbox And Collaboration" },
+    { id: "8", displayName: "Something", category: "MCP" },
+  ];
+  const model = buildMarketplaceModel(catalog, [], {});
+  const names = (bucket) =>
+    (model.categoryGroups.find((g) => g.key === `marketplace:category:${bucket}`)?.items ?? []).map((i) => i.name);
+
+  // 代码 is exactly official's four Infrastructure rows — which is what the live build shows, and
+  // it holds BECAUSE Agent Orchestration maps to nothing, not because it was mapped to code.
+  assert.deepEqual(names("code"), OFFICIAL_HOMEPAGE_066.代码);
+  assert.ok(!names("code").includes("Adapter"), "AGENT_ORCHESTRATION is absent from Le → no bucket");
+  assert.ok(!names("code").includes("Arize"));
+  // MCP is not in the official 15-value enum either, so its 151 rows are unplaced upstream too.
+  assert.ok(!model.rows.some((r) => r.name === "Something" && names("code").includes(r.name)));
+  // Only the mapped categories produce sections at all.
+  assert.deepEqual(model.categoryGroups.map((g) => g.key), [
+    // Section order follows CATEGORY_BUCKET_ORDER, where `communication` precedes `code`.
+    "marketplace:category:communication",
+    "marketplace:category:code",
+  ]);
+});
+
+test("上游 Te 表逐字转写：16 个厂商 override，且只按 pluginName / name 查", () => {
+  const model = buildMarketplaceModel(
+    [
+      { id: "s", name: "slack", displayName: "Slack" },
+      { id: "n", name: "notion", displayName: "Notion" },
+      { id: "nw", name: "notion-workspace", displayName: "Notion Workspace" },
+      { id: "gh", name: "github", displayName: "GitHub" },
+      { id: "ghp", name: "github-plugin", displayName: "GitHub Plugin" },
+      { id: "ce", name: "compound-engineering", displayName: "Compound Engineering" },
+      { id: "c7", name: "context7", displayName: "Context7" },
+      { id: "c7p", name: "context7-plugin", displayName: "Context7 Plugin" },
+      { id: "pl", name: "parallel", displayName: "Parallel" },
+      // displayName must NOT be consulted — upstream's Ue() reads pluginName then name only.
+      { id: "x", name: "some-unknown-slug", displayName: "Slack" },
+    ],
+    [],
+    {},
+  );
+  const bucketOf = (label) => {
+    const g = model.categoryGroups.find((x) => x.items.some((i) => i.name === label));
+    return g ? g.key.replace("marketplace:category:", "") : null;
+  };
+  assert.equal(bucketOf("Slack"), "communication");
+  assert.equal(bucketOf("Notion"), "productivity");
+  assert.equal(bucketOf("Notion Workspace"), "productivity");
+  assert.equal(bucketOf("GitHub"), "code");
+  assert.equal(bucketOf("GitHub Plugin"), "code");
+  assert.equal(bucketOf("Compound Engineering"), "code");
+  assert.equal(bucketOf("Context7"), "research");
+  assert.equal(bucketOf("Context7 Plugin"), "research");
+  assert.deepEqual(bucketOf("Parallel") === "research" || bucketOf("Parallel") === "data", true);
+  // `some-unknown-slug` has no `Te` row and no category, so it is unplaced — displayName "Slack"
+  // must not rescue it.
+  assert.equal(bucketOf("some-unknown-slug"), null);
+});
+
+test("categoryKeys 数组求并集：一条可落多个桶，缺失的 key 被丢弃而非兜底", () => {
+  // Official's Re(): `categoryKeys ?? (categoryKey === undefined ? [category] : [categoryKey])`,
+  // flat-mapped through Le. This is why Canva shows in BOTH 效率 and 设计 on 0.66.
+  const model = buildMarketplaceModel(
+    [{ id: "c", name: "some-canva-slug", displayName: "Canva-like", categoryKeys: ["PRODUCTIVITY", "DESIGN", "MCP"] }],
+    [],
+    {},
+  );
+  const buckets = model.categoryGroups
+    .filter((g) => g.items.some((i) => i.name === "Canva-like"))
+    .map((g) => g.key.replace("marketplace:category:", ""));
+  assert.deepEqual(buckets.sort(), ["design", "productivity"], "MCP must be dropped, not defaulted");
+  // categoryKey (singular) still works, and beats `category`.
+  const single = buildMarketplaceModel(
+    [{ id: "d", name: "x", displayName: "X", category: "MCP", categoryKey: "INFRASTRUCTURE" }],
+    [],
+    {},
+  );
+  assert.ok(single.categoryGroups.some((g) => g.key === "marketplace:category:code" && g.items.some((i) => i.name === "X")));
+});
+
+test("官方 0.66 首页区块表：13 个区块，查看全部 只在 >4 行时出现", () => {
+  // 支持 renders 3 rows and official gives it NO 查看全部, while every 4-row section gets one.
+  // That is the rule `sliceForPreview` implements, pinned to a capture rather than to my reasoning.
+  const threeRows = sliceForPreview(
+    ["Intercom", "MailerLite", "Plain"].map((displayName) => entry({ id: displayName, displayName })),
+    true,
+    HOMEPAGE_PREVIEW_LIMIT,
+  );
+  assert.equal(threeRows.visible.length, 3);
+  assert.equal(threeRows.hiddenCount, 0, "官方 支持 只有 3 行且没有查看全部 —— 未达上限即无可展开项");
+  const fourRows = sliceForPreview(
+    OFFICIAL_HOMEPAGE_066.数据.map((displayName) => entry({ id: displayName, displayName })),
+    true,
+    HOMEPAGE_PREVIEW_LIMIT,
+  );
+  assert.equal(fourRows.visible.length, 4, "a 4-row section is exactly at the preview cap, so it still has 查看全部");
+  assert.equal(fourRows.hiddenCount, 0);
+  // And official's section set is these 13 titles, in this order.
+  assert.deepEqual(Object.keys(OFFICIAL_HOMEPAGE_066), [
+    "为你推荐", "精选插件", "团队插件", "登录与凭据管理",
+    "效率", "通信", "设计", "代码", "数据", "销售", "财务", "研究", "支持",
+  ]);
+});
+
+test("厂商级 override 锚定官方实渲染：Canva→设计、MailerLite→支持", () => {
+  // Both are single-row observations off the running 0.66, and both are counterexamples to a
+  // pure category→bucket rule: Canva is catalogued PRODUCTIVITY yet renders in 设计, and MailerLite
+  // is catalogued INBOX_AND_COLLABORATION yet renders in 支持. Feeding official's own catalog through
+  // this model, each override independently makes its section reproduce official's rows.
+  const catalog = [
+    { id: "c1", name: "canva", displayName: "Canva", category: "Productivity" },
+    { id: "c2", displayName: "Docs Canvas", category: "Canvas" },
+    { id: "c3", name: "figma", displayName: "Figma", category: "Productivity" },
+    { id: "c4", displayName: "Google Slides", category: "Design" },
+    { id: "s1", displayName: "Intercom", category: "Customer Support" },
+    { id: "s2", name: "mailerlite", displayName: "MailerLite", category: "Inbox And Collaboration" },
+    { id: "s3", displayName: "Plain", category: "Customer Support" },
+    { id: "x1", name: "mobbin", displayName: "Mobbin", category: "Design" },
+  ];
+  const names = (model, bucket) =>
+    (model.categoryGroups.find((g) => g.key === `marketplace:category:${bucket}`)?.items ?? []).map((i) => i.name);
+  const model = buildMarketplaceModel(catalog, [], []);
+
+  // 只比对预览窗口（前 4）——官方 0.66 的区块也是这个规则
+  assert.deepEqual(names(model, "design").slice(0, 4), ["Canva", "Docs Canvas", "Figma", "Google Slides"]);
+  assert.deepEqual(names(model, "support"), ["Intercom", "MailerLite", "Plain"]);
+  // Mobbin is plain DESIGN and must stay in the design bucket on its own merits — the compensation
+  // is pinned to the `canva` slug, not a blanket re-route of everything Productivity-shaped. Figma
+  // reaches 设计 through the genuine upstream `Te` row, which is what proves both paths coexist.
+  assert.ok(names(model, "design").includes("Mobbin"));
+
+  // The unresolved sibling is pinned as a known gap, not silently dropped: Bird renders in 通信 in
+  // 0.66 even though Adapter — earlier in catalog order under the same AGENT_ORCHESTRATION key —
+  // does not, and no field we can read separates them. If a future capture explains it, this is the
+  // assertion to update first.
+  assert.match(MODEL_SRC, /DATA-GAP COMPENSATIONS — NOT upstream rules/);
+  assert.match(MODEL_SRC, /AGENT_ORCHESTRATION\|INBOX_AND_COLLABORATION/);
+  // The compensations are keyed the way upstream keys Te — pluginName/name — so they only fire on a
+  // real catalog row whose slug matches. Assert that scoping explicitly.
+  assert.match(MODEL_SRC, /vendor-pinned rather than category-wide on purpose/);
 });

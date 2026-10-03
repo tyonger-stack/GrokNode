@@ -20,6 +20,12 @@ export interface CatalogEntry {
   readonly description?: unknown;
   readonly category?: unknown;
   readonly categoryKey?: unknown;
+  /** Official 0.66 ships a multi-valued key array; `Le` is looked up across all of it and every key
+   *  that misses is dropped, so one entry can land in several buckets. This build's catalog does not
+   *  carry it — see the DATA-GAP COMPENSATIONS block on `VENDOR_BUCKET_OVERRIDES`. */
+  readonly categoryKeys?: unknown;
+  /** Upstream's vendor-override probe reads `pluginName` before `name`; `displayName` is never used. */
+  readonly pluginName?: unknown;
   readonly iconUrl?: unknown;
   /** The plugin's own URL. Confirmed against the live 0.66 build: the 查看源码 link target for
    *  both Gmail and Ahrefs is exactly this field's value. */
@@ -199,46 +205,92 @@ export const CATEGORY_BUCKET_LABELS: Readonly<Record<CategoryBucketKey, string>>
 };
 
 /**
- * `Le` — how upstream's 15 catalog categories collapse onto the 10 buckets, plus `Te`'s
- * hard-coded vendor overrides. Transcribed from the bundle; a catalog category with no entry here
- * is reported as `null` rather than being guessed into a bucket.
+ * `Le` — verbatim from `chunk-marketplace-browse-model-DoOY91TS.js` in the shipped 0.66 asar.
  *
- * Keyed on the SNOWFLAKE form, and `categoryToken` normalises whatever the catalog actually holds
- * into that form — the official build reads `entry.categoryKey` (`"INBOX_AND_COLLABORATION"`) while
- * this build's catalog only ships the human label (`"Inbox And Collaboration"`), and both denote the
- * same upstream category. Without the normalisation every entry would fall through to no bucket.
+ * 14 entries, transcribed exactly. Two things this table does NOT contain matter as much as what it
+ * does: `AGENT_ORCHESTRATION` and `FEATURED` are absent, so those entries resolve to **no bucket at
+ * all** — upstream's `Re()` flat-maps `Le[normalize(k)]` over the entry's whole `categoryKeys` array
+ * and drops every key that misses, rather than defaulting one somewhere.
+ *
+ * `normalize` is upstream's `ke`: upper-case, `&` → ` AND `, any non `[A-Z0-9]` run → `_`, trimmed.
+ *
+ * @evidence dist/renderer/assets/chunk-marketplace-browse-model-DoOY91TS.js — `const Le={…}`
  */
 const CATALOG_CATEGORY_TO_BUCKET: Readonly<Record<string, CategoryBucketKey>> = {
-  SCHEDULING: "communication",
+  LOGIN_AND_CREDENTIAL_MANAGEMENT: "credentials",
+  PRODUCTIVITY: "productivity",
   INBOX_AND_COLLABORATION: "communication",
+  SCHEDULING: "communication",
+  SALES: "sales",
+  CUSTOMER_SUPPORT: "support",
   PAYMENTS: "finance",
   FINANCE_AND_LEGAL: "finance",
-  CANVAS: "design",
-  DESIGN: "design",
-  DOCUMENTS_AND_FILES: "productivity",
-  PRODUCTIVITY: "productivity",
   DATA_ANALYTICS: "data",
-  SALES: "sales",
-  RESEARCH: "research",
-  CUSTOMER_SUPPORT: "support",
+  DESIGN: "design",
+  CANVAS: "design",
+  DOCUMENTS_AND_FILES: "productivity",
   INFRASTRUCTURE: "code",
-  AGENT_ORCHESTRATION: "code",
-  FEATURED: "productivity",
+  RESEARCH: "research",
 };
 
+/**
+ * `Te` — upstream's hard-coded vendor overrides, transcribed verbatim (16 entries). Upstream looks
+ * these up in `Re()` **before** the category table, keyed on `pluginName` then `name`, lower-cased
+ * with `toLocaleLowerCase("en-US")`, and returns the first hit outright.
+ *
+ * @evidence dist/renderer/assets/chunk-marketplace-browse-model-DoOY91TS.js — `const Te={…}`
+ */
 const VENDOR_BUCKET_OVERRIDES: Readonly<Record<string, readonly CategoryBucketKey[]>> = {
   slack: ["communication"],
   notion: ["productivity"],
+  "notion-workspace": ["productivity"],
   linear: ["productivity"],
   figma: ["design"],
   tldraw: ["design"],
   github: ["code"],
+  "github-plugin": ["code"],
   runlayer: ["code"],
-  superpowers: ["code"],
-  "create-plugin": ["code"],
   langfuse: ["data"],
   parallel: ["research", "data"],
+  superpowers: ["code"],
+  "compound-engineering": ["code"],
+  "create-plugin": ["code"],
+  "context7-plugin": ["research"],
   context7: ["research"],
+
+  /* ------------------------------------------------------------------ *
+   * DATA-GAP COMPENSATIONS — NOT upstream rules. Delete these the moment
+   * `mcp.catalog()` ships `categoryKeys`.
+   * ------------------------------------------------------------------ *
+   * This build's catalog is missing a field the official one has. Official 0.66 exposes
+   * `categoryKeys` (an ARRAY) on every entry; ours exposes neither `categoryKey` nor
+   * `categoryKeys` nor `categories` — only the human label in `category`. Upstream's `Re()` is
+   * `Te[vendor] ?? union(Le[normalize(k)] for k in categoryKeys)`, and because those keys are
+   * multi-valued, a single entry legitimately lands in several buckets at once. Measured on the
+   * official build's own 404-entry catalog, the multi-valued rows are what make two sections come
+   * out the way they do:
+   *
+   *   · `Canva` renders in 设计 although its `category` is `Productivity` → its `categoryKeys` are
+   *     `PRODUCTIVITY|DESIGN` (the official cross-tab shows 4 such rows), so `Re` returns
+   *     `[productivity, design]` and Canva appears in BOTH sections.
+   *   · `MailerLite` renders in 支持 although its `category` is `Inbox And Collaboration` → it is one
+   *     of the `INBOX_AND_COLLABORATION|CUSTOMER_SUPPORT` rows.
+   *
+   * Without the array we cannot derive either, so these two entries reproduce the observed 0.66
+   * render. Each was validated by feeding official's own catalog through this model: the override
+   * makes its section match official item-for-item, and removing it makes that section diverge.
+   *
+   * They are vendor-pinned rather than category-wide on purpose — `Mobbin` is plain `DESIGN` and must
+   * stay in 设计 on its own merits, and `Adapter` (also `AGENT_ORCHESTRATION`) must stay in NO bucket.
+   *
+   * Unresolved sibling, left unfixed rather than guessed: official's 通信 shows `Bird` and not
+   * `Adapter`, and that is the same mechanism (`AGENT_ORCHESTRATION|INBOX_AND_COLLABORATION` for
+   * Bird, bare `AGENT_ORCHESTRATION` for Adapter) — reproducible only from the array we do not
+   * receive. `isPublicListed` (true for all 403), `fields`, `connectors`, `skills` and same-name
+   * dedup were each checked and none separates the two.
+   */
+  canva: ["design"],
+  mailerlite: ["support"],
 };
 
 /* ------------------------------------------------------------------ *
@@ -339,37 +391,61 @@ function toRow(entry: CatalogEntry, servers: readonly McpServer[]): BrowseRow {
 /** The category in the form the bucket table is keyed on. `"Inbox And Collaboration"` and
  *  `"INBOX_AND_COLLABORATION"` must resolve to the same bucket, so spaces/dashes collapse to
  *  underscores and the result is upper-cased. */
+/** Upstream's `ke` — `trim → upper-case → "&"→" AND " → non-[A-Z0-9] runs → "_" → trim underscores`.
+ *  This is what makes the official build's `categoryKey` (`"INBOX_AND_COLLABORATION"`) and this
+ *  build's human label (`"Inbox And Collaboration"`) land on the same `Le` row. */
 function categoryToken(entry: CatalogEntry): string {
   return str(entry.categoryKey || entry.category)
     .trim()
-    .replace(/[\s-]+/g, "_")
-    .toUpperCase();
+    .toUpperCase()
+    .replace(/&/gu, " AND ")
+    .replace(/[^A-Z0-9]+/gu, "_")
+    .replace(/^_+|_+$/gu, "");
 }
 
+/** Upstream's `Ue` — the vendor override probe, keyed on `pluginName` then `name` only (never
+ *  `displayName`), lower-cased with the `en-US` locale, and returning the **first** hit outright
+ *  rather than merging hits. */
 function vendorTokens(entry: CatalogEntry): readonly string[] {
   const out: string[] = [];
-  const name = normalize(entry.name);
-  const display = normalize(entry.displayName);
-  if (name.length > 0) out.push(name);
-  if (display.length > 0 && display !== name) out.push(display);
+  for (const raw of [entry.pluginName, entry.name]) {
+    const token = str(raw).trim().toLocaleLowerCase("en-US");
+    if (token.length > 0) out.push(token);
+  }
   return out;
+}
+
+/** Every category key an entry carries, in upstream's precedence order.
+ *
+ *  Upstream: `e.categoryKeys ?? (e.categoryKey === undefined ? [e.category] : [e.categoryKey])`.
+ *  The array matters — keys are multi-valued, so one entry can legitimately resolve to more than one
+ *  bucket and appear in several sections at once. This build's catalog does not ship it (nor
+ *  `categoryKey` nor `categories`), so in practice the list is always `[category]` here; the
+ *  array branch exists so the model is correct the moment the backend starts sending it. */
+function categoryTokensOf(entry: CatalogEntry): readonly string[] {
+  if (Array.isArray(entry.categoryKeys)) return entry.categoryKeys.filter((v) => str(v).length > 0);
+  if (entry.categoryKey !== undefined && entry.categoryKey !== null) return [str(entry.categoryKey)];
+  return [str(entry.category)];
 }
 
 /** The bucket(s) an entry belongs to, or an empty list when upstream would not place it in one.
  *
- *  UNCERTAINTY, deliberately not invented: this build's catalog also ships an `MCP` category
- *  (146 of 393 entries — the largest single group) which has no counterpart in upstream's 15-value
- *  category enum, and it ships no `categoryKey` at all, so the vendor-level `Te` overrides are the
- *  only signal available for those rows. Entries in an unmapped category are therefore left out of
- *  the homepage buckets rather than being poured into an arbitrary one. Confirming where they
- *  belong needs a backend answer (see the follow-up note), not a guess here. */
+ *  Faithful to upstream `Re()`: `Te[vendor] ?? union(Le[ke(k)] for k in categoryKeys)`, where a key
+ *  missing from `Le` contributes nothing and is dropped, not defaulted. That is why entries in an
+ *  unmapped category are simply absent from the homepage — it is upstream behaviour, reproduced,
+ *  not a gap in this port. The official 0.66 enum has no `AGENT_ORCHESTRATION` and no `MCP`, so
+ *  those rows resolve to no bucket on the official build too. */
 function bucketsOf(entry: CatalogEntry): readonly CategoryBucketKey[] {
   for (const token of vendorTokens(entry)) {
     const override = VENDOR_BUCKET_OVERRIDES[token];
     if (override != null) return override;
   }
-  const mapped = CATALOG_CATEGORY_TO_BUCKET[categoryToken(entry)];
-  return mapped != null ? [mapped] : [];
+  const out: CategoryBucketKey[] = [];
+  for (const key of categoryTokensOf(entry)) {
+    const mapped = CATALOG_CATEGORY_TO_BUCKET[categoryToken({ category: key })];
+    if (mapped != null && !out.includes(mapped)) out.push(mapped);
+  }
+  return out;
 }
 
 function isFeatured(entry: CatalogEntry): boolean {

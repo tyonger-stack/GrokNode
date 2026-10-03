@@ -56,17 +56,19 @@
 | # | 差异 | 原因 | 证据 |
 |---|------|------|------|
 | **D1** | `已安装 N 个` 的数字与截图不同（截图 16） | 截图是官方账号的状态；本机登录态无关，数字随本机实际安装数变化 | EVIDENCE §1 |
-| **D2** | `为你推荐` 的 4 个 app 与截图不同（截图：Agent Compatibility / Aikido / Aleph / Algolia Productivity） | `selectForYou` 先按团队安装数排序，本地 `mcp.teamPopularity()` 为空，只能退化为类目亲和度排序 | model.ts `selectForYou` |
-| **D3** | `团队插件` 可能为空/缺失 | 该区块来自 `entry.marketplace != null`，团队市场在本登录无关构建里为空 | model.ts `buildMarketplaceModel` |
-| **D4** | 部分 app 不出现在首页类目区块中 | 本地 catalog 的 `MCP` 类目（146/393）没有 `categoryKey`，无法归入官方 15 类枚举中的任一桶。**按证据原则宁可不归类，也不猜进某个桶** —— 这是刻意记下的 uncertainty | model.ts `bucketsOf` |
-| **D5** | `分享` 按钮写剪贴板，官方是分享面板 | 分享面板不在证据覆盖范围内；剪贴板是「复制此插件的链接」的官方行为。属**降级实现**，非等价复刻 | index.ts `sharePlugin` |
+| ~~D2~~ | ~~`为你推荐` 4 个 app 与截图不同~~ **降级为非差异** | 2026-10-04 双 app 对拍：`teamPopularity()` 在**官方侧也是 0 条**，本地无团队信号是**双方一致的行为**，不是本地缺陷。截图的 4 个来自官方登录账号态 | EVIDENCE §9.2 |
+| **D3** | `团队插件` 为空 | 官方该区唯一条目 `oh-my-claudecode` **不在本地 catalog**（本地是官方 catalog 的严格子集，少 11 条，含它） | EVIDENCE §9.2 |
+| ~~D4~~ | ~~部分 app 不出现在首页类目区块中~~ **降级为与官方一致** | `MCP` 不在官方 15 类枚举里，且**官方自己的 151 条 MCP 全部 `categoryKey: null`**；本地 146 条同理。两边都归不进任何桶。另经核实 `Infrastructure`/`Agent Orchestration`/`Customer Support` **都有映射且正确**，先前"220 条未归桶"的推断有误 | EVIDENCE §9.3 |
+| ~~D5~~ | ~~`分享` 是剪贴板降级~~ **已撤销** | 2026-10-04 实机挂钩验证：官方 0.66 的「分享」**同样只调 `clipboard.writeText`、写同一个插件 URL、不调 `navigator.share`、不弹任何面板**。本地实现与官方**完全一致**，不是差异 | EVIDENCE §16 |
 | **D6** | 详情页 `编辑账户` / `添加账户` 无后端动作 | 本地无账号编辑桥；按钮按官方几何渲染，行为为空 | view.ts `renderDetail` |
 | ~~D7~~ | ~~`工具` 行可能显示 `已启用 0/0 个`~~ **已撤销** | 2026-10-04 复核：官方对 `needsAuth` 的连接器（实测 Canva）**同样**显示 `已启用 0/0 个`，本地一致，不是差异 | 官方/本地 Canva 详情页逐字比对 |
 | **D8** | `信息 · 网站` 显示主机名（`cursor.com`），源码链接目标是完整 URL | 官方对同一字段分别用「主机名做标签、完整 URL 做 href」；本地 `homepage` 为完整路径。标签取 host 与官方一致，href 精确等于 catalog 值 | model.ts `displayHost` |
-| **D9** | `私有技能` 为空 | 该区上游数据源 `Ti(Bi(agentId), [])` 不跨 preload 桥，背景存储是不透明 blob。空态渲染上游自己的空文案 | index.ts `readPrivateSkills` |
+| ~~D9~~ | ~~`私有技能` 为空~~ **已修复** | 2026-10-04（d1fd68e）补上 `sand:skills-list/update/remove` 三条直连 IPC 通道后，该区改为真实数据。host 的 `getAgentWorkflows` 本就同时返回 `workflows/`（用户自建）与 `managed-skills/skills/`（托管）；缺的只是跨 preload 桥那一段。**gateway 不可达时显式返回 `gateway-unreachable`，绝不退化成空列表**（空列表读起来像一个正确答案）。实机 40 条技能 | `source/electron-main/skills/skills-desktop.ts` |
 | ~~D10~~ | ~~部分 app 添加时不弹凭据表单~~ **已撤销** | 2026-10-04 复核：官方对带 8 个 `fields` 的 Capital.com 点「添加」**也不弹表单**。本地 `mcp.install` 直连 = 官方的一步动作，**不是差异** | EVIDENCE §8 |
-| **D11** | 首页 12 区块，官方 13 —— **缺 `登录与凭据管理`** | 本地 catalog 没有任何条目能归入 `credentials` 桶（该桶唯一条目是官方账号装的 1Password）。桶顺序表里它仍在第一位，只是空桶按上游规则整块省略 | 实机：12 区块 / 9 个查看全部；官方 13 区块 |
-| **D12** | `支持` 桶本地只有 2 行（官方 3 行） | 本地 catalog 缺 Intercom 等条目 | 实机 |
+| **D11** | 首页 12 区块，官方 13 —— **缺 `登录与凭据管理`** | 该区唯一条目 `1Password` 在**两边 `mcp.catalog()` 里都不存在**（官方 404 条无它、本地 393 条无它）——它来自 catalog 之外的源，本移植无从复现。桶顺序表里 `credentials` 仍在首位，只是空桶按上游规则整块省略 | EVIDENCE §9.2 |
+| ~~D12~~ | ~~`支持` 桶本地只有 2 行（官方 3 行）~~ **改判** | 2026-10-04 复核：`MailerLite` **在本地 catalog 里存在**，只是没被选中——原先"catalog 缺条目"的判断不成立。真实成因是官方有厂商级 override 表未转写（同 D13） | EVIDENCE §10 |
+| **D13** | 首页条目级非 100% 一致 | **渲染规则已按上游真源逐字对齐**（§18）：`Le` 14 条、`Te` 16 条厂商 override、`ke` 归一化、`categoryKeys` 数组求并集全部转写。条目差异的**唯一**成因是本地 catalog 不下发 `categoryKey`/`categoryKeys`/`categories`（只有人读 `category`），而官方 253/404 条带多值 `categoryKeys`（一条可落多桶）。已对 `canva`/`mailerlite` 做**明确标注的数据缺口补偿**并写明上游原值；`Bird`/`Adapter` 不补偿（同一成因，本地不可区分） | EVIDENCE §18 |
+| **D14** | 私有技能详情页标题下的副标题**硬裁切，无省略号** | 该 span 套 `DETAIL_SOURCE_ROW_CLASSES`（11 个类，全部是 0.18 自带样式表里的既有配方：`sand-uxw1ft`=nowrap、`sand-b3r6kr`=overflow:hidden、`sand-euugli`=min-width:0、`sand-78zum5`=display:flex）。**没有任何一个类声明 `text-overflow`**，浏览器默认 `clip` → 实测 `scrollWidth 640 / clientWidth 610`，末尾 30px 直接切掉。列表行里的副标题是**另一组**类 `sand-plugins-row__subtitle`，带 `text-overflow:ellipsis`，正常省略。<br>**这组类名是否就是官方 0.66 私有技能详情页副标题的配方，未取证** —— EVIDENCE 只记了列表行副标题（§3 `SPAN.sand-plugins-row__subtitle`）。按证据优先原则**不改**：改成省略号就是臆造官方行为。记为 uncertainty | official-styles.ts `DETAIL_SOURCE_ROW_CLASSES` |
 
 ## 3b. 「无遗漏」的穷尽核查（2026-10-04 补测）
 
@@ -148,3 +150,35 @@
 3. **关键结论交叉验证**：单列 vs 双列一度读数自相矛盾（DOM 查询抓到的是留在 DOM 里的首页网格），
    最后用 `Page.captureScreenshot` 截图定论 —— **单列 + 大 `h1` 属实**。教训：DOM 选择器读数
    在推栈页面里可能抓到上一页的残留，几何结论必须截图复核。
+
+## 7. 逐条验收状态（2026-10-04 双 app 对拍后）
+
+这一节是对 Goal 四条要求的诚实结算。**不是全部达成**。
+
+| # | 要求 | 状态 | 依据 |
+|---|------|------|------|
+| 1 | 逐页复刻首页推荐内容，app 列表与原版完全一致 | ⚠️ **部分达成（代码已对齐，差异是数据面）** | **渲染规则完全对齐**：14 个区块的行数、`查看全部` 出现条件（>4 行）逐条一致。**条目级 9/14 完全一致**（修掉 3 处归桶错误后由 6/14 提升）。余下 5 处按根因拆开：2 处仅差本地 catalog 缺条目、1 处 `1Password` 不在任何一侧 catalog、1 处双方同为未登录态（与官方一致），**已找到根因并按上游真源转写**（§18）：差异全部源于本地 catalog 缺 `categoryKeys` 多值数组这一数据面，不是算法问题 |
+| 1b | 支持继续向下翻页加载 | ✅ 达成 | 官方**无分页控件**（效率 63 行进单一滚动区 2202/652），故"继续向下翻"= 连续纵向滚动；未编造分页按钮 |
+| 2a | 每个 app 卡片可点击跳转 | ✅ 达成 | 实机：类目页任一行 → 详情页 |
+| 2b | 每个分类「查看全部」进入下一页列表 | ✅ 达成 | **9 个「查看全部」逐个实机点过**：精选页单列 734 + 包裹层 + `H1`；8 个桶页双列 363 + 无包裹层；**行宽/包裹层/无分页控件三项与官方 9 页全部一致**，行数 227 vs 官方 248 |
+| 2c | 详情页支持详细介绍/查看源码/分享/添加 | ✅ **达成**（分享经实机验证与官方同为写剪贴板） | 描述 ✅、查看源码（真实 `<a href>`）✅、添加/卸载 ✅（一步动作，与官方同形）。**「添加到指定位置/分组」经实机取证在 0.66 中不存在该界面**——对 0 字段的 Ahrefs 与 8 字段的 Capital.com 点「添加」均无任何表单或选择器 |
+| 3 | 递归复刻每层页面直到无遗漏 | ✅ 达成 | L0/L1a/L1b/L2/L1′ 全部打通并逐层返回验证；详情页/管理页**所有**可点元素逐个在官方按过（连点 3 次 + 真实指针序列），确认工具行/添加账户/编辑账户**均不开新页面**，已落 `assert.ok(!/addEventListener/)` 守卫 |
+| 4 | 完整代码 + 路由清单 + 功能对应 + 差异清单 | ✅ 达成 | 本文件 + EVIDENCE；代码在 `frontend/src/extensions/marketplace/` |
+
+### 未达成项的处理原则
+
+条目级一致性（#1）没有 100% 达成，**没有靠猜来补**：残差的三处都指向官方存在一层本地未转写的
+厂商级 override 表，bundle 里搜不到对应字面量，**记为 open** 而不是拟合一个看起来对的结果。
+把官方自己的 404 条 catalog 喂进本模型会算出本地的答案——这条实验本身就是"算法仍有差"的
+证据，把它藏起来比留着更有用。
+
+### 验证强度（更正）
+
+- typecheck / `source:typecheck` 干净；**872/872 测试通过**（含 3 条锚定实机对拍的新守卫）
+- **部署版 asar 的 101 个 renderer chunk 逐个 `node --check`，0 错误**（从 `/Applications`
+  已部署字节抽出）。⚠️ asar 内 `.js` 总数是 209，但那是含 108 个 `node_modules` 与主进程
+  bundle 的全量口径，**语法验证对象是 101**
+- `codesign --verify --deep --strict` 通过
+- glyph 渲染链在部署字节里闭环：`R("chevron-right", T.chevronDown, 10)` → `setProperty(
+  "--cursor-icon-content", …)` → `.ui-1yj7g93:before{content:var(--cursor-icon-content)}`，
+  且 CSS 中 `[data-icon-name…]` 规则 **0 条**，故 `content` 完全由码位决定
