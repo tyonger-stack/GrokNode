@@ -205,6 +205,7 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       try { models = await listOpenRouterProxyModels(OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, persistedBaseUrl); } catch (reason) { error = String((reason as { message?: unknown })?.message ?? reason); }
       return {
         agentId: agentId.trim(),
+        baseUrl: resolveOpenRouterBaseUrl(persistedBaseUrl),
         selected: typeof stored === "string" && stored.trim().length > 0 ? stored.trim() : null,
         defaultModel: typeof fallback === "string" && fallback.trim().length > 0 ? fallback.trim() : null,
         provider: isSandInferenceProvider(provider) ? provider : "openrouter",
