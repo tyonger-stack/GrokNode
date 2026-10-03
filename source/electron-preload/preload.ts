@@ -6,6 +6,8 @@ import {
 } from "./coordinator-port-bridge.js";
 import { MAIN_RPC_CONTRACT_NAME, MAIN_RPC_METHOD_TABLE } from "./main-rpc-runtime.js";
 import { bridgeRpcEdge } from "./rpc-edge-runtime.js";
+import { request as nodeHttpRequest } from "node:http";
+import { request as nodeHttpsRequest } from "node:https";
 
 export interface PreloadIpcRenderer {
   invoke(channel: string, payload?: unknown): Promise<any>;
@@ -318,6 +320,53 @@ export function createDesktopPreloadBridge(options: {
       upsert: (entries: Record<string, string>) => ipc.invoke("sand:secrets-upsert", { entries }),
       remove: (keys: readonly string[]) => ipc.invoke("sand:secrets-delete", { keys }),
     },
+    // TokenHub 端点模型列表探测。跑在 preload 的 Node 上下文里：页面 CSP（connect-src 'self'）
+    // 与主进程模型列表硬编码的 `Bearer local-proxy` 都管不到这里。API 密钥只在本函数内解密并
+    // 放进 Authorization 头，从不返回给渲染层；渲染层只拿到模型 id 列表与错误摘要。
+    fetchEndpointModels: (baseUrl: string): Promise<{ models: string[]; error: string | null }> => new Promise((resolve) => {
+      const done = (models: string[], error: string | null) => resolve({ models, error });
+      try {
+        const raw = String(baseUrl ?? "").trim().replace(/\/+$/, "");
+        let target: URL;
+        try { target = new URL(`${raw}/models`); } catch { done([], "invalid base url"); return; }
+        if (target.protocol !== "https:" && target.protocol !== "http:") { done([], "unsupported protocol"); return; }
+        void Promise.resolve(ipc.invoke("sand:secrets-reveal", { key: "OPENROUTER_API_KEY" })).then((revealed) => {
+          const token = typeof revealed === "string" ? revealed.trim() : "";
+          if (token.length === 0) { done([], null); return; }
+          const send = target.protocol === "https:" ? nodeHttpsRequest : nodeHttpRequest;
+          const request = send(
+            {
+              hostname: target.hostname,
+              port: target.port === "" ? undefined : Number(target.port),
+              path: `${target.pathname}${target.search}`,
+              method: "GET",
+              headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+              timeout: 10_000,
+            },
+            (response) => {
+              const chunks: Array<Buffer> = [];
+              response.on("data", (chunk: Buffer) => chunks.push(chunk));
+              response.on("end", () => {
+                try {
+                  if (response.statusCode !== 200) { done([], `HTTP ${response.statusCode ?? "unknown"}`); return; }
+                  const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { data?: Array<{ id?: unknown }> };
+                  if (!Array.isArray(body.data)) { done([], "malformed model list"); return; }
+                  const models: string[] = [];
+                  for (const entry of body.data) {
+                    const id = typeof entry?.id === "string" ? entry.id.trim() : "";
+                    if (id.length > 0 && !models.includes(id)) models.push(id);
+                  }
+                  done(models, models.length > 0 ? null : "endpoint listed no models");
+                } catch (error) { done([], String((error as { message?: unknown })?.message ?? error)); }
+              });
+            },
+          );
+          request.on("timeout", () => request.destroy(new Error("timed out")));
+          request.on("error", (error) => done([], String((error as { message?: unknown })?.message ?? error)));
+          request.end();
+        }, (error) => done([], String((error as { message?: unknown })?.message ?? error)));
+      } catch (error) { done([], String((error as { message?: unknown })?.message ?? error)); }
+    }),
     agent: {
       getPinnedAgents: () => edge("getHostPinnedAgents"),
       setPinnedAgents: (pinnedAgentIds: readonly string[]) => edge("setHostPinnedAgents", { pinnedAgentIds }),
