@@ -18,6 +18,10 @@ export const OPENCODEX_CONTAINER_RELAY_PORT = 10100;
  * keep working.
  */
 export const OPENROUTER_REASONING_EFFORTS = [
+  // "none" 不在 opencodex 目录的能力表里（目录只有 low…ultra），它按模型分流处理：
+  // 见 noneThinkingStrategy —— Flash 系发 low 即不思考、M3 系发 thinking:{type:"disabled"}、
+  // 其余模型端点无法关闭思考，发送侧退化为不发（模型默认）。
+  { value: "none", label: "None" },
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
@@ -138,15 +142,49 @@ export function readOpenRouterModelReasoning(model: string | null | undefined): 
 export function openRouterEffortOptionsFor(model: string | null | undefined): Array<{ value: OpenRouterReasoningEffort; label: string }> {
   const reasoning = readOpenRouterModelReasoning(model);
   return OPENROUTER_REASONING_EFFORTS
-    .filter((entry) => reasoning == null || reasoning.levels.includes(entry.value))
+    .filter((entry) => entry.value === "none" || reasoning == null || reasoning.levels.includes(entry.value))
     .map((entry) => ({ value: entry.value, label: entry.label }));
 }
 
 /** Drops an effort the catalog says `model` does not accept, so the endpoint default applies instead of a rejection. */
 export function effortSupportedByModel(effort: OpenRouterReasoningEffort | null, model: string | null | undefined): OpenRouterReasoningEffort | null {
   if (effort == null) return null;
+  if (effort === "none") return "none"; // 目录无从校验"无"；由 noneThinkingStrategy 分流
   const reasoning = readOpenRouterModelReasoning(model);
   return reasoning == null || reasoning.levels.includes(effort) ? effort : null;
+}
+
+/**
+ * "无(不思考)" 的按模型分流（2026-10-03 对 api.minimax.cn 实测）：
+ * - Flash 系（id 含 flash）：`reasoning_effort:"low"` 即不思考（low 以下无思考输出）；
+ * - M3 系（MiniMax-M3* 且非 flash）：Anthropic 风格 `thinking:{type:"disabled"}` 真正关闭
+ *   内联 <think>，工具调用不受影响；flash 系发这个参数会被端点 400；
+ * - 其余（M2.x 等）：端点不支持关闭思考，退化为不发任何参数（模型默认）。
+ */
+export type NoneThinkingStrategy = "effort-low" | "thinking-disabled" | "unsupported";
+
+export function noneThinkingStrategy(model: string | null | undefined): NoneThinkingStrategy {
+  const id = (model ?? "").trim();
+  if (id.length === 0) return "unsupported";
+  if (/flash/i.test(id)) return "effort-low";
+  if (/^minimax[-_]?m3(?!.*flash)/i.test(id)) return "thinking-disabled";
+  return "unsupported";
+}
+
+/** Wraps `fetch` so JSON chat bodies gain `thinking:{type:"disabled"}` (M3 line's off switch). */
+export function withDisabledThinkingFetch(fetchImpl: typeof fetch): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    try {
+      if (init?.body != null && typeof init.body === "string") {
+        const body = JSON.parse(init.body) as { model?: unknown; thinking?: unknown };
+        if (body != null && typeof body === "object" && body.model != null && body.thinking === undefined) {
+          body.thinking = { type: "disabled" };
+          init = { ...init, body: JSON.stringify(body) };
+        }
+      }
+    } catch { /* 非 JSON body：原样透传 */ }
+    return fetchImpl(input, init);
+  }) as typeof fetch;
 }
 
 function readCatalogModelSlugs(): string[] {

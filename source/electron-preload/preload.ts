@@ -380,11 +380,23 @@ export function createDesktopPreloadBridge(options: {
         try { target = new URL(`${raw}/chat/completions`); } catch { done(false, "invalid base url", null); return; }
         if (target.protocol !== "https:" && target.protocol !== "http:") { done(false, "unsupported protocol", null); return; }
         if (id.length === 0 || value.length === 0) { done(false, "model and effort are required", null); return; }
+        // "none"（无/不思考）按模型分流探测，与 host 的 noneThinkingStrategy 保持一致：
+        // Flash 系→按 low 探；M3 系→带 thinking:{type:"disabled"} 探（这才是会被拒的形态）；
+        // 其余模型无法关闭思考，直接放行（host 退化为不发参数）。
+        const flashFamily = /flash/i.test(id);
+        const m3Family = !flashFamily && /^minimax[-_]?m3/i.test(id);
+        let probePayload: Record<string, unknown>;
+        if (value === "none") {
+          if (m3Family) probePayload = { model: id, messages: [{ role: "user", content: "hi" }], max_tokens: 1, thinking: { type: "disabled" } };
+          else probePayload = { model: id, messages: [{ role: "user", content: "hi" }], max_tokens: 1, reasoning_effort: "low" };
+        } else {
+          probePayload = { model: id, messages: [{ role: "user", content: "hi" }], max_tokens: 1, reasoning_effort: value };
+        }
         void Promise.resolve(ipc.invoke("sand:secrets-reveal", { key: "OPENROUTER_API_KEY" })).then((revealed) => {
           const token = typeof revealed === "string" ? revealed.trim() : "";
           if (token.length === 0) { done(true, null, null); return; }
           const send = target.protocol === "https:" ? nodeHttpsRequest : nodeHttpRequest;
-          const payload = JSON.stringify({ model: id, messages: [{ role: "user", content: "hi" }], max_tokens: 1, reasoning_effort: value });
+          const payload = JSON.stringify(probePayload);
           const request = send(
             {
               hostname: target.hostname,

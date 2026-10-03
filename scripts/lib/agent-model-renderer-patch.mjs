@@ -83,7 +83,7 @@ const ROW_SOURCE = [
 
 export const COMPONENT_SOURCE = [
   'const RAgentModelDefault="__r-agent-model-default__";',
-  'const RAgentEffortLadder=()=>[{value:"low",label:RLocT("Low","低")},{value:"medium",label:RLocT("Medium","中")},{value:"high",label:RLocT("High","高")},{value:"xhigh",label:RLocT("Extra high","超高")},{value:"max",label:RLocT("Max","最高")},{value:"ultra",label:RLocT("Ultra","极致")}];',
+  'const RAgentEffortLadder=()=>[{value:"none",label:RLocT("None","无(不思考)")},{value:"low",label:RLocT("Low","低")},{value:"medium",label:RLocT("Medium","中")},{value:"high",label:RLocT("High","高")},{value:"xhigh",label:RLocT("Extra high","超高")},{value:"max",label:RLocT("Max","最高")},{value:"ultra",label:RLocT("Ultra","极致")}];',
   ROW_SOURCE,
   "function RAgentModelCard({agent:t}){",
   'const[s,e]=S.useState({selected:null,defaultModel:null,models:[],baseUrl:null,provider:"openrouter",error:null,busy:!0}),u=S.useId(),k=S.useId();',

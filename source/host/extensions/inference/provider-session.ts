@@ -8,7 +8,7 @@ import { jsonSchema, streamText, tool, type CoreMessage, type LanguageModelV1, t
 
 import { BasePromptBuilder, BasePromptExecutor } from "../../../packages/chat-inference/base.js";
 import type { SandInferenceProvider } from "../../../shared/inference-router.js";
-import { effortSupportedByModel, isOpenRouterProxyMode, normalizeOpenRouterReasoningEffort, readCodexConfigValue, resolveOpenRouterTransport } from "../../../shared/node/openrouter-proxy.js";
+import { effortSupportedByModel, isOpenRouterProxyMode, noneThinkingStrategy, normalizeOpenRouterReasoningEffort, readCodexConfigValue, resolveOpenRouterTransport, withDisabledThinkingFetch } from "../../../shared/node/openrouter-proxy.js";
 import { classifyOpenRouterError, openRouterOkStatus } from "../../../shared/openrouter-channel-status.js";
 import { DEFAULT_FIRST_TOKEN_STALL_DEADLINE_MS, resolveFirstTokenStallDeadlineMs } from "../../runner/transient-stream-error.js";
 import { getSandRootDir } from "../../host-paths.js";
@@ -506,8 +506,19 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     // "openai", not this provider's `name`), while ai@4.3 hands the model `providerOptions` —
     // so the providerOptions channel silently drops it. `chat(id, { reasoningEffort })` lands on
     // `this.settings.reasoningEffort`, which is read unconditionally.
-    model = createOpenAI({ apiKey: openRouterCredential(), baseURL: transport.baseUrl, compatibility: "compatible", name: "openrouter", headers })
-      .chat(id as any, effort === null ? undefined : ({ reasoningEffort: effort } as any));
+    // "none"（无/不思考）按模型分流：Flash 系等价于 low；M3 系需要非标准的
+    // thinking:{type:"disabled"}（走 fetch 包装注入请求体，chat settings 表达不了）；
+    // 其余模型退化为不发参数（模型默认思考）。
+    let chatSettings: { reasoningEffort: string } | undefined = effort === null ? undefined : { reasoningEffort: effort };
+    let openAiFetch: typeof fetch | undefined;
+    if (effort === "none") {
+      const strategy = noneThinkingStrategy(id);
+      if (strategy === "effort-low") chatSettings = { reasoningEffort: "low" };
+      else if (strategy === "thinking-disabled") { chatSettings = undefined; openAiFetch = withDisabledThinkingFetch(fetch); }
+      else chatSettings = undefined;
+    }
+    model = createOpenAI({ apiKey: openRouterCredential(), baseURL: transport.baseUrl, compatibility: "compatible", name: "openrouter", headers, ...(openAiFetch === undefined ? {} : { fetch: openAiFetch }) })
+      .chat(id as any, chatSettings as any);
   } catch (error) {
     recordChatError(error);
     throw error;

@@ -146,7 +146,7 @@ function RRouterOpenRouterEffort(provider,model,baseUrl){
   return[s,t]
 }
 function RRouterEffortCard({state:s,pick:e}){
-  const L=[{value:"low",label:RRouterLoc("Low","低")},{value:"medium",label:RRouterLoc("Medium","中")},{value:"high",label:RRouterLoc("High","高")},{value:"xhigh",label:RRouterLoc("Extra high","超高")},{value:"max",label:RRouterLoc("Max","最高")},{value:"ultra",label:RRouterLoc("Ultra","极致")}];
+  const L=[{value:"none",label:RRouterLoc("None","无(不思考)")},{value:"low",label:RRouterLoc("Low","低")},{value:"medium",label:RRouterLoc("Medium","中")},{value:"high",label:RRouterLoc("High","高")},{value:"xhigh",label:RRouterLoc("Extra high","超高")},{value:"max",label:RRouterLoc("Max","最高")},{value:"ultra",label:RRouterLoc("Ultra","极致")}];
   const t=s.options.length>0?s.options.map(o=>L.find(x=>x.value===o.value)??o):L;
   const d=s.modelDefault?t.find(o=>o.value===s.modelDefault):null;
   return a.jsx(ie,{description:s.error?s.error:RRouterLoc("Reasoning depth sent with each request. Only the levels this model supports are listed.","每次请求都会携带推理深度设置。只列出当前模型支持的档位。"),label:RRouterLoc("Effort","推理强度"),variant:"card",children:a.jsx(ye,{"aria-label":RRouterLoc("TokenHub reasoning effort","TokenHub 推理强度"),disabled:s.busy,onValueChange:l=>{if(l!==null)void e(l)},options:[{value:RRouterEffortDefault,label:RRouterLoc("Model default","模型默认")+(d?" ("+d.label+")":"")}].concat(t.map(o=>({value:o.value,label:o.label}))),placement:"bottom-end",size:"lg",value:s.effort??RRouterEffortDefault,variant:"filled"})});

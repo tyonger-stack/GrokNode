@@ -57,23 +57,23 @@ const proxy = await bundle("source/shared/node/openrouter-proxy.ts", "proxy");
 const { SandSettingsStore } = await bundle("source/shared/node/settings/sand-settings-store.ts", "store");
 const session = await bundle("source/host/extensions/inference/provider-session.ts", "session", [stubOpenAI]);
 
-test("the ladder has six levels ending in Ultra", () => {
-  assert.deepEqual(proxy.OPENROUTER_REASONING_EFFORTS.map((entry) => entry.value), ["low", "medium", "high", "xhigh", "max", "ultra"]);
+test("the ladder has none (no thinking) plus six levels ending in Ultra", () => {
+  assert.deepEqual(proxy.OPENROUTER_REASONING_EFFORTS.map((entry) => entry.value), ["none", "low", "medium", "high", "xhigh", "max", "ultra"]);
   assert.equal(proxy.OPENROUTER_REASONING_EFFORTS.at(-1).label, "Ultra");
   assert.equal(proxy.normalizeOpenRouterReasoningEffort(" ULTRA "), "ultra");
 });
 
 test("a model's options are its catalog levels, in ladder order", () => {
-  assert.deepEqual(proxy.openRouterEffortOptionsFor("zai/glm-5.3-flash").map((o) => o.value), ["low", "high", "max", "ultra"]);
-  assert.deepEqual(proxy.openRouterEffortOptionsFor("opencode-go/muse-spark-1.3-contributor").map((o) => o.value), ["low", "medium", "high", "xhigh"]);
+  assert.deepEqual(proxy.openRouterEffortOptionsFor("zai/glm-5.3-flash").map((o) => o.value), ["none", "low", "high", "max", "ultra"], "none 永远在列(按模型分流,目录无从校验)");
+  assert.deepEqual(proxy.openRouterEffortOptionsFor("opencode-go/muse-spark-1.3-contributor").map((o) => o.value), ["none", "low", "medium", "high", "xhigh"]);
   assert.equal(proxy.readOpenRouterModelReasoning("zai/glm-5.3-flash").defaultLevel, "max");
 });
 
 test("unknown models, unusable entries and a missing catalog fall back to the full ladder", () => {
-  assert.equal(proxy.openRouterEffortOptionsFor("not/in-catalog").length, 6);
-  assert.equal(proxy.openRouterEffortOptionsFor(null).length, 6);
+  assert.equal(proxy.openRouterEffortOptionsFor("not/in-catalog").length, 7);
+  assert.equal(proxy.openRouterEffortOptionsFor(null).length, 7);
   assert.equal(proxy.readOpenRouterModelReasoning("weird/model"), null, "no ladder level survives normalization");
-  assert.equal(proxy.openRouterEffortOptionsFor("weird/model").length, 6);
+  assert.equal(proxy.openRouterEffortOptionsFor("weird/model").length, 7);
 });
 
 test("effortSupportedByModel keeps supported efforts and drops the rest", () => {
@@ -86,7 +86,7 @@ test("effortSupportedByModel keeps supported efforts and drops the rest", () => 
 test("a rewritten catalog is picked up (the parse cache keys on mtime)", () => {
   writeCatalog([{ slug: "zai/glm-5.3-flash", default_reasoning_level: "low", supported_reasoning_levels: ["low", "high"].map(level) }]);
   try {
-    assert.deepEqual(proxy.openRouterEffortOptionsFor("zai/glm-5.3-flash").map((o) => o.value), ["low", "high"]);
+    assert.deepEqual(proxy.openRouterEffortOptionsFor("zai/glm-5.3-flash").map((o) => o.value), ["none", "low", "high"]);
   } finally {
     writeCatalog([
       { slug: "zai/glm-5.3-flash", default_reasoning_level: "max", supported_reasoning_levels: ["ultra", "low", "max", "high"].map(level) },
