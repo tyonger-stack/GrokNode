@@ -537,3 +537,53 @@ test("厂商级 override 锚定官方实渲染：Canva→设计、MailerLite→�
   // real catalog row whose slug matches. Assert that scoping explicitly.
   assert.match(MODEL_SRC, /vendor-pinned rather than category-wide on purpose/);
 });
+
+// ── categoryKeys passthrough (2026-10-04) ──────────────────────────────────────
+// `mcp.catalog()` used to keep only the first curated key, so the renderer's `Re()` always saw a
+// single value and the homepage came out a strict subset of official's. The bridge now forwards
+// `categoryKey` + the whole `categoryKeys` array, and the two fitted stand-ins must yield to it.
+
+test("a real categoryKeys array drives bucketing and outranks the fitted stand-ins", () => {
+  const names = (model, bucket) =>
+    (model.categoryGroups.find((g) => g.key === `marketplace:category:${bucket}`)?.items ?? []).map((i) => i.name);
+  // Canary is deliberately a DIFFERENT vendor from canva/mailerlite, so this asserts the upstream
+  // path (array -> Le) rather than either compensation.
+  const withKeys = [
+    entry({ name: "canary", displayName: "Canary", category: "Productivity", categoryKeys: ["DESIGN"] }),
+    entry({ name: "figma", displayName: "Figma", category: "Productivity", categoryKeys: ["PRODUCTIVITY", "DESIGN"] }),
+  ];
+  const withArray = buildMarketplaceModel(withKeys, [], []);
+  assert.ok(names(withArray, "design").includes("Canary"), "array value must place Canary in 设计");
+  assert.ok(names(withArray, "design").includes("Figma"), "genuine upstream Te[f] must still win");
+
+  // Without the array the fitted compensation is still allowed to stand in.
+  const withoutKeys = [entry({ name: "canva", displayName: "Canva", category: "Productivity" })];
+  assert.ok(
+    names(buildMarketplaceModel(withoutKeys, [], []), "design").includes("Canva"),
+    "compensation must still cover the degraded catalog shape",
+  );
+
+  // With the array, the compensation steps aside — Canva is PRODUCTIVITY only, so it must NOT be
+  // force-routed into 设计 any more. This is what would silently regress if the gate were removed.
+  const canvaWithKeys = [entry({ name: "canva", displayName: "Canva", category: "Productivity", categoryKeys: ["PRODUCTIVITY"] })];
+  assert.ok(
+    !names(buildMarketplaceModel(canvaWithKeys, [], []), "design").includes("Canva"),
+    "a real PRODUCTIVITY-only key list must not be overridden by the fitted rule",
+  );
+});
+
+test("a key missing from the bucket table drops the entry out of every bucket", () => {
+  const names = (model, bucket) =>
+    (model.categoryGroups.find((g) => g.key === `marketplace:category:${bucket}`)?.items ?? []).map((i) => i.name);
+  // Upstream: `Le[k]` undefined contributes nothing. AGENT_ORCHESTRATION is not in the 0.66 table,
+  // so a bare AGENT_ORCHESTRATION entry belongs nowhere — this is what makes official's 通信 omit
+  // Adapter while still showing Bird (whose keys also carry INBOX_AND_COLLABORATION).
+  const rows = [
+    entry({ name: "adapter", displayName: "Adapter", category: "Agent Orchestration", categoryKeys: ["AGENT_ORCHESTRATION"] }),
+    entry({ name: "bird", displayName: "Bird", category: "Agent Orchestration", categoryKeys: ["AGENT_ORCHESTRATION", "INBOX_AND_COLLABORATION"] }),
+  ];
+  const model = buildMarketplaceModel(rows, [], []);
+  const comm = names(model, "communication");
+  assert.ok(comm.includes("Bird"), "Bird reaches 通信 through its second key");
+  assert.ok(!comm.includes("Adapter"), "Adapter must land in NO bucket, not 通信");
+});

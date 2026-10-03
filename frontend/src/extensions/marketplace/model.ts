@@ -293,6 +293,15 @@ const VENDOR_BUCKET_OVERRIDES: Readonly<Record<string, readonly CategoryBucketKe
   mailerlite: ["support"],
 };
 
+/** The two entries above that are fitted stand-ins, not transcribed upstream. Everything else in
+ *  `VENDOR_BUCKET_OVERRIDES` is upstream's own `Te` table and keeps its normal precedence. */
+const DATA_GAP_COMPENSATIONS: ReadonlySet<string> = new Set(["canva", "mailerlite"]);
+
+/** True when the entry carries upstream's real multi-valued key list. */
+function hasAuthoritativeCategoryKeys(entry: CatalogEntry): boolean {
+  return Array.isArray(entry.categoryKeys) && entry.categoryKeys.length > 0;
+}
+
 /* ------------------------------------------------------------------ *
  * Normalisation helpers
  * ------------------------------------------------------------------ */
@@ -436,9 +445,20 @@ function categoryTokensOf(entry: CatalogEntry): readonly string[] {
  *  not a gap in this port. The official 0.66 enum has no `AGENT_ORCHESTRATION` and no `MCP`, so
  *  those rows resolve to no bucket on the official build too. */
 function bucketsOf(entry: CatalogEntry): readonly CategoryBucketKey[] {
+  // The DATA-GAP COMPENSATIONS (canva / mailerlite) only stand in for a field the catalog used to
+  // drop. Now that `mcp.catalog()` passes `categoryKeys` through, upstream's own rule is the
+  // authority and the fitted entries must step aside — otherwise `Te[vendor]` would keep winning
+  // over the real array and the fix would be silently masked. Genuine upstream overrides (slack,
+  // notion, figma, …) keep full precedence, exactly as `Re()` defines.
+  const compensationOnly = !hasAuthoritativeCategoryKeys(entry);
   for (const token of vendorTokens(entry)) {
     const override = VENDOR_BUCKET_OVERRIDES[token];
-    if (override != null) return override;
+    if (override == null) continue;
+    // Upstream's own `Te` entries always win — that is `Re()`'s defined precedence and has nothing
+    // to do with the catalog shape. Only the two fitted stand-ins step aside, and only once the
+    // real key array is present, otherwise they would mask the fix they exist to enable.
+    if (DATA_GAP_COMPENSATIONS.has(token) && !compensationOnly) continue;
+    return override;
   }
   const out: CategoryBucketKey[] = [];
   for (const key of categoryTokensOf(entry)) {

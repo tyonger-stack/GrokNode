@@ -22,6 +22,10 @@ export interface SandMarketplacePlugin {
   displayName: string;
   description: string;
   category: string;
+  /** Upstream's first curated key, e.g. `"PRODUCTIVITY"`. Official exposes it to the renderer. */
+  categoryKey: string | undefined;
+  /** Upstream's full curated key list. Multi-valued, and load-bearing for bucketing. */
+  categoryKeys: string[];
   logoUrl: string | undefined;
   homepage: string | undefined;
   sourceUrls: string[];
@@ -129,15 +133,26 @@ function toPlugin(
     logoUrl = publisher?.logoUrl || plugin.logoUrl || undefined;
   if (logoUrl != null) deps.rememberPluginLogoUrl(logoUrl);
   const marketplace = plugin.marketplace;
-  const categoryKey = plugin.curatedCategoryKeys.find(
+  // `curatedCategoryKeys` is a string[] (proto: aiserver/v1 Plugin.curatedCategoryKeys) and the
+  // official build exposes BOTH the first key and the whole array to the renderer. Upstream's
+  // bucketing is `Re()` = `Te[vendor] ?? union(Le[normalize(k)] for k in categoryKeys)` — the array
+  // is load-bearing, because a key missing from `Le` is dropped rather than defaulted, so the
+  // *absence* of e.g. AGENT_ORCHESTRATION is what keeps `Adapter` out of every bucket while `Bird`
+  // (which also carries INBOX_AND_COLLABORATION) lands in 通信. Keeping only the first element and
+  // dropping the rest made the homepage a strict subset of official's and forced fitted
+  // per-vendor rules downstream; pass the real shape through instead.
+  const categoryKeys: string[] = plugin.curatedCategoryKeys.filter(
     (value: string) => value.length > 0,
   );
+  const categoryKey = categoryKeys[0];
   return {
     pluginId: plugin.id.toString(),
     name: plugin.mcpServers[0]?.name ?? plugin.name,
     displayName:
       plugin.displayName.length > 0 ? plugin.displayName : plugin.name,
     description: plugin.description ?? "",
+    categoryKey,
+    categoryKeys,
     category:
       categoryKey == null
         ? "MCP"
