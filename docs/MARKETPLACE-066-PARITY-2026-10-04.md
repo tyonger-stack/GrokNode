@@ -278,10 +278,53 @@ local:    为你推荐(4) 精选插件(4) 团队插件(0)               效率(4
 | --- | --- | --- |
 | 设计 | `Google Slides` vs `Mobbin` | **缺** `google-slides`（该桶本地 5 条 / 官方 6 条） |
 | 团队插件 | `oh-my-claudecode` | **缺** |
-| 为你推荐 | `Agent Compatibility` | **缺**（叠加：官方是登录账号、有团队热度数据） |
+| 为你推荐 | `Agent Compatibility` | ~~**缺**~~ **← 更正，见下：条目在，是团队数据差异** |
 
 按上游规则重算，设计桶的字母序前 4 是 Canva / Docs Canvas / Figma / **Google Slides**；
-我们第 4 位是 Mobbin，**唯一原因就是少了那一条**。等 catalog 补齐这 11 条，三处会同时归位。
+我们第 4 位是 Mobbin，**唯一原因就是少了那一条**。等 catalog 补齐这 11 条，设计/团队插件会同时归位。
+
+#### ⚠️ 更正 2（06:5x）：`为你推荐` 那条**不是**缺条目
+
+上一节把 `为你推荐` 的差异也归到「本地 catalog 缺条目」，**这是错的**。实机读两个 app 的
+catalog 同一字段后：
+
+| | 官方 0.66 | 本地 Grok Node |
+| --- | --- | --- |
+| catalog 总条数 | 404 | 393 |
+| `Agent Compatibility` | `id 3644` | `id 3644` ← **同一条，条目在** |
+| 其 `categoryKeys` | 该字段不存在 | `[]` |
+| 其 publisher | Cursor，`isUserOwned: false` | 同 |
+
+所以它**能**进我们的 catalog，也能进我们的模型，只是进不了 `为你推荐`。原因在
+`selectForYou`（`te`）的两条通路都不通：
+
+1. **团队通路**：`teamInstallCounts` 在本地构建里是空的（没有登录账号就没有团队安装数），
+   `byTeam` 直接空。
+2. **亲和通路**：`bucketsOf` 对它返回**空数组**——`categoryKeys: []` 且 vendor `cursor`
+   不在 `VENDOR_BUCKET_OVERRIDES` 里，`hasAuthoritativeCategoryKeys` 又要求 `length > 0`
+   （`model.ts:301`），于是补偿不生效、走 `categoryTokensOf` 拿不到任何 token → 零桶 →
+   `affinityStrength` 恒为 0，进不了 `byAffinity`。
+
+零桶本身是**正确**行为，正是上游对 `AGENT_ORCHESTRATION` 的定义（映射为空、条目不落任何桶）。
+差异只在**数据面**：官方是登录账号、有团队热度，它靠 `teammateCount` 领跑；我们是本地构建、
+按设计不登录（合规边界：拒绝伪造 token），所以拿不到这批数据。**这一处无法靠改规则消除，
+也不该拟合一个 fallback。**
+
+#### 又证伪一个假设：`isUserOwned` 并不驱动「可用性 公开/私有」
+
+官方 catalog 里有 **93 条** `publisher.isUserOwned === true`（Adapter / Adspirer / Appwrite /
+Antom / Auth0 / Azure …），本地是 **0 条**。`buildPluginDetail` 里
+`availability = isUserOwned ? 私有 : 公开`，看着像是本地会把这些全渲染成「公开」而官方是「私有」。
+
+实机在官方上打开 **Appwrite**（`isUserOwned: true`）详情页读 `可用性` 行：
+
+```
+可用性 | 公开
+```
+
+官方自己也显示 **公开**。所以这个 flag 不是该行的驱动信号，本地行为与官方一致，**不是差异**。
+（`Adapter` 在官方界面上根本点不到——它零桶，与本地一致。）
+
 
 ### 踩到并修掉的第二个投影
 
@@ -352,3 +395,17 @@ CLOSE_FIRST=1 LABEL=boxdown node "$SP/cdp.mjs" 9232 "$SP/probe-skills-gate.mjs"
 ⚠️ 探针第一件事是断言 `location.href` 含 `Grok%20Node.app`，不符直接抛错。
 本项目已经吃过一次亏：标着「官方」的取证脚本其实是本地脚本的逐字节副本，端口和 URL 都没改，
 静默取到了本地数据还不报错、不为空。
+
+### 本节三个探针的复现
+
+```sh
+export PATH=/Users/Apple/Documents/grokbot/.tools/node-26/bin:$PATH
+SP="/private/tmp/claude-501/-Users-wwzz-Downloads-proxyclawd/88833871-9d1c-410a-8425-a5a54e5377ef/scratchpad"
+
+node "$SP/cdp.mjs" 9232 "$SP/probe-catalog-origin.mjs"          # 本地：总条数/owned/字段名
+node "$SP/cdp.mjs" 9224 "$SP/probe-official-catalog-origin.mjs" # 官方：同上
+node "$SP/cdp.mjs" 9224 "$SP/probe-official-availability.mjs"   # 官方：Appwrite 详情页 可用性 行
+```
+
+两个 catalog 探针都先断言 bundle 路径（本地 `Grok%20Node.app` / 官方 `Grok%20Bot.app`），
+不符直接抛错——**「对比两个 app」的前提是两边真的是两个 app**，这个项目已经栽过一次。
