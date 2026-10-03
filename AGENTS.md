@@ -366,6 +366,16 @@ npm run frontend:build  # 构建可读 renderer 重建
 - 不得提交生成产物（`dist`、`.build`、`.cache`、`src/app/dist`、recovery 工作区、本地凭据）。
 - 提交前跑：`npm run check` + `npm run frontend:build`；改打包相关再加 `npm run package`。
 
+## Cursor Cloud specific instructions
+
+Cloud Agents run on Ubuntu x86_64, not the Apple Silicon Mac this file otherwise describes. The desktop app (`npm run bootstrap`, `npm run package`, `hdiutil` / `ditto` / `plutil` / `codesign`) cannot be built or launched here.
+
+- Node must be **26.5.0** (`.node-version`). The image's `/exec-daemon/node` is Node 22 and sits ahead of nvm on `PATH`. The environment install puts the official linux-x64 tarball in `~/.local/node-v26.5.0` and symlinks `node` / `npm` / `npx` / `corepack` into `/usr/local/cargo/bin`, which is the first `PATH` entry. Check `node -v` before trusting a script.
+- `git lfs pull` is required. `tests/research-archives.test.mjs` asserts the DMG is 155,793,020 bytes, not the 134-byte pointer. Use `git lfs install --skip-repo` — plain `git lfs install` exits 2 because Cursor already owns the git hooks.
+- Renderer patch tests read `src/app/dist`, which is gitignored and normally hydrated by macOS `hdiutil`. On Linux, `7z` (package `p7zip-full`) can extract `Grok Bot.app/Contents/Resources/app.asar` and `app.asar.unpacked` from the LFS DMG. Then call `hydrateSourcePayloadFromAsar` in `scripts/lib/runtime.mjs`. That function checks the pinned asar SHA-256 (`6665408168466f9cacc6087e917890c17f59d2e2e9c2404a5c4a59ad79c1de58`). Do not skip or loosen that check. `extractAll` needs the sibling `app.asar.unpacked` directory or it throws `ENOENT`.
+- Linux gate, same as `.github/workflows/check.yml` plus the hydrated renderer so patch tests are not skipped: `npm run typecheck`, `npm run source:typecheck`, `npm run test:offline`, `npm run frontend:build`, `npm run publication:check`. `npm test` also runs `tests/local-web-tools-network.test.mjs`, which is network-flaky and kept out of the required CI job.
+- `npm run frontend:build` writes `.build/frontend-shell`. `npx vite --config frontend/vite.config.ts --host 127.0.0.1 --port 5173` serves the reconstructed renderer. Without the Electron preload (`window.desktop` / `window.coordinatorPort`) the page title is Grok Bot and the body stays empty: `acquireProductionRendererRuntime` throws the packaged invariant. That is the Linux fail-closed behavior, not a broken dev server.
+
 ## 参考文档
 
 `README.md`（总览与快速开始）· `PROVENANCE.md`（产物身份与证据规则）· `NOTICE.md`（权利声明）· `CONTRIBUTING.md`（贡献门禁）· `docs/ARCHITECTURE.md`（两个源根与打包流）· `docs/PUBLISHING.md`（干净历史导出）
