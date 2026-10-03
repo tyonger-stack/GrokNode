@@ -1162,7 +1162,7 @@ function renderDetail(
     const toolRow = el("button", DETAIL_TOOLS_ROW_CLASSES);
     toolRow.type = "button";
     toolRow.append(el("span", DETAIL_TOOLS_LABEL_CLASSES, detail.toolsLabel));
-    toolRow.append(glyph("chevron-right", GLYPH.chevronRight, 10));
+    toolRow.append(glyph("chevron-right", GLYPH.chevronDown, 10));
     list.append(toolRow);
     block.append(list);
     body.append(block);

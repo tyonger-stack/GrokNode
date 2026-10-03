@@ -700,6 +700,67 @@ test("私有技能 subtitles follow upstream: 已发布 only for plugin, 本地�
   );
 });
 
+test("detail-page affordances that open nothing in 0.66 stay inert", () => {
+  // 0.66's detail page has three elements that LOOK like navigation and are not. Each was pressed
+  // three times on the running build, once as a real pointer sequence, with the whole dialog's
+  // innerText length and a TreeWalker search for tool names as the oracle:
+  //
+  //   工具 row (button + chevron)   box stays 42px / 1 child; no tool name ever appears
+  //   添加账户                      dialog text unchanged, no new dialog
+  //   编辑 <account> 账户           same
+  //
+  // So there is no tool-list page and no account page to reproduce. A bridge method
+  // (`mcp.listServerTools`) returning 23 records does not create a surface to render them on —
+  // wiring it up would be inventing UI, which is the one thing this port must never do.
+  //
+  // These are rendered with official's geometry and left without handlers ON PURPOSE. If a future
+  // capture shows any of them opening something, this test is the thing to update first.
+  assert.match(VIEW, /const toolRow = el\("button", DETAIL_TOOLS_ROW_CLASSES\)/);
+  assert.ok(
+    !/toolRow\.addEventListener/.test(VIEW),
+    "the 工具 row must not grow a handler: 0.66 does not expand it",
+  );
+  assert.match(VIEW, /toolRow\.append\(glyph\("chevron-right", GLYPH\.chevronDown, 10\)\)/);
+
+  const addAccount = VIEW.slice(VIEW.indexOf("const addAccount = el("));
+  assert.match(VIEW, /const addAccount = el\("button", DETAIL_ADD_ACCOUNT_FULL_CLASSES\)/);
+  assert.ok(
+    !/addAccount\.addEventListener/.test(addAccount),
+    "添加账户 has no destination in 0.66",
+  );
+  const editAccount = VIEW.slice(VIEW.indexOf("const edit = el("));
+  assert.ok(
+    !/edit\.addEventListener/.test(editAccount),
+    "编辑 <account> 账户 has no destination in 0.66",
+  );
+
+  // The two elements that DO act, both wired to the same URL, because official's 分享 and its
+  // copy-link affordance write the same value (the entry's own homepage).
+  assert.match(VIEW, /copy\.addEventListener\("click", \(\) => handlers\.onShare\(row\)\)/);
+  assert.match(VIEW, /share\.addEventListener\("click", \(\) => handlers\.onShare\(row\)\)/);
+});
+
+test("添加 is a one-shot install: no credential form, no destination picker", () => {
+  // The brief asked for "添加到指定位置/分组". 0.66 has no such surface. Pressed on the running
+  // build against two entries that bracket the catalog: Ahrefs (0 `fields`) and Capital.com
+  // (8 `fields` — CAP_ENV / CAP_API_KEY / CAP_DRY_RUN / CAP_IDENTIFIER / CAP_WS_ENABLED /
+  // CAP_API_PASSWORD / CAP_ALLOWED_EPICS / CAP_ALLOW_TRADING). Both times the dialog count, the
+  // input count and the detail text were unchanged: no credential form, no destination picker.
+  //
+  // 26 catalog entries carry `fields[]`; none of them is a surface this page renders. The primary
+  // button is therefore a one-shot install, which is exactly what `mcp.install` does here.
+  assert.match(INDEX, /await mcp\.install\(\{ pluginId: row\.id, catalogEntry: row\.entry \}\)/);
+  assert.doesNotMatch(
+    INDEX,
+    /installForm|credentialForm|pickDestination|installTarget/,
+    "no invented install surface: 0.66 opens nothing between the button and the install",
+  );
+
+  // The two primary actions must not mutate the catalog row set locally either: the dialog keeps
+  // rendering from the reloaded model rather than patching the clicked row in place.
+  assert.match(INDEX, /finally \{\s*\n\s*state = \{ \.\.\.state, busy: false \};\s*\n\s*await reload\(\);/);
+});
+
 test("the detail pages are anchored to a capture, not invented", () => {
   // These used to be guarded as deliberately inert: opening something fabricated in a surface this
   // port did not reproduce is the exact failure mode the project forbids. The user has since

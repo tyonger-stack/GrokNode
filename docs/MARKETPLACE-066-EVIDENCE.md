@@ -177,3 +177,64 @@ Captured pairs: Gmail (installed, 账户+工具 present, 信息 = 功能/开发�
 "/Applications/Grok Bot.app/Contents/MacOS/Grok Bot" --remote-debugging-port=9224 &
 curl -s http://127.0.0.1:9224/json/list   # pick the page whose url contains "Grok%20Bot.app"
 ```
+
+## 6. Negative findings — surfaces that do NOT open a page (2026-10-04)
+
+Checked by pressing every remaining actionable element on the detail and manage pages. Each was
+pressed 3× and, where the event type mattered, dispatched as a real pointer sequence
+(`pointerdown → mousedown → pointerup → mouseup → click`) at the element's centre. Whole-dialog
+`innerText` length and a `TreeWalker` text-node search over the entire dialog were used as the
+oracle, because a single `innerText` on a subtree can read a mid-transition remnant.
+
+| element | observation |
+|---------|-------------|
+| `工具` row (button + chevron) | box stays 42px with exactly 1 child; no tool name ever appears. **Does not expand.** |
+| `添加账户` | dialog text unchanged, no new dialog. **Does not navigate.** |
+| `编辑 default 账户` | same. **Does not navigate.** |
+| `分享` | writes the clipboard; same URL as `复制此插件的链接`. |
+
+A local bridge method `window.desktop.mcp.listServerTools(serverId)` exists and returns 23
+`{name, description, isDisabled}` records for Gmail — but since 0.66 renders no tool list,
+there is no surface to put it on. A bridge method is not a licence to invent UI.
+
+**False positive to avoid repeating**: an early probe reported the 工具 row expanding to 23 tool
+names (Create draft / List drafts / Get thread / …) and `querySelectorAll("div,li")` returning 47.
+Re-checking, the whole dialog's `innerText` was 163 characters and a tree walk for those exact
+tool names matched nothing. The early reading was wrong. Gate "did this interaction open
+something?" on a full-document search plus repeated presses, not one subtree snapshot.
+
+## 7. Manage page → detail recursion (verified both sides)
+
+Official and the local build produce the *same* measurements:
+
+| | official 0.66 | local |
+|---|---|---|
+| manage `h1` | 管理插件和技能 | 管理插件和技能 |
+| installed rows | 48 | 48 |
+| row order | 打开 Canva / 打开 Figma / 打开 Gmail | identical |
+| row click | pushes `.sand-plugins-detail`, bar title `Canva` | identical |
+| 返回 | back to 管理插件和技能, 48 rows | identical |
+
+Canva's detail page reads identically on both, including the two details that are easy to get
+wrong: `工具 已启用 0/0 个` (official renders `0/0` for a `needsAuth` connector too) and
+`功能 1 个应用6 项技能` (connector and skill counts concatenated with no separator).
+
+## 8. 添加 / 安装流程 — one-shot, no form (2026-10-04)
+
+The brief asked for "添加到指定位置/分组". Checked whether 0.66's primary action opens anything.
+
+| probe | result |
+|-------|--------|
+| `添加` on **Ahrefs** (0 credential fields) | dialog count unchanged, input count unchanged, detail text unchanged |
+| `添加` on **Capital.com** (8 fields: `CAP_ENV`, `CAP_API_KEY`, `CAP_DRY_RUN`, `CAP_IDENTIFIER`, `CAP_WS_ENABLED`, `CAP_API_PASSWORD`, `CAP_ALLOWED_EPICS`, `CAP_ALLOW_TRADING`) | identical — **no credential form appears** |
+
+The local catalog has 26 entries carrying `fields[]`; none of them is a surface 0.66 renders from
+the detail page. So the primary action is a one-shot install with no intervening page, and the
+"指定位置/分组" affordance does not exist on this surface in 0.66.
+
+Side-effect check after pressing `添加` on the official build: still `已安装 8 个`, 48 manage rows,
+neither Capital.com nor Ahrefs present — the press was a no-op on the official account.
+
+`卸载` was deliberately **not** pressed on the official build: it would mutate the user's real
+account. The local build implements it as a direct `mcp.remove`, which is the same one-shot shape
+`添加` demonstrably has.
