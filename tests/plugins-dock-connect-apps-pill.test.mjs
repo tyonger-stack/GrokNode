@@ -639,18 +639,33 @@ test("every rail class resolves in 0.18 or is lifted", () => {
 
 test("the rail row opens the same surface the pill opens", () => {
   // In rail state the pill is unmounted (`Hn ? null : <s0n/>` in 0.18, `_t ? <lA/> : null` in 0.66),
-  // so clicking it would be a no-op. Upstream registers the very same handler as `sand.openTools`
-  // on mod+shift+m and drives commands from a document-level keydown listener, so the chord is the
-  // one path that reaches `Rme.open(Uf.plugins())` without a real key press.
+  // so clicking it would be a no-op. Both entries therefore route through `openMarketplace`, which
+  // opens the 0.66 marketplace.
+  //
+  // This used to fall back to dispatching upstream's `sand.openTools` chord (mod+shift+m) to reach
+  // `Rme.open(Uf.plugins())`. That path is deliberately gone: it would open 0.18's own plugins
+  // dialog — the same 市场/Yours-tabbed ancestor of this surface — instead of the 0.66 one the pill
+  // now shows, so the rail row and the pill would land on different dialogs.
   const body = code.match(/function openPluginsFromRail\([\s\S]*?\n\}/);
   assert.ok(body != null, "openPluginsFromRail is missing");
-  assert.match(body[0], /BUTTON_SELECTOR/, "the mounted pill must be tried first");
-  assert.match(body[0], /pill\.click\(\)/, "the pill click must delegate to the real handler when it exists");
-  assert.match(body[0], /dispatchOpenPluginsCommand\(\)/, "rail state must fall back to the open command");
-  const dispatch = code.match(/function dispatchOpenPluginsCommand\([\s\S]*?\n\}\n/);
-  assert.ok(dispatch != null, "dispatchOpenPluginsCommand is missing");
-  assert.match(dispatch[0], /document\.dispatchEvent/, "the command must go through the document keydown listener");
-  assert.match(dispatch[0], /"keydown", "keyup"/, "a chord needs both edges; keyup alone leaves the key stuck down");
+  assert.match(body[0], /openMarketplace\(\)/, "the rail row must open the marketplace directly");
+  assert.ok(
+    !body[0].includes("dispatchOpenPluginsCommand"),
+    "the rail row must not dispatch the upstream chord any more",
+  );
+  assert.ok(
+    !code.includes("dispatchOpenPluginsCommand()};"),
+    "nothing may still route the chord as a marketplace entry point",
+  );
+  const open = code.match(/function openMarketplace\([\s\S]*?\n\}/);
+  assert.ok(open != null, "openMarketplace is missing");
+  assert.match(open[0], /marketplaceController\.open\(\)/);
+});
+
+test("the marketplace controller is created once, at module scope", () => {
+  // The capture-phase interceptor closes over it. Building it per click would drop the dialog the
+  // moment a second click arrived mid-open.
+  assert.match(code, /const marketplaceController = createMarketplaceController\(\);/);
 });
 
 test("the observer can see a rail transition", () => {

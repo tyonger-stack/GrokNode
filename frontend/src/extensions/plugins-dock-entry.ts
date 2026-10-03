@@ -19,6 +19,8 @@
 
 export {};
 
+import { createMarketplaceController } from "./marketplace/index.js";
+
 const STYLE_ELEMENT_ID = "sand-plugins-dock-style";
 const ENTRY_SELECTOR = ".sand-agents-sidebar__plugins-entry";
 const BUTTON_SELECTOR = `${ENTRY_SELECTOR} .sand-agents-sidebar__plugins`;
@@ -577,47 +579,55 @@ function isSidebarCollapsed(): boolean {
   return document.querySelector(COLLAPSED_SELECTOR) != null;
 }
 
-/** Opens the same surface the pill opens.
+/** Opens the 0.66 marketplace from either the pill or the rail row.
  *
- *  Upstream renders the pill and the rail row behind one `onOpenPlugins` prop — 0.18's is
- *  `() => Rme.open(Uf.plugins())` (`uSe` in the bundle), 0.66's goes through `nA`. But in rail
- *  state the pill itself is not mounted (`Hn ? null : <s0n/>`), so there is nothing to click.
+ *  Upstream renders both behind one `onOpenPlugins` prop — 0.18's is `() => Rme.open(Uf.plugins())`
+ *  (`uSe` in the bundle), 0.66's goes through `nA`. In rail state the pill itself is not mounted
+ *  (`Hn ? null : <s0n/>` in 0.18, `_t ? <lA/> : null` in 0.66), so the rail row is the only entry.
  *
- *  Upstream also registers that same `uSe` as the `sand.openTools` command on `mod+shift+m`, and
- *  the command layer is driven by a plain document-level `keydown` listener — so dispatching the
- *  registered chord reaches the identical `Rme.open(Uf.plugins())` call without a real key press.
- *  Verified against the running build: it opens the `aria-label="插件"` overlay (whose first tab is
- *  「市场」) in rail state, which is the surface the pill opens when the sidebar is expanded.
- *
- *  The pill is tried first so that, if a future upstream build ever keeps it mounted in rail state,
- *  this defers to the real handler rather than to the shortcut. */
-const OPEN_PLUGINS_CHORD = { code: "KeyM", key: "m", mod: true, shift: true } as const;
+ *  Neither entry dispatches upstream's `sand.openTools` chord any more. That shortcut reached
+ *  `Rme.open(Uf.plugins())`, which is 0.18's own plugins dialog — a different revision of this same
+ *  surface (市场/Yours tabs, raw English category names, "Show N more") — so the rail row and the
+ *  pill would have opened two different dialogs. Both now go to the 0.66 marketplace, and the pill's
+ *  React `onClick` is suppressed by a capture-phase listener so 0.18's dialog never opens at all. */
+const marketplaceController = createMarketplaceController();
 
-function dispatchOpenPluginsCommand(): void {
-  for (const type of ["keydown", "keyup"] as const) {
-    document.dispatchEvent(
-      new KeyboardEvent(type, {
-        code: OPEN_PLUGINS_CHORD.code,
-        key: OPEN_PLUGINS_CHORD.key,
-        // Upstream reads `metaKey` for `mod`; `ctrlKey` is set too because a few command parsers in
-        // the bundle treat `mod` as ctrl-or-meta depending on the platform check.
-        metaKey: OPEN_PLUGINS_CHORD.mod,
-        ctrlKey: OPEN_PLUGINS_CHORD.mod,
-        shiftKey: OPEN_PLUGINS_CHORD.shift,
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
-  }
+function openMarketplace(): void {
+  void marketplaceController.open();
+}
+
+/** Routes the pill to the 0.66 marketplace instead of 0.18's own plugins dialog.
+ *
+ *  The pill IS an upstream React node — 0.18's `sand-agents-sidebar__plugins` button with our
+ *  classes on it, and its `onClick` is `() => Rme.open(Uf.plugins())`. Leaving that in place would
+ *  open 0.18's dialog (`aria-label="插件"`, 市场/Yours tabs) underneath the 0.66 surface, so the
+ *  click has to be taken before React sees it.
+ *
+ *  React 18 binds its listeners on the root container, and the root listens during the BUBBLE
+ *  phase. A capture-phase listener on the button therefore runs first, and `stopPropagation()`
+ *  there prevents the event from ever bubbling to the root — the React handler never runs. The
+ *  listener is registered on the pill itself (not on the sidebar) so it is scoped to the one
+ *  control, and it is guarded by a marker class so re-running `ensureButtonSurface` cannot stack
+ *  duplicates. */
+function interceptPillClick(): void {
+  const button = document.querySelector<HTMLButtonElement>(BUTTON_SELECTOR);
+  if (button == null || button.classList.contains("sand-plugins-dock-no-upstream-click")) return;
+  button.classList.add("sand-plugins-dock-no-upstream-click");
+  button.addEventListener(
+    "click",
+    (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      openMarketplace();
+    },
+    // Capture on the target: this fires during the capture phase, before the event can bubble to
+    // the React root.
+    { capture: true },
+  );
 }
 
 function openPluginsFromRail(): void {
-  const pill = document.querySelector<HTMLButtonElement>(BUTTON_SELECTOR);
-  if (pill != null) {
-    pill.click();
-    return;
-  }
-  dispatchOpenPluginsCommand();
+  openMarketplace();
 }
 
 function buildRailButton(): HTMLButtonElement {
@@ -771,6 +781,7 @@ function scheduleRefresh(): void {
 function install(): void {
   ensureStyles();
   ensureButtonSurface();
+  interceptPillClick();
   syncRailButton();
   scheduleRefresh();
   // Only react to the upstream row being (re)inserted. A blanket `subtree` callback re-enters this
@@ -801,6 +812,13 @@ function install(): void {
         if (node.matches(BUTTON_SELECTOR) || node.querySelector(BUTTON_SELECTOR) != null) {
           ensureStyles();
           ensureButtonSurface();
+          // The pill is an upstream React node: React can unmount and remount it (sidebar collapse,
+          // agent switch, settings re-render), and a remount produces a brand-new element with no
+          // listener. Attaching only once — at install time — left the pill wired to 0.18's own
+          // `Rme.open(Uf.plugins())` whenever the first pass ran before the sidebar mounted, which
+          // is the common case: `install()` fires on DOMContentLoaded, long before the agents list
+          // has rendered. Both must run on every remount.
+          interceptPillClick();
           syncRailButton();
           scheduleRefresh();
           return;
