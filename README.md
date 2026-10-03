@@ -21,6 +21,7 @@ API key，代码执行跑在由应用自管的本地 Docker 容器里，登录�
 - 融入精修版出厂 UI 的重建设置界面；
 - 在打包边界禁用 upstream 更新器，默认关闭 Sentry 与遥测上报。
 - 设置增加默认模型的自定义推理强度，各bot也可选择模型和强度。
+- 支持设置主bot。
 
 改造建立在一次完整的源码级重建之上：`source/` 下是 Electron、host、
 coordinator、本地执行、协议与渲染层各边界的可读 TypeScript 实现，`scripts/`
