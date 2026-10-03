@@ -9,6 +9,8 @@
 API key，代码执行跑在由应用自管的本地 Docker 容器里，登录态由 preload 层提供的
 固定本地账户承担，打包出的应用因此命名为 `Grok Node.app`。
 <img width="3456" height="2048" alt="image" src="https://github.com/user-attachments/assets/f9578f3d-418d-4dbd-98f8-97aaf7b8c190" />
+<img width="3452" height="2048" alt="image" src="https://github.com/user-attachments/assets/f78c292e-5a97-49e4-b0a5-5121299868d7" />
+
 ## 本地化改造做了什么？
 
 - 推理路由（Inference Router）：Codex 与 OpenRouter 两档 provider，替代原有的
@@ -18,6 +20,7 @@ API key，代码执行跑在由应用自管的本地 Docker 容器里，登录�
 - 由应用自管的本地 Docker 沙箱，是当前唯一的 box 运行时，不再连接任何远端沙箱；
 - 融入精修版出厂 UI 的重建设置界面；
 - 在打包边界禁用 upstream 更新器，默认关闭 Sentry 与遥测上报。
+- 设置增加默认模型的自定义推理强度，各bot也可选择模型和强度。
 
 改造建立在一次完整的源码级重建之上：`source/` 下是 Electron、host、
 coordinator、本地执行、协议与渲染层各边界的可读 TypeScript 实现，`scripts/`
