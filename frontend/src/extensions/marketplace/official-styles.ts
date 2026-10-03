@@ -71,6 +71,12 @@ export const LIFTED_OFFICIAL_RULES: ReadonlyArray<readonly [string, string] | re
   ["sand-1qab1bc", "justify-self:end"],
   ["sand-1t8vtw7", "box-shadow:inset 0 0 0 2px var(--cursor-stroke-focused)", ":focus-visible::after"],
   ["sand-1w00h3t", "border-radius:16px", "::after"],
+  // The pinned-search band (`PIN_BAND_CLASSES`). Official 0.66 declares `min-height: 48px` here
+  // and 0.18 ships neither this declaration nor the class. It is the one lift the band needs:
+  // `sand-sdox4t` (height: 48px) already lands on 0.18, so this is belt-and-braces rather than the
+  // sole source of the height — but the band is a flex item whose content is created and destroyed
+  // as the page scrolls, so the floor has to come from the same recipe official uses.
+  ["sand-1wxaq2x", "min-height:48px"],
   ["sand-1yc453h", "text-align:start"],
   ["sand-37c5m6", "grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)"],
   ["sand-5orbwg", "animation-duration:.7s"],
@@ -296,6 +302,62 @@ export const SEARCH_INPUT_CLASSES = [
 ];
 
 /* ------------------------------------------------------------------ *
+ * Pinned search bar
+ *
+ * Official 0.66 keeps a 48px band above the scroller at ALL times — empty when the page is at the
+ * top, and holding a second copy of the search field once the real one scrolls out of sight. It is
+ * not `position: sticky`: the measured band computes `position: relative` with no `top`, and
+ * official really does render a *second* `<input>` (both carry the identical class list and both
+ * report the same value, so they are the same controlled field rendered twice).
+ *
+ * Measured on official 0.66, dialog-relative: band [1,1,798,48] z-index 2 with
+ * `background-color: var(--sand-bg-elevated)` and a 0.5px bottom border in
+ * `var(--sand-border-weak)`; scroller [1,49,798,652]. Binary-searching the scroller's scrollTop put
+ * the switch between 78 (still one input) and 79 (two inputs) — which is exactly the scroll offset
+ * at which the real field's bottom edge crosses the band's bottom edge.
+ *
+ * The pinned shell is the ordinary search shell with ONE class swapped: official carries
+ * `sand-10w6t97` (height: 32px) on the in-flow field and `sand-1fgtraw` (height: 28px) on the
+ * pinned one. Both hashes already exist in 0.18's stylesheet, so nothing had to be lifted for the
+ * field itself — hence the pinned field measuring 718x28 against the real one's 734x32.
+ * ------------------------------------------------------------------ */
+
+/** The always-present 48px band. Empty at scrollTop 0; its bottom hairline is visible. */
+export const PIN_BAND_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-1c4vz4f", "sand-2lah0s", "sand-1nhvcw1",
+  "sand-1n2onr6", "sand-htitgo", "sand-10e981r", "sand-sdox4t", "sand-1wxaq2x",
+  "sand-1hkp6id", "sand-1q0q8m5", "sand-shfolx", "sand-1cowwpj", "sand-12w9bfk", "sand-19145p9",
+];
+
+/** Band > animated flex column. `sand-1jbbfn2` / `sand-hmfl4z` are animation-only and absent
+ *  from 0.18; they are carried so the class list matches official, but nothing is lifted for them
+ *  because 0.18 ships neither the declarations nor the `@keyframes`. */
+export const PIN_ROW_CLASSES = [
+  "sand-78zum5", "sand-dt5ytf", "sand-1iyjqo2", "sand-s83m0k", "sand-2lwn1j",
+  "sand-1jbbfn2", "sand-1aquc0h", "sand-hmfl4z", "sand-a3vuyk", "sand-1u6ievf",
+];
+
+/** Band > row > the padded box: gap 8px, height 48px, padding 10px 48px 10px 32px. This is what
+ *  turns the band into 33..751 and puts the field at y=11. */
+export const PIN_PAD_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-167g77z", "sand-sdox4t",
+  "sand-889kno", "sand-15zmtp0", "sand-1a8lsjc", "sand-16mx7xq",
+];
+
+/** Pad > flex-basis:0 wrapper (the band's `child: <field/>`). */
+export const PIN_FIELD_WRAP_CLASSES = [
+  "sand-1iyjqo2", "sand-s83m0k", "sand-1r8uery", "sand-euugli", "sand-r1vbnl",
+  "sand-1aquc0h", "sand-cvozgj", "sand-a3vuyk",
+];
+
+/** Pad > wrap > position:relative wrapper. */
+export const PIN_FIELD_REL_CLASSES = ["sand-1n2onr6", "sand-euugli"];
+
+/** The compact height class. Official swaps `sand-10w6t97` (32px) for this (28px) on the pin. */
+export const PIN_COMPACT_HEIGHT_CLASS = "sand-1fgtraw";
+
+
+/* ------------------------------------------------------------------ *
  * Sections
  * ------------------------------------------------------------------ */
 
@@ -396,8 +458,18 @@ export const ROW_MAIN_CLASSES = [
 /** The name span. These are the classes upstream's style object calls the "row meta wrapper" —
  *  they belong ON the name, not on a wrapper around name+subtitle. Read off the running official
  *  build: `row__main` has exactly two children, this one and `sand-plugins-row__subtitle`. */
-export const ROW_NAME_CLASSES = [
+/** `row__main`'s first child — an 18px row whose ONLY job is to hold the name span. Measured
+ *  official: `row__main [127,361,231,37]` with children 231x18 at y=361 and y=380. */
+export const ROW_NAME_WRAPPER_CLASSES = [
   "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-17d4w8g", "sand-euugli",
+];
+
+/** The name span INSIDE that wrapper. Distinct from the wrapper's own recipe — reusing the
+ *  wrapper's list here is what left the name unstyled-by-official in an earlier revision, and it
+ *  is invisible to a text assertion because the characters still render. */
+export const ROW_NAME_CLASSES = [
+  "sand-plugins-row__name", "sand-9f619", "sand-b3r6kr", "sand-11wthnw", "sand-d4r4e8",
+  "sand-12oo3zp", "sand-1rhlpx6", "sand-1wd3ewq", "sand-lyipyv", "sand-uxw1ft",
 ];
 export const ROW_SUBTITLE_CLASSES = [
   "sand-plugins-row__subtitle", "sand-9f619", "sand-b3r6kr", "sand-11wthnw", "sand-d4r4e8",
@@ -503,10 +575,298 @@ export const GLYPH = {
   close: "\ued82",
   chevronRight: "\ueab6",
   chevronLeft: "\ueab5",
+  /** The 工具 row's disclosure chevron. Distinct from `chevronRight` (U+EAB6) — official draws a
+   *  LEFT-pointing glyph there even though the row expands downward. Captured, not assumed. */
+  chevronDown: "\ueab4",
   search: "\uea6d",
   check: "\ueab2",
   people: "\uea7e",
   fileList: "\uec53",
+  /** 复制此插件的链接 (12px) and the 分享 button's leading glyph (14px) — official uses the SAME
+   *  codepoint for both, differentiated only by the wrapper class list. Verified on both the
+   *  installed (Gmail) and un-installed (Ahrefs) detail pages. */
+  copy: "\ueb15",
+  share: "\ueb15",
+  /** The external-link glyph trailing 查看源码. */
+  externalLink: "\uedc1",
+  /** 编辑 <account> — the pencil inside an account row. */
+  pencil: "\ueddd",
+  /** 添加账户 — the plus in the add-account row. */
+  plus: "\uea60",
+  /** The 16px glyph leading each 应用 connector row. */
+  plug: "\ueb2d",
 } as const;
 
 export const MARKET_SCOPE_CLASS = "sand-mkt";
+
+/* ------------------------------------------------------------------ *
+ * Section page + detail page (captured 2026-10-04, see
+ * docs/MARKETPLACE-066-EVIDENCE.md §3-§4)
+ *
+ * Everything below was read off the running 0.66 renderer at the three levels the market pushes
+ * past the homepage. The class names are official hashes: several (`sand-g01cxk`, `sand-1rhlpx6`,
+ * `sand-p4054r`) already exist in 0.18's stylesheet because the declaration block is unchanged
+ * across versions, the same mechanism LIFTED_OFFICIAL_RULES relies on.
+ * ------------------------------------------------------------------ */
+
+/** `sand-settings-detail-bar` — the 48px band header that replaces the market title row once a
+ *  section or a plugin is open. Carries 返回 + the centred detail title. */
+export const DETAIL_BAR_CLASSES = [
+  "sand-settings-detail-bar", "sand-9f619", "sand-rvj5dj", "sand-37c5m6", "sand-6s0dn4",
+  "sand-sdox4t", "sand-889kno", "sand-2vl965", "sand-1a8lsjc", "sand-e2zdcy",
+];
+
+/** The 28×28 slot the back button sits in, at x=43 (10px inside the 33px dialog edge). */
+export const DETAIL_BAR_LEADING_CLASSES = ["sand-1lqcxt8", "sand-euugli"];
+
+/** The detail title. Official centres it in the bar: measured x=404 for 精选插件 (w=56) and x=413
+ *  for Gmail (w=38) — both land on the bar's 432px midline. */
+export const DETAIL_TITLE_CENTERED_CLASSES = [
+  "sand-fc7y3v", "sand-1fc57z9", "sand-12oo3zp", "sand-9f619", "sand-1iyjqo2", "sand-s83m0k",
+  "sand-dl72j9", "sand-euugli", "sand-dj266r", "sand-14z9mp", "sand-at24cr", "sand-1lziwak",
+  "sand-b3r6kr", "sand-1rhlpx6", "sand-1wd3ewq", "sand-2b8uid", "sand-lyipyv", "sand-uxw1ft",
+  "sand-19991ni", "sand-h5t8r0", "sand-12w9bfk", "sand-9lcvmn", "sand-g01cxk",
+];
+
+
+/** The featured-section page's `h1` — 44px tall, against the 34px `h3` every other heading uses. */
+export const SECTION_H1_CLASSES = [
+  "sand-1i1m3gp", "sand-gif2c7", "sand-1hi0czg", "sand-1ghz6dp", "sand-f159sx",
+];
+
+/** The 类目桶 results page's heading. Official reads 结果, not the bucket name — the bucket name
+ *  lives in the detail bar instead (EVIDENCE §3b). */
+export const SECTION_RESULTS_TITLE_CLASSES = [
+  "sand-fc7y3v", "sand-1fc57z9", "sand-12oo3zp", "sand-1ghz6dp", "sand-1y1aw1k",
+];
+
+
+/** `HEADER.sand-plugins-detail__header` — 56px band: 56px logo, name + copy-link, source link,
+ *  then 分享 / 添加(卸载). */
+export const DETAIL_HEADER_CLASSES = [
+  "sand-plugins-detail__header", "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-1v2ro7d",
+  "sand-1xr8qbc", "sand-jodmca",
+];
+
+/** Title column: `[133,237,504,44]` — the name row plus the source-link row beneath it. */
+export const DETAIL_TITLE_COL_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-1iyjqo2", "sand-s83m0k", "sand-dl72j9", "sand-dt5ytf",
+  "sand-195vfkc", "sand-euugli",
+];
+
+/** Name + 复制此插件的链接 sit on one 24px row. */
+export const DETAIL_NAME_ROW_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-1jnr06f", "sand-euugli",
+];
+
+export const DETAIL_NAME_CLASSES = [
+  "ui-text", "ui-1acoasx", "ui-dj266r", "ui-14z9mp", "ui-at24cr", "ui-1lziwak", "ui-exx8yu",
+  "ui-yri2b", "ui-18d9i69", "ui-1c1uobl", "ui-vmahel", "ui-lh3980", "ui-11wthnw", "ui-1ja60sm",
+  "ui-vu1jfw", "ui-20ajya", "sand-19d36u7", "sand-1o2sk6j", "sand-1deyeav", "sand-1rhlpx6",
+];
+
+/** `A` for 查看源码 — an anchor, so the source URL is a real link rather than a handler. */
+export const DETAIL_SOURCE_LINK_CLASSES = [
+  "sand-3nfvp2", "sand-6s0dn4", "sand-1jnr06f", "sand-19aaqeu", "sand-7gh5u8", "sand-11wthnw",
+  "sand-d4r4e8", "sand-12oo3zp", "sand-krqix3", "sand-1ypdohk", "sand-9f619", "sand-1c4vz4f",
+  "sand-2lah0s", "sand-dl72j9",
+];
+
+/** The 分享 / 添加 pair's slot at `[649,241,150,36]`. */
+export const DETAIL_ACTIONS_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-167g77z", "sand-1c4vz4f", "sand-2lah0s",
+  "sand-dl72j9",
+];
+
+/** 分享 — the wide variant (82×36, icon + label). */
+export const DETAIL_SHARE_BUTTON_CLASSES = [
+  "sand-kit-button", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k", "sand-1jnr06f", "sand-2lah0s",
+  "sand-9f619", "sand-c342km", "sand-ng3xce", "sand-jb2p0i", "sand-uxw1ft", "sand-1ypdohk",
+  "sand-tgyt42", "sand-s2xxs2", "sand-1firant", "sand-9lcvmn", "sand-1k57tk5", "sand-784prv",
+  "sand-1t137rt", "sand-9v5kkp", "sand-4sht9k", "sand-1y3gkto", "sand-fc7y3v", "sand-1fc57z9",
+  "sand-12oo3zp", "sand-1y1aw1k", "sand-v54qhq", "sand-wib8y2", "sand-f7dkkf", "sand-149ho13",
+  "sand-1tiofj7", "sand-ex9vrg", "sand-wj1584", "sand-tyxrsu", "sand-g7klql",
+];
+
+/** 添加 / 卸载 — the narrow variant (60×36, label only). Differs from 分享 only in the trailing
+ *  five classes, so the shared prefix is kept and the variant suffix swapped, exactly as official
+ *  does: `…sand-149ho13 sand-1wclgxm sand-1e15362 sand-1gzh0bn sand-xcaa6e sand-g7klql`. */
+export const DETAIL_PRIMARY_BUTTON_CLASSES = [
+  "sand-kit-button", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k", "sand-1jnr06f", "sand-2lah0s",
+  "sand-9f619", "sand-c342km", "sand-ng3xce", "sand-jb2p0i", "sand-uxw1ft", "sand-1ypdohk",
+  "sand-tgyt42", "sand-s2xxs2", "sand-1firant", "sand-9lcvmn", "sand-1k57tk5", "sand-784prv",
+  "sand-1t137rt", "sand-9v5kkp", "sand-4sht9k", "sand-1y3gkto", "sand-fc7y3v", "sand-1fc57z9",
+  "sand-12oo3zp", "sand-1y1aw1k", "sand-v54qhq", "sand-wib8y2", "sand-f7dkkf", "sand-149ho13",
+  "sand-1wclgxm", "sand-1e15362", "sand-1gzh0bn", "sand-xcaa6e", "sand-g7klql",
+];
+
+export const DETAIL_DESC_CLASSES = [
+  "sand-plugins-detail__desc", "sand-fc7y3v", "sand-1fc57z9", "sand-12oo3zp", "sand-9f619",
+  "sand-dj266r", "sand-14z9mp", "sand-at24cr", "sand-1lziwak", "sand-19aaqeu",
+];
+
+/** `sand-ou54vl` — the block container holding 账户 / 工具 / 应用 / 信息. */
+export const DETAIL_BODY_CLASSES = ["sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-ou54vl"];
+
+/** Section heading inside the detail body (应用 / 信息 / 账户 / 工具). */
+export const DETAIL_SECTION_TITLE_CLASSES = DETAIL_NAME_CLASSES;
+
+/** The 应用 sub-header row — `应用` + its count, indented 14px from the column edge (x=79). */
+export const DETAIL_SUBSECTION_ROW_CLASSES = [
+  "sand-17d4w8g", "sand-1y1aw1k", "sand-1pic42t", "sand-10b6aqq", "sand-1onr9mi",
+];
+
+/** `sand-plugins-detail__connectors` — one 58px row: 16px icon + name over 连接器. */
+export const DETAIL_CONNECTORS_CLASSES = [
+  "sand-plugins-detail__connectors", "sand-9f619", "sand-ixl9f9", "sand-i07v4r",
+];
+
+/** `sand-plugins-detail__accounts` / `__tools` share the same recipe hash as `__connectors`. */
+export const DETAIL_ACCOUNTS_CLASSES = [
+  "sand-plugins-detail__accounts", "sand-9f619", "sand-ixl9f9", "sand-i07v4r",
+];
+
+export const DETAIL_TOOLS_CLASSES = [
+  "sand-plugins-detail__tools", "sand-9f619", "sand-ixl9f9", "sand-i07v4r",
+];
+
+/** The `dl` under 信息. */
+export const DETAIL_INFO_LIST_CLASSES = [
+  "sand-ixl9f9", "sand-i07v4r", "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-dj266r",
+  "sand-14z9mp", "sand-at24cr", "sand-1lziwak",
+];
+
+/** One 42px `dt`/`dd` pair inside the 信息 list. */
+export const DETAIL_INFO_ROW_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-1qughib", "sand-167g77z", "sand-z9dl7a",
+  "sand-1pic42t", "sand-sag5q8", "sand-1onr9mi",
+];
+
+export const DETAIL_INFO_TERM_CLASSES = [
+  "sand-9f619", "sand-2lah0s", "sand-thy2uy", "sand-b3r6kr", "sand-uxw1ft", "sand-lyipyv",
+  "sand-dj266r", "sand-14z9mp", "sand-at24cr", "sand-1lziwak", "sand-11wthnw", "sand-d4r4e8",
+  "sand-12oo3zp", "sand-1wd3ewq",
+];
+
+/** The `dd` is right-aligned to the row's end (measured x=732/740/755 for values of different
+ *  widths — a right edge pinned at 781, not a left edge pinned at 732). */
+export const DETAIL_INFO_VALUE_CLASSES = [
+  "sand-9f619", "sand-dj266r", "sand-2fvf9", "sand-at24cr", "sand-1lziwak", "sand-b3r6kr",
+  "sand-11wthnw", "sand-d4r4e8", "sand-12oo3zp", "sand-4b2ntj", "sand-p4054r", "sand-lyipyv",
+  "sand-uxw1ft",
+];
+
+/** The 1px rule between 信息 rows — `[77, y, 710, 1]`, i.e. inset 12px on both sides. */
+export const DETAIL_DIVIDER_CLASSES = [
+  "sand-9f619", "sand-28ko6u", "sand-1diwwjn", "sand-bmvrgn", "sand-1m4ooaa",
+];
+
+
+
+/** The 56px logo in the detail header. `sand-tool-icon--logo` + the 56px recipe tail. */
+export const DETAIL_TOOL_ICON_CLASSES = [
+  "sand-tool-icon", "sand-tool-icon--logo", "sand-9f619", "sand-3nfvp2", "sand-6s0dn4",
+  "sand-l56j7k", "sand-1c4vz4f", "sand-2lah0s", "sand-dl72j9", "sand-b3r6kr", "sand-qjedn3",
+  "sand-1y0btm7", "sand-q03nf1", "sand-jbqb8w",
+];
+
+
+
+/* --- the remaining detail-page class lists, captured on the Gmail (installed) detail page --- */
+
+/** 复制此插件的链接 — the 20×20 icon button beside the plugin name. */
+export const COPY_LINK_BUTTON_CLASSES = [
+  "sand-kit-icon-button", "sand-1n2onr6", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k", "sand-2lah0s",
+  "sand-9f619", "sand-exx8yu", "sand-yri2b", "sand-18d9i69", "sand-1c1uobl", "sand-c342km",
+  "sand-ng3xce", "sand-1ypdohk", "sand-tgyt42", "sand-1firant", "sand-9lcvmn", "sand-1k57tk5",
+  "sand-784prv", "sand-1t137rt", "sand-9v5kkp", "sand-4sht9k", "sand-1y3gkto", "sand-w4jnvo",
+  "sand-1qx5ct2", "sand-1kogg8i", "sand-jbqb8w", "sand-1r8pydn", "sand-1o0liin", "sand-1fx2joi",
+  "sand-7n8uir", "sand-1t7ft1p", "sand-25t5g8", "sand-19991ni",
+];
+
+/** The span wrapping 查看源码 and its trailing external-link glyph, at `[133,263,504,18]`. */
+export const DETAIL_SOURCE_ROW_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-17d4w8g", "sand-euugli", "sand-b3r6kr",
+  "sand-11wthnw", "sand-d4r4e8", "sand-12oo3zp", "sand-19aaqeu", "sand-uxw1ft",
+];
+
+/** 编辑 <account> — the pencil button inside an account row. */
+export const DETAIL_EDIT_ACCOUNT_FULL_CLASSES = [
+  "sand-9f619", "sand-3nfvp2", "sand-6s0dn4", "sand-1c4vz4f", "sand-2lah0s", "sand-dl72j9",
+  "sand-1717udv", "sand-c342km", "sand-ng3xce", "sand-jbqb8w", "sand-4b2ntj", "sand-7gh5u8",
+  "sand-1ypdohk",
+];
+
+/** The account name + pencil pair, measured `[79,385,57,18]`. */
+export const DETAIL_ACCOUNT_NAME_CLASSES = ["sand-1nejdyq", "sand-euugli"];
+
+/** The 添加账户 row — the official class list continues past the shared `__add-account` prefix. */
+export const DETAIL_ADD_ACCOUNT_FULL_CLASSES = [
+  "sand-plugins-detail__add-account", "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-17d4w8g",
+  "sand-h8yej3", "sand-z9dl7a", "sand-1pic42t", "sand-sag5q8", "sand-1onr9mi", "sand-c342km",
+  "sand-ng3xce", "sand-jbqb8w", "sand-19aaqeu", "sand-7gh5u8", "sand-jb2p0i", "sand-11wthnw",
+  "sand-12oo3zp", "sand-1yc453h", "sand-1ypdohk",
+];
+
+/** The 工具 row itself — a button, `[65,504,734,42]`. */
+export const DETAIL_TOOLS_ROW_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-1qughib", "sand-167g77z", "sand-z9dl7a",
+  "sand-1pic42t", "sand-sag5q8", "sand-1onr9mi", "sand-jyslct", "sand-1lugfcp", "sand-h8yej3",
+  "sand-dj266r", "sand-14z9mp", "sand-at24cr", "sand-1lziwak", "sand-c342km", "sand-ng3xce",
+  "sand-ixl9f9", "sand-jb2p0i", "sand-1qlqyl8", "sand-1yc453h", "sand-1ypdohk", "sand-jbqb8w",
+  "sand-oli092", "sand-1t137rt", "sand-js6kxj",
+];
+
+/** `已启用 23/23 个` — the 工具 row's label span. */
+export const DETAIL_TOOLS_LABEL_CLASSES = [
+  "sand-9f619", "sand-2lah0s", "sand-thy2uy", "sand-b3r6kr", "sand-uxw1ft", "sand-lyipyv",
+  "sand-dj266r", "sand-14z9mp", "sand-at24cr", "sand-1lziwak", "sand-11wthnw", "sand-d4r4e8",
+  "sand-12oo3zp", "sand-1wd3ewq",
+];
+
+/** `sand-plugins__status` plus its tone tail — 已连接 / 身份验证 etc. */
+export const DETAIL_STATUS_FULL_CLASSES = [
+  "sand-plugins__status", "sand-9f619", "sand-11wthnw", "sand-d4r4e8", "sand-12oo3zp",
+  "sand-uxw1ft", "sand-98zg7y",
+];
+
+/** One 应用 row — the 16px glyph column plus the two-line name/连接器 text. */
+export const DETAIL_CONNECTOR_ROW_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-167g77z", "sand-z9dl7a", "sand-1pic42t",
+  "sand-sag5q8", "sand-1onr9mi", "sand-1nhvcw1",
+];
+
+export const DETAIL_CONNECTOR_NAME_CLASSES = [
+  "sand-b3r6kr", "sand-1wd3ewq", "sand-11wthnw", "sand-d4r4e8", "sand-lyipyv", "sand-uxw1ft",
+];
+
+export const DETAIL_CONNECTOR_KIND_CLASSES = [
+  "sand-b3r6kr", "sand-4b2ntj", "sand-1wm8ruf", "sand-1d3mw78", "sand-lyipyv", "sand-uxw1ft",
+];
+
+/** The `应用` count that trails the heading. */
+export const DETAIL_APP_COUNT_CLASSES = [
+  "ui-text", "ui-1acoasx", "ui-dj266r", "ui-14z9mp", "ui-at24cr", "ui-1lziwak",
+];
+
+/** The single-column recipe. Official's two grid variants are the SAME list with one class
+ *  swapped — `sand-nby9oq` (2 × 363px, homepage and bucket results pages) versus `sand-1mkdm3x`
+ *  (1 × 734px, featured-section page). Measured `grid-template-columns: "734px"` on 精选插件 and
+ *  `"363px 363px"` on 为你推荐 / 效率 / 研究. Verified against a screenshot as well as the
+ *  computed style, because the home page and the pushed page can share the dialog DOM. */
+export const GRID_SINGLE_CLASSES = [
+  "sand-plugins__grid", "sand-9f619", "sand-rvj5dj", "sand-1ap1fj8", "sand-1dbijih", "sand-3ct3a4",
+  "sand-dj266r", "sand-14z9mp", "sand-at24cr", "sand-1lziwak", "sand-exx8yu", "sand-yri2b",
+  "sand-18d9i69", "sand-1c1uobl", "sand-1mkdm3x",
+];
+
+/** The `.sand-plugins__marketplace` wrapper as it actually appears — it is both the page wrapper
+ *  and the pane's content holder on the featured-section page. */
+export const SECTION_PAGE_FULL_CLASSES = [
+  "sand-plugins__marketplace", "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-1665zp3",
+];
+
+/** `sand-plugins-detail` with the same holder role on the detail page. */
+export const DETAIL_ROOT_FULL_CLASSES = [
+  "sand-plugins-detail", "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-1665zp3",
+];

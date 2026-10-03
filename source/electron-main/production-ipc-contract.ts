@@ -37,6 +37,9 @@ export const ELECTRON_MAIN_INVOKE_IPC_CHANNELS = [
   "sand:mcp-set-instructions",
   "sand:mcp-list-server-tools",
   "sand:mcp-toggle-tool-disabled",
+  "sand:skills-list",
+  "sand:skills-update",
+  "sand:skills-remove",
   "sand:coordinator-port-request",
 ] as const;
 

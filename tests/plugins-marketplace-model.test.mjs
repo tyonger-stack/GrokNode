@@ -262,3 +262,97 @@ test("search matches name, description and category", () => {
   assert.deepEqual(searchRows(rows, "notes").map((r) => r.id), ["b"]);
   assert.equal(searchRows(rows, "").length, 2);
 });
+
+/* ------------------------------------------------------------------ *
+ * 私有技能 — upstream's converter and edit rule, executed
+ * ------------------------------------------------------------------ */
+
+import {
+  canEditPrivateSkill,
+  privateSkillsFromRecords,
+  skillSubtitle,
+} from "../frontend/src/extensions/marketplace/model.ts";
+
+/** A raw `WorkflowRecord` as the gateway returns it. */
+function record(overrides = {}) {
+  return {
+    id: "add-connector",
+    name: "add-connector",
+    description: "Walk through connecting a new MCP connector.",
+    body: "Do the thing.",
+    trigger: null,
+    source: "managed",
+    sourceRef: null,
+    pluginId: null,
+    publishedByCurrentUser: false,
+    isEnabledForAgent: true,
+    filePath: "/home/box/sand-data/managed-skills/skills/add-connector/SKILL.md",
+    helperScripts: [],
+    createdAt: 1,
+    ...overrides,
+  };
+}
+
+test("私有技能 keeps managed and workflow skills and drops automations", () => {
+  // The live call for this account returns 31 managed + 9 workflow + 1 automation. The automation is
+  // a schedule projection, not a skill, and upstream drops it (`view-B5Ug8wEm.js#L802`).
+  const skills = privateSkillsFromRecords([
+    record({ id: "a", source: "managed" }),
+    record({ id: "b", source: "workflow", filePath: "/home/box/sand-data/workflows/b/SKILL.md" }),
+    record({ id: "c", source: "automation" }),
+  ]);
+  assert.deepEqual(skills.map((s) => s.id), ["a", "b"]);
+  assert.equal(skills[0].source, "managed");
+  assert.equal(skills[1].source, "workflow");
+  assert.equal(skills[0].enabled, true);
+});
+
+test("私有技能 counts a plugin skill only when the user published it", () => {
+  assert.deepEqual(
+    privateSkillsFromRecords([record({ source: "plugin", publishedByCurrentUser: true })]).map((s) => s.id),
+    ["add-connector"],
+  );
+  assert.deepEqual(
+    privateSkillsFromRecords([record({ source: "plugin", publishedByCurrentUser: false })]),
+    [],
+    "a plugin you merely installed is not a private skill",
+  );
+});
+
+test("私有技能 drops malformed records instead of rendering them half-empty", () => {
+  assert.deepEqual(privateSkillsFromRecords([record({ name: 42 })]), []);
+  assert.deepEqual(privateSkillsFromRecords([record({ id: null })]), []);
+  assert.deepEqual(privateSkillsFromRecords([null, "x", 7, []]), []);
+  // Optional fields degrade to empty rather than to `undefined`.
+  const [skill] = privateSkillsFromRecords([{ id: "z", name: "Z", source: "workflow" }]);
+  assert.equal(skill.description, "");
+  assert.equal(skill.body, "");
+  assert.equal(skill.filePath, "");
+  assert.equal(skill.enabled, false);
+  assert.equal(skill.pluginId, null);
+});
+
+test("the provenance label is 已发布 only for plugin, 本地创建 otherwise", () => {
+  const base = { id: "x", name: "x", description: "d", body: "", filePath: "", enabled: true, pluginId: null };
+  assert.equal(skillSubtitle({ ...base, source: "plugin" }), "已发布 · d");
+  assert.equal(skillSubtitle({ ...base, source: "managed" }), "本地创建 · d");
+  assert.equal(skillSubtitle({ ...base, source: "workflow" }), "本地创建 · d");
+  // Upstream falls back to a generic noun when there is no description.
+  assert.equal(skillSubtitle({ ...base, source: "workflow", description: "" }), "本地创建 · 技能");
+});
+
+test("only a user-written skill can be edited, and only with a valid, changed draft", () => {
+  const skill = { source: "workflow", name: "n", description: "d", body: "b" };
+  assert.equal(canEditPrivateSkill(skill, { name: "n2", description: "d", body: "b" }), true);
+  // No change → nothing to save.
+  assert.equal(canEditPrivateSkill(skill, { name: "n", description: "d", body: "b" }), false);
+  // Any blank field → invalid.
+  assert.equal(canEditPrivateSkill(skill, { name: "", description: "d", body: "b" }), false);
+  assert.equal(canEditPrivateSkill(skill, { name: "n", description: "  ", body: "b" }), false);
+  assert.equal(canEditPrivateSkill(skill, { name: "n", description: "d", body: "" }), false);
+  // Platform-installed skills are never editable, however valid the draft.
+  const managed = { ...skill, source: "managed" };
+  assert.equal(canEditPrivateSkill(managed, { name: "n2", description: "d", body: "b" }), false);
+  const plugin = { ...skill, source: "plugin" };
+  assert.equal(canEditPrivateSkill(plugin, { name: "n2", description: "d", body: "b" }), false);
+});

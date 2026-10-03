@@ -55,6 +55,12 @@ import {
   PANE_HEADER_CLASSES,
   PANE_WRAPPER_CLASSES,
   PANE_TITLE_CLASSES,
+  PIN_BAND_CLASSES,
+  PIN_COMPACT_HEIGHT_CLASS,
+  PIN_FIELD_REL_CLASSES,
+  PIN_FIELD_WRAP_CLASSES,
+  PIN_PAD_CLASSES,
+  PIN_ROW_CLASSES,
   PREVIEW_COUNT_CLASSES,
   PREVIEW_ICON_FIRST_CLASSES,
   PREVIEW_ICON_REST_CLASSES,
@@ -62,6 +68,7 @@ import {
   ROW_ITEM_CLASSES,
   ROW_MAIN_CLASSES,
   ROW_NAME_CLASSES,
+  ROW_NAME_WRAPPER_CLASSES,
   ROW_OPEN_CLASSES,
   ROW_SUBTITLE_CLASSES,
   ROW_TRAILING_CLASSES,
@@ -82,12 +89,54 @@ import {
   TOOL_ICON_CLASSES,
   TOOL_IMG_CLASSES,
   YOURS_ROOT_CLASSES,
+  COPY_LINK_BUTTON_CLASSES,
+  DETAIL_ACCOUNTS_CLASSES,
+  DETAIL_ACCOUNT_NAME_CLASSES,
+  DETAIL_ACTIONS_CLASSES,
+  DETAIL_ADD_ACCOUNT_FULL_CLASSES,
+  DETAIL_APP_COUNT_CLASSES,
+  DETAIL_BODY_CLASSES,
+  DETAIL_CONNECTOR_KIND_CLASSES,
+  DETAIL_CONNECTOR_NAME_CLASSES,
+  DETAIL_CONNECTOR_ROW_CLASSES,
+  DETAIL_CONNECTORS_CLASSES,
+  DETAIL_DESC_CLASSES,
+  DETAIL_DIVIDER_CLASSES,
+  DETAIL_EDIT_ACCOUNT_FULL_CLASSES,
+  DETAIL_HEADER_CLASSES,
+  DETAIL_INFO_LIST_CLASSES,
+  DETAIL_INFO_ROW_CLASSES,
+  DETAIL_INFO_TERM_CLASSES,
+  DETAIL_INFO_VALUE_CLASSES,
+  DETAIL_NAME_CLASSES,
+  DETAIL_NAME_ROW_CLASSES,
+  DETAIL_PRIMARY_BUTTON_CLASSES,
+  DETAIL_ROOT_FULL_CLASSES,
+  DETAIL_SECTION_TITLE_CLASSES,
+  DETAIL_SHARE_BUTTON_CLASSES,
+  DETAIL_SOURCE_LINK_CLASSES,
+  DETAIL_SOURCE_ROW_CLASSES,
+  DETAIL_STATUS_FULL_CLASSES,
+  DETAIL_SUBSECTION_ROW_CLASSES,
+  DETAIL_TITLE_COL_CLASSES,
+  DETAIL_TOOLS_CLASSES,
+  DETAIL_TOOLS_LABEL_CLASSES,
+  DETAIL_TOOLS_ROW_CLASSES,
+  DETAIL_TOOL_ICON_CLASSES,
+  DETAIL_BAR_CLASSES,
+  DETAIL_BAR_LEADING_CLASSES,
+  DETAIL_TITLE_CENTERED_CLASSES,
+  SECTION_H1_CLASSES,
+  SECTION_RESULTS_TITLE_CLASSES,
+  GRID_SINGLE_CLASSES,
+  SECTION_PAGE_FULL_CLASSES,
 } from "./official-styles.js";
 import {
   HOMEPAGE_PREVIEW_LIMIT,
   PREVIEW_ICON_LIMIT,
   MANAGE_VISIBLE_ROWS,
   TEXT,
+  canEditPrivateSkill,
   installedCountLabel,
   showAllLabel,
   skillSubtitle,
@@ -98,6 +147,8 @@ import {
   type InstalledRow,
   type MarketplaceModel,
   type McpServer,
+  buildPluginDetail,
+  sectionGroup,
   type PrivateSkill,
 } from "./model.js";
 
@@ -159,10 +210,26 @@ function installStyles(): void {
     // here rather than scrolling the whole dialog.
     `${scope}{overflow:hidden !important;display:flex !important;flex-direction:column !important;}`,
     `${scope} > .${LAYOUT_MARKER}{min-height:0 !important;display:flex !important;flex-direction:column !important;}`,
-    // The scroller starts 48px below the layout's top edge in official 0.66 (dialog-relative
-    // y=49, height 652 = 700-48). Upstream gets that band from classes the 0.18 stylesheet does
-    // not carry, so it is pinned here rather than approximated by nudging the header.
-    `${scope} .${SCROLL_MARKER}{min-height:0 !important;flex:1 1 auto !important;margin-top:48px !important;overflow-y:auto !important;overscroll-behavior:contain !important;}`,
+    // Official keeps a 48px band between the layout top and the scroller: empty while the page is
+    // at the top, and holding a second copy of the search field once the real one scrolls away
+    // (measured official 0.66: band [1,1,798,48], scroller [1,49,798,652], switch between
+    // scrollTop 78 and 79). It is `position: relative`, not sticky. So the scroller carries NO
+    // top margin — it simply follows the band, and the band owns the 48px. An earlier revision
+    // emulated the reservation with `margin-top: 48px` on the scroller and had no band at all,
+    // which is why the pinned field had nowhere to go.
+    `${scope} .${PIN_BAND_MARKER}{position:relative !important;z-index:2 !important;flex:0 0 auto !important;height:48px !important;min-height:48px !important;box-sizing:border-box !important;display:flex !important;flex-direction:column !important;}`,
+    // The band only paints; the field inside it is the same flex-column recipe official uses.
+    `${scope} .${PIN_ROW_MARKER}{display:flex !important;flex-direction:column !important;min-height:0 !important;}`,
+    `${scope} .${PIN_PAD_MARKER}{display:flex !important;align-items:flex-start !important;min-height:0 !important;}`,
+    `${scope} .${PIN_WRAP_MARKER}{flex:1 1 auto !important;min-width:0 !important;}`,
+    `${scope} .${PIN_REL_MARKER}{min-width:0 !important;}`,
+    // The SKILL.md body is a raw markdown blob: long prose lines, fenced code, tables. A bare
+    // `<pre>` neither wraps nor shrinks, so it overflowed the 734px content column and Chromium
+    // clipped the right edge instead of scrolling it — the tail of every long line was simply
+    // unreadable. Wrap first (markdown is prose, not code to align) and keep the box from growing
+    // past the pane.
+    `${scope} .${SKILL_BODY_MARKER}{white-space:pre-wrap !important;overflow-wrap:anywhere !important;overflow-x:auto !important;max-width:100% !important;margin:0 !important;}`,
+    `${scope} .${SCROLL_MARKER}{min-height:0 !important;flex:1 1 auto !important;overflow-y:auto !important;overscroll-behavior:contain !important;}`,
     // `sand-1s169rl` (official's own pane class) is absent from 0.18's stylesheet; these are the
     // declarations it carried — a flex column, and the 32px inline-end gutter that makes the
     // content 734px wide inside the 798px pane (33 + 734 + 32 = 799 ≈ 800 minus the border).
@@ -235,6 +302,12 @@ const ROW_TRAILING_MARKER = "sand-plugins-row__trailing";
 const SEARCH_SHELL_MARKER = "sand-mkt-search-shell";
 const SEARCH_INNER_MARKER = "sand-mkt-search-inner";
 const SEARCH_INPUT_MARKER = "sand-mkt-search-input";
+const PIN_BAND_MARKER = "sand-mkt-pin-band";
+const PIN_ROW_MARKER = "sand-mkt-pin-row";
+const PIN_PAD_MARKER = "sand-mkt-pin-pad";
+const PIN_WRAP_MARKER = "sand-mkt-pin-wrap";
+const PIN_REL_MARKER = "sand-mkt-pin-rel";
+const SKILL_BODY_MARKER = "sand-mkt-skill-body";
 const PREVIEW_STACK_MARKER = "sand-mkt-preview-stack";
 const PREVIEW_BUTTON_MARKER = "sand-mkt-installed-preview";
 
@@ -242,13 +315,25 @@ const PREVIEW_BUTTON_MARKER = "sand-mkt-installed-preview";
  * View state
  * ------------------------------------------------------------------ */
 
+export type MarketplacePageKind = "browse" | "manage" | "section" | "detail" | "skill";
+
 export interface MarketplaceViewState {
   readonly model: MarketplaceModel;
   readonly installed: readonly InstalledRow[];
   readonly skills: readonly PrivateSkill[];
   readonly servers: readonly McpServer[];
-  /** Which page: the marketplace, or the manage sub-view. */
-  page: "browse" | "manage";
+  /**
+   * Which page is on screen. 0.66 pushes rather than swaps: 查看全部 and a row click both push a
+   * page that 返回 pops, so the kind alone is not enough to rebuild the body — the pushed payload
+   * below is what identifies the page. Captured ladder in docs/MARKETPLACE-066-EVIDENCE.md §1.
+   */
+  page: MarketplacePageKind;
+  /** The group whose 查看全部 was pressed. Set only while `page === "section"`. */
+  sectionGroup: BrowseGroup | null;
+  /** The row whose 打开 was pressed. Set only while `page === "detail"`. */
+  detailRow: BrowseRow | null;
+  /** The skill whose 打开 was pressed. Set only while `page === "skill"`. */
+  skillDetail: PrivateSkill | null;
   query: string;
   /** `onExpandInstalled` is a one-way latch upstream; it resets when the manage view is left. */
   installedExpanded: boolean;
@@ -258,6 +343,12 @@ export interface MarketplaceViewState {
   /** Non-null when the catalog call failed. Kept separate from `loading` so a failure is not
    *  indistinguishable from an account with no plugins. */
   catalogError: string | null;
+  /**
+   * Non-null when 私有技能 could not be read — almost always a box that is not running. It is a
+   * separate field from an empty `skills` array on purpose: "the host is down" and "you have no
+   * skills" are different answers and the section must not conflate them.
+   */
+  skillsError: string | null;
 }
 
 export interface MarketplaceViewHandlers {
@@ -270,7 +361,14 @@ export interface MarketplaceViewHandlers {
   readonly onAuthenticate: (serverId: string) => void;
   readonly onOpenRow: (row: BrowseRow) => void;
   readonly onOpenSkill: (skill: PrivateSkill) => void;
+  readonly onDeleteSkill: (skill: PrivateSkill) => void;
+  readonly onSaveSkill: (skill: PrivateSkill, draft: PrivateSkill) => void;
   readonly onViewAll: (group: BrowseGroup) => void;
+  /** Pops one level. Official's 返回 sits in the detail bar on BOTH pushed pages and always
+   *  returns to the page underneath, never straight to 市场. */
+  readonly onBack: () => void;
+  readonly onUninstall: (row: BrowseRow) => void;
+  readonly onShare: (row: BrowseRow) => void;
 }
 
 /* ------------------------------------------------------------------ *
@@ -310,6 +408,54 @@ function buildToolIcon(iconUrl: string, name: string, size: number): HTMLElement
 }
 
 /* ------------------------------------------------------------------ *
+ * Search field
+ * ------------------------------------------------------------------ */
+
+/**
+ * One search field. `compact` builds official's pinned variant: identical shell and input class
+ * lists, with the single height class swapped (`sand-10w6t97`, 32px, in-flow →
+ * `sand-1fgtraw`, 28px, pinned). Both are real official hashes and both already exist in 0.18's
+ * stylesheet, so the swap needs no lifted declaration — which is why the pinned field measures
+ * 718x28 while the in-flow one is 734x32.
+ *
+ * Official renders the same controlled field twice and typing in either filters the list; the
+ * renderer keeps one query in `state.query` and both inputs write to it, so `render` writes the
+ * value back to each.
+ */
+function buildSearchField(
+  compact: boolean,
+  onInput: (value: string) => void,
+): { shell: HTMLElement; input: HTMLInputElement } {
+  const shell = el("div", SEARCH_FIELD_SHELL_CLASSES);
+  applyClasses(shell, [SEARCH_SHELL_MARKER]);
+  const inner = el("div", SEARCH_FIELD_INNER_CLASSES);
+  applyClasses(inner, [SEARCH_INNER_MARKER]);
+  if (compact) {
+    inner.classList.remove("sand-10w6t97");
+    inner.classList.add(PIN_COMPACT_HEIGHT_CLASS);
+  }
+  const searchIcon = el("span", ICON_SPAN_CLASSES);
+  searchIcon.setAttribute("aria-hidden", "true");
+  searchIcon.setAttribute("data-size", "md");
+  searchIcon.append(glyph("search", GLYPH.search, 14));
+  inner.append(searchIcon);
+  const input = document.createElement("input");
+  applyClasses(input, SEARCH_INPUT_CLASSES);
+  input.classList.add(SEARCH_INPUT_MARKER);
+  input.type = "text";
+  input.placeholder = TEXT.searchPlaceholder;
+  input.setAttribute("aria-label", TEXT.searchPlaceholder);
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-autocomplete", "list");
+  input.setAttribute("aria-expanded", "false");
+  input.setAttribute("spellcheck", "false");
+  input.addEventListener("input", () => onInput(input.value));
+  inner.append(input);
+  shell.append(inner);
+  return { shell, input };
+}
+
+/* ------------------------------------------------------------------ *
  * Rows
  * ------------------------------------------------------------------ */
 
@@ -325,7 +471,10 @@ function buildToolIcon(iconUrl: string, name: string, size: number): HTMLElement
  *  children are 231x18 each, stacked at y=365 and y=383. */
 function buildRowText(name: string, subtitle: string): HTMLElement {
   const main = el("span", ROW_MAIN_CLASSES);
-  main.append(el("span", ROW_NAME_CLASSES, name));
+  // Three levels, verbatim: row__main > [wrapper > __name] + [__subtitle].
+  const nameWrapper = el("span", ROW_NAME_WRAPPER_CLASSES);
+  nameWrapper.append(el("span", ROW_NAME_CLASSES, name));
+  main.append(nameWrapper);
   main.append(el("span", ROW_SUBTITLE_CLASSES, subtitle));
   return main;
 }
@@ -422,7 +571,7 @@ function buildHomepageSection(
   items: readonly BrowseRow[],
   state: MarketplaceViewState,
   handlers: MarketplaceViewHandlers,
-  options: { readonly limit: number; readonly alwaysShowAction: boolean },
+  options: { readonly limit: number; readonly kind: BrowseGroup["kind"] },
 ): HTMLElement {
   const outer = el("section", SECTION_OUTER_CLASSES);
   const header = el("div", SECTION_ROW_CLASSES);
@@ -434,14 +583,17 @@ function buildHomepageSection(
   // Two different upstream thresholds live here and must not be conflated:
   //   - category groups: `c.plugins.length > 4`, rows `slice(0, 4)`
   //   - every other section: a computed `hiddenCount`
-  const overflows = options.alwaysShowAction
-    ? items.length > options.limit
-    : items.length > options.limit;
+  // Both homepage thresholds reduce to the same comparison upstream applies to the two section
+  // families (`c.plugins.length > 4` for buckets, a computed hiddenCount elsewhere); at the fixed
+  // 4-row preview they coincide, so the cap is the single gate for 查看全部.
+  const overflows = items.length > options.limit;
   if (overflows) {
     const action = el("button", GROUP_ACTION_CLASSES, TEXT.viewAll);
     action.type = "button";
+    // The pushed page's SHAPE comes from the group's kind, so it must travel with the group
+    // rather than be re-derived from the title at the far end of the stack.
     action.addEventListener("click", () =>
-      handlers.onViewAll({ key: titleId, title, items }),
+      handlers.onViewAll(sectionGroup(titleId, title, items, options.kind)),
     );
     header.append(action);
   }
@@ -514,7 +666,7 @@ function renderBrowse(
     root.append(
       buildHomepageSection(TEXT.forYou, "mkt-for-you", model.forYou, state, handlers, {
         limit: HOMEPAGE_PREVIEW_LIMIT,
-        alwaysShowAction: false,
+        kind: "featured",
       }),
     );
   }
@@ -522,7 +674,7 @@ function renderBrowse(
     root.append(
       buildHomepageSection(TEXT.featured, "mkt-featured", model.featured, state, handlers, {
         limit: HOMEPAGE_PREVIEW_LIMIT,
-        alwaysShowAction: true,
+        kind: "featured",
       }),
     );
   }
@@ -532,14 +684,14 @@ function renderBrowse(
   root.append(
     buildHomepageSection(TEXT.team, "mkt-team", model.team, state, handlers, {
       limit: HOMEPAGE_PREVIEW_LIMIT,
-      alwaysShowAction: false,
+      kind: "featured",
     }),
   );
   for (const group of model.categoryGroups) {
     root.append(
       buildHomepageSection(group.title, group.key, group.items, state, handlers, {
         limit: HOMEPAGE_PREVIEW_LIMIT,
-        alwaysShowAction: true,
+        kind: "bucket",
       }),
     );
   }
@@ -682,7 +834,11 @@ function renderManage(
   const matchedSkills = searching
     ? skills.filter((skill) => skill.name.toLocaleLowerCase().includes(trimmed.toLocaleLowerCase()))
     : skills;
-  if (matchedSkills.length === 0) {
+  if (state.skillsError != null) {
+    // An unreachable host must never read as "you have no skills". Upstream's empty state is only
+    // correct when the read actually succeeded and came back empty.
+    skillBody.append(buildEmptyState(state.skillsError));
+  } else if (matchedSkills.length === 0) {
     skillBody.append(
       buildEmptyState(searching ? `没有私有技能匹配“${trimmed}”` : TEXT.noPrivateSkills),
     );
@@ -694,6 +850,383 @@ function renderManage(
   root.append(buildGroupSection(TEXT.privateSkills, "mkt-private-skills", skillBody));
 
   groups.replaceChildren(root);
+}
+
+/* ------------------------------------------------------------------ *
+ * Page 3 — a section page, pushed by 查看全部
+ *
+ * 0.66 has two shapes here and they are not interchangeable (EVIDENCE §3):
+ *
+ *   featured  single column, 734px rows, `h1` carrying the section's own name, wrapped in
+ *             `.sand-plugins__marketplace`            — measured on 精选插件 (6 rows)
+ *   bucket    two columns of 363px, `h3` reading 结果,  no wrapper at all
+ *             — measured on 效率 (63 rows) and 研究 (11 rows)
+ *
+ * Neither paginates: 效率 renders all 63 rows into one scroll area and the dialog carries no
+ * 加载更多 / 下一页 affordance anywhere. The bucket name still reaches the user, but through the
+ * detail bar's centred title, not through the in-page heading.
+ * ------------------------------------------------------------------ */
+
+function renderSection(
+  groups: HTMLElement,
+  group: BrowseGroup,
+  state: MarketplaceViewState,
+  handlers: MarketplaceViewHandlers,
+): void {
+  const section = el("section", SECTION_OUTER_CLASSES);
+  const header = el("div", SECTION_ROW_CLASSES);
+  // The heading TAG differs between the two shapes, not just its class list: official renders the
+  // featured section's own name in an `h1` (44px, measured `[65,231,107,44]`) and the bucket page's
+  // 结果 in an `h3` (34px, measured `[65,231,48,34]`). Reusing one tag for both would change the
+  // document outline as well as the type scale.
+  const heading = el(
+    group.kind === "featured" ? "h1" : "h3",
+    group.kind === "featured" ? SECTION_H1_CLASSES : SECTION_RESULTS_TITLE_CLASSES,
+    group.kind === "featured" ? group.title : TEXT.results,
+  );
+  heading.id = `mkt-section-${group.key}`;
+  header.append(heading);
+  section.append(header);
+
+  // One class swaps the grid between 1×734px and 2×363px; see GRID_SINGLE_CLASSES.
+  const grid = el("ul", group.kind === "featured" ? GRID_SINGLE_CLASSES : GRID_CLASSES);
+  for (const item of group.items) grid.append(buildBrowseRow(item, state, handlers));
+  section.append(grid);
+
+  if (group.kind === "featured") {
+    // Only the featured page carries the wrapper; the results page puts the bare section in the
+    // pane, and adding the wrapper there would be a fabricated structural difference.
+    const wrapper = el("div", SECTION_PAGE_FULL_CLASSES);
+    wrapper.append(section);
+    groups.replaceChildren(wrapper);
+    return;
+  }
+  groups.replaceChildren(section);
+}
+
+/* ------------------------------------------------------------------ *
+ * Page 4 — the plugin detail page
+ * ------------------------------------------------------------------ */
+
+function buildDetailSection(title: string, count?: string): HTMLElement {
+  const block = el("div", []);
+  if (count == null) {
+    const heading = el("h3", DETAIL_SECTION_TITLE_CLASSES, title);
+    block.append(heading);
+    return block;
+  }
+  const row = el("div", DETAIL_SUBSECTION_ROW_CLASSES);
+  row.append(el("h3", DETAIL_SECTION_TITLE_CLASSES, title));
+  row.append(el("span", DETAIL_SECTION_TITLE_CLASSES, count));
+  block.append(row);
+  return block;
+}
+
+function buildDetailListRow(
+  term: string,
+  value: string,
+  withDivider: boolean,
+): DocumentFragment {
+  const fragment = document.createDocumentFragment();
+  const row = el("div", DETAIL_INFO_ROW_CLASSES);
+  row.append(el("dt", DETAIL_INFO_TERM_CLASSES, term));
+  row.append(el("dd", DETAIL_INFO_VALUE_CLASSES, value));
+  fragment.append(row);
+  if (withDivider) fragment.append(el("div", DETAIL_DIVIDER_CLASSES));
+  return fragment;
+}
+
+/**
+ * 私有技能 detail — the third surface, opened from the manage page's 私有技能 rows.
+ *
+ * Structure reuses the plugin detail page's official class names (same `DETAIL_*` recipe), because
+ * upstream renders both through the same detail shell — the header band, the description line and
+ * the `信息` term/value rows are identical furniture. Only the body differs: a plugin lists
+ * 账户/工具/应用, a skill lists its own fields and, when it is user-written, an edit form.
+ *
+ * Two rules are upstream's, not this port's:
+ *  - editing is offered ONLY for `source === "workflow"` (`canEditPrivateSkill`,
+ *    `view-B5Ug8wEm.js#L1377`). A `managed` skill is installed by the platform; writing to its file
+ *    would edit something the product owns.
+ *  - the provenance line is `已发布` only for `plugin` (`skillSubtitle`, `#L770`).
+ */
+function renderSkillDetail(
+  groups: HTMLElement,
+  skill: PrivateSkill,
+  state: MarketplaceViewState,
+  handlers: MarketplaceViewHandlers,
+): void {
+  const root = el("div", DETAIL_ROOT_FULL_CLASSES);
+
+  /* --- header band: file icon, name, provenance, 删除 --- */
+  const head = el("div", []);
+  const header = el("header", DETAIL_HEADER_CLASSES);
+  const icon = el("span", SKILL_ICON_CLASSES);
+  icon.setAttribute("aria-hidden", "true");
+  icon.append(glyph("file-list", GLYPH.fileList, 20));
+  header.append(icon);
+
+  const titleCol = el("div", DETAIL_TITLE_COL_CLASSES);
+  const nameRow = el("div", DETAIL_NAME_ROW_CLASSES);
+  const name = el("h3", DETAIL_NAME_CLASSES, skill.name);
+  name.id = "sand-plugins-detail-heading";
+  nameRow.append(name);
+  titleCol.append(nameRow);
+  titleCol.append(el("span", DETAIL_SOURCE_ROW_CLASSES, skillSubtitle(skill)));
+  header.append(titleCol);
+
+  const actions = el("div", DETAIL_ACTIONS_CLASSES);
+  const remove = el("button", DETAIL_PRIMARY_BUTTON_CLASSES, TEXT.delete);
+  remove.type = "button";
+  remove.disabled = state.busy;
+  remove.addEventListener("click", () => handlers.onDeleteSkill(skill));
+  actions.append(remove);
+  header.append(actions);
+
+  head.append(header);
+  if (skill.description.length > 0) head.append(el("p", DETAIL_DESC_CLASSES, skill.description));
+  root.append(head);
+
+  /* --- 信息 --- */
+  const body = el("div", DETAIL_BODY_CLASSES);
+  const infoBlock = buildDetailSection(TEXT.detailInfo);
+  const info = el("dl", DETAIL_INFO_LIST_CLASSES);
+  info.append(buildDetailListRow(TEXT.skillProvenance, TEXT.skillProvenanceFor(skill.source), true));
+  info.append(buildDetailListRow(TEXT.skillLocation, TEXT.skillLocationFor(skill.source), true));
+  info.append(buildDetailListRow(TEXT.skillStatus, skill.enabled ? TEXT.toolsEnabled : TEXT.skillDisabled, false));
+  infoBlock.append(info);
+  body.append(infoBlock);
+
+  /* --- the SKILL.md body --- */
+  if (skill.body.length > 0) {
+    const bodyBlock = buildDetailSection(TEXT.skillBody);
+    const pre = el("pre", DETAIL_DESC_CLASSES, skill.body);
+    applyClasses(pre, [SKILL_BODY_MARKER]);
+    bodyBlock.append(pre);
+    body.append(bodyBlock);
+  }
+
+  /* --- edit form, user-written skills only --- */
+  const editable = skill.source === "workflow";
+  if (editable) {
+    const editBlock = buildDetailSection(TEXT.edit);
+    const form = el("div", DETAIL_INFO_LIST_CLASSES);
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = skill.name;
+    nameInput.setAttribute("aria-label", TEXT.skillName);
+    form.append(nameInput);
+
+    const descInput = document.createElement("input");
+    descInput.type = "text";
+    descInput.value = skill.description;
+    descInput.setAttribute("aria-label", TEXT.skillDescription);
+    form.append(descInput);
+
+    const bodyInput = document.createElement("textarea");
+    bodyInput.value = skill.body;
+    bodyInput.rows = 12;
+    bodyInput.setAttribute("aria-label", TEXT.skillBody);
+    form.append(bodyInput);
+
+    // Upstream enables 保存 only when the draft is valid AND actually different
+    // (`canEditPrivateSkill`), so the button is recomputed on every keystroke rather than on submit.
+    const save = el("button", DETAIL_PRIMARY_BUTTON_CLASSES, TEXT.save);
+    save.type = "button";
+    const draft = (): PrivateSkill =>
+      ({ ...skill, name: nameInput.value, description: descInput.value, body: bodyInput.value });
+    const sync = (): void => {
+      save.disabled = state.busy || !canEditPrivateSkill(skill, draft());
+    };
+    for (const field of [nameInput, descInput, bodyInput]) {
+      field.addEventListener("input", sync);
+    }
+    save.addEventListener("click", () => handlers.onSaveSkill(skill, draft()));
+    form.append(save);
+    editBlock.append(form);
+    body.append(editBlock);
+    sync();
+  } else {
+    // A platform-installed skill has no edit affordance at all — not a disabled button, because
+    // upstream simply does not render the control.
+    body.append(buildEmptyState(TEXT.skillReadOnly));
+  }
+
+  root.append(body);
+  groups.replaceChildren(root);
+}
+
+function renderDetail(
+  groups: HTMLElement,
+  row: BrowseRow,
+  state: MarketplaceViewState,
+  handlers: MarketplaceViewHandlers,
+): void {
+  const detail = buildPluginDetail(row, state.servers.find((s) => matchesServer(s, row)) ?? null);
+  const root = el("div", DETAIL_ROOT_FULL_CLASSES);
+
+  /* --- header band: logo, name, source link, 分享 + 添加/卸载 --- */
+  const head = el("div", []);
+  const header = el("header", DETAIL_HEADER_CLASSES);
+  header.append(buildDetailToolIcon(detail.iconUrl, detail.name));
+
+  const titleCol = el("div", DETAIL_TITLE_COL_CLASSES);
+  const nameRow = el("div", DETAIL_NAME_ROW_CLASSES);
+  const name = el("h3", DETAIL_NAME_CLASSES, detail.name);
+  name.id = "sand-plugins-detail-heading";
+  nameRow.append(name);
+  const copy = el("button", COPY_LINK_BUTTON_CLASSES);
+  copy.type = "button";
+  copy.setAttribute("aria-label", TEXT.copyPluginLink);
+  copy.append(glyph("copy", GLYPH.copy, 12));
+  // Official's copy-link affordance writes the plugin's own URL — the same value 查看源码 links
+  // to. Both buttons therefore route to the same handler rather than re-deriving the URL.
+  copy.addEventListener("click", () => handlers.onShare(row));
+  nameRow.append(copy);
+  titleCol.append(nameRow);
+
+  if (detail.sourceUrl.length > 0) {
+    const sourceRow = el("span", DETAIL_SOURCE_ROW_CLASSES);
+    const link = el("a", DETAIL_SOURCE_LINK_CLASSES, TEXT.viewSource);
+    link.href = detail.sourceUrl;
+    link.target = "_blank";
+    link.rel = "noreferrer noopener";
+    sourceRow.append(link);
+    sourceRow.append(glyph("arrow-up-right", GLYPH.externalLink, 13));
+    titleCol.append(sourceRow);
+  }
+  header.append(titleCol);
+
+  const actions = el("div", DETAIL_ACTIONS_CLASSES);
+  const share = el("button", DETAIL_SHARE_BUTTON_CLASSES, TEXT.share);
+  share.type = "button";
+  share.append(glyph("share", GLYPH.share, 14));
+  share.addEventListener("click", () => handlers.onShare(row));
+  actions.append(share);
+  const primary = el(
+    "button",
+    DETAIL_PRIMARY_BUTTON_CLASSES,
+    detail.isInstalled ? TEXT.uninstall : TEXT.add,
+  );
+  primary.type = "button";
+  if (detail.isInstalled) primary.addEventListener("click", () => handlers.onUninstall(row));
+  else primary.addEventListener("click", () => handlers.onAdd(row));
+  actions.append(primary);
+  header.append(actions);
+
+  head.append(header);
+  if (detail.description.length > 0) {
+    head.append(el("p", DETAIL_DESC_CLASSES, detail.description));
+  }
+  root.append(head);
+
+  /* --- body: 账户 / 工具 / 应用 / 信息 --- */
+  const body = el("div", DETAIL_BODY_CLASSES);
+
+  // 账户 — installed only. Official gates it on the plugin having a configured account, so an
+  // installed plugin with no account row omits the whole section rather than showing an empty one.
+  if (detail.accounts.length > 0) {
+    const block = buildDetailSection(TEXT.detailAccounts);
+    const list = el("div", DETAIL_ACCOUNTS_CLASSES);
+    detail.accounts.forEach((account, index) => {
+      const accountRow = el("div", DETAIL_INFO_ROW_CLASSES);
+      const term = el("dt", DETAIL_INFO_TERM_CLASSES, account.key);
+      const holder = el("span", DETAIL_ACCOUNT_NAME_CLASSES);
+      holder.append(term);
+      const edit = el("button", DETAIL_EDIT_ACCOUNT_FULL_CLASSES);
+      edit.type = "button";
+      edit.setAttribute("aria-label", TEXT.editAccount(account.key));
+      edit.append(glyph("pencil", GLYPH.pencil, 10));
+      holder.append(edit);
+      accountRow.append(holder);
+      const status = el("dd", DETAIL_STATUS_FULL_CLASSES, statusLabel(account.status));
+      accountRow.append(status);
+      list.append(accountRow);
+      if (index < detail.accounts.length - 1) list.append(el("div", DETAIL_DIVIDER_CLASSES));
+    });
+    list.append(el("div", DETAIL_DIVIDER_CLASSES));
+    const addAccount = el("button", DETAIL_ADD_ACCOUNT_FULL_CLASSES);
+    addAccount.type = "button";
+    addAccount.setAttribute("aria-label", TEXT.addAccount);
+    addAccount.append(glyph("plus", GLYPH.plus, 10));
+    list.append(addAccount);
+    block.append(list);
+    body.append(block);
+  }
+
+  // 工具 — installed only.
+  if (detail.toolsLabel != null) {
+    const block = buildDetailSection(TEXT.detailTools);
+    const list = el("div", DETAIL_TOOLS_CLASSES);
+    const toolRow = el("button", DETAIL_TOOLS_ROW_CLASSES);
+    toolRow.type = "button";
+    toolRow.append(el("span", DETAIL_TOOLS_LABEL_CLASSES, detail.toolsLabel));
+    toolRow.append(glyph("chevron-right", GLYPH.chevronRight, 10));
+    list.append(toolRow);
+    block.append(list);
+    body.append(block);
+  }
+
+  // 应用 — always. Official heads it with the connector count and lists one row per connector.
+  const apps = buildDetailSection(TEXT.detailApps, String(detail.connectors.length));
+  if (detail.connectors.length > 0) {
+    const list = el("div", DETAIL_CONNECTORS_CLASSES);
+    for (const connector of detail.connectors) {
+      const item = el("div", DETAIL_CONNECTOR_ROW_CLASSES);
+      item.append(glyph("plug", GLYPH.plug, 16));
+      const text = el("span", []);
+      text.append(el("span", DETAIL_CONNECTOR_NAME_CLASSES, connector.name));
+      text.append(el("span", DETAIL_CONNECTOR_KIND_CLASSES, TEXT.connectorLabel));
+      item.append(text);
+      list.append(item);
+    }
+    apps.append(list);
+  }
+  body.append(apps);
+
+  // 信息 — one dt/dd pair per field the entry actually carries, in official's order.
+  const info = buildDetailSection(TEXT.detailInfo);
+  const list = el("dl", DETAIL_INFO_LIST_CLASSES);
+  detail.info.forEach((entry, index) => {
+    list.append(buildDetailListRow(entry.label, entry.value, index < detail.info.length - 1));
+  });
+  info.append(list);
+  body.append(info);
+
+  root.append(body);
+  groups.replaceChildren(root);
+}
+
+function buildDetailToolIcon(iconUrl: string, name: string): HTMLElement {
+  const box = el("span", DETAIL_TOOL_ICON_CLASSES);
+  box.setAttribute("aria-hidden", "true");
+  if (iconUrl.length > 0) {
+    const image = document.createElement("img");
+    image.alt = "";
+    image.decoding = "async";
+    image.width = 55;
+    image.height = 55;
+    image.src = iconUrl;
+    applyClasses(image, TOOL_IMG_CLASSES);
+    box.append(image);
+  } else {
+    const monogram = el("span", [], name.trim().charAt(0).toLocaleUpperCase());
+    monogram.setAttribute("aria-hidden", "true");
+    monogram.style.display = "grid";
+    monogram.style.placeItems = "center";
+    monogram.style.width = "100%";
+    monogram.style.height = "100%";
+    monogram.style.fontSize = "25px";
+    monogram.style.fontWeight = "600";
+    box.append(monogram);
+  }
+  return box;
+}
+
+function matchesServer(server: McpServer, row: BrowseRow): boolean {
+  const name = str(server.name);
+  return name.split(":")[0] === row.name;
 }
 
 /* ------------------------------------------------------------------ *
@@ -788,6 +1321,13 @@ export function createMarketplaceDialog(
   close.addEventListener("click", () => handlers.close());
   layout.append(close);
 
+  // The 48px band. Present on BOTH pages and always the same height, exactly as official: on the
+  // manage page it is measured empty even when the page is scrolled to the very bottom, so the
+  // pinned field is a marketplace-page affordance only.
+  const pinBand = el("div", PIN_BAND_CLASSES);
+  applyClasses(pinBand, [PIN_BAND_MARKER]);
+  layout.append(pinBand);
+
   const pane = el("div", PANE_CLASSES);
   applyClasses(pane, [SCROLL_MARKER]);
 
@@ -802,30 +1342,69 @@ export function createMarketplaceDialog(
   content.append(header);
 
   const searchHolder = el("div", SEARCH_HOLDER_CLASSES);
-  const shell = el("div", SEARCH_FIELD_SHELL_CLASSES);
-  applyClasses(shell, [SEARCH_SHELL_MARKER]);
-  const inner = el("div", SEARCH_FIELD_INNER_CLASSES);
-  applyClasses(inner, [SEARCH_INNER_MARKER]);
-  const searchIcon = el("span", ICON_SPAN_CLASSES);
-  searchIcon.setAttribute("aria-hidden", "true");
-  searchIcon.setAttribute("data-size", "md");
-  searchIcon.append(glyph("search", GLYPH.search, 14));
-  inner.append(searchIcon);
-  const input = document.createElement("input");
-  applyClasses(input, SEARCH_INPUT_CLASSES);
-  input.classList.add(SEARCH_INPUT_MARKER);
-  input.type = "text";
-  input.placeholder = TEXT.searchPlaceholder;
-  input.setAttribute("aria-label", TEXT.searchPlaceholder);
-  input.setAttribute("role", "combobox");
-  input.setAttribute("aria-autocomplete", "list");
-  input.setAttribute("aria-expanded", "false");
-  input.setAttribute("spellcheck", "false");
-  input.addEventListener("input", () => handlers.onQuery(input.value));
-  inner.append(input);
-  shell.append(inner);
-  searchHolder.append(shell);
+  const mainSearch = buildSearchField(false, (value) => handlers.onQuery(value));
+  searchHolder.append(mainSearch.shell);
   content.append(searchHolder);
+  const input = mainSearch.input;
+
+  /* --- the pinned copy, created on first need and then shown/hidden --- */
+  const pinRow = el("div", PIN_ROW_CLASSES);
+  applyClasses(pinRow, [PIN_ROW_MARKER]);
+  const pinPad = el("div", PIN_PAD_CLASSES);
+  applyClasses(pinPad, [PIN_PAD_MARKER]);
+  const pinWrap = el("div", PIN_FIELD_WRAP_CLASSES);
+  applyClasses(pinWrap, [PIN_WRAP_MARKER]);
+  const pinRel = el("div", PIN_FIELD_REL_CLASSES);
+  applyClasses(pinRel, [PIN_REL_MARKER]);
+  const pinSearch = buildSearchField(true, (value) => handlers.onQuery(value));
+  pinRel.append(pinSearch.shell);
+  pinWrap.append(pinRel);
+  pinPad.append(pinWrap);
+  pinRow.append(pinPad);
+  let pinMounted = false;
+  // Mirrors `state.page` for `syncPin`, which the scroll listener can fire before the next render.
+  let page: MarketplaceViewState["page"] = initial.page;
+
+  const mountPin = (): void => {
+    if (pinMounted) return;
+    pinMounted = true;
+    pinBand.append(pinRow);
+    if (pinSearch.input.value !== input.value) pinSearch.input.value = input.value;
+  };
+  const unmountPin = (): void => {
+    if (!pinMounted) return;
+    pinMounted = false;
+    pinRow.remove();
+  };
+
+  /**
+   * Official's switch, reproduced from its measured geometry rather than a scroll listener with a
+   * magic number: the band is a real 48px strip and the pinned field appears once the in-flow
+   * field's bottom edge has passed the band's bottom edge. On official that boundary sits between
+   * scrollTop 78 (one input) and 79 (two inputs); computing it from the two rects reproduces the
+   * same switch and — unlike a hardcoded 79 — stays correct if either box changes size.
+   *
+   * Comparing the two rects directly (rather than through the scroller) also makes this a no-op
+   * for free whenever the field is not scrolled: at rest the field's bottom is below the band's.
+   */
+  const syncPin = (): void => {
+    if (page !== "browse") {
+      unmountPin();
+      return;
+    }
+    if (searchHolder.style.display === "none") {
+      unmountPin();
+      return;
+    }
+    const bandBottom = pinBand.getBoundingClientRect().bottom;
+    const fieldBottom = searchHolder.getBoundingClientRect().bottom;
+    if (fieldBottom < bandBottom) mountPin();
+    else unmountPin();
+  };
+
+  const onScroll = (): void => syncPin();
+  pane.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
 
   // The page body lives in its own container so re-rendering a page never disturbs the header
   // and the search field, which stay mounted across the 市场 ↔ 管理 swap.
@@ -847,12 +1426,48 @@ export function createMarketplaceDialog(
   document.addEventListener("keydown", onKeydown, true);
   scrim.addEventListener("click", () => handlers.close());
 
+  let lastPage: MarketplacePageKind = initial.page;
   const render = (state: MarketplaceViewState): void => {
-    dialog.setAttribute("aria-label", state.page === "manage" ? TEXT.market : TEXT.market);
+    // Official pushes a page rather than swapping content in place, and each pushed page opens
+    // scrolled to its own top. Detecting the change here keeps that from depending on which
+    // handler happened to move the page.
+    const pushed = state.page !== lastPage;
+    lastPage = state.page;
+    dialog.setAttribute("aria-label", TEXT.market);
     // Header: the marketplace page carries the `h2` title + installed preview; the manage page
     // carries the back bar with the "管理" detail title. Upstream swaps them, it does not stack.
     header.replaceChildren();
-    if (state.page === "manage") {
+    if (state.page === "section" || state.page === "detail" || state.page === "skill") {
+      // Both pushed pages share one header: `sand-settings-detail-bar` carrying an icon-only
+      // 返回 at x=43 and the page name centred. Official centres the title rather than
+      // left-aligning it — measured x=404 for 精选插件 (w=56) and x=413 for Gmail (w=38), both
+      // landing on the bar's 432px midline — so the class list alone reproduces it.
+      // A pushed page's header title is the payload's own name. The skill surface joins the same
+      // bar: an icon-only 返回 on the left, the skill's name centred, exactly like 插件详情.
+      const pushedTitle =
+        state.page === "detail"
+          ? (state.detailRow?.name ?? "")
+          : state.page === "skill"
+            ? (state.skillDetail?.name ?? "")
+            : (state.sectionGroup?.title ?? TEXT.market);
+      const bar = el("div", DETAIL_BAR_CLASSES);
+      const leading = el("div", DETAIL_BAR_LEADING_CLASSES);
+      const backButton = el("button", BACK_BUTTON_CLASSES);
+      backButton.type = "button";
+      backButton.setAttribute("aria-label", TEXT.back);
+      const backIcon = el("span", ICON_SPAN_CLASSES);
+      backIcon.setAttribute("aria-hidden", "true");
+      backIcon.append(glyph("chevron-left", GLYPH.chevronLeft, 16));
+      backButton.append(backIcon);
+      backButton.addEventListener("click", () => handlers.onBack());
+      leading.append(backButton);
+      bar.append(leading);
+      const detailTitle = el("h3", DETAIL_TITLE_CENTERED_CLASSES, pushedTitle);
+      detailTitle.id = "sand-plugins-modal-heading";
+      bar.append(detailTitle);
+      header.append(bar);
+      searchHolder.style.display = "none";
+    } else if (state.page === "manage") {
       const bar = el("div", BACK_BAR_CLASSES);
       const leading = el("div", BACK_LEADING_CLASSES);
       const backButton = el("button", BACK_BUTTON_CLASSES);
@@ -887,13 +1502,33 @@ export function createMarketplaceDialog(
     }
 
     if (input.value !== state.query) input.value = state.query;
+    // The pinned input is the same controlled field; keep it in step so a query typed into either
+    // copy reads the same in both. Measured on official: typing in the pinned field leaves BOTH
+    // inputs holding the text and filters the list below.
+    if (pinSearch.input.value !== state.query) pinSearch.input.value = state.query;
 
+    page = state.page;
     if (state.page === "manage") renderManage(groups, state, handlers);
-    else renderBrowse(groups, state, handlers);
+    else if (state.page === "section" && state.sectionGroup != null) {
+      renderSection(groups, state.sectionGroup, state, handlers);
+    } else if (state.page === "detail" && state.detailRow != null) {
+      renderDetail(groups, state.detailRow, state, handlers);
+    } else if (state.page === "skill" && state.skillDetail != null) {
+      renderSkillDetail(groups, state.skillDetail, state, handlers);
+    } else renderBrowse(groups, state, handlers);
+    // A pushed page always starts at the top of its own content; official's scroller resets on
+    // every push, so arriving mid-scroll after 返回 would be a navigation the user never made.
+    if (pushed) pane.scrollTop = 0;
+    // Re-check after the body swapped: official keeps the band empty on the manage page whatever
+    // the scroll position, and the browse page can become non-scrollable after a search, which
+    // must retract the pinned field too.
+    syncPin();
   };
 
   const destroy = (): void => {
     document.removeEventListener("keydown", onKeydown, true);
+    pane.removeEventListener("scroll", onScroll);
+    window.removeEventListener("resize", onScroll);
     layer.remove();
   };
 

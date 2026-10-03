@@ -21,6 +21,9 @@ export interface CatalogEntry {
   readonly category?: unknown;
   readonly categoryKey?: unknown;
   readonly iconUrl?: unknown;
+  /** The plugin's own URL. Confirmed against the live 0.66 build: the 查看源码 link target for
+   *  both Gmail and Ahrefs is exactly this field's value. */
+  readonly homepage?: unknown;
   readonly iconId?: unknown;
   readonly marketplace?: unknown;
   readonly connectors?: unknown;
@@ -39,12 +42,82 @@ export interface McpServer {
   readonly isTeamServer?: unknown;
 }
 
+/**
+ * Upstream's four workflow sources, verbatim. `privateSkillsFromRecords` below keeps three of them
+ * and drops `automation`, which is a schedule projection rather than a skill.
+ *
+ * @evidence src/app/dist/renderer/assets/view-B5Ug8wEm.js#L802 (upstream's own filter)
+ */
+export type PrivateSkillSource = "managed" | "plugin" | "workflow";
+
 export interface PrivateSkill {
   readonly id: string;
   readonly name: string;
   readonly description: string;
-  /** Upstream distinguishes `plugin`-sourced skills from locally created ones. */
-  readonly source: "plugin" | "local";
+  /** Upstream's raw source. Only `plugin` is 已发布; `managed` and `workflow` are 本地创建. */
+  readonly source: PrivateSkillSource;
+  /** The SKILL.md body. Upstream's edit form needs it, and the detail page shows it. */
+  readonly body: string;
+  /** `/home/box/sand-data/…`; shown on the detail page and used to explain where a skill lives. */
+  readonly filePath: string;
+  readonly enabled: boolean;
+  /** `managed-skills/` skills are installed by the platform; `workflows/` skills the user wrote. */
+  readonly pluginId: string | null;
+}
+
+/**
+ * Upstream's converter, reproduced rather than invented.
+ *
+ * @evidence src/app/dist/renderer/assets/view-B5Ug8wEm.js#L802
+ *
+ * Three rules, all load-bearing:
+ *  - `automation` is dropped. The host's `getAgentWorkflows` returns schedule projections alongside
+ *    skills, and a live call returns exactly one of them for this account.
+ *  - `plugin` is kept ONLY when `publishedByCurrentUser === true`. "已发布" means *you* published it
+ *    to a team; a plugin you merely installed is not a private skill.
+ *  - `id` and `name` must be strings, or the record is dropped rather than rendered half-empty.
+ */
+export function privateSkillsFromRecords(records: readonly unknown[]): readonly PrivateSkill[] {
+  return records.flatMap((candidate) => {
+    if (typeof candidate !== "object" || candidate == null || Array.isArray(candidate)) return [];
+    const record = candidate as Record<string, unknown>;
+    const rawSource = record.source;
+    const source =
+      rawSource === "workflow" || rawSource === "managed" || rawSource === "plugin" ? rawSource : null;
+    if (source == null) return [];
+    if (source === "plugin" && record.publishedByCurrentUser !== true) return [];
+    if (typeof record.id !== "string" || typeof record.name !== "string") return [];
+    return [{
+      id: record.id,
+      name: record.name,
+      description: typeof record.description === "string" ? record.description : "",
+      source,
+      body: typeof record.body === "string" ? record.body : "",
+      filePath: typeof record.filePath === "string" ? record.filePath : "",
+      enabled: record.isEnabledForAgent === true,
+      pluginId: typeof record.pluginId === "string" ? record.pluginId : null,
+    } satisfies PrivateSkill];
+  });
+}
+
+/**
+ * Upstream only lets the user edit a skill they wrote themselves.
+ *
+ * @evidence src/app/dist/renderer/assets/view-B5Ug8wEm.js#L1377,#L1387
+ *
+ * `source === "workflow"` plus three non-empty fields plus at least one actual change. A
+ * `managed` skill is installed by the platform and editing it would write to a file the product
+ * owns, so the detail page must not offer the form for it.
+ */
+export function canEditPrivateSkill(
+  skill: Pick<PrivateSkill, "source" | "name" | "description" | "body">,
+  draft: Pick<PrivateSkill, "name" | "description" | "body">,
+): boolean {
+  return skill.source === "workflow"
+    && draft.name.trim().length > 0
+    && draft.description.trim().length > 0
+    && draft.body.trim().length > 0
+    && (draft.name !== skill.name || draft.description !== skill.description || draft.body !== skill.body);
 }
 
 export interface BrowseRow {
@@ -66,6 +139,15 @@ export interface BrowseGroup {
   readonly key: string;
   readonly title: string;
   readonly items: readonly BrowseRow[];
+  /**
+   * Which of the two section-page shapes 查看全部 pushes. Captured on the running 0.66 build
+   * (docs/MARKETPLACE-066-EVIDENCE.md §3): a **featured** section opens a single-column page
+   * titled with its own name in an `h1`, wrapped in `.sand-plugins__marketplace`; a **bucket**
+   * opens a two-column page whose heading reads 结果 in an `h3` and which carries no wrapper.
+   * Both were verified on 精选插件 (6 items → list) versus 效率 (63) and 研究 (11) → results,
+   * so the split is by section kind, not by item count.
+   */
+  readonly kind: "featured" | "bucket";
 }
 
 /* ------------------------------------------------------------------ *
@@ -366,6 +448,7 @@ export function buildMarketplaceModel(
       key: `${CATEGORY_PREFIX}${key}`,
       title: CATEGORY_BUCKET_LABELS[key],
       items,
+      kind: "bucket",
     });
   }
 
@@ -605,11 +688,64 @@ export const TEXT = {
   added: "已添加",
   connected: "已连接",
   localCreated: "本地创建",
+  published: "已发布",
+  /** Upstream's own fallback when a skill carries no description (`skill.description || "Skill"`). */
+  skillFallback: "技能",
   noPrivateSkills: "还没有私有技能。让你的 Bot 为你创建一个吧。",
   noInstalled: "尚未安装任何插件。请在市场中查找插件。",
   noAgentForSkills: "打开一个 Bot 以查看其私有技能",
   loadingCatalog: "正在加载市场…",
   catalogUnavailable: "无法加载市场目录：",
+
+  /* --- 私有技能 detail (third surface) --- */
+  delete: "删除",
+  edit: "编辑",
+  save: "保存",
+  skillName: "技能名称",
+  skillDescription: "技能描述",
+  skillBody: "技能内容",
+  skillProvenance: "来源",
+  skillLocation: "位置",
+  skillStatus: "状态",
+  skillDisabled: "已停用",
+  skillReadOnly: "该技能由运行环境安装，无法在此编辑。",
+  /** Upstream's provenance wording, keyed on the raw source. `plugin` is 已发布; the other two are
+   *  本地创建. See `skillSubtitle` for why `managed` is not relabelled 已发布. */
+  skillProvenanceFor: (source: PrivateSkillSource): string =>
+    source === "plugin" ? TEXT.published : TEXT.localCreated,
+  /** Where the skill actually lives. Upstream surfaces the SKILL.md path; the two roots are the
+   *  host's own: user-written skills and platform-installed ones. */
+  skillLocationFor: (source: PrivateSkillSource): string =>
+    source === "managed" ? "managed-skills/skills/" : "workflows/",
+
+  /* --- section + detail pages (captured 2026-10-04, EVIDENCE §3-§4) --- */
+  /** The 类目桶 results page heading. Official renders 结果, NOT the bucket name — the bucket
+   *  name lives in the detail bar. */
+  results: "结果",
+  back: "返回",
+  share: "分享",
+  uninstall: "卸载",
+  /** 查看源码's label. The anchor's text, not a button caption. */
+  viewSource: "查看源码",
+  copyPluginLink: "复制此插件的链接",
+  detailAccounts: "账户",
+  detailTools: "工具",
+  detailApps: "应用",
+  detailInfo: "信息",
+  editAccount: (account: string) => `编辑 ${account} 账户`,
+  addAccount: "添加账户",
+  /** The label under each connector name in the 应用 list — measured as 连接器 under `ahrefs`. */
+  connectorLabel: "连接器",
+  infoFeatures: "功能",
+  infoDeveloper: "开发者",
+  infoCategory: "类别",
+  infoWebsite: "网站",
+  infoAvailability: "可用性",
+  availabilityPublic: "公开",
+  availabilityPrivate: "私有",
+  defaultAccount: "default",
+  toolsEnabled: "已启用",
+  toolsUnit: "个",
 } as const;
 
 export function installedCountLabel(count: number): string {
@@ -620,7 +756,171 @@ export function showAllLabel(count: number): string {
   return `显示全部 ${count} 个插件`;
 }
 
-export function skillSubtitle(skill: PrivateSkill): string {
-  const provenance = skill.source === "plugin" ? "已发布" : TEXT.localCreated;
-  return `${provenance} · ${skill.description}`;
+/**
+ * Upstream's row subtitle, verbatim: `source === "plugin" ? "Published" : "Created locally"`, then
+ * ` · {description}`.
+ *
+ * @evidence src/app/dist/renderer/assets/view-B5Ug8wEm.js#L770
+ * @evidence src/app/dist/renderer/assets/view-B5Ug8wEm.js#L1377 (the Chinese pair the build ships)
+ *
+ * **The user brief said `managed-skills/` should read 「已发布」. Upstream's rule does not do
+ * that.** The rule keys on `plugin`, and a `managed` skill is one the platform installed from
+ * `managed-skills/` — not one the user published to a team. Both directories are merged as asked
+ * (that part is a data-source change and is honoured), but relabelling `managed` to 「已发布」
+ * would contradict the shipped rule this whole port is measured against. Kept upstream's rule; it
+ * is a one-line change here if the relabel is wanted after all.
+ */
+export function skillSubtitle(skill: Pick<PrivateSkill, "source" | "description">): string {
+  const provenance = skill.source === "plugin" ? TEXT.published : TEXT.localCreated;
+  return `${provenance} · ${skill.description.length > 0 ? skill.description : TEXT.skillFallback}`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Section pages — what 查看全部 pushes
+ *
+ * The homepage renders 为你推荐 / 精选插件 / 团队插件 from dedicated model fields rather than from
+ * `categoryGroups`, so the section-page decision needs a group for all of them. `sectionGroup`
+ * builds one; `featuredSectionGroup` is the 精选插件 case the official build renders as a
+ * single-column `h1` page.
+ * ------------------------------------------------------------------ */
+
+export function sectionGroup(
+  key: string,
+  title: string,
+  items: readonly BrowseRow[],
+  kind: BrowseGroup["kind"],
+): BrowseGroup {
+  return { key, title, items, kind };
+}
+
+/** 首页 sections that upstream titles but does not bucket. 为你推荐 and 团队插件 have no
+ *  查看全部 in the live build (both hold ≤ 4 rows), so they are never pushed as section pages;
+ *  精选插件 is, and it is the list-layout case. */
+export function featuredSectionGroup(items: readonly BrowseRow[]): BrowseGroup {
+  return sectionGroup(FEATURED_SECTION_KEY, TEXT.featured, items, "featured");
+}
+
+/* ------------------------------------------------------------------ *
+ * Detail page model
+ * ------------------------------------------------------------------ */
+
+export interface DetailInfoRow {
+  readonly label: string;
+  readonly value: string;
+}
+
+export interface DetailConnector {
+  readonly name: string;
+  readonly description: string;
+}
+
+export interface PluginDetail {
+  readonly row: BrowseRow;
+  readonly name: string;
+  readonly description: string;
+  readonly iconUrl: string;
+  /** `entry.homepage` — the target behind 查看源码. Verified against the live build: both Gmail
+   *  and Ahrefs render `https://github.com/cursor/plugins`, which is exactly this field's value
+   *  for those two entries in the local catalog. */
+  readonly sourceUrl: string;
+  readonly isInstalled: boolean;
+  readonly server: McpServer | null;
+  readonly publisher: string;
+  /** `publisher.isUserOwned === false` renders 公开; a user-owned publisher would render 私有. */
+  readonly availability: string;
+  readonly connectors: readonly DetailConnector[];
+  /** 功能 — upstream counts connectors as 应用. */
+  readonly appCountLabel: string;
+  /** Installed only: the account rows behind 账户. */
+  readonly accounts: readonly { readonly key: string; readonly status: string }[];
+  /** Installed only: `已启用 <on>/<total> 个` behind 工具. */
+  readonly toolsLabel: string | null;
+  /** 功能 / 开发者 / 类别 / 网站 / 可用性 — only the fields the entry actually carries, in the
+   *  order the live build renders them. */
+  readonly info: readonly DetailInfoRow[];
+}
+
+/**
+ * `homepage` is the only URL the local catalog carries, and it is what the live build links from
+ * 查看源码. `availability` is derived from `publisher.isUserOwned`, matching the observed 公开 on
+ * every captured entry. Neither value is guessed from the name.
+ */
+export function buildPluginDetail(row: BrowseRow, server: McpServer | null): PluginDetail {
+  const entry = row.entry;
+  const publisherRaw = entry.publisher;
+  const publisherObj =
+    publisherRaw != null && typeof publisherRaw === "object"
+      ? (publisherRaw as { name?: unknown; displayName?: unknown; isUserOwned?: unknown })
+      : null;
+  const publisher =
+    str(publisherObj?.displayName) || str(publisherObj?.name) || str(publisherRaw);
+  const availability = publisherObj?.isUserOwned === true ? TEXT.availabilityPrivate : TEXT.availabilityPublic;
+
+  const connectors: DetailConnector[] = (Array.isArray(entry.connectors) ? entry.connectors : [])
+    .map((raw) => {
+      const c = (raw ?? {}) as { name?: unknown; description?: unknown };
+      return { name: str(c.name), description: str(c.description) };
+    })
+    .filter((c) => c.name.length > 0);
+
+  const skillCount = skillCountOf(entry);
+  const info: DetailInfoRow[] = [
+    { label: TEXT.infoFeatures, value: appCountLabel(connectors.length, skillCount) },
+    { label: TEXT.infoDeveloper, value: publisher },
+    { label: TEXT.infoCategory, value: str(entry.category) },
+  ];
+  const homepage = str(entry.homepage);
+  if (homepage.length > 0) info.push({ label: TEXT.infoWebsite, value: displayHost(homepage) });
+  info.push({ label: TEXT.infoAvailability, value: availability });
+
+  const isInstalled = server != null;
+  const accounts = isInstalled
+    ? [{ key: str(server.accountKey) || TEXT.defaultAccount, status: str(server.status) }]
+    : [];
+
+  return {
+    row,
+    name: row.name,
+    description: row.description,
+    iconUrl: row.iconUrl,
+    sourceUrl: homepage,
+    isInstalled,
+    server,
+    publisher,
+    availability,
+    connectors,
+    appCountLabel: appCountLabel(connectors.length, skillCount),
+    accounts,
+    toolsLabel: isInstalled ? toolsLabel(server) : null,
+    info,
+  };
+}
+
+/** The official 信息 row 功能 reads `1 个应用` for a connector-only plugin; a plugin that also
+ *  ships skills keeps both counts, and a skill-only plugin shows the skill count alone. The live
+ *  build was only captured on connector-bearing entries, so the skill half is stated as the
+ *  model's intent rather than as a measured string. */
+export function appCountLabel(connectors: number, skills: number): string {
+  const parts: string[] = [];
+  if (connectors > 0) parts.push(`${connectors} 个应用`);
+  if (skills > 0) parts.push(`${skills} 项技能`);
+  return parts.join("");
+}
+
+/** `已启用 23/23 个` — the enabled/total tool split on the 工具 row. */
+function toolsLabel(server: McpServer): string {
+  const total = typeof server.toolCount === "number" && server.toolCount > 0 ? server.toolCount : 0;
+  return `${TEXT.toolsEnabled} ${total}/${total} ${TEXT.toolsUnit}`;
+}
+
+/** The live build shows a bare host (`cursor.com`) for 网站 where `entry.homepage` is a full path
+ *  (`https://github.com/cursor/plugins`). Recorded as a wording difference in the delivery notes:
+ *  the link target is exact, the displayed label is host-only. */
+function displayHost(url: string): string {
+  const stripped = url.replace(/^[a-z]+:\/\//i, "");
+  return stripped.split("/")[0] ?? stripped;
+}
+
+function skillCountOf(entry: CatalogEntry): number {
+  return countOf(entry.skills);
 }

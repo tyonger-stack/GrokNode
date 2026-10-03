@@ -3,6 +3,7 @@ import type { ProductionDisposable, ProductionServiceContext } from "../main-pro
 import { registerExperimentsIpc } from "../experiments/experiments-ipc.js";
 import { registerSettingsIpc } from "../prefs/settings-ipc.js";
 import { createTrustedSenderGuards, registerSecretsIpc } from "../secrets/secrets-ipc.js";
+import { readLocalExecDaemonGatewayConnection, registerSkillsDesktopIpc } from "../skills/skills-desktop.js";
 import { reportDesktopEdgeFailure } from "../desktop-edge-failures.js";
 import { requireDisposable, requireFunction, requireObject } from "./provider-guards.js";
 
@@ -71,6 +72,18 @@ export function createProductionSettingsIpcRegistrar(): ProductionIpcRegistrar {
   };
 }
 
+/**
+ * Three-channel private-skills registration.  Unlike the phases above this one
+ * has no upstream 0.18 anchor: it is a reconstruction over the host gateway's
+ * existing agent-workflow API, so it is deliberately absent from
+ * ELECTRON_PRODUCTION_AREA_EVIDENCE.
+ */
+export function createProductionSkillsIpcRegistrar(): ProductionIpcRegistrar {
+  return (_context, ipc) => {
+    registerSkillsDesktopIpc({ ipc, resolveConnection: readLocalExecDaemonGatewayConnection });
+  };
+}
+
 export interface ProductionIpcPorts {
   readonly ipcMain?: ProductionIpcMainPort;
   /** The shipped main root owns these listeners for the process lifetime. */
@@ -85,6 +98,7 @@ export interface ProductionIpcPorts {
   readonly settings?: ProductionIpcRegistrar;
   readonly secrets?: ProductionIpcRegistrar;
   readonly mcp: ProductionIpcRegistrar;
+  readonly skills?: ProductionIpcRegistrar;
   readonly reportFailure: (stage: "rollback", error: unknown) => void;
 }
 
@@ -92,7 +106,9 @@ interface RegisteredListener { readonly kind: "handle" | "on"; readonly channel:
 
 /**
  * Artifact anchors: main.cjs:506609 coordinator handle, 506646 telemetry sinks,
- * 506703 experiments, 506722 settings, 506728 secrets, 506734 MCP.
+ * 506703 experiments, 506722 settings, 506728 secrets, 506734 MCP.  The trailing
+ * `skills` phase is a reconstruction over the host gateway and has no upstream
+ * anchor, so it is absent from ELECTRON_PRODUCTION_AREA_EVIDENCE.
  */
 export function createProductionIpcAdapter(
   ports: ProductionIpcPorts,
@@ -101,13 +117,14 @@ export function createProductionIpcAdapter(
   requireObject(ipcMain, "ipc.ipcMain");
   for (const method of ["handle", "removeHandler", "on", "removeListener"] as const) requireFunction(ipcMain[method], `ipc.ipcMain.${method}`);
   const ordered = ports.telemetry == null
-    ? ["experiments", "settings", "secrets", "mcp"] as const
-    : ["telemetry", "experiments", "settings", "secrets", "mcp"] as const;
+    ? ["experiments", "settings", "secrets", "mcp", "skills"] as const
+    : ["telemetry", "experiments", "settings", "secrets", "mcp", "skills"] as const;
   const registrars = {
     ...ports,
     experiments: ports.experiments ?? createProductionExperimentsIpcRegistrar(),
     settings: ports.settings ?? createProductionSettingsIpcRegistrar(),
     secrets: ports.secrets ?? createProductionSecretsIpcRegistrar(),
+    skills: ports.skills ?? createProductionSkillsIpcRegistrar(),
   };
   for (const name of ordered) requireFunction(registrars[name], `ipc.${name}`);
   requireFunction(ports.reportFailure, "ipc.reportFailure");

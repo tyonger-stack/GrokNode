@@ -184,6 +184,11 @@ export function createDesktopPreloadBridge(options: {
       toggleToolDisabled: (args: unknown) => ipc.invoke("sand:mcp-toggle-tool-disabled", args),
       onAuthCompleted: (listener: (payload: unknown) => void) => subscribeIpc(ipc, "sand:mcp-auth-event", listener),
     },
+    skills: {
+      list: (agentId: string) => ipc.invoke("sand:skills-list", { agentId }),
+      update: (agentId: string, workflowId: string, spec: unknown) => ipc.invoke("sand:skills-update", { agentId, workflowId, spec }),
+      remove: (agentId: string, workflowId: string) => ipc.invoke("sand:skills-remove", { agentId, workflowId }),
+    },
     async forceGatewayReconnect() { await edge("forceReconnectGateway"); },
     pickAvatarSource: () => edge("pickAvatarSource"),
     pickAvatarFile: () => edge("pickAvatarFile"),

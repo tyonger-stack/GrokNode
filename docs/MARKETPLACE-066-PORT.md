@@ -1,0 +1,124 @@
+# Grok Node — 0.66 App 市场递归移植交付说明
+
+日期：2026-10-04 · 基准：本机 `/Applications/Grok Bot.app` **0.66.0** · 取证方式：CDP 实时 dump
+（几何、类名、计算样式、字形码位），落库于 [MARKETPLACE-066-EVIDENCE.md](./MARKETPLACE-066-EVIDENCE.md)。
+
+---
+
+## 1. 页面与路由清单
+
+同一个 `role="dialog" aria-label="市场"` 内**推栈式**导航，`返回` 弹出一层，直到栈底才关闭弹窗。
+
+| 层级 | 页面 | 入口 | 页头形态 | 标题 | 列表布局 | 返回目标 |
+|------|------|------|----------|------|----------|----------|
+| L0 | **市场**（首页） | 侧栏「连接应用」pill | 标题行 + 搜索框 | `h2 市场` + 已安装预览 | 双列 363×2 | — |
+| L1a | **类目页 · 精选** | 首页「精选插件 → 查看全部」 | `sand-settings-detail-bar` | `h1 精选插件` | **单列 734** | L0 |
+| L1b | **类目页 · 结果** | 首页「效率/通信/设计/代码/数据/销售/财务/研究/登录与凭据管理 → 查看全部」 | `sand-settings-detail-bar` | `h3 结果`（桶名在页头） | **双列 363×2** | L0 |
+| L2 | **应用详情** | 任意列表行 `打开 <名称>` | `sand-settings-detail-bar` | `h3 <名称>` | — | L0 或 L1 |
+| L1′ | **管理插件和技能** | 首页「已安装 N 个 ›」 | `‹ 市场` 返回条 | `h3 管理` | 已安装网格 | 栈中上一层 |
+
+**两种类目页是官方真实存在的两种形态**，不是本移植的发挥：精选走单列 `h1` 页、且带
+`.sand-plugins__marketplace` 包裹层；类目桶走双列、标题写 `结果`、**不带**包裹层。
+实测样本：精选插件 6 行单列；效率 63 行、研究 11 行双列。
+
+**L0 区块顺序**（与截图逐项一致）：为你推荐 → 精选插件 → 团队插件 → 登录与凭据管理 →
+效率 → 通信 → 设计 → 代码 → 数据 → 销售 → 财务 → 研究 → 支持。
+`查看全部` 仅在区块行数 > 4（预览上限）时出现 —— 这正是截图中 `支持`（3 行）没有而其余都有
+`查看全部` 的原因。
+
+## 2. 功能点与原版对应
+
+| 原版功能 | 官方实现 | 本移植 | 状态 |
+|---------|---------|--------|------|
+| 市场首页 13 区块 | `vl` 渲染序 | `renderBrowse` | ✅ |
+| 类目「查看全部」→ 类目页 | `onSelectCategory` | `push({kind:"section"})` | ✅ |
+| 应用行 → 详情页 | 详情 pane | `push({kind:"detail"})` | ✅ |
+| `返回` 逐层回退 | detail bar 返回 | `pop()`，栈底才关闭 | ✅ |
+| 详情：描述 | `sand-plugins-detail__desc` | 同类名 | ✅ |
+| 详情：查看源码 | `<a href>` → `entry.homepage` | 同 | ✅ |
+| 详情：复制此插件的链接 | 剪贴板 | 同（与源码同 URL） | ✅ |
+| 详情：分享 | 分享按钮 | 剪贴板 | ⚠️ 见 D5 |
+| 详情：添加 / 卸载 | 按安装态切换 | 同（`添加`/`卸载`） | ✅ |
+| 详情：账户（已安装才有） | `__accounts` + 编辑账户 + 状态 | 同 | ⚠️ 见 D6 |
+| 详情：工具（已安装才有） | `__tools` 已启用 n/n 个 | 同 | ⚠️ 见 D7 |
+| 详情：应用（连接器） | `__connectors` | 同 | ✅ |
+| 详情：信息 | `dt`/`dd` 条件渲染 | 同 | ✅ |
+| 长列表继续下翻 | 单一滚动区 | 同（**无分页按钮**，见下） | ✅ |
+
+**关于「翻页」**：官方类目页**没有分页控件**。效率类目 63 行全部渲染进一个滚动区
+（`scrollHeight 2202` vs `clientHeight 652`），弹窗内不存在「加载更多 / 下一页」。所以「保持可继续
+向下翻页加载」在官方语义下就是**连续纵向滚动**，本移植照此实现，没有编造分页按钮。
+
+## 3. 与截图 / 官方的差异清单
+
+以下每条都是**已核实的实现差异**，不是待办臆测。
+
+| # | 差异 | 原因 | 证据 |
+|---|------|------|------|
+| **D1** | `已安装 N 个` 的数字与截图不同（截图 16） | 截图是官方账号的状态；本机登录态无关，数字随本机实际安装数变化 | EVIDENCE §1 |
+| **D2** | `为你推荐` 的 4 个 app 与截图不同（截图：Agent Compatibility / Aikido / Aleph / Algolia Productivity） | `selectForYou` 先按团队安装数排序，本地 `mcp.teamPopularity()` 为空，只能退化为类目亲和度排序 | model.ts `selectForYou` |
+| **D3** | `团队插件` 可能为空/缺失 | 该区块来自 `entry.marketplace != null`，团队市场在本登录无关构建里为空 | model.ts `buildMarketplaceModel` |
+| **D4** | 部分 app 不出现在首页类目区块中 | 本地 catalog 的 `MCP` 类目（146/393）没有 `categoryKey`，无法归入官方 15 类枚举中的任一桶。**按证据原则宁可不归类，也不猜进某个桶** —— 这是刻意记下的 uncertainty | model.ts `bucketsOf` |
+| **D5** | `分享` 按钮写剪贴板，官方是分享面板 | 分享面板不在证据覆盖范围内；剪贴板是「复制此插件的链接」的官方行为。属**降级实现**，非等价复刻 | index.ts `sharePlugin` |
+| **D6** | 详情页 `编辑账户` / `添加账户` 无后端动作 | 本地无账号编辑桥；按钮按官方几何渲染，行为为空 | view.ts `renderDetail` |
+| **D7** | `工具` 行可能显示 `已启用 0/0 个` | 官方该数字来自连接器实时工具数；本地 `mcp.list()` 对待认证服务器返回 `toolCount: 0` | model.ts `toolsLabel` |
+| **D8** | `信息 · 网站` 显示主机名（`cursor.com`），源码链接目标是完整 URL | 官方对同一字段分别用「主机名做标签、完整 URL 做 href」；本地 `homepage` 为完整路径。标签取 host 与官方一致，href 精确等于 catalog 值 | model.ts `displayHost` |
+| **D9** | `私有技能` 为空 | 该区上游数据源 `Ti(Bi(agentId), [])` 不跨 preload 桥，背景存储是不透明 blob。空态渲染上游自己的空文案 | index.ts `readPrivateSkills` |
+| **D10** | 部分 app 添加时不弹凭据表单 | 官方对带 `fields` 的条目（如 Gmail 的 OAuth client id/secret）会先开安装表单；本地 `mcp.install` 直连 | catalog `fields[]` |
+| **D11** | 首页 12 区块，官方 13 —— **缺 `登录与凭据管理`** | 本地 catalog 没有任何条目能归入 `credentials` 桶（该桶唯一条目是官方账号装的 1Password）。桶顺序表里它仍在第一位，只是空桶按上游规则整块省略 | 实机：12 区块 / 9 个查看全部；官方 13 区块 |
+| **D12** | `支持` 桶本地只有 2 行（官方 3 行） | 本地 catalog 缺 Intercom 等条目 | 实机 |
+
+## 4. 改动文件
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/extensions/marketplace/model.ts` | 区块 `kind`（featured/bucket）、`sectionGroup`、`buildPluginDetail`、`appCountLabel`、`displayHost`、`homepage` 入 CatalogEntry、22 个新 `TEXT` 键 |
+| `frontend/src/extensions/marketplace/view.ts` | 页面栈分派、`renderSection`、`renderDetail`、detail bar 页头、`onBack`/`onUninstall`/`onShare`、单列网格分支 |
+| `frontend/src/extensions/marketplace/official-styles.ts` | 40+ 组官方类名常量、7 个新字形码位（`copy` `externalLink` `pencil` `plus` `plug` `chevronDown`）、单/双列网格变体 |
+| `frontend/src/extensions/marketplace/index.ts` | `stack` 推栈导航、查看全部/打开行接上 push、`sharePlugin`、`removePlugin` |
+| `docs/MARKETPLACE-066-EVIDENCE.md` | 全部取证的落库文档（几何表、类名、字形） |
+| `tests/plugins-marketplace-renderer-patch.test.mjs` | 守卫从「详情页必须空壳」翻转为「详情页必须锚定取证」 |
+
+## 5. 实机验证（2026-10-04，部署后 CDP 走查）
+
+在 `/Applications/Grok Node.app` 上用 CDP 逐层点过，测得值与官方实测值对照：
+
+| 检查项 | 官方实测 | 本地实测 | |
+|--------|---------|---------|---|
+| 首页区块顺序 | 为你推荐→精选插件→团队插件→登录与凭据管理→效率→…→支持 | 同序（缺 登录与凭据管理） | D11 |
+| 首页「查看全部」个数 | 9 | 9 | ✅ |
+| 精选类目页 包裹层 | 有 `.sand-plugins__marketplace` | 有 | ✅ |
+| 精选类目页 标题 | `h1` + 区块名 | `H1 \| 精选插件` | ✅ |
+| 精选类目页 网格 | `734px`（单列） | `734px` | ✅ |
+| 精选类目页 行数 | 6 | 6 | ✅ |
+| 桶类目页 包裹层 | **无** | 无 | ✅ |
+| 桶类目页 标题 | `h3` + `结果`，桶名在页头 | `H3 \| 结果`，页头 `效率` | ✅ |
+| 桶类目页 网格 | `363px 363px`（双列） | `363px 363px` | ✅ |
+| 类目页 分页控件 | 无（纯滚动 2202/652） | 无（`hasLoadMore:false`，1952/652） | ✅ |
+| 详情页 返回键 | `aria-label=返回` | `返回` | ✅ |
+| 详情页 页头标题 | 插件名 | `Adobe Developer App Builder` | ✅ |
+| 详情页 动作区 | 复制链接 / 分享 / 添加(卸载) | 同 | ✅ |
+| 详情页 源码链接 | 真实 `<a href>` | `https://github.com/adobe/skills` | ✅ |
+| 详情页 信息区 | 功能/开发者/类别/网站/可用性 | 同 5 行 | ✅ |
+| 逐层返回轨迹 | detail→bucket→home | `效率` → `(market)` → `HOME(no-back)` | ✅ |
+
+### 顺带修掉的两个既有问题
+
+1. **行名 span 用错配方类**（上一轮遗留）：`row__main` 的名称元素带着包裹层的类，
+   丢了官方的 `sand-plugins-row__name`。字符照样渲染出来，**任何文本断言都发现不了**。
+   已在官方实机确认子树是三层 `row__main > [包裹层 > __name] + [__subtitle]` 并修正。
+   连带把断言错误结构的守卫一并重写 —— 它当时还明确禁止 `sand-plugins-row__name` 出现。
+2. **桶类目页标题用了 `h1`**：官方是 `h3`（34px）。已改，文档大纲与字号同时对齐。
+
+## 6. 自证方式
+
+本移植所有类名与几何都不是推来的。三个等级的自证：
+
+1. **类名/字形**：官方产物 `className` 与 `--cursor-icon-content` 逐项 dump。
+   字形是 PUA 私用区码位（`` 复制、`` 外链、`` 铅笔、`` 加号、`` 连接器），
+   **不可从图标名推断**，猜错就渲染空白方块。
+2. **几何**：`getBoundingClientRect()` 实测（对话框 800×702 @ (32,160)、内容列 734、行 64、
+   图标 40/56、详情页四个分区高度）。
+3. **关键结论交叉验证**：单列 vs 双列一度读数自相矛盾（DOM 查询抓到的是留在 DOM 里的首页网格），
+   最后用 `Page.captureScreenshot` 截图定论 —— **单列 + 大 `h1` 属实**。教训：DOM 选择器读数
+   在推栈页面里可能抓到上一页的残留，几何结论必须截图复核。
