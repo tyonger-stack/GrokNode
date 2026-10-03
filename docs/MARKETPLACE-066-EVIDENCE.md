@@ -582,3 +582,67 @@ ve = (e,t) => { … for (const o of e) if (o.marketplace===void 0) for (const s 
 
 **判据**：任何"逐个点 N 个同层按钮"的脚本，**每次迭代都必须重新查询**，
 不能在循环外缓存 `querySelectorAll` 的结果。症状是"所有测得值都相同"或"第一项对、其余全错"。
+
+## 20. 核验脚本的实测输出（2026-10-04 06:57，HEAD a62e693）
+
+本节是 `node scripts/verify-marketplace-parity.mjs` 的**原样输出**，不是转述。数字以本节为准。
+
+```
+
+■ 上游真源（本机 0.66 的 browse-model chunk）
+  ✅ chunk 存在且为 12,928 字节  — 实际 12928 字节
+  ✅ Le 表逐条一致（14 条）
+  ✅ Le 中确无 AGENT_ORCHESTRATION / MCP
+  ✅ Te 表 16 个上游 slug 全部转写  — 额外 slug（须为补偿项）: canva, mailerlite
+  ✅ CATEGORY_BUCKET_ORDER 等于上游 Ce
+
+■ 部署版字节（/Applications/Grok Node.app）
+  ✅ 第一层投影 toPlugin 保留 categoryKeys
+  ✅ 第二层投影 marketplacePluginToView 保留 categoryKeys  — main.cjs 中共 5 处
+  ✅ renderer chunk 逐个 node --check（101 个）
+     通过 101/101
+  ✅ 市场 UI 文案在产物中（先还原 \uXXXX 再匹配）
+
+■ 实机逐区块对拍（需要两个 app 同时带 CDP 端口运行）
+  ✅ 官方 9224 读取成功  — 14 个区块
+  ✅ 部署版 9232 读取成功  — 13 个区块
+
+     共有区块 13 个，逐行完全一致 10 个
+       ✅ 市场
+       ⚠️  为你推荐
+            官方: Agent Compatibility / Aikido / Aleph / Algolia Productivity
+            本地: ActiveCampaign / Adobe Developer App Builder / AgentMail / Airtable
+       ✅ 精选插件
+       ⚠️  团队插件
+            官方: oh-my-claudecode
+            本地: —
+       ✅ 效率
+       ✅ 通信
+       ⚠️  设计
+            官方: Canva / Docs Canvas / Figma / Google Slides
+            本地: Canva / Docs Canvas / Figma / Mobbin
+       ✅ 代码
+       ✅ 数据
+       ✅ 销售
+       ✅ 财务
+       ✅ 研究
+       ✅ 支持
+       ❌ 登录与凭据管理（本地无此区块：官方: 1Password）
+
+     剩余差异请对照 docs/MARKETPLACE-066-EVIDENCE.md §18–§20 归因：本地 catalog 是官方
+     catalog 的严格子集（少 11 条），1Password 不在任何一侧 catalog，为你推荐 因
+     teamPopularity() 双方同为 0 —— 均属数据面，不是渲染行为差异。
+
+✅ 静态核验全部通过
+
+```
+
+### 三处历史数字的修正记录
+
+| 读数 | 何时 | 数字 | 之后 |
+|---|---|---|---|
+| 拟合 override 时代 | ~05:20 | 6/14 | 其中 2 处靠上游不存在的 override 凑出，作废 |
+| categoryKeys 修复前 | ~06:0x | 8/12 | 通信 因缺数组键而差一条，作废 |
+| **当前** | **06:57** | **10/13（剔除 `市场` 容器即 9/12）** | 残余 4 处全为 catalog 数据面 |
+
+> `市场` 是弹窗容器标题，两侧 `row__name` 均为空，属**退化相等**——计入会让分母多一个没有信息量的区块。
