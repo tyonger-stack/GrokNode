@@ -268,3 +268,66 @@ local:    为你推荐(4) 精选插件(4) 团队插件(0)               效率(4
 `marketplacePluginToView()` 还有第二次投影，把字段又丢了一次
 （`source/shared/node/mcp/mcp-marketplace.ts:42`）。两次投影都要透传，缺一不可。
 教训：改了「数据形状」类修复，**必须去运行时验一次字段真的到位**，源码里看到字段不等于渲染器收到了。
+
+## 要求 C：host gateway 不可达 → 显式报错（实机 box-down 观测，06:3x）
+
+这一条之前只有 15 条单测覆盖，**没有实机观测**。本轮在**已部署产物**上做完了，
+探针 `probe-skills-gate.mjs`，四个状态全部跑过。
+
+### 关键机制：读数据前必须先关对话框
+
+`open()` 开头是 `if (dialog != null) return;` —— 对话框还在就直接返回，`reload()` 根本不会跑。
+所以「让页面重新读一次 host」不是点一下刷新，是 **关掉对话框再从 dock 入口重开**。
+探针里 `CLOSE_FIRST=1` 就是干这个的；漏掉它会拿到上一次的旧 state，看起来像「改了没生效」。
+
+### 四个状态
+
+| 状态 | 做法 | 私有技能 渲染 | 行数 | `已安装` 段 |
+| --- | --- | --- | --- | --- |
+| baseline | 正常 | 40 行正常数据 | 40 | 8 个，不受影响 |
+| **noconn** | 移走 `local-exec-daemon-connection.json` | `…The local host gateway is not running.` | 0 | 8 个，不受影响 |
+| **boxdown** | `docker stop grok-node-local-vm` | 同上 | 0 | 8 个，不受影响 |
+| **deadport** | 只把 `baseUrl` 改到关闭端口 1399 | `…is unreachable while handling /api/getAgentWorkflows.` | 0 | 8 个，不受影响 |
+| **selfheal** | 等 box 自己回来后重读 | 40 行正常数据 | 40 | 8 个，不受影响 |
+
+每个错误态都同时断言了 `rowCount === 0` **且** `isErrorState === true`——
+这正是 C 要的契约：**不可达 ≠ 没有技能**。两者只要有一个成立就说明退化成空列表了。
+
+### 意外收获：boxdown 命中的其实是「文件没了」那一支
+
+`docker stop` 之后那次读，报的是 `not running`（连接文件缺失）而不是 `unreachable`（fetch 失败）——
+因为**应用自己的 supervisor 在 12 秒内就把 box 拉起来了**（探针结束时容器已 `Up 12 seconds`），
+而 daemon 还没来得及把连接文件写回去。也就是说 `boxdown` 这一格**没有**真正覆盖到
+「文件在、daemon 死」这个组合，得靠 `deadport` 补上。两条错误文案都在源码里有分支
+（`skills-desktop.ts` 的 `connection == null` 与 `catch`），但只有后者会带出具体 endpoint 路径。
+
+### 没改的一处（记录，不擅自动）
+
+错误文案是中文框架 + 英文后端细节：`无法连接本地运行环境，暂时读不到私有技能：The local host gateway is not running.`
+`skillsErrorText(code, detail)` 把 detail 原样透传。翻译它属于臆造上游措辞，按证据优先原则保持原样。
+
+### 复现
+
+```sh
+export PATH=/Users/Apple/Documents/grokbot/.tools/node-26/bin:$PATH
+SP="/private/tmp/claude-501/-Users-wwzz-Downloads-proxyclawd/88833871-9d1c-410a-8425-a5a54e5377ef/scratchpad"
+CONN="$HOME/.groknode/local-exec-daemon-connection.json"
+
+# baseline / deadport（只改 baseUrl，token 不动）
+cp "$CONN" "$CONN.bak"; python3 -c "改 baseUrl 到 1399"
+CLOSE_FIRST=1 LABEL=deadport node "$SP/cdp.mjs" 9232 "$SP/probe-skills-gate.mjs"
+mv "$CONN.bak" "$CONN"
+
+# noconn（移走文件）
+mv "$CONN" "$CONN.bak2"
+CLOSE_FIRST=1 LABEL=noconn node "$SP/cdp.mjs" 9232 "$SP/probe-skills-gate.mjs"
+mv "$CONN.bak2" "$CONN"
+
+# boxdown（注意 supervisor 会自动重启，别据此判断读到了哪一支）
+docker stop grok-node-local-vm
+CLOSE_FIRST=1 LABEL=boxdown node "$SP/cdp.mjs" 9232 "$SP/probe-skills-gate.mjs"
+```
+
+⚠️ 探针第一件事是断言 `location.href` 含 `Grok%20Node.app`，不符直接抛错。
+本项目已经吃过一次亏：标着「官方」的取证脚本其实是本地脚本的逐字节副本，端口和 URL 都没改，
+静默取到了本地数据还不报错、不为空。
