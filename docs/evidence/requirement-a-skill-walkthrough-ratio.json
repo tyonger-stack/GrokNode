@@ -4,29 +4,50 @@
   "collectedVia": "CDP 9232 against /Applications/Grok Node.app (asar 0cc51a446b90)",
   "identity": "file:///Applications/Grok%20Node.app/Contents/Resources/app.asar/dist/renderer/index.html",
   "agentId": "90840651-afb9-42e6-b955-f2c1e6b6557a",
-
   "prediction": "bridge returns 31 managed + 9 workflow; canEditPrivateSkill is source === \"workflow\", so the UI must show 31 rows with only 删除 and 9 with 删除|保存",
-
   "dataLayer": {
     "dataRecords": 41,
-    "bySource": { "managed": 31, "workflow": 9, "automation": 1 }
+    "bySource": {
+      "managed": 31,
+      "workflow": 9,
+      "automation": 1
+    }
   },
   "uiLayer": {
     "uiRowCount": 40,
     "walked": 40,
-    "buttonTally": { "删除": 31, "删除|保存": 9, "other": 0 },
-    "readOnlyExamples": ["add-connector(managed)", "flight-booking(managed)", "food-ordering(managed)"],
-    "editableExamples": ["Design a Grok Bot(workflow)", "Make Bot UI(workflow)"],
+    "buttonTally": {
+      "删除": 31,
+      "删除|保存": 9,
+      "other": 0
+    },
+    "readOnlyExamples": [
+      "add-connector(managed)",
+      "flight-booking(managed)",
+      "food-ordering(managed)"
+    ],
+    "editableExamples": [
+      "Design a Grok Bot(workflow)",
+      "Make Bot UI(workflow)"
+    ],
     "noButtons": [],
     "bodyOverflowX": [],
     "subtitleClipped": []
   },
-
   "verdict": "PASS — 31/9 reproduced exactly. The earlier artifact only reported the button SET, which could not have distinguished this from 20/20.",
-
   "notes": [
     "The bridge returned 41 records this run, not 40: a new `automation` source kind appeared since the earlier data probe. privateSkillsFromRecords accepts only workflow/managed/plugin, so that one record is dropped and 41 becomes the 40 rendered rows. The drop is explicit, not accidental.",
     "`source` was read from the bridge records rather than scraped from the DOM — the previous run's DOM scrape returned null for all 40 and therefore proved nothing about the split.",
     "subtitleClipped is empty: the D14 hard-clip (nowrap + overflow:hidden, no text-overflow) still exists in the CSS but no measured row overflowed its box in this run, so it is not observable here."
-  ]
+  ],
+  "reConfirmedAt": "2026-10-04T14:40 (deployed asar b93b1ebeece3, after the publisher.websiteUrl fix)",
+  "finalCheckSet": {
+    "every kept record reaches the UI": "PASS",
+    "read-only rows == 31": "PASS",
+    "editable rows == 9": "PASS",
+    "every row has buttons": "PASS",
+    "no horizontal body overflow": "PASS",
+    "all 40 rows walked": "PASS"
+  },
+  "assertionCorrection": "The first version of the probe asserted `dataRecords === 40` and reported FAIL. That assertion was stale, not a defect: the bridge now returns 41 (the extra `automation` record). The invariant that actually matters is bridge-minus-dropped == rendered rows, which passes."
 }
