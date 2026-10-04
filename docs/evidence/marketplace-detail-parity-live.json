@@ -1,0 +1,103 @@
+{
+  "collectedAt": "2026-10-04",
+  "whatThisIs": "Live rendered-value parity for the marketplace detail CTAs, measured on the DEPLOYED app over CDP. This closes the item the headless check could not: real geometry.",
+  "script": "scripts/verify-marketplace-detail-parity.mjs",
+  "npmScript": "npm run marketplace:parity -- <port>",
+  "deployedAsar": {
+    "sha256Prefix": "c0d6c4e4de32c9ab"
+  },
+  "href": "file:///Applications/Grok%20Node.app/Contents/Resources/app.asar/dist/renderer/index.html",
+  "port": "9232",
+  "entry": "打开账户菜单",
+  "officialBaselines": {
+    "addAccount": {
+      "textContent": "添加其他账户",
+      "ariaLabel": null,
+      "childCount": 1,
+      "padding": "12px 14px",
+      "height": 43
+    },
+    "toolsRow": {
+      "padding": "12px 14px",
+      "height": 42
+    }
+  },
+  "measured": {
+    "addAccount": {
+      "textContent": "添加其他账户",
+      "ariaLabel": null,
+      "childCount": 1,
+      "padding": "12px 14px",
+      "height": 43
+    },
+    "toolsRow": {
+      "textContent": "已启用 23/23 个",
+      "ariaLabel": null,
+      "childCount": 2,
+      "padding": "12px 14px",
+      "height": 42
+    }
+  },
+  "checks": [
+    {
+      "name": "add-account textContent",
+      "got": "添加其他账户",
+      "want": "添加其他账户",
+      "pass": true
+    },
+    {
+      "name": "add-account ariaLabel",
+      "got": null,
+      "want": null,
+      "pass": true
+    },
+    {
+      "name": "add-account childCount",
+      "got": 1,
+      "want": 1,
+      "pass": true
+    },
+    {
+      "name": "add-account padding",
+      "got": "12px 14px",
+      "want": "12px 14px",
+      "pass": true
+    },
+    {
+      "name": "add-account height",
+      "got": 43,
+      "want": 43,
+      "pass": true
+    },
+    {
+      "name": "tools row padding",
+      "got": "12px 14px",
+      "want": "12px 14px",
+      "pass": true
+    },
+    {
+      "name": "tools row height",
+      "got": 42,
+      "want": 42,
+      "pass": true
+    }
+  ],
+  "failed": 0,
+  "reading": {
+    "addAccount_height": 43,
+    "toolsRow_height": 42,
+    "both_padding": "12px 14px",
+    "addAccount_ariaLabel": null,
+    "note": "ariaLabel null is the MATCH, not a gap. Official 0.66 renders this CTA as a text node and carries no aria-label on it; an earlier local build had one, and that was one of the defects."
+  },
+  "comparedAgainstOfficial": {
+    "how": "The same script was run against official 0.66.0 on CDP 9224 and passed 7/7, so the baselines in this file are the official app measurements rather than numbers typed in by hand.",
+    "officialVerdict": "7/7",
+    "localVerdict": "7/7"
+  },
+  "cannotProve": [
+    "That every marketplace row matches. This covers the Gmail detail page two full-width CTAs only.",
+    "Pixel identity. It compares a handful of computed properties against a baseline, not a rendered screenshot diff.",
+    "That the keychain prompt is gone. This run happened while the screen was locked with no SecurityAgent process alive, which is only evidence that this particular launch did not block. The designated-requirement fix rests on codesign output, not on this run."
+  ]
+}

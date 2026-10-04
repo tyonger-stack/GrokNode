@@ -101,7 +101,7 @@
     }
   ],
   "cannotProve": [
-    "Real app geometry. This is a headless fixture, not the running renderer. Live height (add-account 43px, tools row 42px) is still unconfirmed because the keychain prompt blocks app startup after every re-sign.",
+    "Real app geometry — but this is now covered by marketplace-detail-parity-live.json, which measured height 43/42 on the deployed app. Keep this script for the cases where the app cannot start at all; the heights here (42/46) are still not comparable because the fixture has no icon font.",
     "That the official app computes the same values — the expected values are transcribed from earlier official 0.66 measurements, not measured in this run.",
     "Any property other than padding / textContent / childCount on these two elements.",
     "The other 43 lifted rules. All 45 are parsed and injected into the fixture (including the three pseudo-selector entries), but only the two inline-padding ones are asserted here."

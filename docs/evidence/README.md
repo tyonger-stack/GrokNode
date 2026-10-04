@@ -8,6 +8,31 @@
 **先看 href 再看结论**：本项目栽过一次——标着「官方」的取证脚本其实是本地脚本的逐字节副本，端口和 URL
 都没改，静默取到了本地数据还不报错、不为空。
 
+## marketplace-detail-parity-live.json（真机几何：7/7，官方基线逐项相同）
+
+`npm run marketplace:parity -- 9232`，**已部署产物**，asar `c0d6c4e4de32`。这份补上了下面 headless 那份
+补不了的洞——**真实渲染几何**：
+
+```
+              官方基线                        本地实测
+addAccount   height 43   padding 12px 14px   height 43   padding 12px 14px   ✅
+toolsRow     height 42   padding 12px 14px   height 42   padding 12px 14px   ✅
+addAccount   textContent 添加其他账户         同左                              ✅
+             ariaLabel  null                null                              ✅
+             childCount 1                   1                                 ✅
+```
+
+**基线不是手打的**——同一个脚本此前对官方 0.66.0（CDP 9224）跑过、7/7 通过，这份 JSON 里的
+`officialBaselines` 就是官方自己的读数。7 项全过。
+
+⚠️ `addAccount.ariaLabel = null` **是匹配、不是缺口**：官方 0.66 这个 CTA 用文本节点渲染、本身就没有
+aria-label；本地早期版本反而有，那正是被修掉的缺陷之一。
+
+**它不能证明的**：① 只覆盖 Gmail 详情页那两个全宽 CTA，不代表市场页每一行都对；
+② 比的是若干 computed 属性，**不是像素级截图 diff**；③ **不能证明钥匙串弹窗已消失**——这次运行发生在
+锁屏状态且没有 SecurityAgent 进程，只能说明「这次启动没被堵住」；DR 那条修复的依据是 codesign 的输出，
+不是这份记录。
+
 ## marketplace-css-cascade-deployed.json（无需运行中 app 的 padding 级联验证）
 
 `npm run marketplace:css` → `scripts/verify-marketplace-css-cascade.mjs`。把**已部署 asar** 里的样式表
