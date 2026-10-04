@@ -1161,8 +1161,13 @@ function renderDetail(
     list.append(el("div", DETAIL_DIVIDER_CLASSES));
     const addAccount = el("button", DETAIL_ADD_ACCOUNT_FULL_CLASSES);
     addAccount.type = "button";
-    addAccount.setAttribute("aria-label", TEXT.addAccount);
+    // Official 0.66 renders the label as a **text node** next to the glyph, with no aria-label at
+    // all (measured: `textContent === "添加其他账户"`, `getAttribute("aria-label") === null`,
+    // `children.length === 1` — the glyph). Carrying the copy in aria-label only made the button
+    // icon-only on screen, 34px tall instead of 43px, with the text existing purely for
+    // screen readers. The glyph stays first, matching official's child order.
     addAccount.append(glyph("plus", GLYPH.plus, 10));
+    addAccount.append(document.createTextNode(TEXT.addAccount));
     list.append(addAccount);
     block.append(list);
     body.append(block);

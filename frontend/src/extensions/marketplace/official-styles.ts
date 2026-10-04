@@ -68,6 +68,24 @@ export const LIFTED_OFFICIAL_RULES: ReadonlyArray<readonly [string, string] | re
   ["sand-1lt80kd", "border-color:var(--sand-bg-elevated)"],
   ["sand-1lziwak", "margin-inline-start:0"],
   ["sand-1mfogq2", "padding-inline-start:32px"],
+  // The full-width detail row family's 14px horizontal inset. Measured on official 0.66 by
+  // cloning each button with a single class at a time:
+  //   sand-z9dl7a -> 12px 0px 0px      (padding-top, 0.18 DOES ship this)
+  //   sand-sag5q8 -> 0px 0px 12px      (padding-bottom, 0.18 DOES ship this)
+  //   sand-1pic42t -> 0px 14px 0px 0px (padding-inline-start)   <-- 0.18 does NOT ship it
+  //   sand-1onr9mi -> 0px 0px 0px 14px (padding-inline-end)     <-- 0.18 does NOT ship it
+  // So the buttons kept their 12px block padding and lost both 14px sides, computing
+  // `padding: 12px 0px` where official computes `12px 14px`. Text sat flush against the row edges.
+  //
+  // Unlike the 添加 button's seven logical/physical swaps, 0.18 has NO class carrying
+  // padding-left/right:14px (grepped the whole shipped stylesheet — zero hits), so there is
+  // nothing to substitute; these two have to be lifted.
+  //
+  // One rule pair covers all four full-width ROW lists that carry both classes:
+  // DETAIL_SUBSECTION_ROW, DETAIL_TOOLS_ROW, DETAIL_ADD_ACCOUNT_FULL and DETAIL_CONNECTOR_ROW. 0.18 defines
+  // neither class, so lifting them adds the inset only where official has it.
+  ["sand-1onr9mi", "padding-inline-end:14px"],
+  ["sand-1pic42t", "padding-inline-start:14px"],
   ["sand-1qab1bc", "justify-self:end"],
   ["sand-1t8vtw7", "box-shadow:inset 0 0 0 2px var(--cursor-stroke-focused)", ":focus-visible::after"],
   ["sand-1w00h3t", "border-radius:16px", "::after"],

@@ -129,12 +129,12 @@ test("every official class list the view imports is actually defined", () => {
 });
 
 test("the lifted rules are the ones 0.18's stylesheet is actually missing", () => {
-  // 43 classes are declared unscoped in 0.66 but not reachable in 0.18. Re-lifting a class 0.18
+  // 45 classes are declared unscoped in 0.66 but not reachable in 0.18. Re-lifting a class 0.18
   // already defines would shadow a working upstream rule, and dropping one leaves the element
   // unstyled. Two of them are the subtle case: 0.18 has the same declaration under the same hash,
   // but scoped to `.sand-plugins-dock-rail`, so it does not apply here.
   const rules = liftedRules();
-  assert.equal(rules.length, 43, "expected the 43 official-only declarations");
+  assert.equal(rules.length, 45, "expected the 45 official-only declarations");
   for (const [cls, decl] of rules) {
     assert.ok(cls.startsWith("sand-"), `${cls} is not a stylix class`);
     assert.ok(decl.includes(":"), `${cls} declaration is not a CSS property pair: ${decl}`);
@@ -1082,4 +1082,53 @@ test("信息 · 类别 renders official's localized label, not the raw English c
   // An unmapped key must fall back to the raw category, which is what official does when
   // `categoryKey` misses its own table — never to a guessed translation.
   assert.match(MODEL, /return str\(entry\.category\);/);
+});
+
+/* ------------------------------------------------------------------ *
+ * Detail CTAs: structure and geometry (added after two real defects)
+ *
+ * The first pass of this work only asserted the add-account *constant* existed in MODEL, and
+ * a live check that only looked at `aria-label`. Both passed while the button was wrong on
+ * screen: official renders the copy as a text node, so ours was icon-only and 9px short.
+ * ------------------------------------------------------------------ */
+
+test("the add-account CTA carries the label as a text node, not only an aria-label", () => {
+  // Measured on official 0.66: textContent "添加其他账户", aria-label null, children.length 1.
+  assert.match(
+    VIEW,
+    /addAccount\.append\(glyph\("plus", GLYPH\.plus, 10\)\);\s*\n\s*addAccount\.append\(document\.createTextNode\(TEXT\.addAccount\)\);/,
+    "the glyph stays first and the copy follows as a text node, matching official's child order",
+  );
+  assert.doesNotMatch(
+    VIEW,
+    /addAccount\.setAttribute\("aria-label", TEXT\.addAccount\)/,
+    "aria-label alone leaves the button icon-only on screen; official has no aria-label here",
+  );
+});
+
+test("the full-width detail row family's 14px horizontal inset is lifted", () => {
+  // 0.18 ships sand-z9dl7a (padding-top) and sand-sag5q8 (padding-bottom) but NEITHER
+  // sand-1pic42t nor sand-1onr9mi, so the buttons computed `padding: 12px 0px` against
+  // official's `12px 14px`. There is no physical substitute in 0.18 (no class anywhere in the
+  // stylesheet carries padding-left/right:14px), so the two rules must be lifted.
+  for (const cls of ["sand-1pic42t", "sand-1onr9mi"]) {
+    assert.ok(
+      liftedRules().some(([selector, decl]) => selector === cls && /14px/.test(decl)),
+      `${cls} must be lifted with its 14px inset or the row's text sits flush to the edge`,
+    );
+  }
+  // Both classes travel on the four full-width ROW lists, so one rule pair covers all of them.
+  // DETAIL_TOOLS_CLASSES is deliberately absent: it is the `sand-plugins-detail__tools` section
+  // container, not a row, and official gives it no horizontal inset.
+  for (const list of [
+    "DETAIL_SUBSECTION_ROW_CLASSES",
+    "DETAIL_ADD_ACCOUNT_FULL_CLASSES",
+    "DETAIL_TOOLS_ROW_CLASSES",
+    "DETAIL_CONNECTOR_ROW_CLASSES",
+  ]) {
+    const body = STYLES.slice(STYLES.indexOf(`export const ${list}`));
+    const arr = body.slice(0, body.indexOf("];"));
+    assert.match(arr, /sand-1pic42t/, `${list} must keep sand-1pic42t`);
+    assert.match(arr, /sand-1onr9mi/, `${list} must keep sand-1onr9mi`);
+  }
 });
