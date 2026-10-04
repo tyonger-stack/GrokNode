@@ -60,9 +60,9 @@
 | **D3** | `团队插件` 为空 | 官方该区唯一条目 `oh-my-claudecode` **不在本地 catalog**（本地是官方 catalog 的严格子集，少 11 条，含它） | EVIDENCE §9.2 |
 | ~~D4~~ | ~~部分 app 不出现在首页类目区块中~~ **降级为与官方一致** | `MCP` 不在官方 15 类枚举里，且**官方自己的 151 条 MCP 全部 `categoryKey: null`**；本地 146 条同理。两边都归不进任何桶。另经核实 `Infrastructure`/`Agent Orchestration`/`Customer Support` **都有映射且正确**，先前"220 条未归桶"的推断有误 | EVIDENCE §9.3 |
 | ~~D5~~ | ~~`分享` 是剪贴板降级~~ **已撤销** | 2026-10-04 实机挂钩验证：官方 0.66 的「分享」**同样只调 `clipboard.writeText`、写同一个插件 URL、不调 `navigator.share`、不弹任何面板**。本地实现与官方**完全一致**，不是差异 | EVIDENCE §16 |
-| **D6** | 详情页 `编辑账户` / `添加账户` 无后端动作 | 本地无账号编辑桥；按钮按官方几何渲染，行为为空 | view.ts `renderDetail` |
+| **D6** | 详情页 `编辑账户` / `添加其他账户` 无后端动作 | 本地无账号编辑桥；按钮按官方几何渲染，行为为空 | view.ts `renderDetail` |
 | ~~D7~~ | ~~`工具` 行可能显示 `已启用 0/0 个`~~ **已撤销** | 2026-10-04 复核：官方对 `needsAuth` 的连接器（实测 Canva）**同样**显示 `已启用 0/0 个`，本地一致，不是差异 | 官方/本地 Canva 详情页逐字比对 |
-| **D8** | `信息 · 网站` 显示主机名（`cursor.com`），源码链接目标是完整 URL | 官方对同一字段分别用「主机名做标签、完整 URL 做 href」；本地 `homepage` 为完整路径。标签取 host 与官方一致，href 精确等于 catalog 值 | model.ts `displayHost` |
+| **D8** | ~~`信息 · 网站` 显示主机名（`cursor.com`），源码链接目标是完整 URL~~ **2026-10-04 复核：本地此前是错的** | 上游是**两个不同字段**：`websiteUrl`（`https://cursor.com/`）喂 `信息 · 网站` 的标签，`repositoryUrl`（`https://github.com/cursor/plugins`）喂 `查看源码` 的 href。本地原把两者并成一个 `homepage` 且优先取 repository，于是 `网站` 行渲染成 `github.com`。已改为两字段各自透传（`toPlugin` + `marketplacePluginToView` **两层都要**，第二层曾吞掉 `categoryKeys`）。标签取 `websiteUrl` 的 host，href 仍取 `repositoryUrl` | model.ts `buildPluginDetail`；mcp-marketplace.ts `toPlugin`/`marketplacePluginToView` |
 | ~~D9~~ | ~~`私有技能` 为空~~ **已修复** | 2026-10-04（d1fd68e）补上 `sand:skills-list/update/remove` 三条直连 IPC 通道后，该区改为真实数据。host 的 `getAgentWorkflows` 本就同时返回 `workflows/`（用户自建）与 `managed-skills/skills/`（托管）；缺的只是跨 preload 桥那一段。**gateway 不可达时显式返回 `gateway-unreachable`，绝不退化成空列表**（空列表读起来像一个正确答案）。实机 40 条技能。**要求 C 的实机 box-down 观测也已完成**（2026-10-04 06:3x，已部署产物）：`docker stop`、移走连接文件、把 `baseUrl` 指向关闭端口三种做法下该区都渲染显式错误且行数为 0，`已安装` 段不受影响，box 恢复后自动回到 40 行 | `source/electron-main/skills/skills-desktop.ts`；证据见 [PARITY §要求 C](MARKETPLACE-066-PARITY-2026-10-04.md#要求-chost-gateway-不可达--显式报错实机-box-down-观测-063x) |
 | ~~D10~~ | ~~部分 app 添加时不弹凭据表单~~ **已撤销** | 2026-10-04 复核：官方对带 8 个 `fields` 的 Capital.com 点「添加」**也不弹表单**。本地 `mcp.install` 直连 = 官方的一步动作，**不是差异** | EVIDENCE §8 |
 | **D11** | 首页 12 区块，官方 13 —— **缺 `登录与凭据管理`** | 该区唯一条目 `1Password` 在**两边 `mcp.catalog()` 里都不存在**（官方 404 条无它、本地 393 条无它）——它来自 catalog 之外的源，本移植无从复现。桶顺序表里 `credentials` 仍在首位，只是空桶按上游规则整块省略 | EVIDENCE §9.2 |
@@ -78,7 +78,7 @@
 | 元素 | 官方实测 | 结论 |
 |------|---------|------|
 | 详情页 `工具` 行（带 chevron 的 button） | 点击后盒子恒为 42px、恒 1 个子节点、弹窗 innerText 从不出现工具名（实测连续点击 3 次 + 真实指针事件） | **不展开**，无工具列表页 |
-| 详情页 `添加账户` | 点击后弹窗文本无变化、无新对话框 | **不导航** |
+| 详情页 `添加其他账户` | 点击后弹窗文本无变化、无新对话框 | **不导航** |
 | 详情页 `编辑 default 账户` | 同上 | **不导航** |
 | 详情页 `分享` | 写剪贴板（与「复制此插件的链接」同 URL） | 已实现 |
 
@@ -123,7 +123,7 @@
 | 详情页 页头标题 | 插件名 | `Adobe Developer App Builder` | ✅ |
 | 详情页 动作区 | 复制链接 / 分享 / 添加(卸载) | 同 | ✅ |
 | 详情页 源码链接 | 真实 `<a href>` | `https://github.com/adobe/skills` | ✅ |
-| 详情页 信息区 | 功能/开发者/类别/网站/可用性 | 同 5 行 | ✅ |
+| 详情页 信息区 | 功能/开发者/类别/网站/可用性 | 同 5 行 | ⚠️ 标签 ✅ / **值 ❌→已修** |
 | 逐层返回轨迹 | detail→bucket→home | `效率` → `(market)` → `HOME(no-back)` | ✅ |
 | 管理页行数 | 48 | 48 | ✅ |
 | 管理页行序 | 打开 Canva / Figma / Gmail | 同 | ✅ |
@@ -162,7 +162,7 @@
 | 2a | 每个 app 卡片可点击跳转 | ✅ 达成 | 实机：类目页任一行 → 详情页 |
 | 2b | 每个分类「查看全部」进入下一页列表 | ✅ 达成 | **9 个「查看全部」逐个实机点过**：精选页单列 734 + 包裹层 + `H1`；8 个桶页双列 363 + 无包裹层；**行宽/包裹层/无分页控件三项与官方 9 页全部一致**，行数 227 vs 官方 248 |
 | 2c | 详情页支持详细介绍/查看源码/分享/添加 | ✅ **达成**（分享经实机验证与官方同为写剪贴板） | 描述 ✅、查看源码（真实 `<a href>`）✅、添加/卸载 ✅（一步动作，与官方同形）。**「添加到指定位置/分组」经实机取证在 0.66 中不存在该界面**——对 0 字段的 Ahrefs 与 8 字段的 Capital.com 点「添加」均无任何表单或选择器 |
-| 3 | 递归复刻每层页面直到无遗漏 | ✅ 达成 | L0/L1a/L1b/L2/L1′ 全部打通并逐层返回验证；详情页/管理页**所有**可点元素逐个在官方按过（连点 3 次 + 真实指针序列），确认工具行/添加账户/编辑账户**均不开新页面**，已落 `assert.ok(!/addEventListener/)` 守卫 |
+| 3 | 递归复刻每层页面直到无遗漏 | ✅ 达成 | L0/L1a/L1b/L2/L1′ 全部打通并逐层返回验证；详情页/管理页**所有**可点元素逐个在官方按过（连点 3 次 + 真实指针序列），确认工具行/添加其他账户/编辑账户**均不开新页面**，已落 `assert.ok(!/addEventListener/)` 守卫 |
 | 4 | 完整代码 + 路由清单 + 功能对应 + 差异清单 | ✅ 达成 | 本文件 + EVIDENCE；代码在 `frontend/src/extensions/marketplace/` |
 
 ### 未达成项的处理原则

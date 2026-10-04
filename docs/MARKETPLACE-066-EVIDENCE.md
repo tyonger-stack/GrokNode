@@ -164,8 +164,59 @@ Sections, in order, and which ones are conditional:
 | 功能 | `1 个应用` | both |
 | 开发者 | `Cursor` | both |
 | 类别 | `研究` / `精选` | both |
-| 网站 | `cursor.com` | Ahrefs only |
-| 可用性 | `公开` | Ahrefs only |
+| 网站 | `cursor.com` | **both** ← 2026-10-04 更正，原写「Ahrefs only」 |
+| 可用性 | `公开` | **both** ← 同上 |
+
+**2026-10-04 值级更正（13:0x）**：上表原本把 `网站`/`可用性` 标成「Ahrefs only」。重新在官方实机上读
+Gmail（已安装 + `已连接`）的 `dl`，**五行全在**：
+
+```
+功能   1 个应用
+开发者 Cursor
+类别   精选          ← categoryKey = FEATURED
+网站   cursor.com    ← 取自 websiteUrl
+可用性 公开
+查看源码 href = https://github.com/cursor/plugins   ← 取自 repositoryUrl
+```
+
+所以「只有部分字段出现」这个结论是错的：这条目五项俱全，且 `网站` 与 `查看源码` 来自**两个不同字段**。
+另有 1inch（PAYMENTS）读到 `类别 支付 / 网站 business.1inch.com`，1inch 的 `查看源码` 另指仓库。
+
+### 类别标签不是桶标题
+
+`PAYMENTS` 归入桶 `finance`（桶标题 `财务`），但详情页 `类别` 读 **`支付`**。两套标签互相独立，
+不要拿 `CATEGORY_BUCKET_LABELS` 顶替。
+
+### 官方自己的类别标签表（16 条，勿猜）
+
+表在 asar 的 `const E={FEATURED:{id:"FkMol5"},…}`（与浏览页分区 key 同一个函数），
+每条 `id` 再去 zh-CN 消息表取值：
+
+| categoryKey | messageId | zh-CN |
+| --- | --- | --- |
+| FEATURED | FkMol5 | 精选 |
+| INFRASTRUCTURE | Mo77P4 | 基础设施 |
+| DATA_ANALYTICS | svH45G | 数据与分析 |
+| PRODUCTIVITY | N42ane | 效率 |
+| PAYMENTS | H0ShEF | 支付 |
+| AGENT_ORCHESTRATION | byAjqm | 智能体编排 |
+| CANVAS | Zty/IJ | 画布 |
+| INBOX_AND_COLLABORATION | IzFMeN | 收件箱与协作 |
+| SCHEDULING | DbZMYM | 日程安排 |
+| DOCUMENTS_AND_FILES | gDShYL | 文档与文件 |
+| SALES | mUv9U4 | 销售 |
+| CUSTOMER_SUPPORT | n+xLOH | 客户支持 |
+| FINANCE_AND_LEGAL | hxm6On | 财务与法务 |
+| RESEARCH | bdztP2 | 研究 |
+| DESIGN | f8fH8W | 设计 |
+| LOGIN_AND_CREDENTIAL_MANAGEMENT | 3Ia71M | 登录与凭据管理 |
+
+相关 id：`FGnQEW` = **添加其他账户**（详情页账户区那个加号行）、`HMUxPu` = 查看源码。
+
+⚠️ **asar 里内联了约 31 种语言**，同一个 id 出现 31 次。按「第一次匹配」取值会拿到**土耳其语**
+（`FkMol5` → `Öne çıkanlar`）；按固定窗口内的第一次匹配会拿到**意大利语**
+（`svH45G` → `Dati & analisi`，它在 @14608247，而意大利语那份在 @14559543）。
+正确做法是**取离 zh 锚点（`FkMol5` = 精选）最近的那次定义**。
 
 Captured pairs: Gmail (installed, 账户+工具 present, 信息 = 功能/开发者/类别) and Ahrefs
 (not installed, no 账户/工具, 信息 = 功能/开发者/类别/网站/可用性). Every non-installed app in
@@ -189,7 +240,7 @@ oracle, because a single `innerText` on a subtree can read a mid-transition remn
 | element | observation |
 |---------|-------------|
 | `工具` row (button + chevron) | box stays 42px with exactly 1 child; no tool name ever appears. **Does not expand.** |
-| `添加账户` | dialog text unchanged, no new dialog. **Does not navigate.** |
+| `添加其他账户` | dialog text unchanged, no new dialog. **Does not navigate.** |
 | `编辑 default 账户` | same. **Does not navigate.** |
 | `分享` | writes the clipboard; same URL as `复制此插件的链接`. |
 
@@ -550,7 +601,7 @@ ve = (e,t) => { … for (const o of e) if (o.marketplace===void 0) for (const s 
 |---|---|
 | L0 市场首页 | 13 个标题、43 行、**9 个「查看全部」** |
 | L1 精选插件类目页 | 页头 `精选插件`、**单列 734px**、`.sand-plugins__marketplace` 包裹层**在**、`H1 精选插件 22px`、6 行 |
-| L2 应用详情页 | 页头 `Gmail`、四个分区 `账户 / 工具 / 应用 / 信息`、动作 `复制此插件的链接 · 分享 · 卸载 · 编辑 default 账户 · 添加账户 · 已启用 23/23 个`、源码 `https://github.com/cursor/plugins` |
+| L2 应用详情页 | 页头 `Gmail`、四个分区 `账户 / 工具 / 应用 / 信息`、动作 `复制此插件的链接 · 分享 · 卸载 · 编辑 default 账户 · 添加其他账户 · 已启用 23/23 个`、源码 `https://github.com/cursor/plugins` |
 | 逐层返回 | `Gmail 详情` → `精选插件/精选插件` → `市场/为你推荐/…/支持`；**回到 L0 后不再有返回键**（栈底） |
 
 弹窗几何 800×702，与取证时一致。
