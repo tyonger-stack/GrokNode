@@ -302,3 +302,67 @@ OFFICIAL headingText=精选插件  wholeDialog=6  scopedToScroller=6  nonEmptyGr
 **附带修正**：本次重启后又跑了一次开放耗时探针，**冷启动第 1 轮是 3189ms**（不是上一节记的
 6591ms —— 那个数包含了「app 还在被钥匙串挡着没真正启动完」的时间，不是干净的冷启动）。
 热开 24/31/28/24ms，加载态 0/5。冷启动 3189ms 与官方首次 `catalog()` 的 2792ms 同量级。
+
+## 附五：数据面差异的定性 —— 不是本地子集，是账号门（2026-10-05）
+
+parity 一直报「catalog 官方 404 / 本地 393，本地为官方严格子集，少 11 条」，并把它归为
+「数据面，不是渲染差异」。**这个描述不够准确，值得更正**：不是本地手搓的子集，是
+**服务端对未登录客户端返回的内容更少**。链路上**没有任何一处本地过滤**。
+
+### 链路逐段核对
+
+1. **取数是网络 + access token**：
+   `sand:mcp-catalog` → `manager.getCatalog(peekAccessToken)`
+   → `source/shared/node/mcp/mcp-catalog-flow.ts:62` → `fetchMarketplaceMcpPlugins(token, machineId)`。
+
+2. **取回之后只有 map + sort，没有 filter**：
+   ```ts
+   const views = listing.plugins
+     .map((plugin) => { ...; return marketplacePluginToView(plugin); })
+     .sort((a, b) => a.displayName.localeCompare(b.displayName));
+   ```
+   少于官方的条目**不是这里被丢掉的**。
+
+3. **渲染层也不过滤**：`buildMarketplaceModel` 第一行就是
+   `const rows = catalog.map((entry) => toRow(entry, servers));` —— 每一条都成行。
+   后面那两个 `.filter`（`isTeam`、`sectionKeyOf(...) === FEATURED_SECTION_KEY`）
+   是**分组**用的，注释里写明是对应上游自己的
+   `catalog.filter(e => e.marketplace != null)` / `homepagePluginItems` 语义，不是删条目。
+
+4. **本地源码里根本没有那 11 个 id 的夹具**：`grep -rl google-slides` 在
+   `source/` `scripts/` `frontend/src/` 里只命中 `scripts/verify-marketplace-parity.mjs`
+   —— 也就是 parity 脚本自己那份「已知缺失」清单。
+
+### 决定性字段：`includesPrivateMarketplaces`
+
+`mcp-catalog-flow.ts` 把服务端返回的 `listing.includesPrivateMarketplaces` 缓存下来，
+并用它决定缓存是否可复用：
+
+```ts
+const authenticated = (await bestEffort(getAccessToken)) != null;
+...
+includesPrivateMarketplaces: listing.includesPrivateMarketplaces,
+```
+
+字段名本身就说明：那一组条目是**服务端按账号/企业版身份**决定的。
+
+### 缺失条目的构成与这个判据一致
+
+```
+google-slides  google-docs  google-sheets        ← Google 工作套件
+onedrive  outlook  outlook-calendar  sharepoint  teams  finance   ← Microsoft 工作套件
+x-money  oh-my-claudecode
+```
+
+前 9 条是一整族企业办公套件，官方已登录账号能看到，未登录看不到。官方首页那个
+**「登录与凭据管理」区块（本地没有，官方有 1Password）是同一道门** —— 两边都不是渲染缺失，
+而是账号门。
+
+### 所以「补这 11 条」不是一个可执行的方案
+
+要拿到它们，只有一条路：**登录一个 Cursor 账号**。本仓库的硬约束明确拒绝绕过登录/伪造
+token，所以这条路不在选项内。
+
+**结论**：这一项**没有本地代码可改**。它应当在交付说明里记成「账号门」，而不是一条
+待办 —— 否则下一个会话会去 catalog 里找过滤器、找夹具、找开关，找半天什么也没有，
+而真相在服务端。渲染侧已经证明与官方逐项一致（类表、几何、CTA、首页/类目页/管理页全绿）。
