@@ -25,26 +25,66 @@ import {
   BACK_BUTTON_CLASSES,
   BACK_LABEL_CLASSES,
   BACK_LEADING_CLASSES,
-  BACK_TRAILING_CLASSES,
   BACK_TO_MARKET_CLASSES,
+  BACK_TRAILING_CLASSES,
   CLOSE_BUTTON_CLASSES,
-  DIALOG_CLASSES,
+  COPY_LINK_BUTTON_CLASSES,
+  DETAIL_ACCOUNTS_CLASSES,
+  DETAIL_ACCOUNT_NAME_CLASSES,
+  DETAIL_ACTIONS_CLASSES,
+  DETAIL_ADD_ACCOUNT_FULL_CLASSES,
+  DETAIL_APP_COUNT_CLASSES,
+  DETAIL_BACK_BUTTON_CLASSES,
+  DETAIL_BAR_CLASSES,
+  DETAIL_BAR_LEADING_CLASSES,
+  DETAIL_BODY_CLASSES,
+  DETAIL_CONNECTORS_CLASSES,
+  DETAIL_CONNECTOR_KIND_CLASSES,
+  DETAIL_CONNECTOR_NAME_CLASSES,
+  DETAIL_CONNECTOR_ROW_CLASSES,
+  DETAIL_DESC_CLASSES,
+  DETAIL_DIVIDER_CLASSES,
+  DETAIL_EDIT_ACCOUNT_FULL_CLASSES,
+  DETAIL_HEADER_CLASSES,
+  DETAIL_INFO_LIST_CLASSES,
+  DETAIL_INFO_ROW_CLASSES,
+  DETAIL_INFO_TERM_CLASSES,
+  DETAIL_INFO_VALUE_CLASSES,
+  DETAIL_NAME_CLASSES,
+  DETAIL_NAME_ROW_CLASSES,
+  DETAIL_PRIMARY_BUTTON_CLASSES,
+  DETAIL_ROOT_FULL_CLASSES,
+  DETAIL_SECTION_TITLE_CLASSES,
+  DETAIL_SHARE_BUTTON_CLASSES,
+  DETAIL_SOURCE_LINK_CLASSES,
+  DETAIL_SOURCE_ROW_CLASSES,
+  DETAIL_STATUS_FULL_CLASSES,
+  DETAIL_SUBSECTION_ROW_CLASSES,
+  DETAIL_TITLE_CENTERED_CLASSES,
   DETAIL_TITLE_CLASSES,
+  DETAIL_TITLE_COL_CLASSES,
+  DETAIL_TOOLS_CLASSES,
+  DETAIL_TOOLS_LABEL_CLASSES,
+  DETAIL_TOOLS_ROW_CLASSES,
+  DETAIL_TOOL_ICON_CLASSES,
+  DIALOG_CLASSES,
   EMPTY_TEXT_CLASSES,
   EXPANDED_ROWS_CLASSES,
   GLYPH,
   GRID_CLASSES,
   GRID_FULLWIDTH_CLASSES,
+  GRID_SINGLE_CLASSES,
+  GROUPS_CLASSES,
   GROUP_ACTION_CLASSES,
   GROUP_SECTION_CLASSES,
   GROUP_TITLE_CLASSES,
-  GROUPS_CLASSES,
   HIDDEN_ROWS_CLASSES,
   ICON_GLYPH_CLASSES,
   ICON_SPAN_CLASSES,
   INSTALLED_PREVIEW_CLASSES,
   LAYOUT_CLASSES,
   LIFTED_OFFICIAL_RULES,
+  MANAGE_BACK_BUTTON_CLASSES,
   MANAGE_H1_CLASSES,
   MANAGE_HEADER_CLASSES,
   MARKETPLACE_ROOT_CLASSES,
@@ -53,8 +93,8 @@ import {
   OVERFLOW_INNER_CLASSES,
   PANE_CLASSES,
   PANE_HEADER_CLASSES,
-  PANE_WRAPPER_CLASSES,
   PANE_TITLE_CLASSES,
+  PANE_WRAPPER_CLASSES,
   PIN_BAND_CLASSES,
   PIN_COMPACT_HEIGHT_CLASS,
   PIN_FIELD_REL_CLASSES,
@@ -76,9 +116,14 @@ import {
   SEARCH_FIELD_SHELL_CLASSES,
   SEARCH_HOLDER_CLASSES,
   SEARCH_INPUT_CLASSES,
+  SECTION_H1_CLASSES,
   SECTION_OUTER_CLASSES,
+  SECTION_PAGE_FULL_CLASSES,
+  SECTION_RESULTS_TITLE_CLASSES,
   SECTION_ROW_CLASSES,
   SECTION_TITLE_CLASSES,
+  SHARE_ICON_CLASSES,
+  SHARE_LABEL_CLASSES,
   SHOW_ALL_CLASSES,
   SKILL_ICON_CLASSES,
   STATUS_BASE_CLASSES,
@@ -89,47 +134,6 @@ import {
   TOOL_ICON_CLASSES,
   TOOL_IMG_CLASSES,
   YOURS_ROOT_CLASSES,
-  COPY_LINK_BUTTON_CLASSES,
-  DETAIL_ACCOUNTS_CLASSES,
-  DETAIL_ACCOUNT_NAME_CLASSES,
-  DETAIL_ACTIONS_CLASSES,
-  DETAIL_ADD_ACCOUNT_FULL_CLASSES,
-  DETAIL_APP_COUNT_CLASSES,
-  DETAIL_BODY_CLASSES,
-  DETAIL_CONNECTOR_KIND_CLASSES,
-  DETAIL_CONNECTOR_NAME_CLASSES,
-  DETAIL_CONNECTOR_ROW_CLASSES,
-  DETAIL_CONNECTORS_CLASSES,
-  DETAIL_DESC_CLASSES,
-  DETAIL_DIVIDER_CLASSES,
-  DETAIL_EDIT_ACCOUNT_FULL_CLASSES,
-  DETAIL_HEADER_CLASSES,
-  DETAIL_INFO_LIST_CLASSES,
-  DETAIL_INFO_ROW_CLASSES,
-  DETAIL_INFO_TERM_CLASSES,
-  DETAIL_INFO_VALUE_CLASSES,
-  DETAIL_NAME_CLASSES,
-  DETAIL_NAME_ROW_CLASSES,
-  DETAIL_PRIMARY_BUTTON_CLASSES,
-  DETAIL_ROOT_FULL_CLASSES,
-  DETAIL_SECTION_TITLE_CLASSES,
-  DETAIL_SHARE_BUTTON_CLASSES,
-  DETAIL_SOURCE_LINK_CLASSES,
-  DETAIL_SOURCE_ROW_CLASSES,
-  DETAIL_STATUS_FULL_CLASSES,
-  DETAIL_SUBSECTION_ROW_CLASSES,
-  DETAIL_TITLE_COL_CLASSES,
-  DETAIL_TOOLS_CLASSES,
-  DETAIL_TOOLS_LABEL_CLASSES,
-  DETAIL_TOOLS_ROW_CLASSES,
-  DETAIL_TOOL_ICON_CLASSES,
-  DETAIL_BAR_CLASSES,
-  DETAIL_BAR_LEADING_CLASSES,
-  DETAIL_TITLE_CENTERED_CLASSES,
-  SECTION_H1_CLASSES,
-  SECTION_RESULTS_TITLE_CLASSES,
-  GRID_SINGLE_CLASSES,
-  SECTION_PAGE_FULL_CLASSES,
 } from "./official-styles.js";
 import {
   HOMEPAGE_PREVIEW_LIMIT,
@@ -1092,16 +1096,25 @@ function renderDetail(
     link.href = detail.sourceUrl;
     link.target = "_blank";
     link.rel = "noreferrer noopener";
+    // The external-link glyph lives INSIDE the <a> in official (text node, then a 13×13
+    // `<i class="ui-icon">`), which is what makes the link 69px wide rather than 52px. Appending
+    // it to the wrapper `span` left the link text-only and silently lost the icon.
+    link.append(glyph("arrow-up-right", GLYPH.externalLink, 13));
     sourceRow.append(link);
-    sourceRow.append(glyph("arrow-up-right", GLYPH.externalLink, 13));
     titleCol.append(sourceRow);
   }
   header.append(titleCol);
 
   const actions = el("div", DETAIL_ACTIONS_CLASSES);
-  const share = el("button", DETAIL_SHARE_BUTTON_CLASSES, TEXT.share);
+  // Official's children are `[sand-kit-icon 18×18][label span]` — icon first, label in its own
+  // ellipsis span. Passing the label as button text and appending a bare 14px glyph produced the
+  // same 82→78px shortfall; the recipe classes were already correct.
+  const share = el("button", DETAIL_SHARE_BUTTON_CLASSES);
   share.type = "button";
-  share.append(glyph("share", GLYPH.share, 14));
+  const shareIcon = el("span", SHARE_ICON_CLASSES);
+  shareIcon.append(glyph("link", GLYPH.share, 14));
+  share.append(shareIcon);
+  share.append(el("span", SHARE_LABEL_CLASSES, TEXT.share));
   share.addEventListener("click", () => handlers.onShare(row));
   actions.append(share);
   const primary = el(
@@ -1452,7 +1465,7 @@ export function createMarketplaceDialog(
             : (state.sectionGroup?.title ?? TEXT.market);
       const bar = el("div", DETAIL_BAR_CLASSES);
       const leading = el("div", DETAIL_BAR_LEADING_CLASSES);
-      const backButton = el("button", BACK_BUTTON_CLASSES);
+      const backButton = el("button", DETAIL_BACK_BUTTON_CLASSES);
       backButton.type = "button";
       backButton.setAttribute("aria-label", TEXT.back);
       const backIcon = el("span", ICON_SPAN_CLASSES);
@@ -1470,7 +1483,7 @@ export function createMarketplaceDialog(
     } else if (state.page === "manage") {
       const bar = el("div", BACK_BAR_CLASSES);
       const leading = el("div", BACK_LEADING_CLASSES);
-      const backButton = el("button", BACK_BUTTON_CLASSES);
+      const backButton = el("button", MANAGE_BACK_BUTTON_CLASSES);
       backButton.type = "button";
       const backIcon = el("span", ICON_SPAN_CLASSES);
       backIcon.setAttribute("aria-hidden", "true");

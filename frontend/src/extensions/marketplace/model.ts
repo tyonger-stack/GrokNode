@@ -27,8 +27,21 @@ export interface CatalogEntry {
   /** Upstream's vendor-override probe reads `pluginName` before `name`; `displayName` is never used. */
   readonly pluginName?: unknown;
   readonly iconUrl?: unknown;
-  /** The plugin's own URL. Confirmed against the live 0.66 build: the 查看源码 link target for
-   *  both Gmail and Ahrefs is exactly this field's value. */
+  /**
+   * Upstream's top-level `websiteUrl` — the publisher's own site. This is the value behind the
+   * `信息 · 网站` row.
+   *
+   * @evidence live 0.66, Gmail: `websiteUrl = "https://cursor.com/"` renders `网站 cursor.com`,
+   * while the same entry's `查看源码` href is `repositoryUrl = "https://github.com/cursor/plugins"`.
+   * They are different fields upstream and must not be collapsed into one.
+   */
+  readonly websiteUrl?: unknown;
+  /** Upstream's `repositoryUrl` — the `查看源码` link target. Distinct from `websiteUrl`. */
+  readonly repositoryUrl?: unknown;
+  /**
+   * The plugin's own URL. Kept for entries that only carry this one; the detail page prefers
+   * `repositoryUrl` for 查看源码 and `websiteUrl` for 信息 · 网站, falling back here.
+   */
   readonly homepage?: unknown;
   readonly iconId?: unknown;
   readonly marketplace?: unknown;
@@ -169,6 +182,55 @@ export const MANAGE_VISIBLE_ROWS = 6; // Xe — installed rows shown before 显�
 export const HOMEPAGE_PREVIEW_LIMIT = 4; // le — category-group preview rows
 export const PLUGINS_PREVIEW_LIMIT = 6; // je — generic section preview in the `plugins` layout
 export const POPULAR_LIMIT = 20; // ue
+
+/**
+ * The detail page's `信息 · 类别` value, keyed by the catalog's `categoryKey`.
+ *
+ * This is **not** the bucket label. That was the obvious guess and it is wrong: `PAYMENTS` maps to
+ * the bucket `finance`, whose section title is `财务`, but official's detail page reads `支付` for
+ * 1inch. The two label sets are independent.
+ *
+ * All 15 entries are transcribed from official's own table, not guessed:
+ * `const E={FEATURED:{id:"FkMol5"},INFRASTRUCTURE:{id:"Mo77P4"},…}` (16 entries, same function that
+ * assigns browse section keys), with each `id` resolved against the zh-CN message catalog. The
+ * catalog stores ~31 locales inline, so a naive id lookup returns whichever locale happens to be
+ * stored first — resolving by *nearest definition to the zh anchor* (`FkMol5` === 精选) is what makes
+ * this table correct; picking the first match yields Turkish, and picking the first match inside a
+ * fixed window yields Italian for `DATA_ANALYTICS`.
+ *
+ * An unlisted key falls back to the raw catalog `category` string, which is also what official does
+ * (`G(t.category)`) when `categoryKey` misses its table. An untranslated category is an honest gap;
+ * a mistranslated one is a fabricated behaviour.
+ *
+ * @evidence asar `E` table @char 23012290; zh-CN strings @char ~14581061-14608247.
+ *   Cross-checked live: Gmail (FEATURED) `精选`, Ahrefs (RESEARCH) `研究`, 1inch (PAYMENTS) `支付`.
+ */
+const CATEGORY_DETAIL_LABELS: Readonly<Record<string, string>> = {
+  AGENT_ORCHESTRATION: "智能体编排",
+  CANVAS: "画布",
+  CUSTOMER_SUPPORT: "客户支持",
+  DATA_ANALYTICS: "数据分析",
+  DESIGN: "设计",
+  DOCUMENTS_AND_FILES: "文档与文件",
+  FEATURED: "精选",
+  FINANCE_AND_LEGAL: "财务与法务",
+  INBOX_AND_COLLABORATION: "收件箱与协作",
+  INFRASTRUCTURE: "基础设施",
+  LOGIN_AND_CREDENTIAL_MANAGEMENT: "登录与凭据管理",
+  PAYMENTS: "支付",
+  PRODUCTIVITY: "效率",
+  RESEARCH: "研究",
+  SALES: "销售",
+  SCHEDULING: "日程安排",
+};
+
+/** The `信息 · 类别` value for an entry: a verified localized label, else the raw catalog string. */
+export function categoryDetailLabel(entry: CatalogEntry): string {
+  const key = str(entry.categoryKey).toUpperCase();
+  const mapped = CATEGORY_DETAIL_LABELS[key];
+  if (mapped != null) return mapped;
+  return str(entry.category);
+}
 
 /** `const q = 4` — `selectForYou`'s row limit, passed as `pluginLimit` from `ml`. */
 export const FOR_YOU_ROW_LIMIT = 4;
@@ -829,7 +891,15 @@ export const TEXT = {
   detailApps: "应用",
   detailInfo: "信息",
   editAccount: (account: string) => `编辑 ${account} 账户`,
-  addAccount: "添加账户",
+  /**
+   * Measured on the official 0.66 build, on an installed **and connected** entry (Gmail, default
+   * account `已连接`): the `.sand-plugins-detail__add-account` button reads `添加其他账户`. An earlier
+   * capture in this repo recorded `添加账户` — that transcription was wrong, and it matters because
+   * the official copy is specifically the "other" one, matching a button that sits *below* an
+   * already-listed default account.
+   * @evidence live 0.66 detail page, `sand-plugins-detail__add-account` innerText
+   */
+  addAccount: "添加其他账户",
   /** The label under each connector name in the 应用 list — measured as 连接器 under `ahrefs`. */
   connectorLabel: "连接器",
   infoFeatures: "功能",
@@ -963,10 +1033,15 @@ export function buildPluginDetail(row: BrowseRow, server: McpServer | null): Plu
   const info: DetailInfoRow[] = [
     { label: TEXT.infoFeatures, value: appCountLabel(connectors.length, skillCount) },
     { label: TEXT.infoDeveloper, value: publisher },
-    { label: TEXT.infoCategory, value: str(entry.category) },
+    { label: TEXT.infoCategory, value: categoryDetailLabel(entry) },
   ];
-  const homepage = str(entry.homepage);
-  if (homepage.length > 0) info.push({ label: TEXT.infoWebsite, value: displayHost(homepage) });
+  // `信息 · 网站` is the publisher's own site; `查看源码` is the repository. Upstream keeps them as
+  // two fields and renders them in two different places — Gmail shows `网站 cursor.com` next to a
+  // 查看源码 link pointing at `github.com/cursor/plugins`. Falling back to `homepage` keeps entries
+  // that only carry the older single-URL shape working.
+  const websiteUrl = str(entry.websiteUrl) || str(entry.homepage);
+  const sourceUrl = str(entry.repositoryUrl) || str(entry.homepage);
+  if (websiteUrl.length > 0) info.push({ label: TEXT.infoWebsite, value: displayHost(websiteUrl) });
   info.push({ label: TEXT.infoAvailability, value: availability });
 
   const isInstalled = server != null;
@@ -979,7 +1054,7 @@ export function buildPluginDetail(row: BrowseRow, server: McpServer | null): Plu
     name: row.name,
     description: row.description,
     iconUrl: row.iconUrl,
-    sourceUrl: homepage,
+    sourceUrl,
     isInstalled,
     server,
     publisher,

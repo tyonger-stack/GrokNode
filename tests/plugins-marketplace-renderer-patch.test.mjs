@@ -818,3 +818,262 @@ test("the SKILL.md body wraps instead of being clipped by the pane", () => {
   assert.match(rule, /overflow-x:auto/, "and the box must stay scrollable as a backstop");
   assert.match(VIEW, /const pre = el\("pre", DETAIL_DESC_CLASSES, skill\.body\);\s*\n\s*applyClasses\(pre, \[SKILL_BODY_MARKER\]\);/);
 });
+
+/* ------------------------------------------------------------------ *
+ * CTA recipes — pinned to a live 0.66 geometry dump (2026-10-04)
+ *
+ * These four controls shipped with recipes that were plausible but wrong: the row
+ * 添加 button rendered 32x24 with no fill, the detail 返回 rendered 36x28, 查看源码 lost
+ * its icon entirely, and 分享 came out 78px against official's 82. None of that is
+ * visible to a text assertion, and all four passed typecheck, the whole suite, and
+ * packaging. So the numbers below are the contract, read off the running 0.66 app.
+ * ------------------------------------------------------------------ */
+
+const CSS_TEXT = () => {
+  const file = cssName();
+  if (!file) return "";
+  return readFileSync(path.join(import.meta.dirname, "..", ".build/fidelity/app/dist/renderer/assets", file), "utf8");
+};
+
+const styleList = (name) => {
+  // Tolerate a type annotation between the name and `=` (the substitution table is typed), so
+  // locate the export first and take the first `[` after it.
+  const decl = STYLES.indexOf(`export const ${name}`);
+  assert.ok(decl > 0, `official-styles.ts must export ${name}`);
+  // Locate the initializer, not any `[` inside a type annotation
+  // (e.g. `ReadonlyArray<readonly [a, b, c, d]>` carries brackets of its own).
+  const open = STYLES.indexOf("= [", decl) + 2;
+  // Bracket-count to the matching `]`. A plain `indexOf("];")` silently runs into the NEXT
+  // declaration whenever the literal is written `] as const;`, and a guard that reads the wrong
+  // array still passes — it just stops guarding.
+  let depth = 0;
+  let close = -1;
+  for (let i = open; i < STYLES.length; i++) {
+    if (STYLES[i] === "[") depth++;
+    else if (STYLES[i] === "]") {
+      depth--;
+      if (depth === 0) { close = i; break; }
+    }
+  }
+  assert.ok(close > open, `${name} must be a closed array literal`);
+  return [...STYLES.slice(open + 1, close).matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+};
+
+/** `padding-inline-start:10px` and `padding-left:10px` are the same declaration under LTR. */
+const normalizeDecl = (decl) => decl.replace(/\s+/g, "").replace(/^padding-inline-start:/, "padding-left:")
+  .replace(/^padding-inline-end:/, "padding-right:")
+  .replace(/^border-inline-start-/, "border-left-").replace(/^border-inline-end-/, "border-right-");
+
+/** The `[official, officialDecl, substitute, substituteDecl]` rows, parsed as real tuples. */
+const substitutionRows = () => {
+  const decl = STYLES.indexOf("export const ACTION_BUTTON_018_SUBSTITUTES");
+  assert.ok(decl > 0, "official-styles.ts must export ACTION_BUTTON_018_SUBSTITUTES");
+  // Locate the initializer, not any `[` inside a type annotation
+  // (e.g. `ReadonlyArray<readonly [a, b, c, d]>` carries brackets of its own).
+  const open = STYLES.indexOf("= [", decl) + 2;
+  let depth = 0;
+  let close = -1;
+  for (let i = open; i < STYLES.length; i++) {
+    if (STYLES[i] === "[") depth++;
+    else if (STYLES[i] === "]") {
+      depth--;
+      if (depth === 0) { close = i; break; }
+    }
+  }
+  assert.ok(close > open, "the substitution table must be a closed array literal");
+  return [...STYLES.slice(open, close).matchAll(/\[\s*"([^"]+)",\s*"([^"]*)",\s*"([^"]+)",\s*"([^"]*)",?\s*\]/g)]
+    .map((m) => ({ official: m[1], officialDecl: m[2], substitute: m[3], substituteDecl: m[4] }));
+};
+
+test("the row 添加 button carries the official 0.66 recipe, not the guessed sand-kit-button one", () => {
+  const classes = styleList("ACTION_BUTTON_CLASSES");
+  const official = styleList("ACTION_BUTTON_OFFICIAL_CLASSES");
+
+  // Official's geometry carriers — each verified present in 0.18's stylesheet.
+  for (const cls of ["sand-d7y6wv", "sand-9h44rk", "sand-exx8yu", "sand-2vl965", "sand-18d9i69", "sand-17d4w8g", "sand-uxw1ft", "sand-1kxuqrf", "sand-1wd3ewq", "sand-1k6tqyu"]) {
+    assert.ok(classes.includes(cls), `ACTION_BUTTON_CLASSES must keep ${cls}; without it the pill loses its official geometry`);
+  }
+  assert.ok(classes.includes("sand-button"), "official's marker class is carried for className parity");
+  assert.ok(!classes.includes("sand-kit-button"), "the guessed sand-kit-button recipe is what produced the 32x24 pill");
+  assert.ok(!classes.includes("sand-167g77z"), "sand-167g77z is gap:8px from the wrong recipe");
+
+  // The emitted list must be official's, modulo exactly the documented substitutions.
+  const rows = substitutionRows();
+  assert.equal(rows.length, 7, "seven substitutions are documented");
+  const replaced = new Map(rows.map((r) => [r.official, r.substitute]));
+  for (const r of rows) {
+    assert.ok(official.includes(r.official), `${r.official} should be part of official's class list`);
+    assert.ok(classes.includes(r.substitute), `${r.substitute} (the 0.18 stand-in for ${r.official}) must be emitted`);
+    assert.ok(!classes.includes(r.official), `${r.official} has no rule in 0.18's stylesheet — emitting it would be a no-op`);
+    // The substitute must carry the SAME declaration as the official class it replaces, modulo
+    // logical-vs-physical property naming. Both sides are read out of the installed stylesheets.
+    assert.equal(normalizeDecl(r.substituteDecl), normalizeDecl(r.officialDecl), `${r.substitute} must stand in for ${r.official} with the same value`);
+  }
+  const expected = official.map((c) => replaced.get(c) ?? c);
+  assert.deepEqual(classes, expected, "the emitted recipe must equal official's, with only the documented substitutions applied");
+});
+
+test("no style list we emit references a class 0.18's stylesheet does not define", () => {
+  // The root cause of the 32x24 pill: seven official classes were emitted verbatim while 0.66's
+  // stylesheet — not 0.18's — was what defined them. Semantic markers carry no rule in EITHER
+  // stylesheet, so they are allowed through by name.
+  //
+  // Scope: the lists this change touched. `sand-yri2b`/`sand-1c1uobl`/`sand-1firant`/
+  // `sand-1iolv91` still appear verbatim in several PRE-EXISTING lists (detail title, close
+  // button, back bar); those controls already measure correctly in the deployed build, so
+  // rewriting them is out of scope here and is recorded as a known gap in EVIDENCE §22 rather
+  // than silently forgotten.
+  const css = CSS_TEXT();
+  const SEMANTIC = new Set([
+    "sand-button", "sand-kit-button", "sand-kit-icon", "sand-kit-icon-button", "sand-plugins-dialog__close",
+  ]);
+  const LISTS = [
+    "ACTION_BUTTON_CLASSES", "DETAIL_BACK_BUTTON_CLASSES", "MANAGE_BACK_BUTTON_CLASSES",
+    "SHARE_ICON_CLASSES", "SHARE_LABEL_CLASSES", "DETAIL_SHARE_BUTTON_CLASSES", "DETAIL_PRIMARY_BUTTON_CLASSES",
+  ];
+  if (css === "") return; // staged CSS absent — the structural guards above still apply
+  for (const name of LISTS) {
+    for (const cls of styleList(name)) {
+      if (SEMANTIC.has(cls)) continue;
+      if (cls.startsWith("ui-")) continue; // the icon font rules live in the other layer
+      assert.ok(new RegExp(`\\.${cls}[{,:\\s]`).test(css), `${name} emits ${cls}, which the 0.18 stylesheet does not define`);
+    }
+  }
+});
+
+test("查看源码 keeps its external-link icon inside the anchor", () => {
+  // Official: <a><text/><i class="ui-icon"/></a> → 69px wide. Appending the glyph to the wrapper
+  // span left a text-only anchor at 52px and dropped the icon with no error anywhere.
+  const block = VIEW.slice(VIEW.indexOf("const sourceRow = el("), VIEW.indexOf("titleCol.append(sourceRow)"));
+  assert.match(block, /link\.append\(glyph\("arrow-up-right", GLYPH\.externalLink, 13\)\)/);
+  assert.ok(!/sourceRow\.append\(glyph\(/.test(block), "the glyph must not be appended to the wrapper span");
+  assert.ok(block.indexOf("link.append(glyph") < block.indexOf("sourceRow.append(link)"), "icon is appended into the anchor, then the anchor into the row");
+});
+
+test("分享 is an icon box plus a label span, not bare button text plus a glyph", () => {
+  // Official's children are [sand-kit-icon 18x18][label span 28x20] = 82x36 total. Passing the
+  // label as button text and appending an unwrapped 14px glyph gave 78px.
+  const block = VIEW.slice(VIEW.indexOf("const share = el("), VIEW.indexOf("actions.append(share)"));
+  assert.ok(!/el\("button", DETAIL_SHARE_BUTTON_CLASSES, TEXT\.share\)/.test(block), "the label must not be the button's text node");
+  assert.match(block, /el\("span", SHARE_ICON_CLASSES\)/);
+  assert.match(block, /share\.append\(shareIcon\)/);
+  assert.match(block, /el\("span", SHARE_LABEL_CLASSES, TEXT\.share\)/);
+  assert.ok(block.indexOf("share.append(shareIcon)") < block.indexOf("SHARE_LABEL_CLASSES"), "the icon box comes first");
+  assert.match(VIEW, /glyph\("link", GLYPH\.share, 14\)/, "official's 分享 glyph is the link glyph at 14px");
+});
+
+test("the detail bar's icon-only 返回 and the manage page's labelled ‹ 市场 are different controls", () => {
+  // Sharing one recipe rendered the icon-only back button 36x28 instead of 28x28. Official sizes
+  // the detail bar's back from sand-gd8bvy/sand-1fgtraw, which the manage button does not carry.
+  const detailBack = styleList("DETAIL_BACK_BUTTON_CLASSES");
+  assert.ok(detailBack.includes("sand-gd8bvy") && detailBack.includes("sand-1fgtraw"), "28x28 comes from the explicit width/height classes");
+  const manageBack = styleList("MANAGE_BACK_BUTTON_CLASSES");
+  assert.ok(!manageBack.includes("sand-gd8bvy"), "the manage back button is not the 28x28 icon button");
+  for (const cls of ["sand-11wthnw", "sand-d4r4e8", "sand-12oo3zp", "sand-19aaqeu"]) {
+    assert.ok(manageBack.includes(cls), `official's manage back carries ${cls}`);
+  }
+  const bar = VIEW.slice(VIEW.indexOf("const bar = el(\"div\", DETAIL_BAR_CLASSES)"), VIEW.indexOf("const bar = el(\"div\", BACK_BAR_CLASSES)"));
+  assert.match(bar, /el\("button", DETAIL_BACK_BUTTON_CLASSES\)/);
+  const manage = VIEW.slice(VIEW.indexOf("const bar = el(\"div\", BACK_BAR_CLASSES)"));
+  assert.match(manage.slice(0, 400), /el\("button", MANAGE_BACK_BUTTON_CLASSES\)/);
+});
+
+/* ------------------------------------------------------------------ *
+ * Detail-page value parity (added after three wrong strings shipped)
+ *
+ * All three of these shipped wrong with the suite fully green, because nothing asserted the
+ * rendered *values* — only that the rows existed. The strings below are transcribed from
+ * official 0.66's own zh-CN message catalog, not measured one UI click at a time.
+ * ------------------------------------------------------------------ */
+
+const MCP_MARKETPLACE = readFileSync(
+  path.join(import.meta.dirname, "..", "source/shared/node/mcp/mcp-marketplace.ts"),
+  "utf8",
+);
+
+test("the add-account row reads 添加其他账户, not 添加账户", () => {
+  // Official's catalog carries BOTH strings: `FGnQEW` = 添加其他账户 and `MPPZ54` = 添加账户.
+  // Only FGnQEW is the detail row — MPPZ54 is a different surface entirely (it resolves to
+  // "Lisää tili" in Finnish, i.e. "Add language", so it is an unrelated key in a shared catalog).
+  // An earlier capture here transcribed the row as 添加账户 and the suite never noticed.
+  assert.match(MODEL, /addAccount:\s*"添加其他账户"/);
+  assert.doesNotMatch(
+    MODEL,
+    /addAccount:\s*"添加账户"/,
+    "官方 0.66 的 .sand-plugins-detail__add-account 文案是 添加其他账户",
+  );
+});
+
+test("信息 · 网站 shows the publisher website while 查看源码 keeps the repository URL", () => {
+  // Gmail on official 0.66: `信息 · 网站` = cursor.com (from the top-level `websiteUrl`) and
+  // `查看源码` href = https://github.com/cursor/plugins (from `repositoryUrl`). Collapsing the two
+  // into one field rendered github.com in the 网站 row.
+  assert.match(MODEL, /const websiteUrl = str\(entry\.websiteUrl\) \|\| str\(entry\.homepage\);/);
+  assert.match(MODEL, /const sourceUrl = str\(entry\.repositoryUrl\) \|\| str\(entry\.homepage\);/);
+  assert.match(MODEL, /TEXT\.infoWebsite, value: displayHost\(websiteUrl\)/);
+  assert.match(MODEL, /sourceUrl,/);
+
+  // Both fields must survive BOTH projections. The second one has already dropped `categoryKeys`
+  // once, and a field added to `toPlugin` alone leaves the renderer with `undefined`.
+  assert.match(
+    MCP_MARKETPLACE,
+    /websiteUrl: plugin\.websiteUrl \|\| undefined,[\s\S]*?repositoryUrl: plugin\.repositoryUrl \|\| undefined,[\s\S]*?homepage: plugin\.repositoryUrl \|\| undefined,/,
+    "toPlugin must carry websiteUrl and repositoryUrl as separate fields, and must not prefer the repo for homepage",
+  );
+  assert.match(
+    MCP_MARKETPLACE,
+    /websiteUrl: plugin\.websiteUrl,\s*\n\s*repositoryUrl: plugin\.repositoryUrl,/,
+    "marketplacePluginToView must carry both URL fields through the second projection",
+  );
+  // `publisher.websiteUrl` never existed — the publisher object only has name/displayName/
+  // isUserOwned, and the live local catalog has 0 entries carrying a website on the publisher.
+  // Comments are stripped first: the fix documents the dead fallback by name, and a guard that
+  // matched prose would be asserting on its own explanation.
+  const MCP_CODE = MCP_MARKETPLACE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(
+    MCP_CODE,
+    /publisher\?\.websiteUrl/,
+    "the website lives at the top level, not on the publisher object",
+  );
+});
+
+test("信息 · 类别 renders official's localized label, not the raw English category", () => {
+  // Live 0.66 detail pages read 精选 (Gmail/FEATURED), 研究 (Ahrefs/RESEARCH) and 支付
+  // (1inch/PAYMENTS). The last one is the proof this is not the bucket label: PAYMENTS buckets to
+  // `finance` whose section title is 财务, yet the 类别 row says 支付.
+  assert.match(MODEL, /\{ label: TEXT\.infoCategory, value: categoryDetailLabel\(entry\) \}/);
+  assert.doesNotMatch(
+    MODEL,
+    /\{ label: TEXT\.infoCategory, value: str\(entry\.category\) \}/,
+    "the raw catalog category is English (Featured/Research) and is not what official renders",
+  );
+
+  // The whole 16-entry table, transcribed from official's own `E` table + zh-CN catalog.
+  const table = MODEL.slice(
+    MODEL.indexOf("const CATEGORY_DETAIL_LABELS"),
+    MODEL.indexOf("export function categoryDetailLabel"),
+  );
+  for (const [key, label] of [
+    ["FEATURED", "精选"],
+    ["INFRASTRUCTURE", "基础设施"],
+    ["DATA_ANALYTICS", "数据分析"],
+    ["PRODUCTIVITY", "效率"],
+    ["PAYMENTS", "支付"],
+    ["AGENT_ORCHESTRATION", "智能体编排"],
+    ["CANVAS", "画布"],
+    ["INBOX_AND_COLLABORATION", "收件箱与协作"],
+    ["SCHEDULING", "日程安排"],
+    ["DOCUMENTS_AND_FILES", "文档与文件"],
+    ["SALES", "销售"],
+    ["CUSTOMER_SUPPORT", "客户支持"],
+    ["FINANCE_AND_LEGAL", "财务与法务"],
+    ["RESEARCH", "研究"],
+    ["DESIGN", "设计"],
+    ["LOGIN_AND_CREDENTIAL_MANAGEMENT", "登录与凭据管理"],
+  ]) {
+    assert.match(table, new RegExp(`${key}:\\s*"${label}"`), `${key} must render ${label}`);
+  }
+  // An unmapped key must fall back to the raw category, which is what official does when
+  // `categoryKey` misses its own table — never to a guessed translation.
+  assert.match(MODEL, /return str\(entry\.category\);/);
+});

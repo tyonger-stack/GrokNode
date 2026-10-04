@@ -27,6 +27,19 @@ export interface SandMarketplacePlugin {
   /** Upstream's full curated key list. Multi-valued, and load-bearing for bucketing. */
   categoryKeys: string[];
   logoUrl: string | undefined;
+  /**
+   * Upstream's top-level `websiteUrl` — the publisher's own site (`https://cursor.com/` for Gmail).
+   * This is what the detail page's `信息 · 网站` row shows, and it is NOT the same value as
+   * `repositoryUrl`. Collapsing the two (the earlier shape) rendered `github.com` where official
+   * renders `cursor.com`.
+   */
+  websiteUrl: string | undefined;
+  /** Upstream's `repositoryUrl` — the target behind the `查看源码` link. */
+  repositoryUrl: string | undefined;
+  /**
+   * The link target used by `查看源码`. Kept separate from `websiteUrl` on purpose: official shows
+   * the website host in `信息 · 网站` and the repository href in `查看源码` for the same entry.
+   */
   homepage: string | undefined;
   sourceUrls: string[];
   connectors: Array<{ name: string; description: string }>;
@@ -53,6 +66,11 @@ export function marketplacePluginToView(plugin: SandMarketplacePlugin) {
     // falls back to the single human-readable label.
     categoryKey: plugin.categoryKey,
     categoryKeys: plugin.categoryKeys,
+    // Both URL fields have to survive this projection as well. This is the second of two hops
+    // between the wire and the renderer, and it has already silently dropped `categoryKeys` once —
+    // adding a field to `toPlugin` alone leaves the renderer with `undefined`.
+    websiteUrl: plugin.websiteUrl,
+    repositoryUrl: plugin.repositoryUrl,
     homepage: plugin.homepage,
     iconUrl: plugin.logoUrl,
     connectors: plugin.connectors,
@@ -171,7 +189,15 @@ function toPlugin(
             )
             .join(" "),
     logoUrl,
-    homepage: plugin.repositoryUrl || publisher?.websiteUrl || undefined,
+    // `websiteUrl` and `repositoryUrl` are two different upstream fields and upstream keeps them
+    // apart: Gmail carries websiteUrl `https://cursor.com/` and repositoryUrl
+    // `https://github.com/cursor/plugins`, and official renders the former in `信息 · 网站` and the
+    // latter as the `查看源码` href. Preferring the repository here is what made the local build show
+    // `github.com`. Note the old `publisher?.websiteUrl` fallback was dead: the publisher object only
+    // ever carries name/displayName/isUserOwned — the website lives at the top level.
+    websiteUrl: plugin.websiteUrl || undefined,
+    repositoryUrl: plugin.repositoryUrl || undefined,
+    homepage: plugin.repositoryUrl || undefined,
     sourceUrls: plugin.mcpServers
       .map((server: any) => server.sourceUrl ?? "")
       .filter((url: string) => url.length > 0),

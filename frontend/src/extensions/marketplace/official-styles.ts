@@ -537,13 +537,61 @@ export const ADD_PENDING_CLASSES = [
   "sand-d7y6wv", "sand-2vl965", "sand-e2zdcy",
 ];
 
-/** Secondary button used for 添加 / 连接. Mirrors the official `Button size=sm variant=secondary`
- *  call sites, which reuse the shared `sand-kit-button` recipe. */
+/** Official 0.66's exact class list for the row trailing 添加 / 连接 button — kept verbatim so the
+ *  deployed markup can be diffed against the live app. For rendering we emit
+ *  `ACTION_BUTTON_CLASSES` below, which differs only in the seven substitutions documented in
+ *  `ACTION_BUTTON_018_SUBSTITUTES`. */
+export const ACTION_BUTTON_OFFICIAL_CLASSES = [
+  "sand-button", "sand-9f619", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k", "sand-2lah0s",
+  "sand-17d4w8g", "sand-178xt8z", "sand-1lun4ml", "sand-so031l", "sand-pilrb4", "sand-13fuv20",
+  "sand-18b5jzi", "sand-1q0q8m5", "sand-1t7ytsu", "sand-1v8p93f", "sand-1o3jo1z", "sand-16stqrj",
+  "sand-v5lvn5", "sand-jb2p0i", "sand-1k6tqyu", "sand-uxw1ft", "sand-2b8uid", "sand-krqix3",
+  "sand-87ps6o", "sand-ggy1nq", "sand-1ypdohk", "sand-1s07b3s", "sand-1hc1fzr", "sand-uhm2yv",
+  "sand-67bb7w", "sand-aqnwrm", "sand-1k57tk5", "sand-784prv", "sand-1t137rt", "sand-9v5kkp",
+  "sand-1uczgqu", "sand-1725o6r", "sand-1wfwxd8", "sand-7s97pk", "sand-1eaenvl", "sand-1kneoy4",
+  "sand-1pbvl4h", "sand-d7y6wv", "sand-exx8yu", "sand-2vl965", "sand-18d9i69", "sand-e2zdcy",
+  "sand-9h44rk", "sand-1wm8ruf", "sand-spwq11", "sand-1kxuqrf", "sand-uo9n5k", "sand-1wd3ewq",
+];
+
+/** Row trailing 添加 / 连接 — the secondary pill every list row carries.
+ *
+ *  Corrected 2026-10-04 against a live 0.66 DOM dump. The previous recipe was a guessed
+ *  `sand-kit-button` list that rendered **32×24 with no background and 0.6-alpha text**;
+ *  official renders **46×26**, `padding 0 10px`, `border-radius 13px`, translucent fill,
+ *  `font-weight 420`, `white-space nowrap`, `border 1px solid transparent`.
+ *  Same DOM shape on both sides (`BUTTON`, text-only, 0 element children) — the whole
+ *  difference was the recipe, so the fix is a class-list swap, not a DOM change.
+ *
+ *  47 of official's 54 classes ship verbatim in 0.18's stylesheet. The other 7 are pure
+ *  logical-vs-physical property swaps (0.66 emits `border-inline-end:*` / `padding-inline-start`;
+ *  0.18 only ever emits the physical form) and are exact equivalents under the app's LTR-only
+ *  direction — each substitute is grep-verified present in the deployed `index-lCyB53CO.css`.
+ *  `sand-button` is a semantic marker with no rule in either stylesheet: carried for className
+ *  parity, it has no effect. Parity here is measured in pixels, not in class strings. */
 export const ACTION_BUTTON_CLASSES = [
-  "sand-kit-button", "sand-9f619", "sand-3nfvp2", "sand-6s0dn4", "sand-167g77z", "sand-euugli",
-  "sand-1iorvi4", "sand-f159sx", "sand-jkvuk6", "sand-c342km", "sand-ng3xce", "sand-jbqb8w",
-  "sand-1o0liin", "sand-jb2p0i", "sand-1wm8ruf", "sand-1d3mw78", "sand-12oo3zp", "sand-1ypdohk",
-  "sand-1t137rt", "sand-9v5kkp", "sand-1k57tk5", "sand-784prv", "sand-1uczgqu", "sand-1iolv91",
+  "sand-button", "sand-9f619", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k", "sand-2lah0s",
+  "sand-17d4w8g", "sand-178xt8z", "sand-s1s249", "sand-so031l", "sand-e0pwq", "sand-13fuv20",
+  "sand-32b0ac", "sand-1q0q8m5", "sand-1t7ytsu", "sand-1v8p93f", "sand-he5wa1", "sand-16stqrj",
+  "sand-1g4hjc", "sand-jb2p0i", "sand-1k6tqyu", "sand-uxw1ft", "sand-2b8uid", "sand-krqix3",
+  "sand-87ps6o", "sand-ggy1nq", "sand-1ypdohk", "sand-1s07b3s", "sand-1hc1fzr", "sand-uhm2yv",
+  "sand-67bb7w", "sand-aqnwrm", "sand-1k57tk5", "sand-784prv", "sand-1t137rt", "sand-9v5kkp",
+  "sand-1uczgqu", "sand-1725o6r", "sand-1wfwxd8", "sand-7s97pk", "sand-1eaenvl", "sand-bb3pvg",
+  "sand-1pbvl4h", "sand-d7y6wv", "sand-exx8yu", "sand-2vl965", "sand-18d9i69", "sand-1lqa7cf",
+  "sand-9h44rk", "sand-1wm8ruf", "sand-spwq11", "sand-1kxuqrf", "sand-uo9n5k", "sand-1wd3ewq",
+];
+
+/** The seven substitutions baked into `ACTION_BUTTON_CLASSES`. Values copied verbatim from the
+ *  0.66 declaration; only the property's logical/physical form differs. */
+export const ACTION_BUTTON_018_SUBSTITUTES: ReadonlyArray<
+  readonly [official: string, officialDecl: string, substitute: string, substituteDecl: string]
+> = [
+  ["sand-1lun4ml", "border-inline-end-width:1px", "sand-s1s249", "border-right-width:1px"],
+  ["sand-pilrb4", "border-inline-start-width:1px", "sand-e0pwq", "border-left-width:1px"],
+  ["sand-18b5jzi", "border-inline-end-style:solid", "sand-32b0ac", "border-right-style:solid"],
+  ["sand-1o3jo1z", "border-inline-end-color:transparent", "sand-he5wa1", "border-right-color:transparent"],
+  ["sand-v5lvn5", "border-inline-start-color:transparent", "sand-1g4hjc", "border-left-color:transparent"],
+  ["sand-1kneoy4", "transition-duration:.14s", "sand-bb3pvg", "transition-duration:.14s"],
+  ["sand-e2zdcy", "padding-inline-start:10px", "sand-1lqa7cf", "padding-left:10px"],
 ];
 
 /* ------------------------------------------------------------------ *
@@ -682,7 +730,7 @@ export const DETAIL_ACTIONS_CLASSES = [
 export const DETAIL_SHARE_BUTTON_CLASSES = [
   "sand-kit-button", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k", "sand-1jnr06f", "sand-2lah0s",
   "sand-9f619", "sand-c342km", "sand-ng3xce", "sand-jb2p0i", "sand-uxw1ft", "sand-1ypdohk",
-  "sand-tgyt42", "sand-s2xxs2", "sand-1firant", "sand-9lcvmn", "sand-1k57tk5", "sand-784prv",
+  "sand-tgyt42", "sand-s2xxs2", "sand-gdialr", "sand-9lcvmn", "sand-1k57tk5", "sand-784prv",
   "sand-1t137rt", "sand-9v5kkp", "sand-4sht9k", "sand-1y3gkto", "sand-fc7y3v", "sand-1fc57z9",
   "sand-12oo3zp", "sand-1y1aw1k", "sand-v54qhq", "sand-wib8y2", "sand-f7dkkf", "sand-149ho13",
   "sand-1tiofj7", "sand-ex9vrg", "sand-wj1584", "sand-tyxrsu", "sand-g7klql",
@@ -694,11 +742,63 @@ export const DETAIL_SHARE_BUTTON_CLASSES = [
 export const DETAIL_PRIMARY_BUTTON_CLASSES = [
   "sand-kit-button", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k", "sand-1jnr06f", "sand-2lah0s",
   "sand-9f619", "sand-c342km", "sand-ng3xce", "sand-jb2p0i", "sand-uxw1ft", "sand-1ypdohk",
-  "sand-tgyt42", "sand-s2xxs2", "sand-1firant", "sand-9lcvmn", "sand-1k57tk5", "sand-784prv",
+  "sand-tgyt42", "sand-s2xxs2", "sand-gdialr", "sand-9lcvmn", "sand-1k57tk5", "sand-784prv",
   "sand-1t137rt", "sand-9v5kkp", "sand-4sht9k", "sand-1y3gkto", "sand-fc7y3v", "sand-1fc57z9",
   "sand-12oo3zp", "sand-1y1aw1k", "sand-v54qhq", "sand-wib8y2", "sand-f7dkkf", "sand-149ho13",
   "sand-1wclgxm", "sand-1e15362", "sand-1gzh0bn", "sand-xcaa6e", "sand-g7klql",
 ];
+
+/** The icon-only 返回 on the detail bar (`sand-kit-icon-button`, 28×28).
+ *
+ *  Added 2026-10-04. This bar's back button is a DIFFERENT control from the manage page's
+ *  `‹ 市场` back button — it carries no label and official sizes it 28×28, whereas the old shared
+ *  recipe rendered it 36×28. Both now come from their own constants.
+ *
+ *  Two of official's classes are deliberately dropped rather than substituted:
+ *  `sand-yri2b{padding-inline-end:0}` and `sand-1c1uobl{padding-inline-start:0}`. 0.18 ships no
+ *  `padding-right:0` / `padding-left:0` class at all, but it does zero button padding in its own
+ *  reset — a bare `<button>` measures `padding: 0px` here, so the declarations are provably
+ *  redundant and the control still computes `padding: 0px` against official's `0px`.
+ *  `sand-1firant{transition-duration:.12s}` becomes `sand-gdialr`, an exact declaration+selector
+ *  match already in 0.18. The remaining two (`sand-kit-icon-button`, `sand-yri2b`) carry no rule
+ *  in either stylesheet. The 28×28 box comes from `sand-gd8bvy{width:28px}` +
+ *  `sand-1fgtraw{height:28px}`, both present verbatim. This is the same list
+ *  `COPY_LINK_BUTTON_CLASSES` already uses, and that button already measured 28×28 in the
+ *  deployed build. */
+export const DETAIL_BACK_BUTTON_CLASSES = [
+  "sand-kit-icon-button", "sand-1n2onr6", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k",
+  "sand-2lah0s", "sand-9f619", "sand-exx8yu", "sand-18d9i69", "sand-c342km", "sand-ng3xce",
+  "sand-1ypdohk", "sand-tgyt42", "sand-s2xxs2", "sand-gdialr", "sand-9lcvmn", "sand-1k57tk5",
+  "sand-784prv", "sand-1t137rt", "sand-9v5kkp", "sand-4sht9k", "sand-1y3gkto", "sand-gd8bvy",
+  "sand-1fgtraw", "sand-149ho13", "sand-jbqb8w", "sand-1r8pydn", "sand-1o0liin", "sand-1fx2joi",
+  "sand-7n8uir",
+];
+
+/** The manage page's labelled `‹ 市场` back button — a different control from the detail bar's
+ *  icon-only 返回, hence its own constant. Captured from the live manage page: the three
+ *  leading type classes and `sand-19aaqeu` (secondary text colour, interleaved right after the
+ *  padding classes) were missing from the previous shared recipe, and `sand-1iolv91` (the
+ *  focus-visible outline colour) has no 0.18 equivalent under that name — `sand-4sht9k` is the
+ *  exact declaration+selector match. Every other class here ships verbatim in 0.18's stylesheet. */
+export const MANAGE_BACK_BUTTON_CLASSES = [
+  "sand-11wthnw", "sand-d4r4e8", "sand-12oo3zp", "sand-9f619", "sand-3nfvp2", "sand-6s0dn4",
+  "sand-195vfkc", "sand-193iq5w", "sand-1fgtraw", "sand-exx8yu", "sand-2vl965", "sand-18d9i69",
+  "sand-25sj25", "sand-c342km", "sand-ng3xce", "sand-149ho13", "sand-jbqb8w", "sand-aalx5g",
+  "sand-19aaqeu", "sand-jb2p0i", "sand-1ypdohk", "sand-1t137rt", "sand-9v5kkp", "sand-1k57tk5",
+  "sand-784prv", "sand-1uczgqu", "sand-4sht9k",
+];
+
+/** The 分享 button's leading icon box — 18×18, holding a 14px `link` glyph.
+ *  Official puts this span FIRST, then the label span. The old markup put a bare text node first
+ *  and an unwrapped 14px glyph second, which is why the button came out 78px wide against
+ *  official's 82px despite an otherwise byte-identical recipe. */
+export const SHARE_ICON_CLASSES = [
+  "sand-kit-icon", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k", "sand-2lah0s", "sand-1heor9g",
+  "sand-1xp8n7a", "sand-mix8c7",
+];
+
+/** The 分享 button's label — its own ellipsis span, 28×20. */
+export const SHARE_LABEL_CLASSES = ["sand-euugli", "sand-b3r6kr", "sand-lyipyv"];
 
 export const DETAIL_DESC_CLASSES = [
   "sand-plugins-detail__desc", "sand-fc7y3v", "sand-1fc57z9", "sand-12oo3zp", "sand-9f619",
