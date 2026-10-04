@@ -83,6 +83,8 @@ import {
   LAYOUT_CLASSES,
   LIFTED_OFFICIAL_RULES,
   MANAGE_BACK_BUTTON_CLASSES,
+  MANAGE_BAND_CLASSES,
+  MANAGE_BAND_ROW_CLASSES,
   MANAGE_H1_CLASSES,
   MANAGE_HEADER_CLASSES,
   MARKETPLACE_ROOT_CLASSES,
@@ -165,6 +167,13 @@ import {
 
 function applyClasses(element: Element, classNames: readonly string[]): void {
   for (const className of classNames) element.classList.add(className);
+}
+
+/** Replace a node's class list wholesale. Needed where official keeps ONE element and swaps a
+ *  page's class list for another's on it — the 48px band is the only such element here, and
+ *  `applyClasses` can only add, so the old list would otherwise survive into the other page. */
+function setClasses(element: Element, classNames: readonly string[]): void {
+  element.className = classNames.join(" ");
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -305,6 +314,7 @@ const SEARCH_SHELL_MARKER = "sand-mkt-search-shell";
 const SEARCH_INNER_MARKER = "sand-mkt-search-inner";
 const SEARCH_INPUT_MARKER = "sand-mkt-search-input";
 const PIN_BAND_MARKER = "sand-mkt-pin-band";
+const MANAGE_BAND_ROW_MARKER = "sand-mkt-manage-band-row";
 const PIN_ROW_MARKER = "sand-mkt-pin-row";
 const PIN_PAD_MARKER = "sand-mkt-pin-pad";
 const PIN_WRAP_MARKER = "sand-mkt-pin-wrap";
@@ -609,7 +619,15 @@ function buildHomepageSection(
 }
 
 /** `jt` (d=1162) — the manage view's sections. Its `h3` has NO `data-detail-hero-title`. */
-function buildGroupSection(title: string, titleId: string, body: HTMLElement): HTMLElement {
+/**
+ * Variadic on purpose. Official's group puts its grid — and, on 已安装, the collapsed overflow
+ * holder and the 显示全部 row — as *siblings* under the section, not inside a wrapper. The wrapper
+ * this used to take (`OVERFLOW_INNER_CLASSES`, i.e. `min-height:0;overflow:hidden`) belongs one
+ * level further in: official only carries it around the holder and around the 显示全部 row, never
+ * around the whole body. Passing the parts straight through is what makes the section's child list
+ * match — official 已安装 has exactly 4 children (heading row, grid, holder, 显示全部 row).
+ */
+function buildGroupSection(title: string, titleId: string, ...bodies: HTMLElement[]): HTMLElement {
   const section = el("section", GROUP_SECTION_CLASSES);
   section.setAttribute("aria-labelledby", titleId);
   const header = el("div", SECTION_ROW_CLASSES);
@@ -617,7 +635,7 @@ function buildGroupSection(title: string, titleId: string, body: HTMLElement): H
   heading.id = titleId;
   header.append(heading);
   section.append(header);
-  section.append(body);
+  section.append(...bodies);
   return section;
 }
 
@@ -789,15 +807,16 @@ function renderManage(
   const first = overflows ? matchedInstalled.slice(0, MANAGE_VISIBLE_ROWS) : matchedInstalled;
   const rest = overflows ? matchedInstalled.slice(MANAGE_VISIBLE_ROWS) : [];
 
-  const installedBody = el("div", OVERFLOW_INNER_CLASSES);
+  const installedNodes: HTMLElement[] = [];
   if (matchedInstalled.length === 0) {
-    installedBody.append(
+    installedNodes.push(
       buildEmptyState(searching ? `没有已安装的插件匹配“${trimmed}”` : TEXT.noInstalled),
     );
   } else {
     const grid = el("ul", GRID_CLASSES);
+    grid.setAttribute("aria-labelledby", "mkt-installed");
     for (const item of first) grid.append(buildInstalledRow(item, handlers));
-    installedBody.append(grid);
+    installedNodes.push(grid);
 
     if (rest.length > 0) {
       // Upstream renders the overflow rows in the DOM but keeps them `aria-hidden` + `inert` behind
@@ -810,14 +829,17 @@ function renderManage(
         holder.setAttribute("aria-hidden", "true");
         holder.setAttribute("inert", "");
       }
+      // `min-height:0;overflow:hidden` is what lets the 0fr row collapse — official has it here,
+      // around the holder's own content, and nowhere higher up.
       const inner = el("div", OVERFLOW_INNER_CLASSES);
       const gridHolder = el("div", OVERFLOW_GRID_HOLDER_CLASSES);
       const restGrid = el("ul", GRID_CLASSES);
+      restGrid.setAttribute("aria-labelledby", "mkt-installed");
       for (const item of rest) restGrid.append(buildInstalledRow(item, handlers));
       gridHolder.append(restGrid);
       inner.append(gridHolder);
       holder.append(inner);
-      installedBody.append(holder);
+      installedNodes.push(holder);
 
       if (!state.installedExpanded) {
         const wrap = el("div", OVERFLOW_INNER_CLASSES);
@@ -825,31 +847,30 @@ function renderManage(
         showAll.type = "button";
         showAll.addEventListener("click", () => handlers.onToggleInstalledExpanded());
         wrap.append(showAll);
-        installedBody.append(wrap);
+        installedNodes.push(wrap);
       }
     }
   }
-  root.append(buildGroupSection(TEXT.installed, "mkt-installed", installedBody));
+  root.append(buildGroupSection(TEXT.installed, "mkt-installed", ...installedNodes));
 
   // ---- 私有技能 ----
-  const skillBody = el("div", OVERFLOW_INNER_CLASSES);
   const matchedSkills = searching
     ? skills.filter((skill) => skill.name.toLocaleLowerCase().includes(trimmed.toLocaleLowerCase()))
     : skills;
+  const skillNodes: HTMLElement[] = [];
   if (state.skillsError != null) {
     // An unreachable host must never read as "you have no skills". Upstream's empty state is only
     // correct when the read actually succeeded and came back empty.
-    skillBody.append(buildEmptyState(state.skillsError));
+    skillNodes.push(buildEmptyState(state.skillsError));
   } else if (matchedSkills.length === 0) {
-    skillBody.append(
-      buildEmptyState(searching ? `没有私有技能匹配“${trimmed}”` : TEXT.noPrivateSkills),
-    );
+    skillNodes.push(buildEmptyState(searching ? `没有私有技能匹配“${trimmed}”` : TEXT.noPrivateSkills));
   } else {
     const grid = el("ul", GRID_FULLWIDTH_CLASSES);
+    grid.setAttribute("aria-labelledby", "mkt-private-skills");
     for (const skill of matchedSkills) grid.append(buildSkillRow(skill, handlers));
-    skillBody.append(grid);
+    skillNodes.push(grid);
   }
-  root.append(buildGroupSection(TEXT.privateSkills, "mkt-private-skills", skillBody));
+  root.append(buildGroupSection(TEXT.privateSkills, "mkt-private-skills", ...skillNodes));
 
   groups.replaceChildren(root);
 }
@@ -1346,12 +1367,34 @@ export function createMarketplaceDialog(
   close.addEventListener("click", () => handlers.close());
   layout.append(close);
 
-  // The 48px band. Present on BOTH pages and always the same height, exactly as official: on the
-  // manage page it is measured empty even when the page is scrolled to the very bottom, so the
-  // pinned field is a marketplace-page affordance only.
+  // The 48px band is a shared slot, not a marketplace-only affordance: official renders ONE element
+  // here on both pages and swaps only its class list and its single child. 页 1 holds the mount
+  // point the pinned 搜索插件 field drops into; 页 2 holds the "‹ 市场  管理" detail bar. Rendering the
+  // bar inside the scroller instead left the band empty and duplicated the bar 55px lower and 64px
+  // narrower than official — the whole of page 2 sat in the wrong place. See MANAGE_BAND_CLASSES.
   const pinBand = el("div", PIN_BAND_CLASSES);
   applyClasses(pinBand, [PIN_BAND_MARKER]);
   layout.append(pinBand);
+
+  const manageRow = el("div", MANAGE_BAND_ROW_CLASSES);
+  applyClasses(manageRow, [MANAGE_BAND_ROW_MARKER]);
+
+  /** Point the band at one page: its class list first, then clear its child. Clearing the child
+   *  also drops the `pinMounted` latch, so the pinned field re-arms instead of being silently
+   *  believed present; `syncPin` re-mounts it on the same render if this page wants it. */
+  const setBandPage = (manage: boolean): void => {
+    setClasses(pinBand, [...(manage ? MANAGE_BAND_CLASSES : PIN_BAND_CLASSES), PIN_BAND_MARKER]);
+    pinBand.replaceChildren();
+    pinMounted = false;
+  };
+
+  /** Mount a detail bar into the band. `rowClasses` picks the row variant: the pushed pages keep
+   *  the browse row (10 classes, measured on 插件详情), the manage page uses its own 5-class one. */
+  const mountBar = (bar: HTMLElement, rowClasses: readonly string[]): void => {
+    setClasses(manageRow, [...rowClasses, MANAGE_BAND_ROW_MARKER]);
+    manageRow.replaceChildren(bar);
+    pinBand.append(manageRow);
+  };
 
   const pane = el("div", PANE_CLASSES);
   applyClasses(pane, [SCROLL_MARKER]);
@@ -1490,9 +1533,17 @@ export function createMarketplaceDialog(
       const detailTitle = el("h3", DETAIL_TITLE_CENTERED_CLASSES, pushedTitle);
       detailTitle.id = "sand-plugins-modal-heading";
       bar.append(detailTitle);
-      header.append(bar);
+      // A pushed page's bar occupies the same 48px band the manage page uses — measured on official
+      // 插件详情: strip[17] > row[10] > `sand-settings-detail-bar` at 798x48 y=161, with the
+      // scroller starting right below it. Kept in the scroller header it measured 734x48 y=216.
+      setBandPage(false);
+      mountBar(bar, PIN_ROW_CLASSES);
       searchHolder.style.display = "none";
     } else if (state.page === "manage") {
+      // The bar belongs in the 48px band, NOT in the scroller's header — see MANAGE_BAND_CLASSES.
+      // `header` stays empty on this page, exactly as official leaves it, so nothing is appended
+      // below the band and the groups start at the band's bottom edge.
+      setBandPage(true);
       const bar = el("div", BACK_BAR_CLASSES);
       const leading = el("div", BACK_LEADING_CLASSES);
       const backButton = el("button", MANAGE_BACK_BUTTON_CLASSES);
@@ -1509,7 +1560,7 @@ export function createMarketplaceDialog(
       detailTitle.id = "sand-plugins-modal-heading";
       bar.append(detailTitle);
       bar.append(el("div", BACK_TRAILING_CLASSES));
-      header.append(bar);
+      mountBar(bar, MANAGE_BAND_ROW_CLASSES);
       searchHolder.style.display = "none";
     } else {
       // `header` already carries TITLE_ROW_CLASSES — it IS official's single header row. The h2
@@ -1523,6 +1574,7 @@ export function createMarketplaceDialog(
       const trailing = el("div", TITLE_TRAILING_CLASSES);
       trailing.append(buildInstalledPreview(state, handlers));
       header.append(trailing);
+      setBandPage(false);
       searchHolder.style.display = "";
     }
 

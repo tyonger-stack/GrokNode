@@ -1,0 +1,26 @@
+app       /Applications/Grok Node.app
+asar      c20a7cf6741959b3  (68603324 bytes)
+stylesheet dist/renderer/assets/index-lCyB53CO.css  545624 bytes  ca9b4475e5898b17  7153 rules parsed
+lifts     45 rules read from official-styles.ts
+
+PASS  add    padding     got="12px 14px" want="12px 14px"
+PASS  add    textContent got="添加其他账户" want="添加其他账户"
+PASS  add    childCount  got=1 want=1
+info  add    height       42px (not asserted: no icon font in this fixture)
+PASS  tools  padding     got="12px 14px" want="12px 14px"
+PASS  tools  textContent got="已启用 23/23 个" want="已启用 23/23 个"
+PASS  tools  childCount  got=2 want=2
+info  tools  height       46px (not asserted: no icon font in this fixture)
+
+PASS  私有技能 grid 是单列                                  cols=1 gtc=734px
+PASS  已安装 grid 是两列                                   cols=2 gtc=363px 363px
+PASS  两个网格在同一宽度下解析不同（特异度没有互相吞掉）                      734px vs 363px 363px
+PASS  私有技能 grid 占满 734                               w=734
+PASS  组标题 12px                                       12px
+PASS  组标题 16px 行高                                    16px
+PASS  组标题常规字重（ui-20ajya 的 400 兜底）                    400
+PASS  页 2 h1 17px                                    17px
+PASS  页 2 h1 24px 行高                                 24px
+PASS  分组标题行 30px（跟着 30px 的 h3 收）                     30px
+
+ALL ASSERTED CHECKS PASS

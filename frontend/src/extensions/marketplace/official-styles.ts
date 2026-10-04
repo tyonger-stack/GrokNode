@@ -262,10 +262,11 @@ export const BACK_LABEL_CLASSES = ["sand-b3r6kr", "sand-lyipyv", "sand-uxw1ft"];
 
 /** `ft` detail title — renders "管理" on the manage view. */
 export const DETAIL_TITLE_CLASSES = [
-  "sand-9f619", "sand-dj266r", "sand-14z9mp", "sand-at24cr", "sand-1lziwak", "sand-b3r6kr",
-  "sand-1rhlpx6", "sand-1wd3ewq", "sand-1iyjqo2", "sand-s83m0k", "sand-dl72j9", "sand-euugli",
-  "sand-2b8uid", "sand-lyipyv", "sand-uxw1ft", "sand-19991ni", "sand-h5t8r0", "sand-12w9bfk",
-  "sand-9lcvmn", "sand-g01cxk",
+  "sand-fc7y3v", "sand-1fc57z9", "sand-12oo3zp",
+  "sand-9f619", "sand-1iyjqo2", "sand-s83m0k", "sand-dl72j9", "sand-euugli", "sand-dj266r",
+  "sand-14z9mp", "sand-at24cr", "sand-1lziwak", "sand-b3r6kr",
+  "sand-1rhlpx6", "sand-1wd3ewq", "sand-2b8uid", "sand-lyipyv", "sand-uxw1ft", "sand-19991ni",
+  "sand-h5t8r0", "sand-12w9bfk", "sand-9lcvmn", "sand-g01cxk",
 ];
 
 /* ------------------------------------------------------------------ *
@@ -355,6 +356,31 @@ export const PIN_ROW_CLASSES = [
   "sand-1jbbfn2", "sand-1aquc0h", "sand-hmfl4z", "sand-a3vuyk", "sand-1u6ievf",
 ];
 
+/**
+ * The 48px band is a **shared slot**, not a marketplace-only affordance. Official renders one
+ * element there on both pages; only its class list and its single child change:
+ *
+ *   页 1 市场           strip[17] > row[10] > pad[9]         — the pad is the empty mount point the
+ *                                                           pinned 搜索插件 field drops into
+ *   页 2 管理插件和技能   strip[5]  > row[5]  > detail bar     — the slot holds the "‹ 市场  管理" bar
+ *
+ * The two strips share their 5-class prefix and the two rows share theirs, so every class below is
+ * already in 0.18 and nothing needs lifting. They are written out separately only so the per-page
+ * lists cannot drift into one another.
+ *
+ * Getting this wrong is not cosmetic. The bar used to be rendered inside the scroller's header, so
+ * the band sat empty *and* the bar rendered a second time further down: local measured it 734px wide
+ * at y=216 against official's 798px at y=161, putting every byte of page 2 55px low and 64px narrow.
+ */
+export const MANAGE_BAND_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-1c4vz4f", "sand-2lah0s",
+];
+
+/** Band > row on the manage page — the 5-class prefix of `PIN_ROW_CLASSES`. */
+export const MANAGE_BAND_ROW_CLASSES = [
+  "sand-78zum5", "sand-dt5ytf", "sand-1iyjqo2", "sand-s83m0k", "sand-2lwn1j",
+];
+
 /** Band > row > the padded box: gap 8px, height 48px, padding 10px 48px 10px 32px. This is what
  *  turns the band into 33..751 and puts the field at y=11. */
 export const PIN_PAD_CLASSES = [
@@ -384,7 +410,7 @@ export const SECTION_OUTER_CLASSES = [
   "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-167g77z", "sand-euugli",
 ];
 export const SECTION_ROW_CLASSES = [
-  "sand-9f619", "sand-78zum5", "sand-1pha0wt", "sand-1qughib", "sand-167g77z", "sand-euugli",
+  "sand-9f619", "sand-78zum5", "sand-1pha0wt", "sand-1qughib", "sand-167g77z",
 ];
 /** `St.groupTitle` on the section `h3[data-detail-hero-title]`. */
 export const SECTION_TITLE_CLASSES = [
@@ -397,7 +423,19 @@ export const SECTION_TITLE_CLASSES = [
 export const GROUP_SECTION_CLASSES = [
   "sand-plugins__group", "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-xhr3t",
 ];
+/** `St.groupTitle` on the section `h3`. 22 classes, official's list read off the running build.
+ *
+ *  The leading `ui-*` block is 0.66's shared typography family and it is what pins the group
+ *  heading to 12px/16px regular — `ui-1wm8ruf` sets `font-size:var(--cursor-font-size-sm)`,
+ *  `ui-spwq11` the matching line-height, and `ui-20ajya` `font-weight:var(--cursor-font-weight-normal,400)`.
+ *  That last var is NOT defined in 0.18, but official's own declaration carries the `,400`
+ *  fallback, so it resolves to 400 here and un-bolds the heading exactly as official does — no
+ *  lifted CSS needed. All sixteen are present in 0.18 with byte-identical rules. */
 export const GROUP_TITLE_CLASSES = [
+  "ui-text",
+  "ui-1acoasx", "ui-dj266r", "ui-14z9mp", "ui-at24cr", "ui-1lziwak", "ui-exx8yu", "ui-yri2b",
+  "ui-18d9i69", "ui-1c1uobl", "ui-vmahel", "ui-lh3980", "ui-1wm8ruf", "ui-spwq11", "ui-14s4slr",
+  "ui-20ajya",
   "sand-9f619", "sand-1y1aw1k", "sand-f159sx", "sand-10b6aqq", "sand-1g0dm76", "sand-4b2ntj",
 ];
 
@@ -452,8 +490,11 @@ export const GRID_CLASSES = [
   "sand-14z9mp", "sand-at24cr", "sand-1lziwak", "sand-exx8yu", "sand-yri2b", "sand-18d9i69",
   "sand-1c1uobl",
 ];
-/** `isFullWidth` variant — 私有技能 rows. */
-export const GRID_FULLWIDTH_CLASSES = [...GRID_CLASSES, "sand-1mkdm3x"];
+// The single-column variant of this grid — 私有技能 on the manage page, and the featured-section
+// page — is `GRID_SINGLE_CLASSES` at the bottom of this file. It is deliberately NOT derived from
+// `GRID_CLASSES`: adding `sand-1mkdm3x` on top of this list would carry BOTH `grid-template-columns`
+// rules, which have identical specificity, and the two-column one would win on stylesheet order.
+// See GRID_SINGLE_CLASSES.
 
 export const ROW_ITEM_CLASSES = [
   "sand-plugins-row", "sand-9f619", "sand-1n2onr6", "sand-c8icb0", "sand-78zum5", "sand-6s0dn4",
@@ -618,7 +659,13 @@ export const ACTION_BUTTON_018_SUBSTITUTES: ReadonlyArray<
 export const MANAGE_HEADER_CLASSES = [
   "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-euugli", "sand-f159sx", "sand-mzvs34",
 ];
-export const MANAGE_H1_CLASSES = ["sand-1ghz6dp", "sand-1wd3ewq", "sand-1rhlpx6"];
+/** 管理插件和技能 — official's h1, all 6 classes. The first three are the missing type recipe:
+ *  `sand-19d36u7` is `font-size:17px`, `sand-1o2sk6j` `line-height:24px`,
+ *  `sand-1deyeav` `letter-spacing:-.008em`. Without them the heading fell back to the inherited
+ *  26px and measured 37px tall against official's 24px. */
+export const MANAGE_H1_CLASSES = [
+  "sand-19d36u7", "sand-1o2sk6j", "sand-1deyeav", "sand-1ghz6dp", "sand-1wd3ewq", "sand-1rhlpx6",
+];
 
 export const EMPTY_TEXT_CLASSES = ["sand-9f619", "sand-f159sx", "sand-1g0dm76"];
 
@@ -994,12 +1041,22 @@ export const DETAIL_APP_COUNT_CLASSES = [
  *  swapped — `sand-nby9oq` (2 × 363px, homepage and bucket results pages) versus `sand-1mkdm3x`
  *  (1 × 734px, featured-section page). Measured `grid-template-columns: "734px"` on 精选插件 and
  *  `"363px 363px"` on 为你推荐 / 效率 / 研究. Verified against a screenshot as well as the
- *  computed style, because the home page and the pushed page can share the dialog DOM. */
+ *  computed style, because the home page and the pushed page can share the dialog DOM.
+ *
+ *  The two rules have identical specificity — `.sand-nby9oq:not(#):not(#):not(#)` and
+ *  `.sand-1mkdm3x:not(#):not(#):not(#)` are both (3 ids, 1 class) — so a list carrying BOTH is
+ *  decided by stylesheet order and the two-column rule wins. Never derive this one from
+ *  `GRID_CLASSES` by appending: that is what put `sand-nby9oq` on the 私有技能 grid and rendered
+ *  every 私有技能 row 339px wide inside a 363px column instead of 698px inside 734px. */
 export const GRID_SINGLE_CLASSES = [
   "sand-plugins__grid", "sand-9f619", "sand-rvj5dj", "sand-1ap1fj8", "sand-1dbijih", "sand-3ct3a4",
   "sand-dj266r", "sand-14z9mp", "sand-at24cr", "sand-1lziwak", "sand-exx8yu", "sand-yri2b",
   "sand-18d9i69", "sand-1c1uobl", "sand-1mkdm3x",
 ];
+
+/** 私有技能 on the manage page is the same single-column recipe. An alias, not a second list, so
+ *  the two call sites cannot drift into disagreeing about what "one column" means. */
+export const GRID_FULLWIDTH_CLASSES = GRID_SINGLE_CLASSES;
 
 /** The `.sand-plugins__marketplace` wrapper as it actually appears — it is both the page wrapper
  *  and the pane's content holder on the featured-section page. */

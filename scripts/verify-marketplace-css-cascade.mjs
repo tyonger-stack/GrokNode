@@ -114,21 +114,57 @@ const liftCss = lifts
   .map(([cls, declarations, pseudo = ""]) => `.${scope}.${cls}${pseudo}{${declarations}} .${scope} .${cls}${pseudo}{${declarations}}`)
   .join("\n");
 
+// ── 页 2 管理插件和技能 的配方 ────────────────────────────────────────────────
+// The four page-2 defects fixed this round were all *recipes that looked right and computed wrong*,
+// which is exactly what a source assertion cannot catch:
+//
+//   私有技能 grid   carried `sand-nby9oq` (2 columns) AND `sand-1mkdm3x` (1 column). Identical
+//                   specificity, so stylesheet order decided, and the two-column rule won.
+//   group heading   lacked 0.66's 16 `ui-*` classes, so it inherited 15.21px bold instead of
+//                   12px/16px regular.
+//   h1              lacked the 17px/24px/-0.008em recipe and inherited 26px.
+//   section head    carried a `min-width:0` class official does not.
+//
+// Each is asserted on its COMPUTED value here, against the deployed stylesheet, with no app running.
+const singleGrid = classes("GRID_SINGLE_CLASSES");
+const twoColGrid = classes("GRID_CLASSES");
+if (singleGrid.includes("sand-nby9oq")) {
+  console.error("GRID_SINGLE_CLASSES carries the two-column rule — the single column cannot win on specificity");
+  process.exit(2);
+}
+
 const html = `<!doctype html><html><head><meta charset="utf-8">
 <style id="deployed">${css}</style>
 <style id="lifted">${liftCss}</style>
 </head><body><div class="${scope}">
 <button id="add" class="${classes("DETAIL_ADD_ACCOUNT_FULL_CLASSES").join(" ")}"><i class="ui-icon"></i>添加其他账户</button>
 <button id="tools" class="${classes("DETAIL_TOOLS_ROW_CLASSES").join(" ")}"><span>已启用 23/23 个</span><i class="ui-icon"></i></button>
+<div id="pane" style="width:734px">
+  <h1 id="h1" class="${classes("MANAGE_H1_CLASSES").join(" ")}">管理插件和技能</h1>
+  <section class="${classes("GROUP_SECTION_CLASSES").join(" ")}">
+    <div id="secHead" class="${classes("SECTION_ROW_CLASSES").join(" ")}">
+      <h3 id="h3" class="${classes("GROUP_TITLE_CLASSES").join(" ")}">私有技能</h3>
+    </div>
+    <ul id="single" class="${singleGrid.join(" ")}"><li>行</li><li>行</li></ul>
+    <ul id="two" class="${twoColGrid.join(" ")}"><li>行</li><li>行</li></ul>
+  </section>
+</div>
 </div><pre id="out"></pre><script>
 const m = (id) => { const n = document.getElementById(id); const cs = getComputedStyle(n);
   return { id, padding: cs.padding, paddingLeft: cs.paddingLeft, paddingRight: cs.paddingRight,
            height: Math.round(n.getBoundingClientRect().height), textContent: n.textContent,
            childCount: n.children.length }; };
+const g = (id) => { const n = document.getElementById(id); const cs = getComputedStyle(n);
+  const r = n.getBoundingClientRect();
+  return { id, gtc: cs.gridTemplateColumns, cols: cs.gridTemplateColumns.trim().split(/\\s+/).length,
+           w: Math.round(r.width), height: Math.round(r.height),
+           fontSize: cs.fontSize, lineHeight: cs.lineHeight, fontWeight: cs.fontWeight }; };
 document.getElementById("out").textContent = JSON.stringify({
   sheets: document.styleSheets.length,
   rules: document.styleSheets[0] ? [...document.styleSheets[0].cssRules].length : -1,
-  measured: [m("add"), m("tools")] });
+  measured: [m("add"), m("tools")],
+  type: [g("h1"), g("h3"), g("secHead")],
+  grids: [g("single"), g("two")] });
 </script></body></html>`;
 
 const tmp = path.join("/tmp", `mkt-cascade-${process.pid}.html`);
@@ -167,5 +203,34 @@ for (const row of result.measured) {
   }
   console.log(`info  ${row.id.padEnd(6)} height       ${row.height}px (not asserted: no icon font in this fixture)`);
 }
+
+// ── page-2 recipes: the two grids must DISAGREE, and the type must be official's ──
+// The decisive check is not "the single grid is one column" but that the two lists resolve
+// differently at the same width — a list carrying both rules would collapse them to the same answer,
+// which is precisely the defect.
+const single = result.grids.find((r) => r.id === "single");
+const two = result.grids.find((r) => r.id === "two");
+const h1 = result.type.find((r) => r.id === "h1");
+const h3 = result.type.find((r) => r.id === "h3");
+const secHead = result.type.find((r) => r.id === "secHead");
+
+const checks = [
+  ["私有技能 grid 是单列", single.cols === 1, `cols=${single.cols} gtc=${single.gtc}`],
+  ["已安装 grid 是两列", two.cols === 2, `cols=${two.cols} gtc=${two.gtc}`],
+  ["两个网格在同一宽度下解析不同（特异度没有互相吞掉）", single.gtc !== two.gtc, `${single.gtc} vs ${two.gtc}`],
+  ["私有技能 grid 占满 734", single.w === 734, `w=${single.w}`],
+  ["组标题 12px", h3.fontSize === "12px", h3.fontSize],
+  ["组标题 16px 行高", h3.lineHeight === "16px", h3.lineHeight],
+  ["组标题常规字重（ui-20ajya 的 400 兜底）", h3.fontWeight === "400", h3.fontWeight],
+  ["页 2 h1 17px", h1.fontSize === "17px", h1.fontSize],
+  ["页 2 h1 24px 行高", h1.lineHeight === "24px", h1.lineHeight],
+  ["分组标题行 30px（跟着 30px 的 h3 收）", secHead.height === 30, `${secHead.height}px`],
+];
+console.log("");
+for (const [label, good, got] of checks) {
+  if (!good) failed += 1;
+  console.log(`${good ? "PASS" : "FAIL"}  ${label.padEnd(46)} ${got}`);
+}
+
 console.log(`\n${failed === 0 ? "ALL ASSERTED CHECKS PASS" : `${failed} CHECK(S) FAILED`}`);
 process.exit(failed === 0 ? 0 : 1);
