@@ -876,3 +876,51 @@ npm test 884/884
 > 写这条核验时自己也踩了一次：返回栈检查给了 2s 超时，而详情页回退不是瞬时的、返回条还有退出动画，
 > 于是健康的返回栈被判成失败。放宽到 12s 并要求**两个条件同时成立**（返回键消失 **且** 首页行重新出现）后才通过。
 > 这是本轮第四次「自己写的检查项制造假失败」——前三次分别在 §21 记录的 fd 关闭、ESM 当 CJS、伪类选择器。
+
+---
+
+## 24. catalog payload 与首页形状进入一键核验（2026-10-04 16:4x）
+
+§21–§23 把 CTA 几何折进了命令。这一轮补上最后两个仍只有文档、没有命令对应的证据点：
+**两侧 `mcp.catalog()` 原始 payload**，与**首页形状**（`查看全部` 数量 / 包裹层 / 真实滚动容器）。
+
+```
+■ catalog payload 对拍
+  ✅ 官方 catalog 读取成功   — 404 条，其中 253 条带 categoryKeys
+  ✅ 部署版 catalog 读取成功 — 393 条，其中 247 条带 categoryKeys
+  ✅ categoryKeys 取值集合一致 — 15 个 key 两侧相同
+  ✅ categoryKeys 覆盖率无回退 — 本地 247/393（该字段修复前为 0）
+  ✅ isUserOwned 计数一致     — 官方 93 / 本地 93
+     catalog 总数 官方 404 / 本地 393 —— 数据面：本地为官方严格子集
+     本地缺失条目: google-slides(id 45893415) google-docs(id 45893412) google-sheets(id 45893414)
+                  onedrive(id 57302028) outlook(id 57302029) outlook-calendar(id 57302030)
+                  sharepoint(id 64745996) teams(id 63354504) finance(id 63408931)
+                  x-money(id 68516160) oh-my-claudecode(id 71001007)
+
+     首页形状：
+  ✅ 查看全部 数量   — 官方 9 / 本地 9
+  ✅ 市场包裹层存在 — 官方 true / 本地 true
+  ✅ 可继续纵向滚动 — scrollHeight 2308 / clientHeight 652（官方 2518 / 652）
+```
+
+`categoryKeys 取值集合一致` 是这里唯一承重的断言：**同一个归桶词表必须到达两侧的渲染器**。
+少一个 key，那个 key 下的条目就会落进零个桶、被整条丢弃——而这正是 `Adapter` 消失的机制。
+
+### 写这条脚本时，连续三次让输出**说反了事实**
+
+| 错法 | 输出 | 真相 |
+|---|---|---|
+| `byKey` 键取 `p.id ?? …` | `本地缺失条目:（无）` | 缺 11 条。`id` 是 `"657"` 这样的数字串，按它查名**两侧都 miss**，差异被算成 0 |
+| 只把 `name` 建索引 | 列出 10 条 | 官方那条 `oh-my-claudecode` 的 **slug 是 `t`**（id 71001007），人读名在 `displayName`，`name` 查不到 |
+| 键取 `name/pluginName/displayName` 后**用名字判存在** | 多列出 `notion-workspace` | 两侧都有它（**id 404**）。官方带 `pluginName: "notion-workspace"`，**本地投影不带 `pluginName`**，于是按名判存在就误报 |
+
+**最终形态是两段式**：用名字在官方侧**定位**条目，再用 `id` 判断本地**是否存在**。
+`id` 是唯一跨两次投影都稳定不变的标识——`name` / `pluginName` / `displayName` 三个字段两侧暴露得都不一样。
+顺带得到两个真实的数据形状发现（不是缺陷，但此前无人记录）：
+
+- 本地 `mcp.catalog()` 的条目**没有 `pluginName` 字段**，官方有。
+- 官方 `oh-my-claudecode` 的 `name` 是 `"t"`，`displayName` 才是 `oh-my-claudecode`。
+
+> 教训是 §18 那条的又一次应验，而且这次**代价是输出了错误结论而不只是空结果**：
+> 一个「查不到就当作没有」的检查，会把 11 条数据缺口报成 0 条。
+> **凡是回答「某个东西在不在」的检查，存在性判据必须用跨投影稳定的那个字段。**

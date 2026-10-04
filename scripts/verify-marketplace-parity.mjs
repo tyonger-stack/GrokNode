@@ -245,6 +245,17 @@ async function cdpDump(port, urlHint, expression) {
 // so the script closes and reopens the dialog rather than trusting whatever state it finds.
 const SECTIONS_EXPR = `(async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Visible-only: a push-stack page keeps the previous level mounted, so a node that still has a
+  // box is not necessarily the current level.
+  const vis = (e) => {
+    if (!e) return false;
+    const r = e.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return false;
+    return typeof e.checkVisibility === "function"
+      ? e.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true })
+      : !!e.offsetParent;
+  };
+  const visAllWithin = (root, sel) => [...root.querySelectorAll(sel)].filter(vis);
   const dlg = () => [...document.querySelectorAll('[role="dialog"]')]
     .find((x) => /市场|Marketplace/.test(x.getAttribute("aria-label") || ""));
   let d = dlg();
@@ -294,7 +305,17 @@ const SECTIONS_EXPR = `(async () => {
       if (text && !current.names.includes(text)) current.names.push(text);
     }
   }
-  return { sections };
+  // The section list alone does not prove the homepage *shape*. These three are the properties the
+  // screenshot is actually read against: 查看全部 only appears when a section exceeds the 4-row
+  // preview cap (which is why 支持, at 3 rows, has none), the marketplace wrapper is what positions the
+  // grid, and a real scroll container is what makes "keep scrolling down" true rather than a claim.
+  const seeAll = visAllWithin(d, "button").filter((b) => (b.textContent || "").trim() === "查看全部").length;
+  const wrapper = d.querySelector(".sand-plugins__marketplace") != null;
+  const scrollers = [d, ...d.querySelectorAll("*")]
+    .filter((e) => e.getBoundingClientRect().height > 0 && e.scrollHeight > e.clientHeight + 20 && e.clientHeight > 100)
+    .slice(0, 2)
+    .map((e) => ({ scrollHeight: e.scrollHeight, clientHeight: e.clientHeight }));
+  return { sections, seeAll, wrapper, scrollers };
 })()`;
 
 // CTA geometry. Four controls shipped with recipes that were plausible but wrong — every one of
@@ -385,12 +406,15 @@ const CTA_EXPR = `(async () => {
 console.log("\n■ 实机逐区块对拍（需要两个 app 同时带 CDP 端口运行）");
 let officialSections = null;
 let deployedSections = null;
+let officialShape = null;
+let deployedShape = null;
 for (const [label, port, hint] of [["官方", OFFICIAL_CDP, OFFICIAL_URL_HINT], ["部署版", DEPLOYED_CDP, DEPLOYED_URL_HINT]]) {
   try {
     const dump = await cdpDump(port, hint, SECTIONS_EXPR);
     if (dump?.err) { ok(`${label} ${port} 读取`, false, dump.err); continue; }
     const byTitle = Object.fromEntries((dump.sections ?? []).map((s) => [s.title, s]));
-    if (label === "官方") officialSections = byTitle; else deployedSections = byTitle;
+    if (label === "官方") { officialSections = byTitle; officialShape = dump; }
+    else { deployedSections = byTitle; deployedShape = dump; }
     ok(`${label} ${port} 读取成功`, true, `${Object.keys(byTitle).length} 个区块`);
   } catch (error) {
     ok(`${label} ${port} 可用`, false, String(error.message).slice(0, 120));
@@ -412,6 +436,93 @@ if (officialSections && deployedSections) {
   console.log("\n     剩余差异请对照 docs/MARKETPLACE-066-EVIDENCE.md §18–§20 归因：本地 catalog 是官方");
   console.log("     catalog 的严格子集（少 11 条），1Password 不在任何一侧 catalog，为你推荐 因");
   console.log("     teamPopularity() 双方同为 0 —— 均属数据面，不是渲染行为差异。");
+
+  console.log("\n     首页形状：");
+  ok("查看全部 数量", officialShape.seeAll === deployedShape.seeAll, `官方 ${officialShape.seeAll} / 本地 ${deployedShape.seeAll}`);
+  ok("市场包裹层存在", officialShape.wrapper === true && deployedShape.wrapper === true,
+    `官方 ${officialShape.wrapper} / 本地 ${deployedShape.wrapper}`);
+  // Not compared by equality: the two catalogs hold different numbers of rows, so scrollHeight
+  // is expected to differ. What must hold is that the local page really scrolls.
+  const s = deployedShape.scrollers[0];
+  ok("可继续纵向滚动", s != null && s.scrollHeight > s.clientHeight,
+    s ? `scrollHeight ${s.scrollHeight} / clientHeight ${s.clientHeight}（官方 ${officialShape.scrollers[0]?.scrollHeight ?? "—"} / ${officialShape.scrollers[0]?.clientHeight ?? "—"}）` : "未找到滚动容器");
+}
+
+// Catalog payload. The renderer can only bucket rows correctly if the curated key ARRAY survives
+// both projections on the wire, and that field was silently dropped once already: the page passed
+// typecheck, the suite, packaging and signing while every entry reported categoryKeys: []. Only a
+// live read of window.desktop.mcp.catalog() on both apps shows it.
+const CATALOG_EXPR = `(async () => {
+  const raw = await window.desktop.mcp.catalog();
+  const list = Array.isArray(raw) ? raw : (raw?.plugins ?? raw?.items ?? []);
+  const withKeys = list.filter((p) => Array.isArray(p.categoryKeys) && p.categoryKeys.length > 0);
+  const norm = (v) => String(v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  // Index EVERY identifying field, and never \`id\`. Two traps, both of which silently reported
+  // "no difference" while there were ten or eleven:
+  //   \`id\` is a numeric string ("657") — keying on it makes every named lookup miss on BOTH apps;
+  //   \`name\` is the slug, but for some entries the readable label is only in \`displayName\` —
+  //   oh-my-claudecode is in the catalog under the slug "t", with displayName "oh-my-claudecode".
+  const byKey = new Map();
+  for (const p of list) {
+    for (const field of [p.name, p.pluginName, p.displayName]) {
+      const k = norm(field);
+      if (k && !byKey.has(k)) byKey.set(k, p);
+    }
+  }
+  // "Is this entry present?" must be answered by \`id\`, never by name. The two projections do not
+  // expose the same identifier fields — official carries \`pluginName\` ("notion-workspace") while
+  // the local view does not, and official's slug for oh-my-claudecode is literally "t" — so a
+  // name-keyed presence test reports entries as missing that are in fact present under another id.
+  // One such false positive shipped an earlier draft of this script; it listed notion-workspace as
+  // a locally-missing plugin when both apps return it as id 404.
+  const ids = new Set(list.map((p) => String(p.id)));
+  const named = {};
+  for (const n of ["google-slides", "google-docs", "google-sheets", "onedrive", "outlook",
+      "outlook-calendar", "sharepoint", "teams", "finance", "x-money", "oh-my-claudecode",
+      "1password", "canva", "bird", "adapter", "notion", "figma", "gmail"]) {
+    const hit = byKey.get(norm(n));
+    named[n] = hit ? { id: String(hit.id), present: ids.has(String(hit.id)) } : null;
+  }
+  return {
+    total: list.length,
+    withCategoryKeys: withKeys.length,
+    isUserOwnedTrue: list.filter((p) => p.publisher?.isUserOwned === true).length,
+    distinctCategoryKeys: [...new Set(withKeys.flatMap((p) => p.categoryKeys))].sort(),
+    named,
+  };
+})()`;
+
+console.log("\n■ catalog payload 对拍");
+const catRuns = {};
+for (const [label, port, hint] of [["官方", OFFICIAL_CDP, OFFICIAL_URL_HINT], ["部署版", DEPLOYED_CDP, DEPLOYED_URL_HINT]]) {
+  try {
+    const dump = await cdpDump(port, hint, CATALOG_EXPR);
+    if (!dump || dump.total === 0) { ok(`${label} catalog 读取`, false, "catalog 为空，先查桥是否可用"); continue; }
+    catRuns[label] = dump;
+    ok(`${label} catalog 读取成功`, true, `${dump.total} 条，其中 ${dump.withCategoryKeys} 条带 categoryKeys`);
+  } catch (error) {
+    ok(`${label} catalog 可用`, false, String(error.message).slice(0, 120));
+  }
+}
+
+if (catRuns["官方"] && catRuns["部署版"]) {
+  const o = catRuns["官方"], d = catRuns["部署版"];
+  // The load-bearing claim: the same curated-key vocabulary reaches the renderer on both sides. A
+  // key missing here is exactly what made an entry bucket into nothing and get silently dropped.
+  const missingKeys = o.distinctCategoryKeys.filter((k) => !d.distinctCategoryKeys.includes(k));
+  ok("categoryKeys 取值集合一致", missingKeys.length === 0,
+    missingKeys.length ? `本地缺 ${missingKeys.join(" ")}` : `${d.distinctCategoryKeys.length} 个 key 两侧相同`);
+  ok("categoryKeys 覆盖率无回退", d.withCategoryKeys > 0, `本地 ${d.withCategoryKeys}/${d.total}（该字段修复前为 0）`);
+  ok("isUserOwned 计数一致", o.isUserOwnedTrue === d.isUserOwnedTrue, `官方 ${o.isUserOwnedTrue} / 本地 ${d.isUserOwnedTrue}`);
+  // Total count and per-entry presence are a known DATA gap, not a behaviour difference: the local
+  // catalog is a strict subset of upstream's. Report the exact short list instead of failing.
+  const missingEntries = Object.keys(o.named)
+    .filter((k) => o.named[k] && !d.named[k]?.present)
+    .map((k) => `${k}(id ${o.named[k].id})`);
+  const extraEntries = Object.keys(d.named).filter((k) => d.named[k] && !o.named[k]?.present);
+  console.log(`     catalog 总数 官方 ${o.total} / 本地 ${d.total} —— 数据面：本地为官方严格子集`);
+  console.log(`     本地缺失条目: ${missingEntries.length ? missingEntries.join(" ") : "（无）"}`);
+  if (extraEntries.length) console.log(`     本地多出的条目: ${extraEntries.join(" ")}`);
 }
 
 console.log("\n■ CTA 几何对拍（同一批控件，两侧实测互比，不用硬编码数字）");
