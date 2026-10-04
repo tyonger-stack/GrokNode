@@ -93,12 +93,16 @@ test("every pinned entry projects to the view official actually rendered", () =>
   // explicitly rather than excluded from comparison:
   //  - the official bridge carries `isPublicListed` / `pluginName`, which upstream's projector never
   //    emits;
+  //  - `marketplace` is NOT exempt: an earlier revision excluded it and that silently cost the
+  //    团队插件 row. `toRow` derives `isTeam` from `marketplaceName(entry)`, so a pinned team entry
+  //    without it does not render in 团队插件 at all — the single most visible way a pin can be
+  //    wrong, and it shipped green here until the capture was re-read field by field;
   //  - official's payload has `null` for `categoryKey` / `categoryKeys` on five of these entries,
   //    while `SandMarketplacePlugin` types them `string | undefined` and `string[]` — there is no
   //    `null` to store, so it pins as `undefined` / `[]`. That is functionally identical for
   //    bucketing: `sectionKeyOf` reads the key list, and an empty list matches no bucket exactly as
   //    an absent key does.
-  const BRIDGE_ONLY = ["isPublicListed", "pluginName", "marketplace"];
+  const BRIDGE_ONLY = ["isPublicListed", "pluginName"];
 
   for (const captured of CAPTURED) {
     const supplement = LOCAL_CATALOG_SUPPLEMENTS.find((p) => p.pluginId === captured.id);
