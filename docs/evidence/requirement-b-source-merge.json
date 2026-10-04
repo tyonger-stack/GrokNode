@@ -1,0 +1,38 @@
+{
+  "probe": "requirement-B: both private-skill sources merge into one list",
+  "collectedAt": "2026-10-04",
+  "collectedVia": "direct POST /api/getAgentWorkflows on the live box gateway (no UI involved)",
+  "gatewayBaseUrl": "http://127.0.0.1:1340",
+  "httpStatus": 200,
+  "totalRecords": 40,
+  "sourceTally": {
+    "managed": 31,
+    "workflow": 9
+  },
+  "publishedByCurrentUserTally": {
+    "false": 40
+  },
+  "sourceRefAllNull": true,
+  "pluginIdAllNull": true,
+  "keysOnRecord": [
+    "body",
+    "createdAt",
+    "description",
+    "filePath",
+    "helperScripts",
+    "id",
+    "isEnabledForAgent",
+    "lastRunAt",
+    "name",
+    "nextRunAt",
+    "pluginId",
+    "publishedByCurrentUser",
+    "runs",
+    "scheduleDescription",
+    "source",
+    "sourceRef",
+    "trigger"
+  ],
+  "verdict": "workflows/ (9) AND managed-skills/ (31) both reach the renderer: 40 = 9 + 31",
+  "falsifiablePrediction": "privateSkillsFromRecords keeps all 40 (no record is source=plugin), so the manage page must show 31 rows with only 删除 and 9 rows with 删除|保存, because canEditPrivateSkill is source === \"workflow\". A live walkthrough must reproduce 31/9, not just report the button SET."
+}

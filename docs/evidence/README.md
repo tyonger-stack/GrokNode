@@ -8,6 +8,33 @@
 **先看 href 再看结论**：本项目栽过一次——标着「官方」的取证脚本其实是本地脚本的逐字节副本，端口和 URL
 都没改，静默取到了本地数据还不报错、不为空。
 
+## requirement-b-source-merge.json（要求 B：两路数据源并进来）
+
+**不经过界面**，直接 POST `http://127.0.0.1:1340/api/getAgentWorkflows` 读 box gateway 的原始返回：
+
+```
+totalRecords: 40
+source:      managed 31  /  workflow 9
+publishedByCurrentUser: false ×40
+```
+
+`workflows/`（用户自建）9 条 + `managed-skills/`（托管）31 条 = 40，**两路都到了**。
+`pluginId` 与 `sourceRef` 全为 null，所以没有第三条来源被静默丢掉。
+
+### 由此得到一个可被推翻的预测
+
+`privateSkillsFromRecords`（model.ts）只在 `source === "plugin" && publishedByCurrentUser !== true` 时丢弃记录，
+而这 40 条没有一条是 `plugin`，**所以 40 条全部保留**。再看 `canEditPrivateSkill`：
+
+```ts
+return skill.source === "workflow" && …
+```
+
+于是界面上必须是 **31 行只有 `删除`、9 行是 `删除|保存`**。
+
+⚠️ 存档的 A 走查只报了按钮**集合**是 `["删除", "删除|保存"]`，两种都出现过，但**没报各有多少行**——
+所以它并不能区分「9/31」和「20/20」。真正的走查必须复现 **31/9** 这个比例，只报集合等于没验。
+
 ## requirement-c-gate-*.json（要求 C：host gateway 不可达 → 显式报错）
 
 采集于 2026-10-04 06:45–06:49，**已部署产物** `/Applications/Grok Node.app`（asar `80ad3559`），CDP 9232。
@@ -35,11 +62,12 @@
 `anyBodyOverflowX: []`（SKILL.md 正文零横向溢出），`anySubtitleClipped: []`。
 
 **这份存档有一处已知的弱点，不要当它不存在**：`bySource` 40 条全是 `null`、`byLocation` 全是 `?`，
-`workflowExamples` / `managedExamples` 为空。也就是说这份走查**没有**独立证明
+`workflowExamples` / `managedExamples` 为空。也就是说这份走查**没有**证明
 `workflows/`（用户自建）与 `managed-skills/`（托管）两路都进来了——它只证明了 40 条详情页都点得开、
-按钮集正确、正文不横向溢出。要求 B 的双源证据在别处（`MARKETPLACE-066-PARITY` 里 40 条标签全为
-「本地创建」、0 条「已发布」），但那是**标签层面**的证据，不是逐行点击的证据。
-补齐它需要重跑一次逐条点行（应用能启动的前提下）。
+按钮集正确、正文不横向溢出。数据层的双源证据已由 `requirement-b-source-merge.json` 补上
+（31 managed + 9 workflow），但那份只报了按钮**集合**、没报**各多少行**，
+因此仍然不能区分「9/31 正确」和「20/20 也照样通过集合断言」。
+补齐要重跑逐条点行，并且必须复现 31/9 这个比例（应用能启动的前提下）。
 
 同文件里 `page2.ok = false`（`why: "not on manage"`）——同一份探针的页面切换断言没跑通，
 所以「页面 2 能从页面 1 切过去」在这份存档里是缺的，不要引用 `page2` 字段下结论。
