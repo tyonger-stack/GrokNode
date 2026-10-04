@@ -8,6 +8,48 @@
 **先看 href 再看结论**：本项目栽过一次——标着「官方」的取证脚本其实是本地脚本的逐字节副本，端口和 URL
 都没改，静默取到了本地数据还不报错、不为空。
 
+## marketplace-css-cascade-deployed.json（无需运行中 app 的 padding 级联验证）
+
+`npm run marketplace:css` → `scripts/verify-marketplace-css-cascade.mjs`。把**已部署 asar** 里的样式表
+连同 45 条 lifted 规则一起内联进 headless Chrome，量详情页两个全宽行的 computed padding：
+
+```
+asar c0d6c4e4de32c9ab (68602052 B) | 样式表 ca9b4475e5898b17 (545624 B) | 7153 条规则已解析
+lifts 45 rules read from official-styles.ts
+PASS  add    padding 12px 14px   textContent 添加其他账户   childCount 1
+PASS  tools  padding 12px 14px   textContent 已启用 23/23 个  childCount 2
+```
+
+**为什么要有它**：`verify-marketplace-detail-parity.mjs` 需要活着的 app，而每次重签名都会弹钥匙串、
+把启动堵死。padding 级联这件事本身不需要窗口。
+
+**读这份记录时请注意三件事**：
+
+1. **它不能证明真机几何。** 高度只报告不断言（fixture 没有 icon font，`ui-icon` 的固有尺寸和真机不同，
+   本地量到 42/46、官方是 43/42，**不可比**）。真机高度仍**未确认**——`npm run marketplace:parity -- 9232`
+   还卡在钥匙串弹窗上。
+2. **期望值是转录的，不是本次量出来的。** 它证明的是「已部署产物 + 当前源码 → 算出 `12px 14px`」，
+   不证明官方此刻也算出同一个值。
+3. **只断言了 2 条规则。** 另外 43 条确实被解析并注入了 fixture（含 3 条带伪选择器的），但没有断言。
+
+**这个脚本自己也被变异测试过**（记录在 JSON 的 `mutationTesting`）：
+
+| 变异 | 结果 |
+| --- | --- |
+| 删掉 `padding-inline-start` 那条 lift | exit 2，必需规则守卫 |
+| 把 `sand-1onr9mi` 改名成 `sand-1onr9mi-TYPO` | exit 2，必需规则守卫 |
+| 把一条 lift 改成解析器读不懂的 4 元组 | exit 2，`parser read 44 of 45 entries` |
+| 规则留着、值从 14px 改成 0px | exit 1，2 条 padding 断言 FAIL |
+| **对调两条 inline 声明** | **exit 0 —— 这不是缺陷**：四个行列表都同时带这两个类，左右对称，视觉等价 |
+
+**这版脚本自己修掉的三个真问题**（都在 JSON 的 `defectsFoundInAnEarlierRevisionOfThisScript`）：
+
+1. 它原来读 `.build/fidelity/…`，而自己的注释写的是 `DEPLOYED`。两者当时**恰好**字节相同
+   （`ca9b4475e5898b17`），只因为 `.build` 没被重写——这正是「我验的字节不是我发布的字节」。现在直读 asar 并打印其 sha256。
+2. 它原来把两条 lift **硬编码**在脚本里，于是源码侧回归时它照样全绿。现在从 `LIFTED_OFFICIAL_RULES` 解析。
+3. 它的第一版解析器只认二元组，**45 条里只读到 42 条**，三条 `:focus-visible` / `::after` 规则无声消失。
+   现在独立统计条目起始数，对不上就拒绝出测量结果。
+
 ## deployed-detail-values-final.json（最终态：五项全过）
 
 asar `b93b1ebeece3`，CDP 9232，Gmail（已安装 + `已连接`）：

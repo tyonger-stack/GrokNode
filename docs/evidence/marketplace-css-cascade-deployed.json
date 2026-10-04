@@ -1,0 +1,114 @@
+{
+  "collectedAt": "2026-10-04",
+  "whatThisIs": "Headless computed-style measurement of the marketplace detail CTAs. Reads the DEPLOYED asar, so it runs with no app and no keychain prompt.",
+  "script": "scripts/verify-marketplace-css-cascade.mjs",
+  "npmScript": "npm run marketplace:css",
+  "href": "file:///Applications/Grok%20Node.app/Contents/Resources/app.asar/dist/renderer/index.html",
+  "deployedAsar": {
+    "sha256Prefix": "c0d6c4e4de32c9ab",
+    "bytes": 68602052
+  },
+  "deployedStylesheet": {
+    "path": "dist/renderer/assets/index-lCyB53CO.css",
+    "bytes": 545624,
+    "sha256Prefix": "ca9b4475e5898b17",
+    "rulesParsed": 7153
+  },
+  "liftedRulesReadFromSource": 45,
+  "liftedRulesSource": "frontend/src/extensions/marketplace/official-styles.ts LIFTED_OFFICIAL_RULES",
+  "asserted": [
+    {
+      "result": "PASS",
+      "target": "add",
+      "field": "padding",
+      "got": "12px 14px",
+      "want": "12px 14px"
+    },
+    {
+      "result": "PASS",
+      "target": "add",
+      "field": "textContent",
+      "got": "添加其他账户",
+      "want": "添加其他账户"
+    },
+    {
+      "result": "PASS",
+      "target": "add",
+      "field": "childCount",
+      "got": 1,
+      "want": 1
+    },
+    {
+      "result": "PASS",
+      "target": "tools",
+      "field": "padding",
+      "got": "12px 14px",
+      "want": "12px 14px"
+    },
+    {
+      "result": "PASS",
+      "target": "tools",
+      "field": "textContent",
+      "got": "已启用 23/23 个",
+      "want": "已启用 23/23 个"
+    },
+    {
+      "result": "PASS",
+      "target": "tools",
+      "field": "childCount",
+      "got": 2,
+      "want": 2
+    }
+  ],
+  "reportedNotAsserted": {
+    "heights": [
+      {
+        "target": "add",
+        "height": 42
+      },
+      {
+        "target": "tools",
+        "height": 46
+      }
+    ],
+    "why": "the fixture has no icon font, so ui-icon intrinsic metrics differ from the real app"
+  },
+  "mutationTesting": [
+    {
+      "id": "M1",
+      "mutation": "delete the padding-inline-start lift from LIFTED_OFFICIAL_RULES",
+      "result": "exit 2 — required-rule guard"
+    },
+    {
+      "id": "M2",
+      "mutation": "rename sand-1onr9mi to sand-1onr9mi-TYPO in the lift",
+      "result": "exit 2 — required-rule guard"
+    },
+    {
+      "id": "M3",
+      "mutation": "turn one lift into a 4-element entry the parser cannot read",
+      "result": "exit 2 — parser read 44 of 45 entries, refused to measure"
+    },
+    {
+      "id": "M4",
+      "mutation": "keep the rule but change 14px to 0px",
+      "result": "exit 1 — 2 padding checks FAILED (12px 14px 12px 0px)"
+    },
+    {
+      "id": "M5",
+      "mutation": "swap the two inline declarations",
+      "result": "exit 0 — NOT a defect: all four row lists carry BOTH classes, so left/right are symmetric and the swap is visually equivalent"
+    }
+  ],
+  "cannotProve": [
+    "Real app geometry. This is a headless fixture, not the running renderer. Live height (add-account 43px, tools row 42px) is still unconfirmed because the keychain prompt blocks app startup after every re-sign.",
+    "That the official app computes the same values — the expected values are transcribed from earlier official 0.66 measurements, not measured in this run.",
+    "Any property other than padding / textContent / childCount on these two elements.",
+    "The other 43 lifted rules. All 45 are parsed and injected into the fixture (including the three pseudo-selector entries), but only the two inline-padding ones are asserted here."
+  ],
+  "defectsFoundInAnEarlierRevisionOfThisScript": [
+    "It read .build/fidelity/app/dist/renderer/assets/ while its own header said DEPLOYED. Those were byte-identical only by coincidence (sha ca9b4475e5898b17) because .build had not been rewritten. It now reads the asar and prints its sha256.",
+    "It hardcoded the two lifted rules instead of reading LIFTED_OFFICIAL_RULES, so a source-side regression would have measured green. It now parses the real list.",
+    "Its first parser matched only two-element entries and read 42 of 45, silently dropping the three :focus-visible / ::after rules. It now counts entry openings independently and refuses to measure on a mismatch."
+  ]
+}
