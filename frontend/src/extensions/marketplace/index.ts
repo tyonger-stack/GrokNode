@@ -452,18 +452,43 @@ export function createMarketplaceController(): MarketplaceController {
   const open = async (): Promise<void> => {
     if (dialog != null) return;
     reset();
+    // `loading` must mean "there is genuinely nothing to show", not "a refresh is in flight".
+    //
+    // Measured on official 0.66.0 vs this build, opening the marketplace five times each and timing
+    // the click through to the first rendered row:
+    //
+    //   official  55 / 58 / 55 / 59 / 58 ms   — a loading state appeared 0 times
+    //   this build 5003 / 5309 / 3449 / 4790 / 4264 ms — 「正在加载市场…」 appeared 5 times
+    //
+    // The gap is NOT that this build fetches more slowly. Timing the three bridge calls directly
+    // through `window.desktop.mcp` shows official pays the same cost:
+    //
+    //              official            this build
+    //   catalog()  2792 → 26 ms        2996 → 19 ms
+    //   list()     2106 → 674 ms       3933 → 1412 ms
+    //   teamPop()  1455 → 273 ms          7 → 17 ms
+    //
+    // Official's `list()` alone costs longer than the 58 ms its rows appear in, so official
+    // demonstrably paints WITHOUT awaiting the round-trip. This build set `loading: true`
+    // unconditionally and `renderBrowse` returns a `CatalogStatus` block whenever that is set — so
+    // a perfectly good model left over from the previous open was hidden behind a spinner for four
+    // seconds. `close()` deliberately keeps `state`, and `reset()` only rewinds the page stack, so
+    // the data is already here; the flag was simply discarding it.
+    //
+    // Cold start still shows the status block: with no model yet there is nothing to paint.
+    const cold = state.model.rows.length === 0;
     state = {
       ...state,
       query: "",
       installedExpanded: false,
-      loading: true,
+      loading: cold,
       catalogError: null,
     };
     dialog = createMarketplaceDialog(state, handlers);
     document.body.append(dialog.root);
     paint();
-    // Paint once more with real data; the first paint carries the empty model so the dialog is on
-    // screen immediately instead of blocking on the catalog round-trip.
+    // Always refresh, but never block the first paint on it. The dialog is on screen with the last
+    // known model immediately, and `reload()` repaints with fresh data when it lands.
     await reload();
   };
 
