@@ -85,6 +85,55 @@ return skill.source === "workflow" && …
 ⚠️ `boxdown` 命中的其实是「文件没了」那一支：应用自己的 supervisor 在 12 秒内把 box 拉起来了，
 连接文件已被清掉，所以读到的还是 `not running`。「文件在、daemon 死」这个组合由 `deadport` 覆盖。
 
+## requirement-a-skill-walkthrough-ratio.json（要求 A：私有技能详情页）**—— 已补齐，可证伪**
+
+前一份存档只报了按钮**集合**（`["删除","删除|保存"]`），两种都出现过，但**分不出 9/31 和 20/20**，
+所以它其实没验到要求 B 的双源结论。这一份按可证伪的方式重跑：
+
+```
+数据层  bridge 返回 41 条   managed 31 / workflow 9 / automation 1
+界面层  40 行，走查 40 行
+        删除     31 行   ← 预期 31
+        删除|保存  9 行   ← 预期 9
+        noButtons []  bodyOverflowX []  subtitleClipped []
+```
+
+**31/9 精确复现。** 判定来源不是集合，而是把 bridge 记录的 `source` 逐条对上按钮集：
+`add-connector(managed)` 只有 `删除`，`Design a Grok Bot(workflow)` 才有 `删除|保存`。
+`source` 直接读 bridge 记录，不再从 DOM 刮——上一轮刮出来 40 条全是 null，等于什么都没验。
+
+两点要留意：
+
+1. **这次 bridge 返回 41 条，不是 40**：多出来那条 `source: "automation"`。
+   `privateSkillsFromRecords` 只收 `workflow/managed/plugin`，所以它被丢掉，41 → 40 行。
+   这个丢弃是显式规则，不是漏网。
+2. `automation` 是**第三种来源**。官方 0.66 的私有技能区是否展示 automation，**没有取证**，
+   当前按「不是 workflow/managed/plugin 就不进私有技能」处理。数据面会漂移——
+   早前那份数据探针（13:52）还是 40 条，两小时后变成 41 条。
+
+## requirement-a-skill-walkthrough.json（旧的、只报集合的那份）
+
+## requirement-c-gate-*.json（要求 C：host gateway 不可达 → 显式报错）
+
+采集于 2026-10-04 06:45–06:49，**已部署产物** `/Applications/Grok Node.app`（asar `80ad3559`），CDP 9232。
+探针 `probe-skills-gate.mjs`，每个状态都先关掉对话框再从 dock 重进（`open()` 在对话框存在时提前 return，
+不重进就只会读到上一次的旧 state）。
+
+| 文件 | 做法 | 行数 | isErrorState | 错误文案 |
+| --- | --- | --- | --- | --- |
+| `…-baseline.json` | 正常 | 40 | false | — |
+| `…-noconn.json` | 移走 `local-exec-daemon-connection.json` | 0 | **true** | `The local host gateway is not running.` |
+| `…-boxdown.json` | `docker stop grok-node-local-vm` | 0 | **true** | 同上 |
+| `…-deadport.json` | 只把 `baseUrl` 改到关闭端口 1399 | 0 | **true** | `…is unreachable while handling /api/getAgentWorkflows.` |
+| `…-selfheal.json` | 等 box 自己回来后重读 | 40 | false | — |
+
+**要看的不是「有没有报错」，而是 `rowCount === 0` 且 `isErrorState === true` 同时成立。** 这才是 C 的契约：
+不可达 ≠ 没有技能。只满足其一时就说明退化成了空列表。每个状态里 `previewText` 都还是 `已安装 8 个`，
+说明一条通道挂掉不会拖垮整页。
+
+⚠️ `boxdown` 命中的其实是「文件没了」那一支：应用自己的 supervisor 在 12 秒内把 box 拉起来了，
+连接文件已被清掉，所以读到的还是 `not running`。「文件在、daemon 死」这个组合由 `deadport` 覆盖。
+
 ## requirement-a-skill-walkthrough.json（要求 A：私有技能详情页）
 
 40 条技能逐条走查的输出：按钮集只有 `删除` 与 `删除|保存` 两种，`noButtons: []`（每条都有按钮），
