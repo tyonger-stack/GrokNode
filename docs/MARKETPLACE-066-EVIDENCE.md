@@ -799,3 +799,41 @@ npm test 884/884
 
 > 教训与 §18 一致：**miss 一次先怀疑自己的查找串**；并且在写「某东西应该消失」这类断言前，
 > 先确认它是不是被别处合法引用。
+
+### 部署版实机复验（14:2x，钥匙串授权后）
+
+四项修复在**真实运行的部署版**上逐项复核，与 0.66 实测值完全一致：
+
+```
+行数: 43
+① 行尾 添加 : 46x26 | padding 0px 10px | radius 13px | fw 420 | nowrap | cls0=sand-button
+              bg color(srgb 0.220753 0.220753 0.220753 / 0.32149)
+② 详情 返回 : 28x28 | radius 9999px | cls0=sand-kit-icon-button
+③ 查看源码 : 69x18 | href=https://github.com/ActiveCampaign/activecampaign-plugin
+              childKinds=[text:查看源码, I.ui-icon]  iconInsideAnchor=true  iconSize=13x13
+④ 分享     : 82x36 | childKinds=[SPAN.sand-kit-icon…, SPAN.sand-euugli…]
+              iconSize=18x18  label=分享 28x20
+
+✅ 行尾 添加           实测=46x26    官方=46x26
+✅ 详情 返回           实测=28x28    官方=28x28
+✅ 查看源码            实测=69x18    官方=69x18
+✅ 查看源码 图标在 <a> 内 实测=true    官方=true
+✅ 分享                实测=82x36    官方=82x36
+✅ 分享 图标盒 18x18    实测=18x18    官方=18x18
+全部通过: true | 返回栈正常: true
+```
+
+> ③④ 的背景色与官方逐字节相同；③ 的图标现在挂在 `<a>` 内（`childKinds` 可证），
+> 这正是修复前 52px / 无图标的根因所在。
+
+### 本轮自己踩的四个取证坑（都在 §18 那条教训的延长线上）
+
+| 坑 | 现象 | 根因 | 修法 |
+|---|---|---|---|
+| **fd 提前关闭** | 从 asar 抽出来的全是垃圾，101/101 语法失败、类名一个都搜不到 | `fs.closeSync(fd)` 写在构建 bundle **之前** | 先读后关 |
+| **`.js` 当 CJS 解析** | 101 个 chunk 全报 `Invalid or unexpected token` | 产物是 ESM（`import`），`node --check` 默认按 CommonJS | 临时文件用 `.mjs` |
+| **伪类选择器骗过正则** | 断言「`sand-yri2b` 在官方也没有规则」——**错**，实际有 `padding-inline-end:0` | `\.cls[^{}]*\{` 在 `.cls:focus-visible{` 上仍能匹配，但把 `.cls` 之后到 `{` 之间的**另一条**规则体吃进来 | 先 lookahead 定位类名，再从该位置截到 `}` |
+| **写了个错误的「应当消失」断言** | 断言产物里 `sand-167g77z` 应消失 | 该类（`gap:8px`）除旧配方外还被 `DETAIL_ACTIONS_CLASSES` 等合法引用 | 删掉断言，而不是改断言去迎合结果 |
+
+另外一条跨探针的坑：`until()` 在不同探针里有的返回 `{ok,value}` 包装、有的直接返回值，
+两次都栽在 `back.value` / `dlg` 上——**同一个 helper 在不同文件里语义不一致**。
