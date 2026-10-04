@@ -697,3 +697,105 @@ ve = (e,t) => { … for (const o of e) if (o.marketplace===void 0) for (const s 
 | **当前** | **06:57** | **10/13（剔除 `市场` 容器即 9/12）** | 残余 4 处全为 catalog 数据面 |
 
 > `市场` 是弹窗容器标题，两侧 `row__name` 均为空，属**退化相等**——计入会让分母多一个没有信息量的区块。
+
+---
+
+## 21. CTA 几何取证与修复（2026-10-04 10:0x–13:2x）
+
+验证器指出「Row CTA and detail CTA computed styles/geometry」缺证据。补齐后**发现四处真实缺陷**，
+全部是「类名看起来合理但几何不对」——typecheck、884 条测试、打包、签名全部照常通过，肉眼可见。
+
+### 两侧 catalog 原始 payload（补验证器的 catalog 缺口）
+
+| | 官方 0.66 | 本地 Grok Node |
+|---|---|---|
+| `mcp.catalog()` 总条数 | **404** | **393** |
+| 带 `categoryKey` | 253 | 247 |
+| 带 `categoryKeys` 数组 | 253 | **247**（修复前为 0） |
+| `publisher.isUserOwned === true` | 93 | **93** |
+| distinct `categoryKeys` | 15 个，与本地**完全相同** | 同 |
+
+> ⚠️ 更正：PARITY 文档「又证伪一个假设」一节写「本地 `isUserOwned` 是 0 条」——**这个数字是错的**，
+> 本地为 93，与官方相同。该节的**结论**（`isUserOwned` 不驱动 `可用性 公开/私有`，因为官方在
+> Appwrite 上也显示「公开」）不受影响，是依据官方实机观测得出的，与这个计数无关。
+
+### 四处缺陷与官方实测值
+
+| # | 控件 | 修复前（本地） | 官方实测 | 根因 |
+|---|------|--------------|---------|------|
+| 1 | 列表行尾 `添加`/`连接` | **32×24**，无底色，文字 `rgba(252,252,252,.6)` | **46×26**，`padding 0 10px`，`radius 13px`，半透明填充，`font-weight 420`，`nowrap` | 类名用了一套**猜的** `sand-kit-button` 配方 |
+| 2 | 详情页 `返回` | **36×28** | **28×28** | 与管理页返回**共用**了另一套配方 |
+| 3 | `查看源码` | **52×18**，**图标完全缺失** | **69×18**，`<a>` 内含 13×13 `<i class="ui-icon">` | 图标被 append 到**外层** `sourceRow`，没进 `<a>` |
+| 4 | `分享` | **78×36**，文本在前、14×14 裸字形在后 | **82×36**，`[sand-kit-icon 18×18][label span 28×20]` | 缺官方那个 18×18 图标盒 span，label 也没独立成 span |
+
+两侧 DOM **结构**在这些控件上完全一致（`BUTTON`、纯文本、0 个元素子节点），差异全在**类名与子节点挂载**。
+#3 #4 更反直觉：#4 的按钮配方类名**与官方逐字相同**，仅宽度差 4px——因为差的是子节点，不是配方。
+
+### 类名可迁移性的定量结论
+
+官方 0.66 的 54 个配方类里，**47 个**在 0.18 样式表中逐字存在（stylix 类名由声明内容决定）。
+另外 7 个全部是**逻辑属性 vs 物理属性**的差异，且都是**控制**而非尺寸：
+
+| 官方类 | 声明 | 0.18 等价类 | 声明 |
+|---|---|---|---|
+| `sand-1lun4ml` | `border-inline-end-width:1px` | `sand-s1s249` | `border-right-width:1px` |
+| `sand-pilrb4` | `border-inline-start-width:1px` | `sand-e0pwq` | `border-left-width:1px` |
+| `sand-18b5jzi` | `border-inline-end-style:solid` | `sand-32b0ac` | `border-right-style:solid` |
+| `sand-1o3jo1z` | `border-inline-end-color:transparent` | `sand-he5wa1` | `border-right-color:transparent` |
+| `sand-v5lvn5` | `border-inline-start-color:transparent` | `sand-1g4hjc` | `border-left-color:transparent` |
+| `sand-1kneoy4` | `transition-duration:.14s` | `sand-bb3pvg` | `transition-duration:.14s` |
+| `sand-e2zdcy` | `padding-inline-start:10px` | `sand-1lqa7cf` | `padding-left:10px` |
+
+应用只跑 LTR，逻辑/物理形式在这些值上**逐字节等价**。`sand-button` 在**两边**的样式表里都没有规则，
+是纯语义标记类，带上无副作用。**所以这里的对等是按像素衡量的，不是按类名字符串。**
+
+### 未打包就验证配方：把类名注入运行中的 app
+
+打包前先验了配方，避免「改完源码才发现不生效」：用 CDP 在**运行中的本地 app** 里按新类名造出这
+四个控件，量它自己的样式表解析出的几何。四项全中，背景色与官方逐字节相同：
+
+```
+行尾 添加 : 46x26 | padding 0px 10px | radius 13px | fw 420 | nowrap
+            bg color(srgb 0.220753 0.220753 0.220753 / 0.32149) | border 1px solid rgba(0,0,0,0) | fs 12px
+详情 返回 : 28x28 | radius 9999px
+详情 分享 : 82x36 | icon 18x18 | label 28x20
+查看源码 : 69x18 | fs 13px | gap 4px
+```
+
+### 部署版验证（从 `/Applications` 的 asar 抽字节，非 `dist/`）
+
+```
+asar 内 .js 总数 436（含主进程与运行时），renderer 101，unpacked 227 —— 语法验证对象是 renderer 那 101 个
+renderer chunk node --check: 101/101 通过
+产物类名检查: 行尾添加 / 详情返回 / 分享图标盒 / 管理返回前缀 四项全部 ✅
+codesign --verify --deep --strict: valid（asar 68,600,774 B，13:16）
+npm test 884/884
+```
+
+## 22. 已知缺口：既有列表仍带 0.18 不定义的类（**未修，记录在案**）
+
+`sand-yri2b{padding-inline-end:0}`、`sand-1c1uobl{padding-inline-start:0}`、
+`sand-1firant{transition-duration:.12s}`、`sand-1iolv91{:focus-visible outline-color}` 这四个类
+**在 0.18 样式表里不存在**，但仍**原样出现在若干既有列表**中（详情标题、关闭按钮、返回条等）——
+它们是本轮之前就在的，不是新引入的。
+
+- 这些控件在部署版里**实测尺寸全部正确**（关闭按钮 28×28、详情 `添加` 60×36、`分享` 本轮修好后 82×36），
+  因为尺寸由显式的 `sand-gd8bvy`/`sand-1fgtraw` 之类钉住，缺失的这几个只影响 hover / focus / transition。
+- 逐个替换会牵动十来个常量、远超「补四处 CTA 几何」的范围，故**本轮不做**，登记为已知缺口。
+- 本轮新引入的列表已做干净：`DETAIL_BACK_BUTTON_CLASSES` 里 `sand-1firant`→`sand-gdialr`（精确等价）；
+  `sand-yri2b`/`sand-1c1uobl` 直接省略并**给了证明**——裸 `<button>` 在本 app 里实测 `padding: 0px`
+  （0.18 的 reset 清零），所以这两条声明可证明冗余。
+- `tests/plugins-marketplace-renderer-patch.test.mjs` 的守卫目前**只覆盖本轮改动的列表**，
+  并在本注释里指明其余是已知缺口，避免下一个人以为已经全局清理过。
+
+### 取证过程中被自己推翻的三次
+
+1. **「`sand-yri2b` 等三个类在官方也没有规则」** —— 错。正则 `\.cls[^{}]*\{` 会被伪类选择器骗过；
+   官方实际有 `padding-inline-end:0` 等真实声明。改用「先 lookahead 定位类名，再截到 `}`」才读对。
+   同一次误判还让 asar 内 `.js` 总数看起来是 0 命中。
+2. **「官方 CSS 里没有 `sand-784prv` 规则」** —— 同一个正则错误，它实际是 `:focus-visible{outline-width:2px}`。
+3. **「`sand-167g77z` 已从产物消失」** —— 这是我自己写的**错误断言**：`sand-167g77z`（`gap:8px`）除旧配方外
+   还被 `DETAIL_ACTIONS_CLASSES` 等列表使用，产物里本来就该有。删掉这条断言而不是改断言去迎合结果。
+
+> 教训与 §18 一致：**miss 一次先怀疑自己的查找串**；并且在写「某东西应该消失」这类断言前，
+> 先确认它是不是被别处合法引用。

@@ -69,6 +69,8 @@
 | ~~D12~~ | ~~`支持` 桶本地只有 2 行（官方 3 行）~~ **改判** | 2026-10-04 复核：`MailerLite` **在本地 catalog 里存在**，只是没被选中——原先"catalog 缺条目"的判断不成立。真实成因是官方有厂商级 override 表未转写（同 D13） | EVIDENCE §10 |
 | **D13** | 首页条目级非 100% 一致 | **代码已按上游真源逐字对齐**（§18）：`Le` 14 条、`Te` 16 条厂商 override、`ke` 归一化、`categoryKeys` 数组求并集全部转写。**数据缺口已于 2026-10-04 06:26 补上**——宿主侧把 `categoryKeys` 贯通两��投影后，运行时 247/393 条带该数组，两条拟合补偿自动让位。修复后重测：**9/12 共有区块逐行一致**（我另一次独立实测 10/14，差的一个是 `市场` 容器——两边行名均为空，属退化相等）。余下 3 处全为 catalog 数据面：本地比官方少 11 条（`Google Slides` / `oh-my-claudecode` 等），`1Password` 两侧 catalog 均无，`为你推荐` 因 `teamPopularity()` 双方同为 0 | EVIDENCE §18 / PARITY 文档 |
 | **D14** | 私有技能详情页标题下的副标题**硬裁切，无省略号** | 该 span 套 `DETAIL_SOURCE_ROW_CLASSES`（11 个类，全部是 0.18 自带样式表里的既有配方：`sand-uxw1ft`=nowrap、`sand-b3r6kr`=overflow:hidden、`sand-euugli`=min-width:0、`sand-78zum5`=display:flex）。**没有任何一个类声明 `text-overflow`**，浏览器默认 `clip` → 实测 `scrollWidth 640 / clientWidth 610`，末尾 30px 直接切掉。列表行里的副标题是**另一组**类 `sand-plugins-row__subtitle`，带 `text-overflow:ellipsis`，正常省略。<br>**这组类名是否就是官方 0.66 私有技能详情页副标题的配方，未取证** —— EVIDENCE 只记了列表行副标题（§3 `SPAN.sand-plugins-row__subtitle`）。按证据优先原则**不改**：改成省略号就是臆造官方行为。记为 uncertainty | official-styles.ts `DETAIL_SOURCE_ROW_CLASSES` |
+| ~~**D15**~~ | ~~列表行尾 `添加`/`连接`、详情页 `返回`、`查看源码` 图标、`分享` 图标盒四处几何与官方不符~~ **已修（2026-10-04）** | 实测值分别为 32×24 / 36×28 / 图标缺失 / 78×36，官方为 **46×26 / 28×28 / 69×18 / 82×36**。根因是类名配方用错（猜的 `sand-kit-button`）、详情返回与管理页返回**共用**一套配方、`查看源码` 的图标被 append 到外层容器而非 `<a>`、`分享` 缺官方那个 18×18 图标盒 span。已按官方实机 DOM 逐项改正并落 5 条守卫；未打包前先用注入验证确认四项几何全中 | EVIDENCE §21 |
+| **D16** | 既有类名列表仍带 4 个 0.18 不定义的类 | `sand-yri2b`/`sand-1c1uobl`/`sand-1firant`/`sand-1iolv91` 出现在详情标题、关闭按钮、返回条等**既有**列表中。这些控件实测尺寸全部正确（缺失的只影响 hover/focus/transition），逐个替换牵动十来个常量，超出本轮范围 | EVIDENCE §22 |
 
 ## 3b. 「无遗漏」的穷尽核查（2026-10-04 补测）
 
@@ -122,7 +124,10 @@
 | 详情页 返回键 | `aria-label=返回` | `返回` | ✅ |
 | 详情页 页头标题 | 插件名 | `Adobe Developer App Builder` | ✅ |
 | 详情页 动作区 | 复制链接 / 分享 / 添加(卸载) | 同 | ✅ |
-| 详情页 源码链接 | 真实 `<a href>` | `https://github.com/adobe/skills` | ✅ |
+| 详情页 源码链接 | 真实 `<a href>` + `<a>` 内 13×13 外链图标（69×18） | 同结构，69×18 | ✅ D15 |
+| 详情页 分享 | `[sand-kit-icon 18×18][label 28×20]` = 82×36 | 同结构，82×36 | ✅ D15 |
+| 列表行尾 添加/连接 | 46×26 | 46×26（修复前 32×24） | ✅ D15 |
+| 详情页 返回 | 28×28 | 28×28（修复前 36×28） | ✅ D15 |
 | 详情页 信息区 | 功能/开发者/类别/网站/可用性 | 同 5 行 | ⚠️ 标签 ✅ / **值 ❌→已修** |
 | 逐层返回轨迹 | detail→bucket→home | `效率` → `(market)` → `HOME(no-back)` | ✅ |
 | 管理页行数 | 48 | 48 | ✅ |
@@ -177,8 +182,8 @@
 
 ### 验证强度（更正）
 
-- typecheck / `source:typecheck` 干净；**876/876 测试通过**（含 3 条锚定实机对拍的新守卫；
-  数字以最后一次全量 `npm test` 实测为准，早期版本记的 872 已过期）
+- typecheck / `source:typecheck` 干净；**884/884 测试通过**（含 5 条 2026-10-04 新增的 CTA 几何守卫；
+  数字以最后一次全量 `npm test` 实测为准，早期版本记的 872/876 均已过期）
 - **部署版 asar 的 101 个 renderer chunk 逐个 `node --check`，0 错误**（从 `/Applications`
   已部署字节抽出）。⚠️ asar 内 `.js` 总数是 209，但那是含 108 个 `node_modules` 与主进程
   bundle 的全量口径，**语法验证对象是 101**
