@@ -297,6 +297,91 @@ const SECTIONS_EXPR = `(async () => {
   return { sections };
 })()`;
 
+// CTA geometry. Four controls shipped with recipes that were plausible but wrong — every one of
+// them passed typecheck, the whole suite, packaging and codesigning, and only the rendered pixels
+// differed (行尾添加 32x24 vs official 46x26, 详情返回 36x28 vs 28x28, 查看源码 with its icon
+// appended to the wrapper instead of the <a>, 分享 at 78x36 with no icon box). This expression
+// measures all four on whichever app it is run against, and the two runs are diffed against each
+// other rather than against hard-coded numbers, so a future upstream change moves the baseline
+// instead of failing the check.
+const CTA_EXPR = `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const round = (n) => Math.round(n * 100) / 100;
+  const dlg = () => [...document.querySelectorAll('[role="dialog"]')]
+    .find((x) => /市场|Marketplace/.test(x.getAttribute("aria-label") || ""));
+  // Push-stack pages keep the previous level mounted, so a node that still has a box is not
+  // necessarily the current level. Every read goes through vis().
+  const vis = (e) => {
+    if (!e) return false;
+    const r = e.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return false;
+    return typeof e.checkVisibility === "function"
+      ? e.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true })
+      : !!e.offsetParent;
+  };
+  const visAll = (sel, root = document) => [...root.querySelectorAll(sel)].filter(vis);
+  const until = async (pred, ms) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) { const v = pred(); if (v) return v; await sleep(250); }
+    return null;
+  };
+  const box = (e) => { const r = e.getBoundingClientRect(); return round(r.width) + "x" + round(r.height); };
+  const childKinds = (e) => [...e.childNodes].map((n) =>
+    n.nodeType === 3 ? "text:" + n.textContent.trim() : n.tagName + "." + String(n.className).split(" ")[0]);
+
+  let d = dlg();
+  if (d) { (document.querySelector('button[aria-label="关闭"]'))?.click(); await sleep(900); d = dlg(); }
+  if (!d) {
+    const entry = [...document.querySelectorAll('button,[role="button"]')]
+      .map((e) => ({ e, t: (e.getAttribute("aria-label") || "").trim() }))
+      .find((x) => /连接应用|Connect apps/.test(x.t));
+    entry?.e.click();
+    for (let i = 0; i < 40 && !dlg(); i += 1) await sleep(250);
+    d = dlg();
+  }
+  if (!d) return { err: "市场弹窗未打开" };
+  // The catalog arrives asynchronously; poll for the rows rather than sleeping a fixed amount.
+  const rows = await until(() => { const n = visAll(".sand-plugins-row__open", d); return n.length ? n : null; }, 40000);
+  if (!rows) return { err: "行未渲染（catalog 未就绪）" };
+
+  const out = { rowCount: rows.length };
+  const trail = visAll(".sand-plugins-row__trailing button,.sand-plugins-row__trailing a",
+    rows[0].closest("li") ?? rows[0].parentElement)[0] ?? null;
+  if (trail) {
+    const s = getComputedStyle(trail);
+    out.rowTrailing = { text: (trail.textContent || "").trim(), size: box(trail), padding: s.padding,
+      borderRadius: s.borderRadius, fontWeight: s.fontWeight, whiteSpace: s.whiteSpace, background: s.backgroundColor };
+  }
+  rows[0].click();
+  const back = await until(() => visAll('button[aria-label="返回"]', d)[0] ?? null, 20000);
+  if (!back) return { ...out, err: "未能进入详情页" };
+  await sleep(900);
+  out.detailBack = { size: box(back), borderRadius: getComputedStyle(back).borderRadius };
+  const link = visAll("a[href]", d).find((a) => (a.textContent || "").trim().startsWith("查看源码"));
+  if (link) {
+    const icon = link.querySelector("i.ui-icon");
+    // childKinds is the assertion that matters: the glyph has to be INSIDE the anchor, and
+    // appending it to the wrapper span leaves a text-only <a> that still parses fine.
+    out.viewSource = { size: box(link), childKinds: childKinds(link), iconSize: icon ? box(icon) : null };
+  }
+  const share = visAll("button", d).find((b) => (b.textContent || "").trim() === "分享");
+  if (share) {
+    const kit = share.querySelector("span[class*=sand-kit-icon]");
+    const label = [...share.children].find((c) => c.tagName === "SPAN" && !String(c.className).includes("sand-kit-icon"));
+    out.share = { size: box(share), childKinds: childKinds(share), iconSize: kit ? box(kit) : null,
+      labelSize: label ? box(label) : null };
+  }
+  // Popping the detail level is not instantaneous, and the bar animates out — a 2s budget
+  // turned a healthy back-stack into a false failure. Require BOTH halves: no back button
+  // left, and the homepage rows back in the tree.
+  (document.querySelector('button[aria-label="返回"]'))?.click();
+  out.backStackWorks = await until(
+    () => (visAll('button[aria-label="返回"]', d).length === 0 && visAll(".sand-plugins-row__open", d).length > 0) ? true : null,
+    12000,
+  ) != null;
+  return out;
+})()`;
+
 console.log("\n■ 实机逐区块对拍（需要两个 app 同时带 CDP 端口运行）");
 let officialSections = null;
 let deployedSections = null;
@@ -329,5 +414,51 @@ if (officialSections && deployedSections) {
   console.log("     teamPopularity() 双方同为 0 —— 均属数据面，不是渲染行为差异。");
 }
 
-console.log(`\n${failures === 0 ? "✅ 静态核验全部通过" : `❌ ${failures} 项静态核验未通过`}\n`);
+console.log("\n■ CTA 几何对拍（同一批控件，两侧实测互比，不用硬编码数字）");
+const ctaRuns = {};
+for (const [label, port, hint] of [["官方", OFFICIAL_CDP, OFFICIAL_URL_HINT], ["部署版", DEPLOYED_CDP, DEPLOYED_URL_HINT]]) {
+  try {
+    const dump = await cdpDump(port, hint, CTA_EXPR);
+    if (dump?.err) { ok(`${label} CTA 读取`, false, dump.err); continue; }
+    ctaRuns[label] = dump;
+    ok(`${label} CTA 读取成功`, true, `${dump.rowCount} 行`);
+  } catch (error) {
+    ok(`${label} CTA 可用`, false, String(error.message).slice(0, 120));
+  }
+}
+
+if (ctaRuns["官方"] && ctaRuns["部署版"]) {
+  // Flatten to the values that actually decide the pixels. Text content differs by design (the
+  // two catalogs are different), so row names are deliberately excluded.
+  const FIELDS = [
+    ["行尾 添加/连接 尺寸", "rowTrailing", "size"],
+    ["行尾 添加 padding", "rowTrailing", "padding"],
+    ["行尾 添加 圆角", "rowTrailing", "borderRadius"],
+    ["行尾 添加 字重", "rowTrailing", "fontWeight"],
+    ["行尾 添加 底色", "rowTrailing", "background"],
+    ["详情 返回 尺寸", "detailBack", "size"],
+    ["查看源码 尺寸", "viewSource", "size"],
+    ["查看源码 外链图标", "viewSource", "iconSize"],
+    ["分享 尺寸", "share", "size"],
+    ["分享 图标盒", "share", "iconSize"],
+    ["分享 label", "share", "labelSize"],
+  ];
+  for (const [name, group, field] of FIELDS) {
+    const want = ctaRuns["官方"][group]?.[field] ?? "(缺失)";
+    const got = ctaRuns["部署版"][group]?.[field] ?? "(缺失)";
+    ok(name, want === got, want === got ? `${got}` : `官方 ${want} / 本地 ${got}`);
+  }
+  // Structure, not just size: the 分享 icon box must precede the label, and the 查看源码 glyph must
+  // be a child of the anchor. Both defects shipped while the button recipe was byte-identical.
+  const kinds = (run, group) => (run[group]?.childKinds ?? []).join("|");
+  ok("分享 子节点顺序", kinds(ctaRuns["官方"], "share") === kinds(ctaRuns["部署版"], "share"),
+    kinds(ctaRuns["部署版"], "share"));
+  const iconInside = (run) => (run.viewSource?.childKinds ?? []).some((k) => /^I\.ui-icon$/.test(k));
+  ok("查看源码 图标在 <a> 内", iconInside(ctaRuns["官方"]) && iconInside(ctaRuns["部署版"]),
+    kinds(ctaRuns["部署版"], "viewSource"));
+  ok("详情返回后回到首页", ctaRuns["部署版"].backStackWorks === true);
+}
+
+console.log(`\n${failures === 0 ? "✅ 全部核验通过" : `❌ ${failures} 项核验未通过`}\n`);
+
 process.exit(failures === 0 ? 0 : 1);
