@@ -32,7 +32,6 @@ import {
   DETAIL_ACCOUNTS_CLASSES,
   DETAIL_ACCOUNT_NAME_CLASSES,
   DETAIL_ACTIONS_CLASSES,
-  DETAIL_ADD_ACCOUNT_FULL_CLASSES,
   DETAIL_APP_COUNT_CLASSES,
   DETAIL_BACK_BUTTON_CLASSES,
   DETAIL_BAR_CLASSES,
@@ -64,8 +63,6 @@ import {
   DETAIL_TITLE_CLASSES,
   DETAIL_TITLE_COL_CLASSES,
   DETAIL_TOOLS_CLASSES,
-  DETAIL_TOOLS_LABEL_CLASSES,
-  DETAIL_TOOLS_ROW_CLASSES,
   DETAIL_TOOL_ICON_CLASSES,
   DIALOG_CLASSES,
   EMPTY_TEXT_CLASSES,
@@ -79,7 +76,6 @@ import {
   GROUP_SECTION_CLASSES,
   GROUP_TITLE_CLASSES,
   HIDDEN_ROWS_CLASSES,
-  ICON_GLYPH_CLASSES,
   ICON_SPAN_CLASSES,
   INSTALLED_PREVIEW_CLASSES,
   LAYOUT_CLASSES,
@@ -136,6 +132,11 @@ import {
   YOURS_ROOT_CLASSES,
 } from "./official-styles.js";
 import {
+  createAddAccountCta,
+  createGlyph,
+  createToolsRowCta,
+} from "./detail-cta.js";
+import {
   HOMEPAGE_PREVIEW_LIMIT,
   PREVIEW_ICON_LIMIT,
   MANAGE_VISIBLE_ROWS,
@@ -176,13 +177,8 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 function glyph(name: string, codePoint: string, size = 12): HTMLElement {
-  const glyphNode = document.createElement("i");
-  applyClasses(glyphNode, ICON_GLYPH_CLASSES);
-  glyphNode.setAttribute("data-icon-name", name);
-  glyphNode.setAttribute("aria-hidden", "true");
-  glyphNode.style.setProperty("--cursor-icon-content", JSON.stringify(codePoint));
-  glyphNode.style.setProperty("--icon-size", `${size}px`);
-  return glyphNode;
+  // The body lives in detail-cta.ts so the CTA builders and this wrapper cannot drift apart.
+  return createGlyph(document, name, codePoint, size);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1159,16 +1155,12 @@ function renderDetail(
       if (index < detail.accounts.length - 1) list.append(el("div", DETAIL_DIVIDER_CLASSES));
     });
     list.append(el("div", DETAIL_DIVIDER_CLASSES));
-    const addAccount = el("button", DETAIL_ADD_ACCOUNT_FULL_CLASSES);
-    addAccount.type = "button";
     // Official 0.66 renders the label as a **text node** next to the glyph, with no aria-label at
     // all (measured: `textContent === "添加其他账户"`, `getAttribute("aria-label") === null`,
     // `children.length === 1` — the glyph). Carrying the copy in aria-label only made the button
-    // icon-only on screen, 34px tall instead of 43px, with the text existing purely for
-    // screen readers. The glyph stays first, matching official's child order.
-    addAccount.append(glyph("plus", GLYPH.plus, 10));
-    addAccount.append(document.createTextNode(TEXT.addAccount));
-    list.append(addAccount);
+    // icon-only on screen, 34px tall instead of 43px, with the text existing purely for screen
+    // readers. The construction lives in detail-cta.ts so a test can render it and assert that.
+    list.append(createAddAccountCta(document));
     block.append(list);
     body.append(block);
   }
@@ -1177,11 +1169,7 @@ function renderDetail(
   if (detail.toolsLabel != null) {
     const block = buildDetailSection(TEXT.detailTools);
     const list = el("div", DETAIL_TOOLS_CLASSES);
-    const toolRow = el("button", DETAIL_TOOLS_ROW_CLASSES);
-    toolRow.type = "button";
-    toolRow.append(el("span", DETAIL_TOOLS_LABEL_CLASSES, detail.toolsLabel));
-    toolRow.append(glyph("chevron-right", GLYPH.chevronDown, 10));
-    list.append(toolRow);
+    list.append(createToolsRowCta(document, detail.toolsLabel));
     block.append(list);
     body.append(block);
   }

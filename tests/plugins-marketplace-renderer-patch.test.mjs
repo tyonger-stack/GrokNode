@@ -7,6 +7,7 @@ const EXT_DIR = path.join(import.meta.dirname, "..", "frontend/src/extensions");
 const DOCK = readFileSync(path.join(EXT_DIR, "plugins-dock-entry.ts"), "utf8");
 const STYLES = readFileSync(path.join(EXT_DIR, "marketplace/official-styles.ts"), "utf8");
 const VIEW = readFileSync(path.join(EXT_DIR, "marketplace/view.ts"), "utf8");
+const DETAIL_CTA = readFileSync(path.join(EXT_DIR, "marketplace/detail-cta.ts"), "utf8");
 const MODEL = readFileSync(path.join(EXT_DIR, "marketplace/model.ts"), "utf8");
 const INDEX = readFileSync(path.join(EXT_DIR, "marketplace/index.ts"), "utf8");
 
@@ -722,18 +723,31 @@ test("detail-page affordances that open nothing in 0.66 stay inert", () => {
   //
   // These are rendered with official's geometry and left without handlers ON PURPOSE. If a future
   // capture shows any of them opening something, this test is the thing to update first.
-  assert.match(VIEW, /const toolRow = el\("button", DETAIL_TOOLS_ROW_CLASSES\)/);
+  //
+  // The two full-width CTAs are built in detail-cta.ts rather than inline here, so the render path
+  // stays readable AND the builders can be executed by tests/marketplace-detail-cta-render.test.mjs
+  // against a DOM shim. Asserting "no handler" against the builder that actually creates the node
+  // is stronger than the previous text match on the call site.
+  assert.match(VIEW, /list\.append\(createToolsRowCta\(document, detail\.toolsLabel\)\);/);
+  assert.match(DETAIL_CTA, /createGlyph\(doc, "chevron-right", GLYPH\.chevronDown, 10\)/);
+  // Scope each slice to the one function that creates the node. A bare `!x.addEventListener.test(VIEW)`
+  // over the whole module would keep passing after the code moved out of view.ts, i.e. it would
+  // guard a string that no longer exists.
+  const toolsRowBody = DETAIL_CTA.slice(DETAIL_CTA.indexOf("export function createToolsRowCta"));
+  assert.ok(toolsRowBody.length > 0, "createToolsRowCta is gone; this guard would silently pass");
   assert.ok(
-    !/toolRow\.addEventListener/.test(VIEW),
+    !/addEventListener/.test(toolsRowBody),
     "the 工具 row must not grow a handler: 0.66 does not expand it",
   );
-  assert.match(VIEW, /toolRow\.append\(glyph\("chevron-right", GLYPH\.chevronDown, 10\)\)/);
 
-  const addAccount = VIEW.slice(VIEW.indexOf("const addAccount = el("));
-  assert.match(VIEW, /const addAccount = el\("button", DETAIL_ADD_ACCOUNT_FULL_CLASSES\)/);
+  const addAccount = DETAIL_CTA.slice(
+    DETAIL_CTA.indexOf("export function createAddAccountCta"),
+    DETAIL_CTA.indexOf("export function createToolsRowCta"),
+  );
+  assert.ok(addAccount.length > 0, "createAddAccountCta is gone; this guard would silently pass");
   assert.ok(
-    !/addAccount\.addEventListener/.test(addAccount),
-    "添加账户 has no destination in 0.66",
+    !/addEventListener/.test(addAccount),
+    "添加其他账户 has no destination in 0.66",
   );
   const editAccount = VIEW.slice(VIEW.indexOf("const edit = el("));
   assert.ok(
@@ -1094,15 +1108,22 @@ test("信息 · 类别 renders official's localized label, not the raw English c
 
 test("the add-account CTA carries the label as a text node, not only an aria-label", () => {
   // Measured on official 0.66: textContent "添加其他账户", aria-label null, children.length 1.
+  // The construction lives in detail-cta.ts now; tests/marketplace-detail-cta-render.test.mjs runs it
+  // and asserts the rendered textContent, which is what this text match can only stand in for.
   assert.match(
-    VIEW,
-    /addAccount\.append\(glyph\("plus", GLYPH\.plus, 10\)\);\s*\n\s*addAccount\.append\(document\.createTextNode\(TEXT\.addAccount\)\);/,
+    DETAIL_CTA,
+    /button\.append\(createGlyph\(doc, "plus", GLYPH\.plus, 10\)\);\s*\n\s*button\.append\(doc\.createTextNode\(TEXT\.addAccount\)\);/,
     "the glyph stays first and the copy follows as a text node, matching official's child order",
   );
   assert.doesNotMatch(
-    VIEW,
-    /addAccount\.setAttribute\("aria-label", TEXT\.addAccount\)/,
+    DETAIL_CTA,
+    /setAttribute\("aria-label", TEXT\.addAccount\)/,
     "aria-label alone leaves the button icon-only on screen; official has no aria-label here",
+  );
+  assert.doesNotMatch(
+    VIEW,
+    /setAttribute\("aria-label", TEXT\.addAccount\)/,
+    "the add-account CTA is built in detail-cta.ts; an inline copy here would be a second one",
   );
 });
 
