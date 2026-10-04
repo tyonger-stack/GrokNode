@@ -258,3 +258,47 @@ OFFICIAL headingText=精选插件  wholeDialog=6  scopedToScroller=6  nonEmptyGr
 
 **仍未测**：**重部署（重新 ditto）之后会不会再弹**。本轮没有重打包，所以没测到。
 「同 bundle 重启不弹」与「重打包不弹」是两件事，不应混为一谈。
+
+## 附四：一次失败实验的记录（副本对照实验，2026-10-05 04:1x）
+
+为了回答「钥匙串弹窗是不是对路径敏感」，做了一次同名副本对照实验：把 `/Applications/Grok Node.app`
+复制到 `/tmp/mkt-kc-test/Grok Node.app`（**必须同名** —— Electron 的钥匙串 service 取自 app name
+而不是路径，不同名就不是同一个实验），只换路径启动。
+
+**实验失败，而且制造了新故障。** 三件事，按发生顺序：
+
+1. **副本根本没被测到。** 它确实启动了，`codesign --verify --deep --strict` 对副本也是 exit 0；
+   但我查进程时用了 `pgrep -f "^/Applications/…/Grok Bot"` —— **路径锚在正主身上**，
+   对副本当然 0 命中，于是我判成「副本没启动」并删掉了副本目录。
+2. **进程却还活着。** macOS 上运行中的进程靠 vnode 继续持有已删除的 executable。
+   副本带着 7 个进程（主 + 4 个 `Grok Bot Helper` + 1 个 `Helper (Renderer)` + 1 个子进程）
+   一直占着单实例锁。
+3. **真 app 因此起不来。** Chromium/Electron 的单实例锁落在**共享的 user-data 目录**
+   （`~/Library/Application Support/Grok Node`），副本和正主共用同一个 `SingletonLock`。
+   真 app 的启动指纹是「主进程不存在 / 渲染进程 0 / CDP 无 page target」——
+   **和钥匙串挡住时的指纹一模一样**，我差点又归因到钥匙串。
+
+清理顺序（少一步都不行，已验证）：
+
+1. 杀副本**全部**进程 —— 锚定在副本自己的路径上：`pgrep -f "^/private/tmp/mkt-kc-test/"`，
+   7 个全杀。只杀主进程不够，Helper 会把它拖住。
+2. 删 `SingletonLock`（`SingletonCookie` / `SingletonSocket` 是残留软链，**不影响启动**，
+   真正把关的只有 Lock）。
+3. `kill -9` 挂起的 `SecurityAgent` —— 普通 `kill` 对它无效；它会被 init 收养成 PPID=1 的孤儿，
+   进程还在但界面上仍弹着。
+4. 启动正主，主进程 + 5 个渲染进程 + CDP page target 全部恢复。
+
+**两个假信号，记下来免得再上当：**
+
+- `amfid` 会为一屏 ad-hoc 签名的 app 刷
+  `AppleMobileFileIntegrityError Code=-423 "The file is adhoc signed or signed by an unknown certificate chain"`，
+  而 `codesign --verify --deep --strict` 同时是 **exit 0**。两者不矛盾，-423 不是失败原因。
+- `Failed to parse receipt at …/_MASReceipt/receipt: no such file` 同属 ad-hoc 打包的常态噪音。
+
+**教训**：做对照实验前先问一句「**这个实验失败时，我能不能分辨是哪一步失败**」。
+这次不能 —— 副本起不来、和副本占着锁导致正主起不来，在观测上同形。于是实验既没测到目标，
+又制造了新的故障，还因为路径锚错多花了三轮才把锁里的 PID `21209` 对上号。
+
+**附带修正**：本次重启后又跑了一次开放耗时探针，**冷启动第 1 轮是 3189ms**（不是上一节记的
+6591ms —— 那个数包含了「app 还在被钥匙串挡着没真正启动完」的时间，不是干净的冷启动）。
+热开 24/31/28/24ms，加载态 0/5。冷启动 3189ms 与官方首次 `catalog()` 的 2792ms 同量级。
