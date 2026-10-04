@@ -30,10 +30,6 @@ const read = (...p) => readFileSync(path.join(repoRoot, ...p), "utf8");
 const FIXTURE = JSON.parse(read("tests", "fixtures", "official-catalog-11.json"));
 const CAPTURED = FIXTURE.entries;
 
-/** Keys the official bridge emits that upstream's own `marketplacePluginToView` does not produce.
- *  Listed explicitly so a shape change fails loudly instead of being silently tolerated. */
-const OFFICIAL_BRIDGE_ONLY_KEYS = ["isPublicListed", "pluginName"];
-
 async function loadEntry(entry, outName) {
   const outfile = path.join(repoRoot, "node_modules", ".cache", outName);
   await build({
@@ -91,8 +87,14 @@ const dropUndefined = (obj) => {
 test("every pinned entry projects to the view official actually rendered", () => {
   // Beyond key-set normalisation, two field-level differences are permitted and each is checked
   // explicitly rather than excluded from comparison:
-  //  - the official bridge carries `isPublicListed` / `pluginName`, which upstream's projector never
-  //    emits;
+  //  - the official bridge carries `isPublicListed`, which upstream's projector never emits;
+  //  - `pluginName` USED to sit in this same exemption list and no longer does. It is a real field
+  //    of the official view (present on all 404 live entries) that our projector used to drop, and
+  //    the renderer's vendor-override probe reads it BEFORE `name` — so excluding it hid a genuine
+  //    projection loss behind a green test. It is ported now (official 0.66 `main-app.cjs`:
+  //    `name:r, pluginName:e.name`), and it is compared like any other field. `oh-my-claudecode` is
+  //    the one entry that proves the port is real rather than a copy of `name`: its `name` is the
+  //    literal `"t"` and its `pluginName` is `oh-my-claudecode`.
   //  - `marketplace` is NOT exempt: an earlier revision excluded it and that silently cost the
   //    团队插件 row. `toRow` derives `isTeam` from `marketplaceName(entry)`, so a pinned team entry
   //    without it does not render in 团队插件 at all — the single most visible way a pin can be
@@ -102,7 +104,7 @@ test("every pinned entry projects to the view official actually rendered", () =>
   //    `null` to store, so it pins as `undefined` / `[]`. That is functionally identical for
   //    bucketing: `sectionKeyOf` reads the key list, and an empty list matches no bucket exactly as
   //    an absent key does.
-  const BRIDGE_ONLY = ["isPublicListed", "pluginName"];
+  const BRIDGE_ONLY = ["isPublicListed"];
 
   for (const captured of CAPTURED) {
     const supplement = LOCAL_CATALOG_SUPPLEMENTS.find((p) => p.pluginId === captured.id);
@@ -131,6 +133,70 @@ test("every pinned entry projects to the view official actually rendered", () =>
       assert.deepEqual(categoryKeys, captured.categoryKeys, `${captured.name}: categoryKeys must match`);
     }
   }
+});
+
+test("pluginName reaches the view and is NOT a copy of name", () => {
+  // Why this is its own test instead of another line in the deepEqual above: the deepEqual would
+  // still pass if BOTH the pin and the projector had been changed together to emit `name` twice.
+  // The renderer's vendor-override probe (`Re()` = `Te[vendor] ?? …`) reads `pluginName` FIRST and
+  // only then `name`, and on the official build's 404-entry catalog 85 rows carry a `pluginName`
+  // that differs from `name` (`aikido` → `aikido-cursor-plugin`, and the four AWS rows all have
+  // `name: "aws-mcp"` but distinct `pluginName`s). So "pluginName === name everywhere" is not a
+  // harmless simplification — it is a silent loss of the field the probe is keyed on.
+  //
+  // `oh-my-claudecode` is the witness inside this very fixture: its `name` is the literal `"t"`
+  // (an MCP server handle) while its `pluginName` is `oh-my-claudecode`.
+
+  for (const captured of CAPTURED) {
+    const supplement = LOCAL_CATALOG_SUPPLEMENTS.find((p) => p.pluginId === captured.id);
+    const view = marketplacePluginToView(supplement);
+    assert.equal(
+      view.pluginName,
+      captured.pluginName,
+      `${captured.displayName}: view pluginName must equal official's`,
+    );
+    assert.equal(typeof view.pluginName, "string", `${captured.displayName}: pluginName must be a string`);
+  }
+
+  const omc = LOCAL_CATALOG_SUPPLEMENTS.find((p) => p.pluginId === "71001007");
+  assert.equal(omc.name, "t", "precondition: the MCP server handle really is the literal \"t\"");
+  assert.equal(omc.pluginName, "oh-my-claudecode", "pluginName is the plugin's own name, not the handle");
+  assert.notEqual(omc.pluginName, omc.name, "so the two fields are genuinely distinct here");
+
+  // The renderer's probe order, pinned where it is consumed. `vendorTokens` returns BOTH tokens and
+  // the caller returns on the first table hit, so `pluginName` must be probed first.
+  const model = read("frontend", "src", "extensions", "marketplace", "model.ts");
+  assert.match(
+    model,
+    /for \(const raw of \[entry\.pluginName, entry\.name\]\)/,
+    "the vendor probe must read pluginName before name",
+  );
+});
+
+test("toPlugin reads the plugin's own name for pluginName, not the MCP server handle", () => {
+  // A source assertion, deliberately. `toPlugin` is module-private and sits behind the network
+  // client, so the only way to observe WHICH field feeds `pluginName` without a live server is to
+  // read the assignment. What makes this acceptable rather than a proxy for a runtime check: the
+  // value that lands in `pluginName` is also asserted against official's capture above, and the
+  // deployed app is verified end-to-end against official's own 404 rows in the evidence notes.
+  //
+  // The failure this guards is concrete and was the original bug shape: writing
+  // `pluginName: plugin.mcpServers[0]?.name ?? plugin.name` — a copy of `name` — which compiles,
+  // type-checks, passes every render assertion, and is indistinguishable from correct on the 10
+  // entries where the two happen to be equal. Only the 11th entry can tell them apart.
+  const src = read("source", "shared", "node", "mcp", "mcp-marketplace.ts");
+  assert.match(
+    src,
+    /pluginName: plugin\.name,/,
+    "toPlugin must take pluginName from the plugin's own name",
+  );
+  assert.doesNotMatch(
+    src,
+    /pluginName: plugin\.mcpServers/,
+    "pluginName must never be derived from the MCP server handle",
+  );
+  // And the view must carry it through rather than recompute it.
+  assert.match(src, /pluginName: plugin\.pluginName,/);
 });
 
 test("10 of 11 install for real; the 11th is pinned-but-uninstallable and says so", () => {

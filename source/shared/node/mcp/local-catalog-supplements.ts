@@ -59,6 +59,7 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
   {
     pluginId: "45893415",
     name: "google-slides",
+    pluginName: "google-slides",
     displayName: "Google Slides",
     description: "Create, edit, and render presentations.",
     category: "Design",
@@ -77,6 +78,7 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
   {
     pluginId: "45893412",
     name: "google-docs",
+    pluginName: "google-docs",
     displayName: "Google Docs",
     description: "Read, create, and edit documents.",
     category: "Documents And Files",
@@ -95,6 +97,7 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
   {
     pluginId: "45893414",
     name: "google-sheets",
+    pluginName: "google-sheets",
     displayName: "Google Sheets",
     description: "Read, write, and append spreadsheet data.",
     category: "MCP",
@@ -113,6 +116,7 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
   {
     pluginId: "57302028",
     name: "onedrive",
+    pluginName: "onedrive",
     displayName: "OneDrive",
     description: "Browse, search, and read Microsoft OneDrive files.",
     category: "Documents And Files",
@@ -131,6 +135,7 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
   {
     pluginId: "57302029",
     name: "outlook",
+    pluginName: "outlook",
     displayName: "Outlook",
     description: "Search, read, and send Microsoft Outlook email, and look up contacts.",
     category: "Inbox And Collaboration",
@@ -149,6 +154,7 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
   {
     pluginId: "57302030",
     name: "outlook-calendar",
+    pluginName: "outlook-calendar",
     displayName: "Outlook Calendar",
     description: "List, create, update, and cancel Microsoft Outlook calendar events.",
     category: "Scheduling",
@@ -167,6 +173,7 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
   {
     pluginId: "64745996",
     name: "sharepoint",
+    pluginName: "sharepoint",
     displayName: "SharePoint",
     description: "Search and read Microsoft SharePoint sites, document libraries, files, and lists.",
     category: "MCP",
@@ -185,6 +192,7 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
   {
     pluginId: "63354504",
     name: "teams",
+    pluginName: "teams",
     displayName: "Teams",
     description: "Search, read, and send Microsoft Teams chats and channel messages.",
     category: "Productivity",
@@ -203,6 +211,7 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
   {
     pluginId: "63408931",
     name: "finance",
+    pluginName: "finance",
     displayName: "Finance",
     description: "Link your bank, card, and investment accounts through Plaid so Grok can answer questions about balances, spending, subscriptions, and investments. You'll share contact details, account and balance info, transactions, credit and loans, and investments. Grok syncs and stores your linked account data so the connector can work, and Grok Bot's privacy mode still controls whether your conversations are stored or used for training. Access is read-only, xAI never sees or stores your bank login, and you can unlink accounts anytime from cursor.com.",
     category: "MCP",
@@ -221,6 +230,7 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
   {
     pluginId: "68516160",
     name: "x-money",
+    pluginName: "x-money",
     displayName: "X Money",
     description: "Use your X Money Card, send money to users on X, manage your finances, view your balance and browse through your transaction history.",
     category: "MCP",
@@ -239,6 +249,7 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
   {
     pluginId: "71001007",
     name: "t",
+    pluginName: "oh-my-claudecode",
     displayName: "oh-my-claudecode",
     description: "Multi-agent orchestration system for Claude Code",
     category: "MCP",

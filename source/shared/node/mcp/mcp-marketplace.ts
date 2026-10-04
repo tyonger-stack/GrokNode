@@ -19,6 +19,26 @@ import {
 export interface SandMarketplacePlugin {
   pluginId: string;
   name: string;
+  /**
+   * The plugin's OWN name (`Plugin.name` on the wire), carried separately from `name`.
+   *
+   * `name` is `mcpServers[0].name ?? plugin.name` — the first MCP server's name, which is often a
+   * generic handle rather than the plugin's identity. Official 0.66 emits both, and the renderer's
+   * vendor-override probe (`Re()` = `Te[vendor] ?? …`) reads `pluginName` FIRST and only then
+   * `name`. Measured on the official build's own 404-entry catalog: `pluginName` is present on all
+   * 404, and on 85 of them it differs from `name` (`aikido` → `aikido-cursor-plugin`,
+   * `aws-mcp` → `aws-amplify` / `aws-core` / `sagemaker-ai`, `oh-my-claudecode`'s `name` is the
+   * literal `"t"` while `pluginName` is `oh-my-claudecode`).
+   *
+   * @evidence official 0.66 `dist/electron-main/main-app.cjs`:
+   *   `return{pluginId:e.id.toString(),name:r,pluginName:e.name,displayName:…}` where
+   *   `r = e.mcpServers[0]?.name ?? e.name`. So the field is `Plugin.name` verbatim, not derived.
+   *
+   * Dropping it is a projection loss of the same class as the `categoryKeys` one that already bit
+   * this build twice: the renderer's model already reads `pluginName`, and without it the probe
+   * silently falls back to `name` and can miss a `Te` override whose key is the plugin's real name.
+   */
+  pluginName: string;
   displayName: string;
   description: string;
   category: string;
@@ -56,6 +76,11 @@ export function marketplacePluginToView(plugin: SandMarketplacePlugin) {
   return {
     id: plugin.pluginId,
     name: plugin.name,
+    // Official 0.66 `marketplacePluginToView` (`T7t`) emits `pluginName` between `name` and
+    // `displayName`: `{id:e.pluginId,name:e.name,pluginName:e.pluginName,displayName:…}`.
+    // Position matters only for readability, but the field's PRESENCE is load-bearing — the
+    // renderer's vendor probe reads it before `name`.
+    pluginName: plugin.pluginName,
     displayName: plugin.displayName,
     description: plugin.description,
     category: plugin.category,
@@ -173,6 +198,9 @@ function toPlugin(
   return {
     pluginId: plugin.id.toString(),
     name: plugin.mcpServers[0]?.name ?? plugin.name,
+    // Official 0.66 `main-app.cjs`: `name:r,pluginName:e.name` with
+    // `r = e.mcpServers[0]?.name ?? e.name`. The plugin's own name, NOT the server handle above.
+    pluginName: plugin.name,
     displayName:
       plugin.displayName.length > 0 ? plugin.displayName : plugin.name,
     description: plugin.description ?? "",
