@@ -8,7 +8,36 @@
 **先看 href 再看结论**：本项目栽过一次——标着「官方」的取证脚本其实是本地脚本的逐字节副本，端口和 URL
 都没改，静默取到了本地数据还不报错、不为空。
 
-## requirement-b-source-merge.json（要求 B：两路数据源并进来）
+## deployed-detail-values-2026-10-04.json + `deployed-gmail-detail-2026-10-04.png`
+
+三个详情页取值修复在**已部署产物**上的实机读数（CDP 9232，Gmail，已安装 + `已连接`）：
+
+```
+账户 default 已连接 | 工具 已启用 23/23 个 | 应用 1 gmail连接器
+信息 功能 1 个应用 | 开发者 Cursor | 类别 精选 | 网站 github.com | 可用性 公开
+```
+
+- `添加其他账户` ✅ 实机通过，旧的 `添加账户` 字面量在界面上已不存在
+- `类别 精选` ✅ 实机通过，不再是英文 `Featured`
+- `网站 github.com` ❌ **仍是仓库域名**——但**不是代码问题**
+
+第三条要说清楚：把 `mcp.catalog()` 的 393 条全查了一遍，
+
+```
+entriesWithWebsiteUrl: 0
+entriesWithRepositoryUrl: 393
+```
+
+**本地 catalog 根本没有 websiteUrl 这个值**（官方 0.66 的 Gmail 有 `https://cursor.com/`）。
+渲染代码是对的——部署 chunk 里就是 `网站 ← websiteUrl`、`查看源码 href ← repositoryUrl`——
+websiteUrl 为空时按设计回退到 homepage，于是显示仓库域名。
+
+最可能的原因是**上游对未登录调用方不下发 websiteUrl**（本地构建按合规边界不登录），
+但这一点**我们这边没有证实**——没抓到本构建实际收到的原始响应。
+从插件名反推一个主机名就是编造，所以**没有伪造任何值**。
+在这条数据出现之前，这一行在本地就只能显示 `github.com`。
+
+
 
 **不经过界面**，直接 POST `http://127.0.0.1:1340/api/getAgentWorkflows` 读 box gateway 的原始返回：
 

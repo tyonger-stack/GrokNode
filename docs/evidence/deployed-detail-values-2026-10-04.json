@@ -1,0 +1,41 @@
+{
+  "probe": "deployed-artifact check of the three detail-page value fixes",
+  "collectedAt": "2026-10-04T14:09",
+  "collectedVia": "CDP 9232 against /Applications/Grok Node.app (asar 0cc51a446b90)",
+  "identity": "file:///Applications/Grok%20Node.app/Contents/Resources/app.asar/dist/renderer/index.html",
+  "entry": "Gmail (installed, account 已连接)",
+
+  "liveRenderedText": "账户 default 已连接 | 工具 已启用 23/23 个 | 应用 1 gmail连接器 | 信息 功能 1 个应用 开发者 Cursor 类别 精选 网站 github.com 可用性 公开",
+
+  "fix1_addAccount": {
+    "expected": "添加其他账户",
+    "observed": "添加其他账户",
+    "verdict": "PASS — the add-account button carries the correct official copy"
+  },
+  "fix2_category": {
+    "expected": "精选 (official id FkMol5)",
+    "observed": "精选",
+    "verdict": "PASS — 类别 is localized, no longer the raw English 'Featured'"
+  },
+  "fix3_website": {
+    "expected": "cursor.com (official websiteUrl)",
+    "observed": "github.com",
+    "verdict": "FAIL — but the cause is missing DATA, not the code",
+    "dataCheck": {
+      "totalEntries": 393,
+      "entriesWithWebsiteUrl": 0,
+      "entriesWithRepositoryUrl": 393,
+      "entriesWithPublisherWebsiteUrl": 0,
+      "gmail": {
+        "websiteUrl": null,
+        "repositoryUrl": "https://github.com/cursor/plugins",
+        "homepage": "https://github.com/cursor/plugins",
+        "publisher": { "name": "cursor", "displayName": "Cursor", "isUserOwned": false }
+      }
+    },
+    "wiringCheck": "correct — the deployed renderer chunk reads f = L(e.websiteUrl) || L(e.homepage) for the 网站 row and m = L(e.repositoryUrl) || L(e.homepage) for the 查看源码 href, so the row falls back to the repository host precisely because websiteUrl is null",
+    "sourceHrefCorrect": "https://github.com/cursor/plugins — 查看源码 still points at the repository, which is right"
+  },
+
+  "honestNote": "The 网站 row cannot be made to read cursor.com without the websiteUrl value, and our catalog has none on any of its 393 entries while official's has it on Gmail. Most likely the upstream omits websiteUrl for unauthenticated callers, but that is NOT proven from our side — the raw response our build receives was not captured. Guessing a host from the plugin name would be fabrication, so nothing was faked."
+}
