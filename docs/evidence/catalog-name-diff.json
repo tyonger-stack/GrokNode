@@ -1,0 +1,25 @@
+{
+  "collectedAt": "2026-10-04",
+  "officialHref": "file:///Applications/Grok%20Bot.app/Contents/Resources/app.asar/dist/renderer/index.html",
+  "localHref": "file:///Applications/Grok%20Node.app/Contents/Resources/app.asar/dist/renderer/index.html",
+  "officialCount": 404,
+  "localCount": 393,
+  "onlyOfficial": [
+    "Finance",
+    "Google Docs",
+    "Google Sheets",
+    "Google Slides",
+    "OneDrive",
+    "Outlook",
+    "Outlook Calendar",
+    "SharePoint",
+    "Teams",
+    "X Money",
+    "oh-my-claudecode"
+  ],
+  "onlyLocal": [],
+  "teamPopularity": {
+    "official": 0,
+    "local": 0
+  }
+}

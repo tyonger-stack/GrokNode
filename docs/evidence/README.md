@@ -8,6 +8,45 @@
 **先看 href 再看结论**：本项目栽过一次——标着「官方」的取证脚本其实是本地脚本的逐字节副本，端口和 URL
 都没改，静默取到了本地数据还不报错、不为空。
 
+## catalog-gap-11-entries.json + `catalog-name-diff.json`（catalog 差的真实成因）
+
+两个 app **同时**在跑，用**各自同一个 bridge 入口** `window.desktop.mcp.catalog()` 实测（各自先打印 asar href 做身份断言）：
+
+```
+官方 0.66.0   404 条
+Grok Node     393 条
+仅官方有 11 条，仅本地有 0 条   ← 本地是严格子集，没有自己编的条目
+```
+
+那 11 条：`Finance`、`Google Docs`、`Google Sheets`、`Google Slides`、`OneDrive`、`Outlook`、
+`Outlook Calendar`、`SharePoint`、`Teams`、`X Money`、`oh-my-claudecode`。
+
+**成因（有代码路径支撑，不是「等上游」这种含糊说法）**：
+`fetchMarketplaceMcpPlugins` 只调一次 `listMarketplacePlugins({ excludeCloudAgentPlugins: true })`
+—— **没有分页**，所以不是页边界 bug。它只在 `includesPrivateMarketplaces` 为真时才并入私有/团队市场，
+而该标志就是 `(await bestEffortToken(getAccessToken)) != null`。官方已登录、本地按合规边界不登录，
+那 11 条住在私有/团队市场里，所以永远并不进来。**要补齐就得持有 Cursor 账号 token，而本仓库拒绝伪造或绕过。**
+佐证：官方 bridge 还多出 `financeOverview` / `deleteFinanceConnection` / `startFinanceLink` /
+`refreshCatalog` / `grokBotAgentServers` / `reconcileUnpublishedPlugin`——正是同一道账号门后面的东西。
+
+### ⚠️ 更正：「为你推荐 差一条是因为拿不到团队热度数据」这个说法是错的
+
+`window.desktop.mcp.teamPopularity()` 在**两个 app 上都返回空对象**——**包括已登录的官方**。
+所以缺失的热度数据解释不了那一行，先前的归因不成立。至于「为你推荐」到底按什么排序，
+这次测量没有回答，**仍然开着**，不当作已定论。
+
+## marketplace-detail-cta-render.test.mjs（`npm test` 里真正渲染的那一层）
+
+`tests/marketplace-detail-cta-render.test.mjs` 用一个几十行的 element shim **执行 `view.ts` 实际调用的**
+`createAddAccountCta` / `createToolsRowCta`，断言**渲染后**的 `textContent`、`aria-label`、子节点顺序与数量，
+以及配方里每个类是否真的落到节点上（含承载 14px 内缩的 `sand-1pic42t` / `sand-1onr9mi`）。
+第三个断言检查 `view.ts` 仍在调用它们——否则守卫会变成「保护一段渲染路径已经不再使用的代码」。
+
+4 个变异全红，其中两个就是**已经发货过的缺陷**：退回 aria-label-only、去掉 padding 类。
+`plugins-marketplace-renderer-patch.test.mjs` 里原有的「不得长出事件处理器」「必须是文本节点」两条守卫
+保留原意，但改为切**真正创建节点的那个函数**，且每条都先断言「切到了东西」，改个名字不会让它变成
+对空字符串的守卫。
+
 ## marketplace-detail-parity-live.json（真机几何：7/7，官方基线逐项相同）
 
 `npm run marketplace:parity -- 9232`，**已部署产物**，asar `c0d6c4e4de32`。这份补上了下面 headless 那份

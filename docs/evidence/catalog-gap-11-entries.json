@@ -1,0 +1,64 @@
+{
+  "collectedAt": "2026-10-04",
+  "whatThisIs": "Paired live measurement of the marketplace catalog on both apps, through each app's own bridge. Replaces the earlier loose claim of '3 catalog differences waiting on upstream' with a named 11-entry delta and a stated cause.",
+  "how": [
+    "Both probes call `window.desktop.mcp.catalog()` — the same bridge entry the UI uses — and are identity-guarded by the asar href each returned.",
+    "Official: `npm`-independent probe over CDP 9224. Local: the deployed `/Applications/Grok Node.app` over CDP 9232."
+  ],
+  "officialHref": "file:///Applications/Grok%20Bot.app/Contents/Resources/app.asar/dist/renderer/index.html",
+  "localHref": "file:///Applications/Grok%20Node.app/Contents/Resources/app.asar/dist/renderer/index.html",
+  "counts": {
+    "official": 404,
+    "local": 393
+  },
+  "onlyOfficial": [
+    "Finance",
+    "Google Docs",
+    "Google Sheets",
+    "Google Slides",
+    "OneDrive",
+    "Outlook",
+    "Outlook Calendar",
+    "SharePoint",
+    "Teams",
+    "X Money",
+    "oh-my-claudecode"
+  ],
+  "onlyLocal": [],
+  "cause": {
+    "summary": "The local build's catalog is a STRICT SUBSET of official's: 11 entries missing, 0 invented. All 11 are account-connected connectors.",
+    "mechanism": "`fetchMarketplaceMcpPlugins` calls `listMarketplacePlugins({ excludeCloudAgentPlugins: true })` once — there is no pagination, so this is not a page-boundary bug. It then merges private and team marketplaces only when `includesPrivateMarketplaces` is true, and that flag is `(await bestEffortToken(getAccessToken)) != null`. Official is signed in; this build deliberately is not, so the private/team marketplaces are never merged.",
+    "why_not_fixable_here": "The fix would be to hold a Cursor account token. This repository refuses to fabricate or bypass one, so the gap stays open by policy, not by oversight."
+  },
+  "theEleven": {
+    "note": "Google Docs / Google Sheets / Google Slides / OneDrive / Outlook / Outlook Calendar / SharePoint / Teams / Finance / X Money are the account-connected family; oh-my-claudecode is the odd one out.",
+    "accountConnected": [
+      "Finance",
+      "Google Docs",
+      "Google Sheets",
+      "Google Slides",
+      "OneDrive",
+      "Outlook",
+      "Outlook Calendar",
+      "SharePoint",
+      "Teams",
+      "X Money"
+    ],
+    "other": [
+      "oh-my-claudecode"
+    ]
+  },
+  "correction": {
+    "whatWasSaidBefore": "The 为你推荐 (Featured) row was described as differing by one entry because the local build cannot obtain team-popularity data, official being signed in.",
+    "whatTheMeasurementSays": "`window.desktop.mcp.teamPopularity()` returns an EMPTY OBJECT ON BOTH APPS — official included, and official is the one that is signed in. So missing popularity data does not explain the row, and the earlier attribution was wrong.",
+    "whatRemainsUnknown": "What actually drives the 为你推荐 ordering. This measurement does not answer it, so it stays an open item rather than a settled conclusion."
+  },
+  "corroborating": {
+    "bridgeSurfaceDiff": "Official's bridge additionally exposes financeOverview / deleteFinanceConnection / startFinanceLink / refreshCatalog / grokBotAgentServers / reconcileUnpublishedPlugin. Those are the account-gated surface, which is the same boundary the 11 entries sit behind."
+  },
+  "cannotProve": [
+    "That oh-my-claudecode is behind the same account gate as the other ten. It is grouped as 'the odd one out' because the name does not match the connector family; its membership in a private marketplace was not verified separately.",
+    "The cause is inferred from the code path plus the identity of the 11 entries, not by toggling the token and re-measuring. A signed-in local run would confirm it directly, and that run is exactly what the compliance boundary forbids.",
+    "Anything about rendering. This is a data-plane measurement only."
+  ]
+}
