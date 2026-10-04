@@ -58,7 +58,7 @@ const STYLES_MOD = await loadEntry(
   "frontend/src/extensions/marketplace/official-styles.ts",
   "tests-mkt-styles-runtime.mjs",
 );
-const { GRID_CLASSES, GRID_SINGLE_CLASSES, MANAGE_BAND_CLASSES, PIN_BAND_CLASSES, DETAIL_TITLE_CENTERED_CLASSES } = STYLES_MOD;
+const { GRID_CLASSES, GRID_SINGLE_CLASSES, PIN_BAND_CLASSES, PIN_ROW_CLASSES, DETAIL_TITLE_CENTERED_CLASSES } = STYLES_MOD;
 
 const noop = () => {};
 const HANDLERS = {
@@ -183,7 +183,7 @@ const contains = (ancestor, node) => {
   return false;
 };
 
-test("页 2 puts the detail bar in the 48px band, and carries the band's 5-class list", () => {
+test("页 2 puts the detail bar in the 48px band, on the same band class list as every page", () => {
   const h = mount(baseState({ page: "manage", installed: INSTALLED, skills: SKILLS }));
   try {
     const bar = barOf(h.doc);
@@ -192,20 +192,24 @@ test("页 2 puts the detail bar in the 48px band, and carries the band's 5-class
     assert.ok(band, "the band is present on the manage page too");
     assert.ok(contains(band, bar), "the bar must be inside the band, not inside the scroller");
 
-    // The band swaps its whole class list per page. `applyClasses` could only add, so without a
-    // real replacement the browse page's 17-class list would survive into page 2.
-    const bandClasses = classList(band);
-    assert.deepEqual(
-      bandClasses.filter((c) => c !== "sand-mkt-pin-band"),
-      [...MANAGE_BAND_CLASSES],
-      "the manage band carries exactly official's 5-class list",
-    );
-    assert.ok(!bandClasses.includes("sand-1nhvcw1"), "no browse-only class may leak onto the manage band");
+    // Official uses the SAME 17-class strip and 10-class row on 页 1, 页 2 and 插件详情 — only the
+    // child changes. A page-dependent list is a plausible mechanism that no measurement supports,
+    // and this build once carried a 5-class "page 2 variant" invented from a `.slice(0, 6)` probe
+    // that truncated a 17-class strip down to 5.
+    const bandClasses = classList(band).filter((c) => c !== "sand-mkt-pin-band");
+    assert.deepEqual(bandClasses, [...PIN_BAND_CLASSES], "the band carries official's 17-class list");
+    assert.equal(bandClasses.length, 17);
+    // The bar sits on the 10-class row.
+    const row = bar.parentElement;
+    assert.deepEqual(classList(row).filter((c) => c !== "sand-mkt-band-row"), [...PIN_ROW_CLASSES]);
+    assert.equal(classList(row).filter((c) => c !== "sand-mkt-band-row").length, 10);
 
     // The scroller's header is empty on this page — the bar is not rendered there as well.
     const header = h.root.querySelector("header");
-    if (header) assert.equal(barOf({ querySelectorAll: () => [...header.querySelectorAll("div")] }), undefined,
-      "the bar must not also live in the scroller header");
+    if (header) {
+      assert.equal([...header.querySelectorAll("div")].some((d) => classList(d).includes("sand-settings-detail-bar")),
+        false, "the bar must not also live in the scroller header");
+    }
   } finally { h.destroy(); }
 });
 
@@ -234,6 +238,7 @@ test("a pushed page (插件详情) also puts its bar in the band, with the brows
     // Measured on official 插件详情: strip[17] > row[10] > bar — the BROWSE variants, not page 2's.
     const bandClasses = classList(band).filter((c) => c !== "sand-mkt-pin-band");
     assert.deepEqual(bandClasses, [...PIN_BAND_CLASSES]);
+    assert.deepEqual(classList(bar.parentElement).filter((c) => c !== "sand-mkt-band-row"), [...PIN_ROW_CLASSES]);
 
     // The bar is not just a chevron. Official's is `icon-only 返回` on the left and the PAGE NAME
     // centred (measured x=367 w=130 on a 798px bar → centre 432 = the bar's midline). The row's

@@ -9,6 +9,8 @@ const read = (...p) => readFileSync(path.join(repoRoot, ...p), "utf8");
 const VIEW = read("frontend", "src", "extensions", "marketplace", "view.ts");
 const STYLES = read("frontend", "src", "extensions", "marketplace", "official-styles.ts");
 
+const hasExport = (name) => STYLES.includes(`export const ${name}`);
+
 const classesOf = (name) => {
   const i = STYLES.indexOf(`export const ${name}`);
   assert.ok(i >= 0, `official-styles.ts has no ${name}`);
@@ -97,27 +99,29 @@ test("a group's grid hangs off the section, not off a min-height:0 wrapper", () 
 });
 
 test("the detail bar fills the 48px band instead of sitting inside the scroller", () => {
-  // Measured on official: the band is ONE element reused by both pages. 页 1 holds the mount point
-  // the pinned search drops into; 页 2 and every pushed page hold `sand-settings-detail-bar` at
-  // 798x48 y=161, with the scroller starting right below. Rendered in the scroller's header the bar
-  // measured 734x48 y=216 — the whole of page 2, and of 插件详情, sat 55px low and 64px narrow.
-  assert.deepEqual(classesOf("MANAGE_BAND_CLASSES"), [
-    "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-1c4vz4f", "sand-2lah0s",
-  ]);
-  assert.deepEqual(classesOf("MANAGE_BAND_ROW_CLASSES"), [
-    "sand-78zum5", "sand-dt5ytf", "sand-1iyjqo2", "sand-s83m0k", "sand-2lwn1j",
-  ]);
-  assert.match(VIEW, /const mountBar = \(bar: HTMLElement, rowClasses: readonly string\[\]\): void =>/);
-  // 页 2 uses its own 5-class row; a pushed page keeps the browse row (measured on 插件详情).
-  assert.match(VIEW, /mountBar\(bar, MANAGE_BAND_ROW_CLASSES\);/);
-  assert.match(VIEW, /mountBar\(bar, PIN_ROW_CLASSES\);/);
+  // Measured on official: the band is ONE element reused by every page, and its class list is the
+  // SAME 17/10 on all of them — only the single child changes (页 1 the empty pinned-search mount
+  // point, 页 2 and the pushed pages the `sand-settings-detail-bar`). Rendered in the scroller's
+  // header the bar measured 734x48 y=216 against official's 798x48 y=161 — every byte of page 2,
+  // and of 插件详情, sat 55px low and 64px narrow.
+  //
+  // This file previously carried a 5-class MANAGE_BAND_* "page 2 variant" that official does not
+  // have. It came from a probe that printed `.slice(0, 6)` of each class list, so the 17-class
+  // strip read as 5 — and a source assertion agreed with it, because the assertion was written
+  // from the same bad reading. The guard now pins the class list to the browse one on every page.
+  assert.equal(hasExport("MANAGE_BAND_CLASSES"), false, "official has no page-2 band variant; the export must be gone");
+  assert.equal(hasExport("MANAGE_BAND_ROW_CLASSES"), false, "nor a page-2 row variant");
+  assert.match(STYLES, /The band is `PIN_BAND_CLASSES`\[17\] > `PIN_ROW_CLASSES`\[10\] in all three cases/);
+  assert.deepEqual(classesOf("PIN_BAND_CLASSES").length, 17);
+  assert.deepEqual(classesOf("PIN_ROW_CLASSES").length, 10);
+  // Every page mounts through the same helper, with the same row.
+  assert.match(VIEW, /const mountBar = \(bar: HTMLElement\): void => \{/);
+  assert.equal((VIEW.match(/mountBar\(bar\);/g) ?? []).length, 2, "页 2 and the pushed pages both use it");
+  assert.equal((VIEW.match(/clearBand\(\);/g) ?? []).length, 3, "every branch clears the band first");
   // No page may put the bar back in the scroller header.
   assert.doesNotMatch(VIEW, /header\.append\(bar\);/);
-  // `setBandPage` must REPLACE the strip's class list. `applyClasses` only adds, so a browse→manage
-  // swap would otherwise leave the 17-class list in place and the two variants would never differ.
-  assert.match(VIEW, /const setBandPage = \(manage: boolean\): void =>/);
-  assert.match(VIEW, /setClasses\(pinBand, \[\.\.\.\(manage \? MANAGE_BAND_CLASSES : PIN_BAND_CLASSES\), PIN_BAND_MARKER\]\)/);
-  assert.match(VIEW, /function setClasses\(element: Element, classNames: readonly string\[\]\): void \{\s*\n\s*element\.className = classNames\.join\(" "\);/);
+  // The band must not be given a page-dependent class list at all.
+  assert.doesNotMatch(VIEW, /pinBand\.className|setClasses\(pinBand/);
 });
 
 test("the group heading carries 0.66's `ui-*` typography family", () => {

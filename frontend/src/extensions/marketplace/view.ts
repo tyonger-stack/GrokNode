@@ -83,8 +83,6 @@ import {
   LAYOUT_CLASSES,
   LIFTED_OFFICIAL_RULES,
   MANAGE_BACK_BUTTON_CLASSES,
-  MANAGE_BAND_CLASSES,
-  MANAGE_BAND_ROW_CLASSES,
   MANAGE_H1_CLASSES,
   MANAGE_HEADER_CLASSES,
   MARKETPLACE_ROOT_CLASSES,
@@ -167,13 +165,6 @@ import {
 
 function applyClasses(element: Element, classNames: readonly string[]): void {
   for (const className of classNames) element.classList.add(className);
-}
-
-/** Replace a node's class list wholesale. Needed where official keeps ONE element and swaps a
- *  page's class list for another's on it — the 48px band is the only such element here, and
- *  `applyClasses` can only add, so the old list would otherwise survive into the other page. */
-function setClasses(element: Element, classNames: readonly string[]): void {
-  element.className = classNames.join(" ");
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -314,7 +305,7 @@ const SEARCH_SHELL_MARKER = "sand-mkt-search-shell";
 const SEARCH_INNER_MARKER = "sand-mkt-search-inner";
 const SEARCH_INPUT_MARKER = "sand-mkt-search-input";
 const PIN_BAND_MARKER = "sand-mkt-pin-band";
-const MANAGE_BAND_ROW_MARKER = "sand-mkt-manage-band-row";
+const BAND_ROW_MARKER = "sand-mkt-band-row";
 const PIN_ROW_MARKER = "sand-mkt-pin-row";
 const PIN_PAD_MARKER = "sand-mkt-pin-pad";
 const PIN_WRAP_MARKER = "sand-mkt-pin-wrap";
@@ -1367,33 +1358,30 @@ export function createMarketplaceDialog(
   close.addEventListener("click", () => handlers.close());
   layout.append(close);
 
-  // The 48px band is a shared slot, not a marketplace-only affordance: official renders ONE element
-  // here on both pages and swaps only its class list and its single child. 页 1 holds the mount
-  // point the pinned 搜索插件 field drops into; 页 2 holds the "‹ 市场  管理" detail bar. Rendering the
-  // bar inside the scroller instead left the band empty and duplicated the bar 55px lower and 64px
-  // narrower than official — the whole of page 2 sat in the wrong place. See MANAGE_BAND_CLASSES.
+  // The 48px band is a shared slot: official renders ONE element here on every page and swaps only
+  // its single child. 页 1 holds the mount point the pinned 搜索插件 field drops into; 页 2 and the
+  // pushed pages hold the "‹" detail bar. Its class list is the same 17/10 on all of them. Rendering
+  // the bar inside the scroller instead left the band empty and duplicated the bar 55px lower and
+  // 64px narrower than official — the whole of page 2 and of 插件详情 sat in the wrong place.
   const pinBand = el("div", PIN_BAND_CLASSES);
   applyClasses(pinBand, [PIN_BAND_MARKER]);
   layout.append(pinBand);
 
-  const manageRow = el("div", MANAGE_BAND_ROW_CLASSES);
-  applyClasses(manageRow, [MANAGE_BAND_ROW_MARKER]);
+  const bandRow = el("div", PIN_ROW_CLASSES);
+  applyClasses(bandRow, [BAND_ROW_MARKER]);
 
-  /** Point the band at one page: its class list first, then clear its child. Clearing the child
-   *  also drops the `pinMounted` latch, so the pinned field re-arms instead of being silently
-   *  believed present; `syncPin` re-mounts it on the same render if this page wants it. */
-  const setBandPage = (manage: boolean): void => {
-    setClasses(pinBand, [...(manage ? MANAGE_BAND_CLASSES : PIN_BAND_CLASSES), PIN_BAND_MARKER]);
+  /** Empty the band for a new page. Dropping the child also drops the `pinMounted` latch, so the
+   *  pinned field re-arms instead of being silently believed present; `syncPin` re-mounts it on the
+   *  same render if this page wants it. The class list is NOT touched — it is the same everywhere. */
+  const clearBand = (): void => {
     pinBand.replaceChildren();
     pinMounted = false;
   };
 
-  /** Mount a detail bar into the band. `rowClasses` picks the row variant: the pushed pages keep
-   *  the browse row (10 classes, measured on 插件详情), the manage page uses its own 5-class one. */
-  const mountBar = (bar: HTMLElement, rowClasses: readonly string[]): void => {
-    setClasses(manageRow, [...rowClasses, MANAGE_BAND_ROW_MARKER]);
-    manageRow.replaceChildren(bar);
-    pinBand.append(manageRow);
+  /** Mount a detail bar into the band, on official's 10-class row. */
+  const mountBar = (bar: HTMLElement): void => {
+    bandRow.replaceChildren(bar);
+    pinBand.append(bandRow);
   };
 
   const pane = el("div", PANE_CLASSES);
@@ -1551,14 +1539,14 @@ export function createMarketplaceDialog(
       // A pushed page's bar occupies the same 48px band the manage page uses — measured on official
       // 插件详情: strip[17] > row[10] > `sand-settings-detail-bar` at 798x48 y=161, with the
       // scroller starting right below it. Kept in the scroller header it measured 734x48 y=216.
-      setBandPage(false);
-      mountBar(bar, PIN_ROW_CLASSES);
+      clearBand();
+      mountBar(bar);
       unmountSearch();
     } else if (state.page === "manage") {
-      // The bar belongs in the 48px band, NOT in the scroller's header — see MANAGE_BAND_CLASSES.
+      // The bar belongs in the 48px band, NOT in the scroller's header.
       // `header` stays empty on this page, exactly as official leaves it, so nothing is appended
       // below the band and the groups start at the band's bottom edge.
-      setBandPage(true);
+      clearBand();
       const bar = el("div", BACK_BAR_CLASSES);
       const leading = el("div", BACK_LEADING_CLASSES);
       const backButton = el("button", MANAGE_BACK_BUTTON_CLASSES);
@@ -1575,7 +1563,7 @@ export function createMarketplaceDialog(
       detailTitle.id = "sand-plugins-modal-heading";
       bar.append(detailTitle);
       bar.append(el("div", BACK_TRAILING_CLASSES));
-      mountBar(bar, MANAGE_BAND_ROW_CLASSES);
+      mountBar(bar);
       unmountSearch();
     } else {
       // `header` already carries TITLE_ROW_CLASSES — it IS official's single header row. The h2
@@ -1589,7 +1577,7 @@ export function createMarketplaceDialog(
       const trailing = el("div", TITLE_TRAILING_CLASSES);
       trailing.append(buildInstalledPreview(state, handlers));
       header.append(trailing);
-      setBandPage(false);
+      clearBand();
       mountSearch();
     }
 

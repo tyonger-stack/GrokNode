@@ -357,29 +357,25 @@ export const PIN_ROW_CLASSES = [
 ];
 
 /**
- * The 48px band is a **shared slot**, not a marketplace-only affordance. Official renders one
- * element there on both pages; only its class list and its single child change:
+ * The 48px band is a shared slot and its class list is the SAME on every page — only its single
+ * child changes:
  *
- *   页 1 市场           strip[17] > row[10] > pad[9]         — the pad is the empty mount point the
- *                                                           pinned 搜索插件 field drops into
- *   页 2 管理插件和技能   strip[5]  > row[5]  > detail bar     — the slot holds the "‹ 市场  管理" bar
+ *   页 1 市场           row[10] > pad[9]         — the empty mount point the pinned 搜索插件 field
+ *                                                   drops into once the in-flow field scrolls away
+ *   详情页 / 页 2 管理    row[10] > `sand-settings-detail-bar`[10]
  *
- * The two strips share their 5-class prefix and the two rows share theirs, so every class below is
- * already in 0.18 and nothing needs lifting. They are written out separately only so the per-page
- * lists cannot drift into one another.
+ * The band is `PIN_BAND_CLASSES`[17] > `PIN_ROW_CLASSES`[10] in all three cases, measured on the
+ * running 0.66 build with the class lists read in full and the page identity asserted first
+ * (`pageId()` must read `h1:管理插件和技能` before anything is reported). An earlier revision of this
+ * file carried a 5-class `MANAGE_BAND_*` "page 2 variant" that official does not have: it came from
+ * a probe that printed `.slice(0, 6)` of each class list, so a 17-class strip read as 5. The band
+ * swapping its list per page is a plausible-sounding mechanism that no measurement supported.
  *
- * Getting this wrong is not cosmetic. The bar used to be rendered inside the scroller's header, so
- * the band sat empty *and* the bar rendered a second time further down: local measured it 734px wide
- * at y=216 against official's 798px at y=161, putting every byte of page 2 55px low and 64px narrow.
+ * Getting the band wrong is not cosmetic. The bar used to be rendered inside the scroller's header
+ * instead, so the band sat empty AND the bar rendered a second time further down: local measured it
+ * 734px wide at y=216 against official's 798px at y=161, putting every byte of page 2 — and of
+ * 插件详情 — 55px low and 64px narrow.
  */
-export const MANAGE_BAND_CLASSES = [
-  "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-1c4vz4f", "sand-2lah0s",
-];
-
-/** Band > row on the manage page — the 5-class prefix of `PIN_ROW_CLASSES`. */
-export const MANAGE_BAND_ROW_CLASSES = [
-  "sand-78zum5", "sand-dt5ytf", "sand-1iyjqo2", "sand-s83m0k", "sand-2lwn1j",
-];
 
 /** Band > row > the padded box: gap 8px, height 48px, padding 10px 48px 10px 32px. This is what
  *  turns the band into 33..751 and puts the field at y=11. */

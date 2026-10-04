@@ -2,7 +2,7 @@
 
 **日期**：2026-10-04
 **起因**：用户实机反馈「我随便打开看就不一样」。
-**已部署产物**：`/Applications/Grok Node.app`，asar `2fbc9d33f1709ee4`，
+**已部署产物**：`/Applications/Grok Node.app`，asar `694f12eeb43370cb`，
 签名 DR `designated => identifier "com.anysphere.sand.reconstructed"`，`codesign --verify --deep --strict` 通过。
 **官方对照**：Grok Bot 0.66.0（`/Applications/Grok Bot.app`，CDP 9224）。
 
@@ -66,13 +66,20 @@ nt = Xn                                                          // 别名，不
 
 这是本轮最大的结构错误，也是用户直接看到的那个。
 
-官方在两个页面上渲染**同一个**带子元素，只有类列表和唯一的子节点不同：
+官方在**每一个**页面上渲染同一个带子元素，**类列表也完全相同**，只有唯一的子节点不同：
 
 | 页面 | 带子类数 | 带子 > 行 | 行 > 槽 |
 |---|---|---|---|
 | 页 1 市场 | 17 | 10 | 9（空，置顶搜索的挂载点） |
-| 详情页 | 17 | 10 | `sand-settings-detail-bar` |
-| 页 2 管理 | 5 | 5 | `sand-settings-detail-bar` |
+| 详情页 | 17 | 10 | `sand-settings-detail-bar`[10] |
+| 页 2 管理 | 17 | 10 | `sand-settings-detail-bar`[10] |
+
+> **这里我先写错过一次，必须记下来。** 第一版读数说页 2 的带子是 5 类、行也是 5 类，
+> 于是我造了 `MANAGE_BAND_CLASSES`(5) / `MANAGE_BAND_ROW_CLASSES`(5) 两个「页 2 变体」并接进了代码。
+> 那个探针打印类列表时用了 `.slice(0, 6)` —— 17 类的带子被截成 5，看起来就像另一个变体。
+> 重测时（`probe-band-full.mjs`，**先断言页面身份 `h1:管理插件和技能` 再读类名**）三页全是 17/10。
+> 已在 `01f4ad4` 之后的提交里删掉那两个导出，`mountBar()` 统一用 `PIN_ROW_CLASSES`。
+> **教训：`.slice(0, 6)` 这类截断会凭空造出一个「变体」，而源码断言会跟着一起点头。**
 
 本地把详情条渲染在**滚动容器的 header 里**，于是带子空着、详情条又在下面重复渲染一次：
 
@@ -83,9 +90,9 @@ nt = Xn                                                          // 别名，不
        strip 798×48 @y164 空着
 ```
 
-**修**：新增 `MANAGE_BAND_CLASSES`（5 类）/ `MANAGE_BAND_ROW_CLASSES`（5 类），`setBandPage()` 用
-`setClasses()` **整体替换**带子的类列表（`applyClasses` 只能 add，浏览→管理切换会残留 17 类），
-`mountBar()` 把详情条放进带子。页 2 与三个 pushed 页面都改。**没有 lifted CSS** —— 这些类 0.18 原生就有。
+**修**：`mountBar()` 把详情条放进带子（官方那份 10 类 `PIN_ROW_CLASSES`），`clearBand()` 每个分支先清空
+带子并重置 `pinMounted`。页 2 与三个 pushed 页面都改。**没有 lifted CSS** —— 这些类 0.18 原生就有，
+也不需要为「换列表」做任何事：官方本来就不换。
 
 > 关键：详情页（插件详情）犯的是**同一个错**。上一轮修 hero 时只比对了 hero 区块自身的尺寸，
 > 没有比绝对 y 坐标，所以漏掉了。
@@ -142,7 +149,7 @@ PASS  返回按钮 inline padding 与官方一致          ours 0px/0px vs offic
 
 ### 2. 产物字节
 
-- 已部署 chunk `index-UbX-y3il.js`（5,957,446 字节）经 `node --check` 解析通过
+- 已部署 chunk `index-UbX-y3il.js`（5,957,192 字节）经 `node --check` 解析通过；旧的 5 类页 2 变体 marker `sand-mkt-manage-band-row` 已确认从产物中消失
 - 新 marker `sand-mkt-manage-band-row` 存在于产物中
 - 两个网格字面量如上（`W` / `Xn` / `nt=Xn`）
 
@@ -161,6 +168,25 @@ PASS  返回按钮 inline padding 与官方一致          ours 0px/0px vs offic
 不覆盖像素（happy-dom 不做布局），只覆盖三处结构修复在真正改动的节点树上成立。
 
 ---
+
+## 官方参照基线（供解锁后一次 diff）
+
+`marketplace-official-reference-066.json` 是官方 0.66.0 三页的完整几何快照，2026-10-04 采于
+CDP 9224，`identity` 字段为 `file:///Applications/Grok%20Bot.app/…`。关键值：
+
+| | 页 1 市场 | 页 2 管理 | 详情页 |
+|---|---|---|---|
+| 带子 | 798×48 @y161（17 类） | 同 | 同 |
+| 详情条 | 无 | 798×48 @y161，`inBand=true` | 798×48 @y161，`inBand=true` |
+| scroller 起点 | — | y209 | — |
+| 首个 section | y307 | y307 | — |
+| 搜索框 | 693×20 @y261 | 1 个 | — |
+| h1 | h2 734×24 | 718×24（6 类） | — |
+| 返回页标题 | — | 28×20（23 类） | — |
+| 已安装 grid | — | `363px 363px`，children=4 | — |
+| 私有技能 grid | — | `734px`，rowW=698，children=2 | — |
+
+解锁后本地跑同一条探针，两份 JSON 直接 diff 即可，不需要再摸索。
 
 ## 观察到但不改：详情页返回按钮的类列表与官方差 4 个（但不承重）
 

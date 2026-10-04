@@ -1,0 +1,178 @@
+{
+  "tag": "official",
+  "identity": "file:///Applications/Grok%20Bot.app/Contents/Resources/app.asar/dist/renderer/index.html",
+  "pages": {
+    "browse": {
+      "band": {
+        "w": 798,
+        "h": 48,
+        "y": 161,
+        "n": 17
+      },
+      "input": {
+        "w": 693,
+        "h": 20,
+        "y": 261,
+        "ph": "搜索插件"
+      },
+      "firstSectionY": 307,
+      "h2": {
+        "w": 734,
+        "h": 24,
+        "y": 213,
+        "n": 8
+      },
+      "nSections": 13,
+      "nInputs": 1
+    },
+    "manage": {
+      "bar": {
+        "w": 798,
+        "h": 48,
+        "y": 161,
+        "n": 10,
+        "inBand": true
+      },
+      "band": {
+        "w": 798,
+        "h": 48,
+        "y": 161,
+        "n": 17,
+        "kids": [
+          {
+            "tag": "DIV",
+            "w": 798,
+            "h": 48,
+            "y": 161,
+            "n": 10
+          }
+        ]
+      },
+      "scrollerY": 209,
+      "firstSectionY": 307,
+      "installed": {
+        "secChildren": [
+          {
+            "tag": "DIV",
+            "w": 734,
+            "h": 30,
+            "y": 279,
+            "n": 5,
+            "head": "sand-9f619 sand-78zum5"
+          },
+          {
+            "tag": "UL",
+            "w": 734,
+            "h": 196,
+            "y": 309,
+            "n": 15,
+            "head": "sand-plugins__grid sand-9f619"
+          },
+          {
+            "tag": "DIV",
+            "w": 734,
+            "h": 0,
+            "y": 501,
+            "n": 11,
+            "head": "sand-rvj5dj sand-ihq33y"
+          },
+          {
+            "tag": "DIV",
+            "w": 734,
+            "h": 25,
+            "y": 505,
+            "n": 9,
+            "head": "sand-rvj5dj sand-1erjwpq"
+          }
+        ],
+        "h3": {
+          "w": 56,
+          "h": 30,
+          "y": 279,
+          "n": 22,
+          "first": "ui-text"
+        },
+        "grid": {
+          "w": 734,
+          "h": 196,
+          "y": 309,
+          "gtc": "363px 363px",
+          "n": 15
+        },
+        "rowW": [
+          288,
+          257,
+          301,
+          327
+        ]
+      },
+      "priv": {
+        "secChildren": [
+          {
+            "tag": "DIV",
+            "w": 734,
+            "h": 30,
+            "y": 554,
+            "n": 5,
+            "head": "sand-9f619 sand-78zum5"
+          },
+          {
+            "tag": "UL",
+            "w": 734,
+            "h": 724,
+            "y": 584,
+            "n": 15,
+            "head": "sand-plugins__grid sand-9f619"
+          }
+        ],
+        "h3": {
+          "w": 68,
+          "h": 30,
+          "y": 554,
+          "n": 22,
+          "first": "ui-text"
+        },
+        "grid": {
+          "w": 734,
+          "h": 724,
+          "y": 584,
+          "gtc": "734px",
+          "n": 15
+        },
+        "rowW": [
+          698
+        ]
+      },
+      "h1": {
+        "w": 718,
+        "h": 24,
+        "y": 231,
+        "n": 6,
+        "first": "sand-19d36u7"
+      },
+      "backTitle": {
+        "w": 28,
+        "h": 20,
+        "y": 175,
+        "n": 23,
+        "first": "sand-fc7y3v"
+      },
+      "nInputs": 1
+    },
+    "detail": {
+      "bar": {
+        "w": 798,
+        "h": 48,
+        "y": 161,
+        "n": 10,
+        "inBand": true
+      },
+      "band": {
+        "w": 798,
+        "h": 48,
+        "y": 161,
+        "n": 17
+      }
+    }
+  }
+}
