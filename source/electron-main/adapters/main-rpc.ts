@@ -7,6 +7,7 @@ import {
 import type { MainEdge } from "../main.js";
 import type { ElectronProductionAdapterBindings } from "../production-adapters.js";
 import type { ProductionDisposable, ProductionServiceContext } from "../main-production-services.js";
+import { probeEndpointFromBox } from "../box/local-docker-host-connector.js";
 import { createElectronProductionIpcMainBinding, type ElectronProductionIpcMainSource } from "./ipc.js";
 import { requireFunction, requireObject } from "./provider-guards.js";
 
@@ -19,6 +20,7 @@ type ExistingMainRpcCoreDeps = Pick<MainEdgeWiringDeps,
   | "boxRecovery"
   | "windowChrome"
   | "syncHostSettingsToBox"
+  | "probeBoxEndpoint"
   | "broadcast"
   | "platform"
   | "avatarImages"
@@ -198,6 +200,15 @@ function createExistingMainRpcCoreDeps(
       : supplied.syncHostSettingsToBox,
     "mainRpc.syncHostSettingsToBox",
   );
+  // Save-time container-side endpoint gate (see MainEdgeDeps.probeBoxEndpoint).
+  // Production default reads the CURRENT key from the secrets store so the
+  // probe exercises exactly what the host would send; reveal failures degrade
+  // to a keyless probe (connectivity still validated, auth cannot be).
+  const probeBoxEndpoint: MainEdgeWiringDeps["probeBoxEndpoint"] = async (baseUrl) => {
+    let apiKey: string | null = null;
+    try { apiKey = await context.secretsStores.userSecretsStore.reveal("OPENROUTER_API_KEY"); } catch { apiKey = null; }
+    return probeEndpointFromBox(baseUrl, apiKey);
+  };
   const broadcast = requireFunction(
     supplied.broadcast === undefined ? context.broadcast : supplied.broadcast,
     "mainRpc.broadcast",
@@ -227,6 +238,7 @@ function createExistingMainRpcCoreDeps(
     getComputerUseModelOverride,
     getAutomationWebhookCredential,
     syncHostSettingsToBox,
+    probeBoxEndpoint,
     broadcast,
     platform,
   };

@@ -7,7 +7,7 @@ import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { classifyOpenRouterError, openRouterOkStatus, type OpenRouterChannelStatus } from "../../shared/openrouter-channel-status.js";
-import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_CONTAINER_RELAY_PORT } from "../../shared/node/openrouter-proxy.js";
+import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_CONTAINER_RELAY_PORT, resolveOpenRouterTransport } from "../../shared/node/openrouter-proxy.js";
 import { GROK_NODE_DOCKER_CONTAINER, isGrokNodePackagedApp } from "../../shared/node/grok-node-identity.js";
 import type { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
 import type { RecreateResult } from "./box-recreate-commands.js";
@@ -121,6 +121,9 @@ let dockerBinaryPath: string | undefined;
 // bare command name and lets PATH resolution do its job.
 function resolveDockerBinary(): string {
   if (dockerBinaryPath !== undefined) return dockerBinaryPath;
+  // Test seam: point the connector at a recorder script without touching the
+  // machine's real candidate list.
+  if (process.env.SAND_DOCKER_BINARY != null && process.env.SAND_DOCKER_BINARY.length > 0) return process.env.SAND_DOCKER_BINARY;
   const hit = DOCKER_BIN_CANDIDATES.map((candidate) => join(candidate, "docker")).find((candidate) => existsSync(candidate));
   dockerBinaryPath = hit ?? "docker";
   return dockerBinaryPath;
@@ -142,6 +145,111 @@ function runDocker(args: readonly string[]): Promise<CommandResult> {
     child.once("close", (code) => resolve({ ok: code === 0, code, output: output.trim() }));
   });
 }
+
+// Save-time endpoint probe, run INSIDE the local Docker box (2026-10-05). The
+// desktop-side probes (preload fetchEndpointModels, probeOpenRouterChannel)
+// prove the MAC can reach the endpoint — but inference dials FROM THE
+// CONTAINER, whose network position differs (host.docker.internal rewrites,
+// relay hops). 2026-10-04: a whole-day incident ran on a config the desktop
+// validated and the container could not use. This probe dials the exact
+// transport the host will use (resolveOpenRouterTransport with inDocker=true)
+// so a save is only allowed through when the box itself can reach the
+// endpoint with the current key.
+export type BoxEndpointProbeVerdict = "pass" | "unreachable" | "auth-rejected" | "odd-status" | "skipped";
+
+export interface BoxEndpointProbeResult {
+  readonly verdict: BoxEndpointProbeVerdict;
+  readonly httpStatus: number | null;
+  readonly detail: string;
+}
+
+export interface RawDockerProbeOutcome {
+  readonly spawnError: string | null;
+  readonly exitCode: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+function tail(text: string, maxChars = 300): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length > maxChars ? normalized.slice(-maxChars) : normalized;
+}
+
+// Pure verdict mapping, unit-testable without docker: exit 0 reads the -w
+// %{http_code} from stdout; curl failures (6/7/28/…) mean unreachable; exit
+// 125 and spawn errors mean docker itself could not run the probe, which must
+// not block a save (the sandbox may simply be stopped).
+export function interpretBoxEndpointProbe(outcome: RawDockerProbeOutcome): BoxEndpointProbeResult {
+  if (outcome.spawnError != null) return { verdict: "skipped", httpStatus: null, detail: `docker 不可用（${tail(outcome.spawnError)}）` };
+  if (outcome.exitCode === 125) return { verdict: "skipped", httpStatus: null, detail: `docker exec 失败，容器可能未运行（${tail(outcome.stderr)}）` };
+  const codeMatch = /(\d{3})\s*$/.exec(outcome.stdout.trim());
+  const httpStatus = codeMatch == null ? null : Number(codeMatch[1]);
+  if (outcome.exitCode === 0) {
+    if (httpStatus != null && httpStatus >= 200 && httpStatus <= 299) return { verdict: "pass", httpStatus, detail: "" };
+    if (httpStatus === 401 || httpStatus === 403) return { verdict: "auth-rejected", httpStatus, detail: `端点拒绝了当前 API Key（HTTP ${httpStatus}）` };
+    return { verdict: "odd-status", httpStatus, detail: httpStatus == null ? "端点已应答但响应码不可解析" : `端点已应答，HTTP ${httpStatus}（未实现 /models 或临时错误，不阻断保存）` };
+  }
+  return { verdict: "unreachable", httpStatus, detail: tail(outcome.stderr) || `curl 退出码 ${outcome.exitCode}` };
+}
+
+function runDockerWithStdin(args: readonly string[], stdin: string, timeoutMs: number): Promise<RawDockerProbeOutcome> {
+  return new Promise((resolve) => {
+    const binary = resolveDockerBinary();
+    const installDir = dirname(binary);
+    const child = spawn(binary, [...args], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, PATH: `${installDir}${delimiter}${process.env.PATH ?? ""}` }
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const finish = (spawnError: string | null, exitCode: number | null): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killer);
+      resolve({ spawnError, exitCode, stdout: stdout.trim(), stderr: stderr.trim() });
+    };
+    const killer = setTimeout(() => { child.kill(); finish(null, null); }, timeoutMs);
+    child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+    child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.once("error", (error) => finish(error.message, null));
+    child.once("close", (code) => finish(null, code));
+    // The Authorization header travels through stdin as a curl config
+    // (-K -): it must never appear in argv, where `ps` on the Mac could
+    // read it back off the docker CLI process.
+    child.stdin?.on("error", () => { /* EPIPE when the child dies first */ });
+    child.stdin?.end(stdin);
+  });
+}
+
+export async function probeEndpointFromBox(
+  persistedBaseUrl: string | null | undefined,
+  apiKey: string | null | undefined,
+  options?: { readonly timeoutMs?: number },
+): Promise<BoxEndpointProbeResult> {
+  const timeoutMs = options?.timeoutMs ?? OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS + 2_000;
+  const transport = resolveOpenRouterTransport(persistedBaseUrl ?? null, true);
+  let target: URL;
+  try {
+    target = new URL(`${transport.baseUrl.replace(/\/+$/, "")}/models`);
+  } catch {
+    return { verdict: "odd-status", httpStatus: null, detail: "baseUrl 无法解析为 URL，已跳过容器探测" };
+  }
+  if (target.protocol !== "http:" && target.protocol !== "https:") {
+    return { verdict: "odd-status", httpStatus: null, detail: `不支持的协议 ${target.protocol}，已跳过容器探测` };
+  }
+  const config = [
+    ...(apiKey != null && apiKey.trim().length > 0 ? [`header = "Authorization: Bearer ${apiKey.trim()}"`] : []),
+    ...(transport.hostHeader != null ? [`header = "Host: ${transport.hostHeader}"`] : []),
+  ].join("\n") + "\n";
+  const outcome = await runDockerWithStdin(
+    ["exec", "-i", LOCAL_DOCKER_BOX_CONTAINER, "/usr/bin/curl", "-sS", "-m", String(Math.ceil(timeoutMs / 1000)), "-o", "/dev/null", "-w", "%{http_code}", "-K", "-", target.toString()],
+    config,
+    timeoutMs + 8_000,
+  );
+  return interpretBoxEndpointProbe(outcome);
+}
+
 
 export interface ParsedLocalDockerRelayOutput {
   readonly body: string;

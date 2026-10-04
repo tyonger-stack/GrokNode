@@ -53,6 +53,14 @@ export interface MainEdgeDeps {
   readonly experiments: UnknownRecord;
   readonly syncHostSettingsToBox: (settings: UnknownRecord) => Promise<UnknownRecord | null>;
   readonly readHostSettingsFromBox: () => Promise<UnknownRecord>;
+  /**
+   * Save-time container-side endpoint gate (2026-10-05): probes the requested
+   * TokenHub endpoint from INSIDE the local Docker box with the dial-form URL
+   * and the current API key. Optional: absent (tests, non-docker runtimes)
+   * simply skips the gate. Production default is wired in
+   * createExistingMainRpcCoreDeps from the secrets store.
+   */
+  readonly probeBoxEndpoint?: (baseUrl: string) => Promise<import("./box/local-docker-host-connector.js").BoxEndpointProbeResult>;
   readonly requestMainAgent?: (method: "getMainAgent" | "setMainAgent" | "ensureDefaultMainAgent", args: UnknownRecord) => Promise<UnknownRecord>;
   readonly recordLocalToolApproval: (approval: { id: string; action: string; target: string }) => Promise<void>;
   readonly clearLocalToolApprovals: () => Promise<void>;
@@ -271,6 +279,24 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       // 换端点后，各 Bot 的专属模型/推理强度是旧端点的配置（如 glm 系 slug 对新端点
       // 是 unknown model），恢复为跟随全局默认；全局模型与强度由用户在面板上自选，不动。
       const previousOverride = persistedOpenRouterBaseUrl(deps.settingsStore);
+      // Save-time container gate (2026-10-05): the desktop's own probes only
+      // prove the MAC can dial the endpoint. Inference dials from the box —
+      // a different network position (2026-10-04: a desktop-validated direct
+      // endpoint degraded the whole fleet for a day). A probe that cannot
+      // REACH the endpoint, or is told the key is wrong, must stop the save
+      // BEFORE anything persists. Skipped (no sandbox / docker down) and
+      // odd-status (endpoint answered but /models is unusual) pass through.
+      const nextOverride = typeof requested === "string" && requested.trim().length > 0 ? requested.trim() : null;
+      let endpointProbe: import("./box/local-docker-host-connector.js").BoxEndpointProbeResult | null = null;
+      if (nextOverride != null && deps.probeBoxEndpoint != null) {
+        endpointProbe = await deps.probeBoxEndpoint(nextOverride);
+        if (endpointProbe.verdict === "unreachable") {
+          throw new Error(`容器内无法访问该端点（${endpointProbe.detail}）。已阻止保存——桌面能通不代表容器能通，请检查地址、端口与容器网络后再试。`);
+        }
+        if (endpointProbe.verdict === "auth-rejected") {
+          throw new Error(`端点可达但拒绝了当前 API Key（HTTP ${endpointProbe.httpStatus ?? "?"}）。已阻止保存——请先在密钥栏填入该端点的有效 Key。`);
+        }
+      }
       invoke(deps.settingsStore, "setOpenRouterBaseUrl", typeof requested === "string" ? requested : undefined);
       const syncedBaseUrl = typeof requested === "string" && requested.trim().length > 0 ? requested.trim() : null;
       const endpointChanged = (previousOverride ?? null) !== syncedBaseUrl;
@@ -292,7 +318,7 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
         await (deps.delay ?? sleep)(250 * (attempt + 1));
       }
       const persisted = persistedOpenRouterBaseUrl(deps.settingsStore);
-      return { baseUrl: resolveOpenRouterBaseUrl(persisted), baseUrlOverride: persisted, resetAgents };
+      return { baseUrl: resolveOpenRouterBaseUrl(persisted), baseUrlOverride: persisted, resetAgents, ...(endpointProbe == null ? {} : { endpointProbe }) };
     },
     getOpenRouterEffort: async () => {
       const stored = normalizeOpenRouterReasoningEffort(invoke(deps.settingsStore, "getOpenRouterEffort"));
