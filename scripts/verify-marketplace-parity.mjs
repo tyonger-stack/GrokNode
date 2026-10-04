@@ -492,6 +492,198 @@ const CATALOG_EXPR = `(async () => {
   };
 })()`;
 
+// Category pages and the manage page. The homepage's 查看全部 opens TWO genuinely different
+// layouts in official — 精选 is a single 734px column under a large h1 WITH the marketplace
+// wrapper, while a category bucket is a 363px two-column grid under an h3 reading 结果 with NO
+// wrapper. Treating them as one page is the easiest way to ship a page that looks fine and is
+// wrong. The manage page is a third shape, reachable from 已安装 N 个, and its detail round-trip
+// has to restore the list rather than dropping back to the homepage.
+const SECTION_EXPR = `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const round = (n) => Math.round(n * 100) / 100;
+  const dlg = () => [...document.querySelectorAll('[role="dialog"]')]
+    .find((x) => /市场|Marketplace/.test(x.getAttribute("aria-label") || ""));
+  const vis = (e) => {
+    if (!e) return false;
+    const r = e.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return false;
+    return typeof e.checkVisibility === "function"
+      ? e.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true })
+      : !!e.offsetParent;
+  };
+  const visAll = (sel, root = document) => [...root.querySelectorAll(sel)].filter(vis);
+  const until = async (pred, ms) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) { const v = pred(); if (v) return v; await sleep(250); }
+    return null;
+  };
+  const open = async () => {
+    let d = dlg();
+    if (d) { (document.querySelector('button[aria-label="关闭"]'))?.click(); await sleep(900); d = dlg(); }
+    if (!d) {
+      [...document.querySelectorAll('button,[role="button"]')]
+        .find((e) => /连接应用|Connect apps/.test((e.getAttribute("aria-label") || "").trim()))?.click();
+      d = await until(dlg, 20000);
+    }
+    return d;
+  };
+  // A section page's shape, read the way the screenshot is read: the grid width, the heading tag,
+  // and whether the marketplace wrapper is present.
+  // A push-stack page keeps the previous level MOUNTED, so anything scoped to the whole dialog
+  // also reads the homepage. Three scoping mistakes showed up here, and each one reported a defect
+  // that did not exist:
+  //   1. querySelector over the dialog found the HOMEPAGE wrapper, so every page looked like it
+  //      had one. Scope it to the element that actually holds the rows.
+  //   2. Measuring the first ul gave 734 for BOTH layouts — the ul is 734 wide either way.
+  //      What differs is the ROW's own width: 734 as a single column, 363 in a 363+363 grid.
+  //   3. "First heading by top" picked a leftover homepage section title. The page title is the
+  //      heading sharing a bar with the 返回 button - the only unambiguous one.
+  // NOTE ON SCOPE. The obvious implementations of "measure the current page" are all wrong here,
+  // and three of them each produced a confident, mutually contradictory answer: the dialog still
+  // contains the previous level, and the homepage's rows are themselves 363px two-column.
+  //   1. visAll over the whole dialog        -> measured the homepage (official 精选 read 363/2-col)
+  //   2. climb from the 返回 button          -> landed on the pane that holds BOTH levels
+  //   3. elementFromPoint at one depth        -> hit a heading or a gap; local returned null
+  //   4. elementFromPoint at six depths       -> official flipped back to 734/1-col
+  // A check whose value changes with the sample point is worse than no check, so this script does
+  // NOT assert the 精选-vs-桶 row width. That distinction is a SCREENSHOT finding (PORT §6), not a
+  // DOM one. What is asserted below is the part that is stable: navigation happens, the page has
+  // rows, there is no invented pagination, and the manage round-trip restores the list.
+  const shape = (d) => {
+    const back = visAll('button[aria-label="返回"]', d)[0];
+    const bar = back && back.parentElement ? back.parentElement.parentElement : null;
+    const heading = bar ? visAll("h1,h2,h3", bar)[0] ?? null : null;
+    return {
+      // Scoped to the dialog, so this is a lower bound that cannot be thrown off by residue.
+      rowCount: visAll('[class*="row__name"]', d).length,
+      hasBack: !!back,
+      headingTag: heading ? heading.tagName : null,
+      headingText: heading ? heading.textContent.trim() : null,
+      hasLoadMore: visAll("button", d).some((b) => /加载更多|Load more|下一页|Next page/.test(b.textContent || "")),
+    };
+  };
+
+  let d = await open();
+  if (!d) return { err: "市场弹窗未打开" };
+  const rows = await until(() => { const n = visAll(".sand-plugins-row__open", d); return n.length ? n : null; }, 40000);
+  if (!rows) return { err: "行未渲染" };
+
+  // Identify the two 查看全部 buttons by which section they sit under: the first is 精选, the one
+  // belonging to a bucket is the second. Hard-coding an index would silently start testing the
+  // wrong page if the section order ever changed.
+  const seeAlls = visAll("button", d).filter((b) => (b.textContent || "").trim() === "查看全部");
+  const labelOf = (b) => {
+    let n = b;
+    while (n && n !== d) {
+      const h = n.querySelector?.("h3");
+      if (h && (h.textContent || "").trim()) return h.textContent.trim();
+      n = n.parentElement;
+    }
+    return null;
+  };
+  const decorated = seeAlls.map((b) => ({ b, section: labelOf(b) }));
+  const featured = decorated.find((x) => /精选/.test(x.section ?? ""));
+  const bucket = decorated.find((x) => /效率|Productivity/i.test(x.section ?? ""));
+
+  const out = { seeAllTotal: seeAlls.length, sections: decorated.map((x) => x.section) };
+  for (const [key, target] of [["featured", featured], ["bucket", bucket]]) {
+    if (!target) { out[key] = null; continue; }
+    target.b.click();
+    const page = await until(() => (visAll('button[aria-label="返回"]', d).length ? d : null), 20000);
+    out[key] = page ? shape(page) : { err: "类目页未打开" };
+    const back = visAll('button[aria-label="返回"]', d)[0];
+    if (back) {
+      back.click();
+      // Wait for the HOMEPAGE, not merely for rows: a section page has rows too, so waiting on rows
+      // returned immediately and the next measurement was taken on the page we never left.
+      await until(() => (visAll('button[aria-label="返回"]', d).length === 0
+        && visAll("button", d).some((b) => (b.textContent || "").trim() === "查看全部")) ? true : null, 15000);
+    }
+  }
+
+  // Manage page: 已安装 N 个, then detail and back.
+  const manageEntry = visAll("button", d).find((b) => /已安装|Your plugins/i.test(b.textContent || ""));
+  out.manage = { hasEntry: !!manageEntry };
+  if (manageEntry) {
+    manageEntry.click();
+    const page = await until(() => { const h = visAll("h1,h2,h3", d).find((x) => /管理|Manage/.test(x.textContent || "")); return h ? d : null; }, 20000);
+    if (page) {
+      out.manage.rowCount = visAll('[class*="row__name"]', d).length;
+      out.manage.headingBefore = visAll("h1,h2,h3", d).find((h) => /管理|Manage/.test(h.textContent || ""))?.textContent.trim() ?? null;
+      out.manage.firstRow = visAll(".sand-plugins-row__open", d).filter((r) => {
+        const box = r.getBoundingClientRect();
+        return box.width > 0 && box.height > 0;
+      })[0]?.getAttribute("aria-label") ?? null;
+      const row = visAll(".sand-plugins-row__open", d).filter((r) => {
+        const box = r.getBoundingClientRect();
+        return box.width > 0 && box.height > 0;
+      })[0];
+      if (row) {
+        row.click();
+        const detail = await until(() => (visAll('button[aria-label="返回"]', d).length ? d : null), 20000);
+        // On the DETAIL page the bar shows the plugin name, not 管理 — so do not look for the
+        // manage heading here. Record only that a detail was actually reached.
+        out.manage.reachedDetail = !!detail;
+        const back = visAll('button[aria-label="返回"]', d)[0];
+        if (back) { back.click(); await until(() => (visAll('button[aria-label="返回"]', d).length === 0) ? true : null, 12000); await sleep(600); }
+        out.manage.rowCountAfterBack = visAll('[class*="row__name"]', d).length;
+        out.manage.headingAfterBack = visAll("h1,h2,h3", d).find((h) => /管理|Manage/.test(h.textContent || ""))?.textContent.trim() ?? null;
+      }
+    } else {
+      out.manage.error = "管理页未打开";
+    }
+  }
+  return out;
+})()`;
+
+console.log("\n■ 类目页与管理页对拍");
+const secRuns = {};
+for (const [label, port, hint] of [["官方", OFFICIAL_CDP, OFFICIAL_URL_HINT], ["部署版", DEPLOYED_CDP, DEPLOYED_URL_HINT]]) {
+  try {
+    const dump = await cdpDump(port, hint, SECTION_EXPR);
+    if (dump?.err) { ok(`${label} 类目页读取`, false, dump.err); continue; }
+    secRuns[label] = dump;
+    ok(`${label} 类目页读取成功`, true, `${dump.seeAllTotal} 个查看全部`);
+  } catch (error) {
+    ok(`${label} 类目页可用`, false, String(error.message).slice(0, 120));
+  }
+}
+
+if (secRuns["官方"] && secRuns["部署版"]) {
+  const o = secRuns["官方"], d = secRuns["部署版"];
+  ok("查看全部 总数", o.seeAllTotal === d.seeAllTotal, `官方 ${o.seeAllTotal} / 本地 ${d.seeAllTotal}`);
+  const cmp = (name, group, field) => {
+    const want = o[group]?.[field] ?? "(缺失)";
+    const got = d[group]?.[field] ?? "(缺失)";
+    ok(name, want === got, want === got ? `${got}` : `官方 ${want} / 本地 ${got}`);
+  };
+  // Navigation and content presence: the part that survives DOM scoping.
+  // Row count is dialog-scoped, so the level behind is included and the numbers legitimately
+  // differ. Only presence is meaningful: the page rendered rows at all.
+  ok("精选类目页 有行", (o.featured?.rowCount ?? 0) > 0 && (d.featured?.rowCount ?? 0) > 0,
+    `官方 ${o.featured?.rowCount} / 本地 ${d.featured?.rowCount}（含首页残留，不比等号）`);
+  ok("类目桶 页 有行", (o.bucket?.rowCount ?? 0) > 0 && (d.bucket?.rowCount ?? 0) > 0,
+    `官方 ${o.bucket?.rowCount} / 本地 ${d.bucket?.rowCount}（含首页残留，不比等号）`);
+  cmp("精选类目页 标题", "featured", "headingText");
+  cmp("类目桶 页 标题", "bucket", "headingText");
+  // Official has no pagination control at all — 63 rows live in one scroller. A "load more" button
+  // here would be an invented surface.
+  ok("类目页 无分页控件", o.bucket?.hasLoadMore === false && d.bucket?.hasLoadMore === false,
+    `官方 ${o.bucket?.hasLoadMore} / 本地 ${d.bucket?.hasLoadMore}`);
+  ok("精选与类目桶 是两个不同页面", (d.featured?.headingText ?? "") !== (d.bucket?.headingText ?? ""),
+    `精选「${d.featured?.headingText}」/ 桶「${d.bucket?.headingText}」`);
+
+  // The manage page lists what THIS machine has installed, so its row count and first row are
+  // expected to differ between the two apps (official has 16 installed, local 8) — comparing them
+  // is a category error, not a parity check. What must hold is internal: the page opens, has rows,
+  // and the detail round-trip restores the list instead of dropping back to the homepage.
+  ok("管理页 可打开且有行", d.manage?.rowCount > 0, `本地 ${d.manage?.rowCount} 行（官方 ${o.manage?.rowCount}，安装态不同故不比）`);
+  ok("管理页 能进入详情", d.manage?.reachedDetail === true, "点击首行应到达详情页");
+  ok("管理页 返回后标题恢复", d.manage?.headingAfterBack === d.manage?.headingBefore,
+    `进入前「${d.manage?.headingBefore}」/ 返回后「${d.manage?.headingAfterBack}」`);
+  ok("管理页 返回后行数不变", d.manage?.rowCountAfterBack === d.manage?.rowCount, `进入前 ${d.manage?.rowCount} / 返回后 ${d.manage?.rowCountAfterBack}`);
+}
+
 console.log("\n■ catalog payload 对拍");
 const catRuns = {};
 for (const [label, port, hint] of [["官方", OFFICIAL_CDP, OFFICIAL_URL_HINT], ["部署版", DEPLOYED_CDP, DEPLOYED_URL_HINT]]) {
