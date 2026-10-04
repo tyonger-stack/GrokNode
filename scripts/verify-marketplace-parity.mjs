@@ -180,6 +180,23 @@ if (!fs.existsSync(DEPLOYED_ASAR)) {
   ok("第一层投影 toPlugin 保留 categoryKeys", toPluginProjection);
   ok("第二层投影 marketplacePluginToView 保留 categoryKeys", viewProjection, `main.cjs 中共 ${toPluginHits} 处`);
 
+  // `pluginName` must survive BOTH projections too, and — the part a presence check cannot tell you —
+  // the first hop must read `Plugin.name`, not the MCP server handle. The renderer's vendor-override
+  // probe (`Re()` = `Te[vendor] ?? …`) reads `pluginName` FIRST and only then `name`; on official's
+  // own 403-row catalog 85 rows carry a `pluginName` that differs from `name`, and the four AWS rows
+  // all share `name: "aws-mcp"` while their `pluginName`s differ. Wiring it to the handle would be
+  // indistinguishable from correct on the ~10 rows where the two happen to be equal.
+  //
+  // Official 0.66 `dist/electron-main/main-app.cjs`:
+  //   `return{pluginId:e.id.toString(),name:r,pluginName:e.name,displayName:…}`, `r = e.mcpServers[0]?.name ?? e.name`
+  //   `function T7t(e){return{id:e.pluginId,name:e.name,pluginName:e.pluginName,displayName:…}}`
+  const pluginNameHits = (main.match(/pluginName/g) ?? []).length;
+  const pluginNameFirstHop = /pluginName:\s*plugin\.name,/.test(main);
+  const pluginNameSecondHop = /pluginName:\s*plugin\.pluginName,/.test(main);
+  const pluginNameNotFromHandle = !/pluginName:\s*plugin\.mcpServers/.test(main);
+  ok("第一层投影 toPlugin 的 pluginName 取自 Plugin.name（非 MCP server 句柄）", pluginNameFirstHop && pluginNameNotFromHandle);
+  ok("第二层投影 marketplacePluginToView 保留 pluginName", pluginNameSecondHop, `main.cjs 中共 ${pluginNameHits} 处`);
+
   const chunks = app.paths.filter((p) => p.startsWith("dist/renderer/assets/") && p.endsWith(".js"));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mkt-chunks-"));
   let passed = 0;
@@ -433,9 +450,10 @@ if (officialSections && deployedSections) {
   }
   const onlyOfficial = Object.keys(officialSections).filter((t) => !(t in deployedSections));
   for (const title of onlyOfficial) console.log(`       ❌ ${title}（本地无此区块：官方: ${officialSections[title].names.join(" / ")}）`);
-  console.log("\n     剩余差异请对照 docs/MARKETPLACE-066-EVIDENCE.md §18–§20 归因：本地 catalog 是官方");
-  console.log("     catalog 的严格子集（少 11 条），1Password 不在任何一侧 catalog，为你推荐 因");
-  console.log("     teamPopularity() 双方同为 0 —— 均属数据面，不是渲染行为差异。");
+  console.log("\n     剩余差异请对照 docs/MARKETPLACE-066-EVIDENCE.md §18–§20 归因：本地 catalog 已补齐为");
+  console.log("     与官方同规模（下方「catalog payload 对拍」逐条核对，缺失条目应为「无」）；");
+  console.log("     1Password 不在任何一侧 catalog，为你推荐 因 teamPopularity() 双方同为 0 且");
+  console.log("     affinity 取自本机各自的已安装集合 —— 均属数据面，不是渲染行为差异。");
 
   console.log("\n     首页形状：");
   ok("查看全部 数量", officialShape.seeAll === deployedShape.seeAll, `官方 ${officialShape.seeAll} / 本地 ${deployedShape.seeAll}`);
@@ -706,13 +724,15 @@ if (catRuns["官方"] && catRuns["部署版"]) {
     missingKeys.length ? `本地缺 ${missingKeys.join(" ")}` : `${d.distinctCategoryKeys.length} 个 key 两侧相同`);
   ok("categoryKeys 覆盖率无回退", d.withCategoryKeys > 0, `本地 ${d.withCategoryKeys}/${d.total}（该字段修复前为 0）`);
   ok("isUserOwned 计数一致", o.isUserOwnedTrue === d.isUserOwnedTrue, `官方 ${o.isUserOwnedTrue} / 本地 ${d.isUserOwnedTrue}`);
-  // Total count and per-entry presence are a known DATA gap, not a behaviour difference: the local
-  // catalog is a strict subset of upstream's. Report the exact short list instead of failing.
+  // The 11 entries the anonymous listing withheld are pinned locally (docs/evidence/
+  // marketplace-catalog-supplements.md), so the local catalog should now match official's scale.
+  // Keep reporting the exact short list rather than failing, but stop calling it a strict subset:
+  // the wording used to claim "少 11 条" in the same run that reported 缺失条目:（无）.
   const missingEntries = Object.keys(o.named)
     .filter((k) => o.named[k] && !d.named[k]?.present)
     .map((k) => `${k}(id ${o.named[k].id})`);
   const extraEntries = Object.keys(d.named).filter((k) => d.named[k] && !o.named[k]?.present);
-  console.log(`     catalog 总数 官方 ${o.total} / 本地 ${d.total} —— 数据面：本地为官方严格子集`);
+  console.log(`     catalog 总数 官方 ${o.total} / 本地 ${d.total} —— 数据面：${missingEntries.length === 0 && extraEntries.length === 0 ? "两侧条目集合一致" : "存在缺口，见下"}`);
   console.log(`     本地缺失条目: ${missingEntries.length ? missingEntries.join(" ") : "（无）"}`);
   if (extraEntries.length) console.log(`     本地多出的条目: ${extraEntries.join(" ")}`);
 }
