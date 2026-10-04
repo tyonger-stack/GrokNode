@@ -31,6 +31,7 @@ import {
   COPY_LINK_BUTTON_CLASSES,
   DETAIL_ACCOUNTS_CLASSES,
   DETAIL_ACCOUNT_NAME_CLASSES,
+  DETAIL_ACCOUNT_TITLE_CLASSES,
   DETAIL_ACCOUNT_NAME_ROW_CLASSES,
   DETAIL_ACTIONS_CLASSES,
   DETAIL_APP_COUNT_CLASSES,
@@ -42,6 +43,7 @@ import {
   DETAIL_CONNECTOR_KIND_CLASSES,
   DETAIL_CONNECTOR_NAME_CLASSES,
   DETAIL_CONNECTOR_ROW_CLASSES,
+  DETAIL_CONNECTOR_TEXT_CLASSES,
   DETAIL_DESC_CLASSES,
   DETAIL_DIVIDER_CLASSES,
   DETAIL_EDIT_ACCOUNT_FULL_CLASSES,
@@ -61,6 +63,7 @@ import {
   DETAIL_SOURCE_ROW_CLASSES,
   DETAIL_STATUS_FULL_CLASSES,
   DETAIL_SUBSECTION_ROW_CLASSES,
+  DETAIL_SUBSECTION_TITLE_CLASSES,
   DETAIL_TITLE_CENTERED_CLASSES,
   DETAIL_TITLE_CLASSES,
   DETAIL_TITLE_COL_CLASSES,
@@ -922,16 +925,23 @@ function renderSection(
  * Page 4 — the plugin detail page
  * ------------------------------------------------------------------ */
 
-function buildDetailSection(title: string, count?: string): HTMLElement {
+/**
+ * @param headingClasses the section heading's own class list. Official does NOT use one list for
+ *   账户 / 工具 / 信息: 账户 carries 22 classes and 工具 / 信息 carry 18, differing by four
+ *   `ui-*` classes that compute identically. Both readings were taken twice with byte-identical
+ *   output, so the split is transcribed rather than normalised — collapsing them would be a
+ *   simplification no measurement supports.
+ */
+function buildDetailSection(title: string, headingClasses: readonly string[], count?: string): HTMLElement {
   const block = el("div", []);
   if (count == null) {
-    const heading = el("h3", DETAIL_SECTION_TITLE_CLASSES, title);
+    const heading = el("h3", headingClasses, title);
     block.append(heading);
     return block;
   }
   const row = el("div", DETAIL_SUBSECTION_ROW_CLASSES);
-  row.append(el("h3", DETAIL_SECTION_TITLE_CLASSES, title));
-  row.append(el("span", DETAIL_SECTION_TITLE_CLASSES, count));
+  row.append(el("h3", DETAIL_SUBSECTION_TITLE_CLASSES, title));
+  row.append(el("span", DETAIL_APP_COUNT_CLASSES, count));
   block.append(row);
   return block;
 }
@@ -1003,7 +1013,7 @@ function renderSkillDetail(
 
   /* --- 信息 --- */
   const body = el("div", DETAIL_BODY_CLASSES);
-  const infoBlock = buildDetailSection(TEXT.detailInfo);
+  const infoBlock = buildDetailSection(TEXT.detailInfo, DETAIL_SECTION_TITLE_CLASSES);
   const info = el("dl", DETAIL_INFO_LIST_CLASSES);
   info.append(buildDetailListRow(TEXT.skillProvenance, TEXT.skillProvenanceFor(skill.source), true));
   info.append(buildDetailListRow(TEXT.skillLocation, TEXT.skillLocationFor(skill.source), true));
@@ -1013,7 +1023,7 @@ function renderSkillDetail(
 
   /* --- the SKILL.md body --- */
   if (skill.body.length > 0) {
-    const bodyBlock = buildDetailSection(TEXT.skillBody);
+    const bodyBlock = buildDetailSection(TEXT.skillBody, DETAIL_SECTION_TITLE_CLASSES);
     const pre = el("pre", DETAIL_DESC_CLASSES, skill.body);
     applyClasses(pre, [SKILL_BODY_MARKER]);
     bodyBlock.append(pre);
@@ -1023,7 +1033,7 @@ function renderSkillDetail(
   /* --- edit form, user-written skills only --- */
   const editable = skill.source === "workflow";
   if (editable) {
-    const editBlock = buildDetailSection(TEXT.edit);
+    const editBlock = buildDetailSection(TEXT.edit, DETAIL_SECTION_TITLE_CLASSES);
     const form = el("div", DETAIL_INFO_LIST_CLASSES);
 
     const nameInput = document.createElement("input");
@@ -1153,7 +1163,7 @@ function renderDetail(
   // 账户 — installed only. Official gates it on the plugin having a configured account, so an
   // installed plugin with no account row omits the whole section rather than showing an empty one.
   if (detail.accounts.length > 0) {
-    const block = buildDetailSection(TEXT.detailAccounts);
+    const block = buildDetailSection(TEXT.detailAccounts, DETAIL_ACCOUNT_TITLE_CLASSES);
     const list = el("div", DETAIL_ACCOUNTS_CLASSES);
     detail.accounts.forEach((account, index) => {
       const accountRow = el("div", DETAIL_INFO_ROW_CLASSES);
@@ -1188,7 +1198,7 @@ function renderDetail(
 
   // 工具 — installed only.
   if (detail.toolsLabel != null) {
-    const block = buildDetailSection(TEXT.detailTools);
+    const block = buildDetailSection(TEXT.detailTools, DETAIL_SECTION_TITLE_CLASSES);
     const list = el("div", DETAIL_TOOLS_CLASSES);
     list.append(createToolsRowCta(document, detail.toolsLabel));
     block.append(list);
@@ -1196,13 +1206,13 @@ function renderDetail(
   }
 
   // 应用 — always. Official heads it with the connector count and lists one row per connector.
-  const apps = buildDetailSection(TEXT.detailApps, String(detail.connectors.length));
+  const apps = buildDetailSection(TEXT.detailApps, DETAIL_SECTION_TITLE_CLASSES, String(detail.connectors.length));
   if (detail.connectors.length > 0) {
     const list = el("div", DETAIL_CONNECTORS_CLASSES);
     for (const connector of detail.connectors) {
       const item = el("div", DETAIL_CONNECTOR_ROW_CLASSES);
       item.append(glyph("plug", GLYPH.plug, 16));
-      const text = el("span", []);
+      const text = el("span", DETAIL_CONNECTOR_TEXT_CLASSES);
       text.append(el("span", DETAIL_CONNECTOR_NAME_CLASSES, connector.name));
       text.append(el("span", DETAIL_CONNECTOR_KIND_CLASSES, TEXT.connectorLabel));
       item.append(text);
@@ -1213,7 +1223,7 @@ function renderDetail(
   body.append(apps);
 
   // 信息 — one dt/dd pair per field the entry actually carries, in official's order.
-  const info = buildDetailSection(TEXT.detailInfo);
+  const info = buildDetailSection(TEXT.detailInfo, DETAIL_SECTION_TITLE_CLASSES);
   const list = el("dl", DETAIL_INFO_LIST_CLASSES);
   detail.info.forEach((entry, index) => {
     list.append(buildDetailListRow(entry.label, entry.value, index < detail.info.length - 1));
@@ -1440,12 +1450,32 @@ export function createMarketplaceDialog(
    * why this unmounts the shell instead. It is inert either way (a `display:none` input cannot be
    * focused, so the manage page's filter was never reachable), so nothing is lost and the DOM now
    * matches. `syncPin` keys off `shell.isConnected` for the same reason.
+   *
+   * The HOLDER goes too, not just the shell. Measured on the deployed build: the emptied title row
+   * still contributed `margin-bottom:18px` and the emptied holder `margin-bottom:20px`, and
+   * `content` still carried `margin-top:-18px` — the pull-up that cancels the title row's own 18px
+   * on 页 1. On 页 2 there is no title row, so all three are dead: 18 + 20 − 18 = +20px, and the
+   * h1 measured at pane+42 against official's pane+22. Detaching both wrappers takes the h1 to
+   * pane+22 and drops `content`'s pull-up for the same reason it does not exist upstream.
    */
   const unmountSearch = (): void => {
     mainSearch.shell.remove();
+    searchHolder.remove();
+    header.remove();
   };
   const mountSearch = (): void => {
+    // Re-insert in the ORIGINAL order — `content` is [header, searchHolder, groups], and a plain
+    // `append` would drop the field below the sections on the way back to 页 1. The holder goes in
+    // FIRST: `insertBefore(header, searchHolder)` throws when `searchHolder` is not yet a child.
+    if (!searchHolder.isConnected) content.insertBefore(searchHolder, groups);
+    if (!header.isConnected) content.insertBefore(header, searchHolder);
     if (!mainSearch.shell.isConnected) searchHolder.append(mainSearch.shell);
+    content.style.marginTop = "";
+  };
+  /** Cancel `PANE_HEADER_CLASSES`' -18px pull-up: it exists to cancel the title row's 18px, and on
+   *  the pages that have no title row there is nothing to cancel. */
+  const releaseContentPullUp = (): void => {
+    content.style.marginTop = "0px";
   };
 
   /**
@@ -1542,6 +1572,7 @@ export function createMarketplaceDialog(
       clearBand();
       mountBar(bar);
       unmountSearch();
+      releaseContentPullUp();
     } else if (state.page === "manage") {
       // The bar belongs in the 48px band, NOT in the scroller's header.
       // `header` stays empty on this page, exactly as official leaves it, so nothing is appended
@@ -1565,6 +1596,7 @@ export function createMarketplaceDialog(
       bar.append(el("div", BACK_TRAILING_CLASSES));
       mountBar(bar);
       unmountSearch();
+      releaseContentPullUp();
     } else {
       // `header` already carries TITLE_ROW_CLASSES — it IS official's single header row. The h2
       // and the trailing slot go straight into it. Wrapping them in a second row here nested two

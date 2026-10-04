@@ -881,11 +881,100 @@ export const DETAIL_DESC_CLASSES = [
 /** `sand-ou54vl` — the block container holding 账户 / 工具 / 应用 / 信息. */
 export const DETAIL_BODY_CLASSES = ["sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-ou54vl"];
 
-/** Section heading inside the detail body (应用 / 信息 / 账户 / 工具). */
-export const DETAIL_SECTION_TITLE_CLASSES = DETAIL_NAME_CLASSES;
+/**
+ * The first six `ui-*` classes of the detail body headings. Split out because official's two
+ * heading widths insert a different block in the middle (see {@link DETAIL_HEADING_WIDE_CLASSES}),
+ * and the ORDER is official's: the four extra classes sit at positions 6-9, before `ui-vmahel`.
+ */
+export const DETAIL_HEADING_LEAD_CLASSES = [
+  "ui-text", "ui-1acoasx", "ui-dj266r", "ui-14z9mp", "ui-at24cr", "ui-1lziwak",
+];
 
-/** The 应用 sub-header row — `应用` + its count, indented 14px from the column edge (x=79). */
+/** The last six, shared by both widths. */
+export const DETAIL_HEADING_TAIL_CLASSES = [
+  "ui-vmahel", "ui-lh3980", "ui-1wm8ruf", "ui-spwq11", "ui-14s4slr", "ui-20ajya",
+];
+
+/**
+ * The 12 `ui-*` typography classes 工具 / 信息 carry.
+ *
+ * This is a *different* recipe from {@link DETAIL_NAME_CLASSES}: the two share their first 13
+ * classes and then diverge — the detail body uses `ui-1wm8ruf ui-spwq11 ui-14s4slr` where the
+ * plugin name uses `ui-11wthnw ui-1ja60sm ui-vu1jfw`. Aliasing the name recipe here rendered
+ * 账户/工具/信息 at 24px instead of 30px (six pixels short on three headings), which is why the
+ * section stack drifted ~18px against official.
+ */
+export const DETAIL_HEADING_TYPOGRAPHY_CLASSES = [
+  ...DETAIL_HEADING_LEAD_CLASSES, ...DETAIL_HEADING_TAIL_CLASSES,
+];
+
+/**
+ * The 16-class width, used by 账户 and by the 应用 heading and its count.
+ *
+ * Official uses BOTH widths on the same page, and the four extra classes compute to nothing
+ * different (账户 and 信息 both measure 734x30 / 12px / 16px / 420). Measured on official 0.66.0,
+ * Gmail detail page, read twice with byte-identical output:
+ *
+ *   账户  22 classes = WIDE + ui-4b2ntj + the 5 padding classes
+ *   工具  18 classes = BASE + ui-4b2ntj + the 5 padding classes
+ *   信息  18 classes = BASE + ui-4b2ntj + the 5 padding classes
+ *
+ * So the width is NOT a uniform convention here and is not something to "normalise". It is
+ * transcribed per heading because that is what official renders; collapsing 账户 onto the 18-class
+ * list would be a fabricated simplification, and using the 22-class list for 工具/信息 would be
+ * too. Either way the pixels are identical, which is exactly why a source assertion cannot settle
+ * it — only the class list can.
+ *
+ * The four extra classes all carry specificity (0 id, 1 class) — the same as the lead/tail
+ * classes — so their position in the attribute is cosmetic for the cascade. They are placed at
+ * 6-9 anyway, matching official byte for byte, so the transcription stays diffable.
+ */
+export const DETAIL_HEADING_WIDE_CLASSES = [
+  ...DETAIL_HEADING_LEAD_CLASSES, "ui-exx8yu", "ui-yri2b", "ui-18d9i69", "ui-1c1uobl",
+  ...DETAIL_HEADING_TAIL_CLASSES,
+];
+
+/** The padding block official puts on 账户 / 工具 / 信息 — 30px tall, 14px inset.
+ *  `sand-1pic42t` / `sand-1onr9mi` are the two inline-padding lifts; they carry no 0.18 counterpart
+ *  and only resolve through LIFTED_OFFICIAL_RULES, so grepping the stylesheet for them reads
+ *  "absent" and is misleading — the padding was never the defect. */
+const DETAIL_SECTION_PADDING_CLASSES = [
+  "sand-9f619", "sand-1y1aw1k", "sand-1pic42t", "sand-10b6aqq", "sand-1onr9mi",
+];
+
+/** 账户 — official's 22-class heading. */
+export const DETAIL_ACCOUNT_TITLE_CLASSES = [
+  ...DETAIL_HEADING_WIDE_CLASSES, "ui-4b2ntj", ...DETAIL_SECTION_PADDING_CLASSES,
+];
+
+/** 工具 / 信息 — official's 18-class heading. `ui-4b2ntj` is what makes them tertiary-coloured. */
+export const DETAIL_SECTION_TITLE_CLASSES = [
+  ...DETAIL_HEADING_TYPOGRAPHY_CLASSES, "ui-4b2ntj", ...DETAIL_SECTION_PADDING_CLASSES,
+];
+
+/**
+ * The 应用 sub-header's own heading — 24x16, the 16-class width at the section scale.
+ *
+ * The trailing colour class is `ui-1wd3ewq`, NOT `sand-1wd3ewq`. Both declare the identical
+ * `color: var(--cursor-text-primary)` and both exist in 0.18, but `sand-*` carries three
+ * `:not(#)` (three ids of specificity) and `ui-*` carries none — official uses the low-specificity
+ * one here, so the transposition is deliberate and a source assertion cannot catch it.
+ */
+export const DETAIL_SUBSECTION_TITLE_CLASSES = [
+  ...DETAIL_HEADING_WIDE_CLASSES, "ui-1wd3ewq",
+];
+
+/**
+ * The 应用 sub-header row — `应用` + its count on one 30px line, indented 14px from the column
+ * edge.
+ *
+ * The first three classes are load-bearing and were missing: `sand-78zum5` is `display:flex` and
+ * `sand-6s0dn4` is `align-items:center`, so without them the row fell back to `display:block` and
+ * the count wrapped onto its own line — `应用` 706x24 over `1` 8x20 instead of `应用` 24x16 beside
+ * `1` 6x16. The two lift classes still do their job either way; the padding already matched.
+ */
 export const DETAIL_SUBSECTION_ROW_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-6s0dn4",
   "sand-17d4w8g", "sand-1y1aw1k", "sand-1pic42t", "sand-10b6aqq", "sand-1onr9mi",
 ];
 
@@ -1020,6 +1109,16 @@ export const DETAIL_CONNECTOR_ROW_CLASSES = [
   "sand-sag5q8", "sand-1onr9mi", "sand-1nhvcw1",
 ];
 
+/**
+ * The name/连接器 stack inside one 应用 row — 36×34, `display:flex`, `flex-direction:column`,
+ * `min-width:0`, holding {@link DETAIL_CONNECTOR_NAME_CLASSES} over
+ * {@link DETAIL_CONNECTOR_KIND_CLASSES}.
+ *
+ * The column direction is what stacks the two lines. Without it the row read `gmail连接器` on one
+ * 69px line against official's two lines, which is the most visible difference on the detail page.
+ */
+export const DETAIL_CONNECTOR_TEXT_CLASSES = ["sand-78zum5", "sand-dt5ytf", "sand-euugli"];
+
 export const DETAIL_CONNECTOR_NAME_CLASSES = [
   "sand-b3r6kr", "sand-1wd3ewq", "sand-11wthnw", "sand-d4r4e8", "sand-lyipyv", "sand-uxw1ft",
 ];
@@ -1028,9 +1127,15 @@ export const DETAIL_CONNECTOR_KIND_CLASSES = [
   "sand-b3r6kr", "sand-4b2ntj", "sand-1wm8ruf", "sand-1d3mw78", "sand-lyipyv", "sand-uxw1ft",
 ];
 
-/** The `应用` count that trails the heading. */
+/**
+ * The `应用` count that trails the heading — 6×16, `--cursor-text-tertiary`.
+ *
+ * It shares the section typography with the heading and differs only in the trailing colour class.
+ * It previously carried just the first six `ui-*` classes, so it inherited none of the size
+ * recipe and measured 8×20 where official measures 6×16.
+ */
 export const DETAIL_APP_COUNT_CLASSES = [
-  "ui-text", "ui-1acoasx", "ui-dj266r", "ui-14z9mp", "ui-at24cr", "ui-1lziwak",
+  ...DETAIL_HEADING_WIDE_CLASSES, "sand-4b2ntj",
 ];
 
 /** The single-column recipe. Official's two grid variants are the SAME list with one class

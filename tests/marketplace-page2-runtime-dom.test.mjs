@@ -159,6 +159,9 @@ function mount(state) {
   return {
     root: dialog.root,
     doc: win.document,
+    // Exposed so a test can drive the same dialog across pages — that is the only way to assert
+    // that switching BACK to 页 1 restores the title row and the pull-up it needs.
+    render: (state) => dialog.render(state),
     // Tear the dialog down FIRST — its `destroy()` touches `document`, so restoring the globals
     // before it runs would throw `document is not defined` and mask the real assertion.
     destroy() {
@@ -219,6 +222,39 @@ test("页 2 carries no search field at all, exactly like official", () => {
     // Official's page 2 has zero <input> nodes. The manage page hides the in-flow field and the
     // pinned field only mounts on the browse page, so both are absent — not merely invisible.
     assert.equal(h.root.querySelectorAll("input").length, 0);
+  } finally { h.destroy(); }
+});
+
+test("页 2's h1 sits at the pane's padding edge — no dead margin from the empty wrappers", () => {
+  // Measured on the deployed build: the emptied title row still contributed `margin-bottom:18px`
+  // and the emptied search holder `margin-bottom:20px`, while `content` still carried the
+  // `margin-top:-18px` that cancels the title row's 18px on 页 1. On 页 2 there is no title row,
+  // so all three are dead — net +20px, and the h1 measured at pane+42 against official's pane+22.
+  // happy-dom does no layout, so the invariant asserted here is the STRUCTURAL one: on 页 2 the
+  // pane content must not still be carrying the two wrappers, and the pull-up must be released.
+  // The resulting y is the deployed measurement's job.
+  const h = mount(baseState({ page: "manage", installed: INSTALLED, skills: SKILLS }));
+  try {
+    const pane = h.root.querySelector("div.sand-settings-pane");
+    assert.ok(pane, "the scroller pane is present");
+    const content = pane.firstElementChild;
+    assert.ok(content, "the pane has a content container");
+    assert.equal(content.children.length, 1,
+      "页 2: only the groups holder remains — the title row and search holder must be detached, "
+      + "or their margin-bottom (18px / 20px) pushes the page down");
+    assert.equal(content.children[0].classList.contains("sand-mkt-groups"), true);
+    // The -18px pull-up exists to cancel the title row's 18px; with no title row it must be off.
+    assert.equal(content.style.marginTop, "0px", "the pane content's pull-up must be released on 页 2");
+    // …and restored on 页 1, where the title row is back and needs cancelling.
+    h.render(baseState({ page: "browse", installed: INSTALLED }));
+    assert.equal(content.style.marginTop, "", "页 1: the pull-up must come back with the title row");
+    assert.equal(content.children.length, 3, "页 1 restores [title row, search holder, groups] in order");
+    assert.equal(h.root.querySelectorAll("input").length, 1, "页 1's field is back, once");
+    assert.deepEqual(
+      [...content.children].map((c) => c.className.split(/\s+/).filter(Boolean)[0]),
+      ["sand-1n2onr6", "sand-9f619", "sand-mkt-groups"],
+      "and in the original order — a plain append would drop the field below the sections",
+    );
   } finally { h.destroy(); }
 });
 

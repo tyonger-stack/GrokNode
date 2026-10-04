@@ -67,13 +67,67 @@ const css = asarBytes.subarray(
 
 // Class lists come from the single source of truth, not from minified output — extracting an
 // array out of a bundle by bracket matching silently truncates it.
+//
+// Truncation has a second, sneakier form here: a list written as `[...SOME_BASE, "sand-x"]`
+// contains only ONE string literal, so a regex that harvests quoted strings returns just
+// `["sand-x"]` and the spread part vanishes with no error at all. That is not a cosmetic problem —
+// this script would then measure an element wearing a *different* class list than the product
+// renders, and a real regression in the product would leave every assertion green. It happened
+// once already: `DETAIL_SECTION_TITLE_CLASSES` is spread-based, so its 16 `ui-*` classes dropped
+// out and the section heading measured the browser's default 18.72px instead of official's 12px.
+//
+// So: resolve spreads, scan with bracket depth rather than `indexOf("]")`, and refuse to continue
+// if anything is still unresolved. A list this function cannot read must fail loudly, because every
+// number below is a measurement OF that list.
 const styles = readFileSync(path.join(ROOT, "frontend/src/extensions/marketplace/official-styles.ts"), "utf8");
+
+/** The body of the array literal assigned to `name`, found by bracket depth so a nested `]` cannot
+ *  end the scan early. Matches `export const` and a module-private `const` alike, because a list
+ *  split into a private base plus exported leaves is the natural way to share these recipes. */
+function arrayBody(name) {
+  const re = new RegExp(`(?:export\\s+)?const\\s+${name}\\b`);
+  const m = re.exec(styles);
+  if (!m) throw new Error(`official-styles.ts has no const ${name}`);
+  const start = styles.indexOf("[", m.index + m[0].length - 1);
+  if (start < 0) throw new Error(`${name} has no array literal`);
+  let depth = 0;
+  for (let k = start; k < styles.length; k += 1) {
+    if (styles[k] === "[") depth += 1;
+    else if (styles[k] === "]") {
+      depth -= 1;
+      if (depth === 0) return styles.slice(start + 1, k);
+    }
+  }
+  throw new Error(`${name}: array literal never closes`);
+}
+
+const classesCache = new Map();
 const classes = (name) => {
-  const i = styles.indexOf(`export const ${name}`);
-  if (i < 0) throw new Error(`official-styles.ts has no ${name}`);
-  const s = styles.indexOf("[", i);
-  const e = styles.indexOf("]", s);
-  return (styles.slice(s, e).match(/"([^"]+)"/g) ?? []).map((x) => x.slice(1, -1));
+  if (classesCache.has(name)) return classesCache.get(name);
+  let body = arrayBody(name);
+  // Resolve `...OTHER` against OTHER's own list, recursively, until no spread remains.
+  for (let pass = 0; pass < 8; pass += 1) {
+    const spread = [...body.matchAll(/\.\.\.([A-Za-z0-9_]+)/g)];
+    if (spread.length === 0) break;
+    for (const m of spread) {
+      const inner = classes(m[1]);
+      body = body.replace(m[0], inner.map((c) => `"${c}"`).join(", "));
+    }
+  }
+  const out = (body.match(/"([^"]+)"/g) ?? []).map((x) => x.slice(1, -1));
+  // Strip comments before hunting for leftovers. English prose inside a `//` comment matches
+  // "identifier followed by ," or "]" perfectly well, and treating a comment word as an unresolved
+  // symbol turns every commented list into a hard failure.
+  const code = body.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  const unresolved = code.match(/\.\.\.|\b[A-Za-z_$][\w$]*\s*(?=[,\]])/g) ?? [];
+  if (unresolved.length > 0) {
+    throw new Error(
+      `${name}: could not fully resolve (${unresolved.join(" ")}). Refusing to measure a truncated list.`,
+    );
+  }
+  if (out.length === 0) throw new Error(`${name}: resolved to zero classes`);
+  classesCache.set(name, out);
+  return out;
 };
 const scope = styles.match(/MARKET_SCOPE_CLASS\s*=\s*"([^"]+)"/)?.[1] ?? "sand-mkt";
 
@@ -188,6 +242,21 @@ const html = `<!doctype html><html><head><meta charset="utf-8">
     <button id="backOfficial" class="${OFFICIAL_DETAIL_BACK_BUTTON.join(" ")}"><i class="ui-icon"></i></button>
   </div>
 </div>
+<div id="body" class="${classes("DETAIL_BODY_CLASSES").join(" ")}" style="width:734px">
+  <h3 id="accTitle" class="${classes("DETAIL_ACCOUNT_TITLE_CLASSES").join(" ")}">账户</h3>
+  <h3 id="secTitle" class="${classes("DETAIL_SECTION_TITLE_CLASSES").join(" ")}">信息</h3>
+  <div id="appRow" class="${classes("DETAIL_SUBSECTION_ROW_CLASSES").join(" ")}">
+    <h3 id="appTitle" class="${classes("DETAIL_SUBSECTION_TITLE_CLASSES").join(" ")}">应用</h3>
+    <span id="appCount" class="${classes("DETAIL_APP_COUNT_CLASSES").join(" ")}">1</span>
+  </div>
+  <div id="connRow" class="${classes("DETAIL_CONNECTOR_ROW_CLASSES").join(" ")}">
+    <span class="sand-78zum5 sand-2lah0s sand-4b2ntj"><i class="ui-icon"></i></span>
+    <span id="connText" class="${classes("DETAIL_CONNECTOR_TEXT_CLASSES").join(" ")}">
+      <span class="${classes("DETAIL_CONNECTOR_NAME_CLASSES").join(" ")}">gmail</span>
+      <span class="${classes("DETAIL_CONNECTOR_KIND_CLASSES").join(" ")}">连接器</span>
+    </span>
+  </div>
+</div>
 </div><pre id="out"></pre><script>
 const m = (id) => { const n = document.getElementById(id); const cs = getComputedStyle(n);
   return { id, padding: cs.padding, paddingLeft: cs.paddingLeft, paddingRight: cs.paddingRight,
@@ -196,16 +265,33 @@ const m = (id) => { const n = document.getElementById(id); const cs = getCompute
 const g = (id) => { const n = document.getElementById(id); const cs = getComputedStyle(n);
   const r = n.getBoundingClientRect();
   return { id, gtc: cs.gridTemplateColumns, cols: cs.gridTemplateColumns.trim().split(/\\s+/).length,
-           w: Math.round(r.width), height: Math.round(r.height), padding: cs.padding,
+           w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.x), y: Math.round(r.y),
+           height: Math.round(r.height), padding: cs.padding,
            paddingLeft: cs.paddingLeft, paddingRight: cs.paddingRight,
-           fontSize: cs.fontSize, lineHeight: cs.lineHeight, fontWeight: cs.fontWeight }; };
+           display: cs.display, flexDirection: cs.flexDirection, alignItems: cs.alignItems,
+           classCount: n.classList.length,
+           fontSize: cs.fontSize, lineHeight: cs.lineHeight, fontWeight: cs.fontWeight,
+           color: cs.color }; };
+// The detail-page font sizes arrive through the --cursor-font-size-sm / --cursor-line-height-sm
+// variables. If those do not resolve, every ui-* declaration is invalid at computed-value time and
+// each heading silently resolves to the UA default — 18.72px for an h3 — so a fixture like this one
+// reports a number while measuring nothing of the recipe. Reading the variables off :root turns
+// that into a visible failure. (--cursor-font-weight-normal is deliberately undefined in the
+// product, which is why official's declaration carries its own ",400" fallback; only the first two
+// are load-bearing here.)
+const rootStyle = getComputedStyle(document.documentElement);
+const varsResolved = ["--cursor-font-size-sm", "--cursor-line-height-sm"].map((v) => [
+  v, rootStyle.getPropertyValue(v).trim(),
+]);
 document.getElementById("out").textContent = JSON.stringify({
   sheets: document.styleSheets.length,
   rules: document.styleSheets[0] ? [...document.styleSheets[0].cssRules].length : -1,
+  varsResolved,
   measured: [m("add"), m("tools")],
   type: [g("h1"), g("h3"), g("secHead")],
   grids: [g("single"), g("two")],
-  back: [g("backOurs"), g("backOfficial"), g("backTitle")] });
+  back: [g("backOurs"), g("backOfficial"), g("backTitle")],
+  detail: [g("accTitle"), g("secTitle"), g("appRow"), g("appTitle"), g("appCount"), g("connRow"), g("connText")] });
 </script></body></html>`;
 
 const tmp = path.join("/tmp", `mkt-cascade-${process.pid}.html`);
@@ -257,6 +343,18 @@ const secHead = result.type.find((r) => r.id === "secHead");
 const backOurs = result.back.find((r) => r.id === "backOurs");
 const backOfficial = result.back.find((r) => r.id === "backOfficial");
 const backTitle = result.back.find((r) => r.id === "backTitle");
+const secTitle = result.detail.find((r) => r.id === "secTitle");
+const accTitle = result.detail.find((r) => r.id === "accTitle");
+const appRow = result.detail.find((r) => r.id === "appRow");
+const appTitle = result.detail.find((r) => r.id === "appTitle");
+const appCount = result.detail.find((r) => r.id === "appCount");
+const connText = result.detail.find((r) => r.id === "connText");
+for (const [name, node] of [["secTitle", secTitle], ["accTitle", accTitle], ["appRow", appRow], ["appTitle", appTitle], ["appCount", appCount], ["connText", connText]]) {
+  if (!node) {
+    console.error(`detail measurement "${name}" did not come back — refusing to report a partial measurement`);
+    process.exit(2);
+  }
+}
 
 const checks = [
   ["私有技能 grid 是单列", single.cols === 1, `cols=${single.cols} gtc=${single.gtc}`],
@@ -276,7 +374,50 @@ const checks = [
     `ours ${backOurs.w}x${backOurs.height} vs official ${backOfficial.w}x${backOfficial.height}`],
   ["返回按钮 inline padding 与官方一致", backOurs.paddingLeft === backOfficial.paddingLeft && backOurs.paddingRight === backOfficial.paddingRight,
     `ours ${backOurs.paddingLeft}/${backOurs.paddingRight} vs official ${backOfficial.paddingLeft}/${backOfficial.paddingRight}`],
+
+  // ── 详情页内层：账户/工具/信息 标题、应用 副标题行、连接器文本栈 ──
+  // Three recipes that were wrong in ways no source assertion could see, and every one of them had
+  // a green suite behind it. Measured on official 0.66.0, Gmail detail page (read twice, identical):
+  //   账户 heading              734x30, 12px/16px, 22 classes
+  //   工具 / 信息 heading       734x30, 12px/16px, 18 classes
+  //   应用 sub-header row       30px tall, display:flex, `应用` 24x16 beside `1` 6x16
+  //   connector name/连接器     display:flex column, 36x34 (ours was one 18px line)
+  ["账户 标题 30px", accTitle.height === 30, `${accTitle.height}px`],
+  ["工具/信息 标题 30px", secTitle.height === 30, `${secTitle.height}px`],
+  // 账户 carries four `ui-*` classes 工具/信息 do not. They compute to nothing different, which is
+  // exactly why only the class list can settle it — and why a pixel check alone would pass either way.
+  ["账户 与 工具/信息 类数不同但结果一致", accTitle.classCount === 22 && secTitle.classCount === 18
+      && accTitle.fontSize === secTitle.fontSize && accTitle.height === secTitle.height,
+    `${accTitle.classCount} vs ${secTitle.classCount} classes, both ${secTitle.fontSize}/${accTitle.height}px`],
+  ["章节标题 12px", secTitle.fontSize === "12px", secTitle.fontSize],
+  ["章节标题 16px 行高", secTitle.lineHeight === "16px", secTitle.lineHeight],
+  // The two headings differ only in their trailing colour class (`ui-4b2ntj` tertiary vs
+  // `sand-1wd3ewq` primary), so comparing them tests that the class took effect. Pinning an exact
+  // rgba would measure the FIXTURE's colour scheme instead of the recipe — Chrome serialises it as
+  // `color(srgb …)`, not `rgba(…)`, and the numbers depend on a palette this page never loads.
+  ["章节标题是三级色，与主色标题不同（ui-4b2ntj 生效）", secTitle.color !== appTitle.color,
+    `信息 ${secTitle.color} vs 应用 ${appTitle.color}`],
+  ["应用 副标题行是 flex 行（否则计数换行）", appRow.display === "flex" && appRow.alignItems === "center",
+    `display=${appRow.display} align-items=${appRow.alignItems}`],
+  ["应用 副标题行 30px", appRow.height === 30, `${appRow.height}px`],
+  // `y` on both, not a comparison that passes on two `undefined`s.
+  ["应用 标题与计数同行（同一 y）", appTitle.y === appCount.y, `y ${appTitle.y} vs ${appCount.y}`],
+  ["应用 标题 12px", appTitle.fontSize === "12px", appTitle.fontSize],
+  ["应用 计数 12px", appCount.fontSize === "12px", appCount.fontSize],
+  ["连接器文本栈是纵向（名称在种类上方）", connText.display === "flex" && connText.flexDirection === "column",
+    `display=${connText.display} flex-direction=${connText.flexDirection}`],
+  ["连接器文本栈 34px 两行", connText.height === 34, `${connText.height}px`],
+  ["连接器文本栈 36px 宽（不是一行挤出来的 69px）", connText.w === 36, `w=${connText.w}`],
 ];
+
+console.log("");
+console.log(`vars   ${result.varsResolved.map(([k, v]) => `${k}=${v || "(UNRESOLVED)"}`).join("  ")}`);
+if (result.varsResolved.some(([, v]) => v === "")) {
+  console.error("");
+  console.error("the font-size variables did not resolve — every 12px/16px assertion above would be");
+  console.error("measuring the browser's UA default for an h3, not the recipe. Refusing to report.");
+  process.exit(2);
+}
 console.log("");
 for (const [label, good, got] of checks) {
   if (!good) failed += 1;
