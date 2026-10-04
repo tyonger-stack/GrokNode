@@ -109,13 +109,22 @@ QUEUE_TIMEOUT_MS=75000          # 每个请求的排队上限，不变
 | --- | --- | --- |
 | 挂起的推理 | 先问转发器 `GET /v1/relay/inflight`（带 token，只列进程内存里仍持有的请求）。问不到才退回日志，并且**超过 `total=` 硬上限（部署 15 分钟）加 2 分钟的 started 行不算在飞**，只报一次记账错误 | `INFLIGHT_STALL_MS` 默认 10 分钟 |
 | 卡死的 bot 回合 | host 每 15 秒写 `/tmp/sand-host-turns.json`（在飞回合）。文件新鲜时，**只有列在里面的回合**才可能卡死，计时从 host 的 `startedAt` 起算；文件缺失或超过 45 秒没更新，才退回「spawn 之后 transcript 零写入」 | `TRANSCRIPT_STALL_MS` 默认 10 分钟 |
-| 中继死亡 | 探活 `127.0.0.1:11010/v1/models`（带 token） | 非 200 / 超时即告警 |
+| 中继死亡 | 探活 `127.0.0.1:11010/v1/relay/inflight`（带 token；**必须走中继自答的路径**——2026-10-04 教训：探 `/v1/models` 会被直通代理到上游，上游一慢就 5s 超时，当天 27 条假 forwarder-down 全是这么来的） | 非 200 / 超时即告警 |
 
 告警去向：`watchdog-alerts.log`（永远）→ macOS 通知（`MACOS_NOTIFY=1` 默认开；通知正文自带详情文件路径——Notification Center 可看全文。已实测 macOS 26 拒绝 terminal-notifier 的通知权限，故发送走 osascript；若装了 terminal-notifier 且将来权限放开，代码会优先用它并让点击直接打开告警日志）→ `ALERT_COMMAND`（默认空；配置后以 `/bin/zsh -c` 执行，占位符 `{message}` `{agent}` `{name}` 会替换为带引号的 JSON 字符串，可接 `lark-cli` 发飞书）。持续状态（挂起、卡死、断网、中继探活失败）**出现时一条，之后按 15 分钟 / 1 小时 / 4 小时各再提醒一次就停，恢复时再一条**。慢回合和断网的提醒不会比原先的 30 分钟 / 1 小时更密。重启 host、容量豁免、恢复公告这类动作每次发生都发。Mac 睡眠（两轮之间的挂钟跳变超过 3 个巡检间隔）醒来的那一轮只把 spawn 时钟拨到现在，不告警、不重启。
 
 **静默必须从 spawn 起算，不能从上次 transcript 写入起算**（2026-09-26 误报风暴的教训）：例行任务唤醒一个空闲 bot 时，“距上次写入”可能包含几小时的空闲时间，旧算法把它当成卡死时长，导致每个正常完成后的 bot 都被误报「卡死 67 分钟」。新语义只看“这个回合派出后有没有产出”。
 
 **已知边界**：watchdog 只对"自己看着出生"的回合告警（首次启动时 state 从零开始，不回放历史）；给卡死 bot 自动注入恢复消息需要目标 bot 先建 `watch-resume` webhook 例行任务（v2，见 DESIGN.md），v1 一律只告警。
+
+### 双推理路线（2026-10-04 事故后的路线感知）
+
+桌面 Router 允许默认模型走两条路线，都是一等公民：**本地 opencodex 中继链**（容器内 baseUrl 指向 `http://127.0.0.1:10100/v1` 或 Mac 中继 11010）和**互联网直连**（baseUrl 指向 `https://api.minimax.cn/v1` 之类，key 随 settings 下发进盒子）。watchdog 的全部中继侧信号（in-flight JSON、POST 日志行、逐回合「推理中」豁免）只在**中继路线**存在；直连下恒为零。因此：
+
+- **路线判定**：每轮读容器 `/home/box/sand-data/settings.json` 的 `openRouterBaseUrl`（60s 缓存），按「指向容器中继/Mac 中继端口 = relay，其他 = direct，读不到 = unknown」分类；
+- **直连/未知路线下 host-wedge 自动重启停用**（告警 `host-wedge-direct-route`）：重启治不了直连上游劣化——2026-10-04 一次上游劣化烧掉 17 次无效重启并误杀全部排队回合。重启需要**正向确认** relay 路线，fail-safe 方向永远是「不重启」；host 自带 600s 回合看门狗继续兜底真挂起；
+- **直连的慢回合豁免改读 host 日志的 `AGENT_REQUEST_START/END` 标记**（无时间戳，按读取时刻记龄，状态字段 `lastAgentRequestSeenAt`）——这是唯一与路线无关的「盒子在推理」信号；
+- 测试接缝：`INFERENCE_ROUTE_PIN=relay|direct|unknown`。
 
 ## 部署 / 回滚 / 验证
 
@@ -140,4 +149,4 @@ tools/ocx-relay/container-relay-push.sh   # 回推 480s 中继并重启、探活
 
 ## 测试
 
-`tests/ocx-relay-forwarder.test.mjs`（10 用例）：起可编程 mock 上游 + 真实 forwarder（环回临时端口），覆盖令牌门禁、直通、429 首字节前重试、重试耗尽透传、队列串行化、队满/超时合成 429、SSE 增量透传（防整体缓冲）、客户端中断释放槽位。全部环回端口，CI（ubuntu）安全。watchdog 是外部系统粘合（docker exec / 日志文件），暂无独立测试，靠 `RUN_ONCE` 自检。
+`tests/ocx-relay-forwarder.test.mjs`（10 用例）：起可编程 mock 上游 + 真实 forwarder（环回临时端口），覆盖令牌门禁、直通、429 首字节前重试、重试耗尽透传、队列串行化、队满/超时合成 429、SSE 增量透传（防整体缓冲）、客户端中断释放槽位。全部环回端口，CI（ubuntu）安全。watchdog 的行为契约由三个假 docker 外部进程测试覆盖：`tests/ocx-relay-watchdog-hostwedge.test.mjs`（僵死签名/重启守卫/路线感知，24 用例）、`tests/ocx-relay-watchdog-inflight.test.mjs`（在飞记账）、`tests/ocx-relay-watchdog-outage.test.mjs`（断网聚合）；`RUN_ONCE` 自检仍作为部署后冒烟。

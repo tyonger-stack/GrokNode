@@ -36,6 +36,19 @@ const TURN_REPORT_PATH = process.env.TURN_REPORT_PATH || "/tmp/sand-host-turns.j
 const TURN_REPORT_MAX_AGE_MS = Number(process.env.TURN_REPORT_MAX_AGE_MS ?? "45000");
 const TRANSCRIPT_ROOT = process.env.TRANSCRIPT_ROOT || "/home/box/sand-data/agent-transcripts";
 const AGENT_ROOT = process.env.AGENT_ROOT || "/home/box/sand-data/agents";
+// Inference route (2026-10-04 incident). The desktop Router lets the default
+// model ride either the local relay chain (opencodex via the in-container hop,
+// baseUrl http://127.0.0.1:10100/v1, or straight at the Mac forwarder on
+// 11010) or a DIRECT internet endpoint (https://api.minimax.cn/v1 with the
+// key delivered into the box). Every relay-side signal this watchdog uses —
+// the in-flight JSON, POST log lines, the per-turn "inferring" exemption —
+// only exists on the relay route; on the direct route they are permanently
+// zero, so the host-wedge signature fires on any stalled turn even when the
+// box is merely waiting out an upstream brownout. The verdicts below must
+// therefore know the route before believing relay silence.
+const CONTAINER_SETTINGS_PATH = process.env.CONTAINER_SETTINGS_PATH || "/home/box/sand-data/settings.json";
+const CONTAINER_RELAY_PORT = process.env.CONTAINER_RELAY_PORT || "10100";
+const ROUTE_CACHE_TTL_MS = Number(process.env.ROUTE_CACHE_TTL_MS ?? "60000");
 
 const INTERVAL_MS = Number(process.env.WATCH_INTERVAL_MS ?? "120000");
 const INFLIGHT_STALL_MS = Number(process.env.INFLIGHT_STALL_MS ?? "600000");
@@ -155,13 +168,18 @@ const state = loadState();
 const nameCache = new Map();
 
 function loadState() {
-  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {}, lastRepair: {}, lastRepairOk: {}, lastHostRestart: {}, canary: null, outageSince: null, lastProbeOkAt: 0, lastProbeFailAt: 0, conditions: {}, lastLoopAt: 0 };
+  const fresh = { hostLogBytes: 0, lastSpawnSeen: {}, lastAlert: {}, lastRepair: {}, lastRepairOk: {}, lastHostRestart: {}, canary: null, outageSince: null, lastProbeOkAt: 0, lastProbeFailAt: 0, conditions: {}, lastLoopAt: 0, lastAgentRequestSeenAt: 0 };
   try {
     const parsed = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
     return {
       hostLogBytes: Number(parsed.hostLogBytes ?? 0),
       lastSpawnSeen: parsed.lastSpawnSeen ?? {},
       lastAlert: parsed.lastAlert ?? {},
+      // Route-independent inference heartbeat: the newest AGENT_REQUEST_*
+      // marker seen in fresh host-log bytes (dated at read time — the host
+      // log carries no timestamps). Survives a watchdog restart like every
+      // other signal it replaces on the direct route.
+      lastAgentRequestSeenAt: Number(parsed.lastAgentRequestSeenAt ?? 0),
       // Repair/restart cooldown state has to survive a watchdog restart, or a
       // crash-looping watchdog re-fires the (heavy) self-heal every start.
       lastRepair: parsed.lastRepair ?? {},
@@ -241,6 +259,39 @@ const forwarderActivity = {
 // traffic), or the two gates can never agree: terminals old enough to trip
 // the wedge would already have aged out of a shorter capacity window.
 const CAPACITY_WINDOW_MS = Number(process.env.CAPACITY_WINDOW_MS ?? "1800000");
+
+// "relay" = the host's baseUrl points at a hop whose traffic this watchdog
+// can see (the in-container relay, or the Mac forwarder itself); "direct" =
+// anywhere else, where relay-side silence is not evidence of anything;
+// "unknown" = settings unreadable. The wedge restart requires "relay"
+// POSITIVELY: anything else fails safe to alert-only, because a restart that
+// fires on garbage evidence murdered a fleet's queued turns on 2026-10-04.
+const routeCache = { at: 0, value: "unknown" };
+async function detectInferenceRoute(now = Date.now()) {
+  const pinned = process.env.INFERENCE_ROUTE_PIN;
+  if (pinned === "relay" || pinned === "direct" || pinned === "unknown") return pinned;
+  if (now - routeCache.at < ROUTE_CACHE_TTL_MS) return routeCache.value;
+  routeCache.at = now;
+  try {
+    const raw = await execInContainer(`cat ${CONTAINER_SETTINGS_PATH}`);
+    const baseUrl = JSON.parse(raw)?.openRouterBaseUrl;
+    if (typeof baseUrl !== "string" || baseUrl.trim().length === 0) {
+      // No override persisted: the host runs its built-in default, which is
+      // the relay chain. That default is what every pre-2026-10-04 incident
+      // was diagnosed on, so keep counting it as evidence-visible.
+      routeCache.value = "relay";
+      return routeCache.value;
+    }
+    const url = new URL(baseUrl.trim());
+    const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1";
+    const onContainerRelay = loopback && url.port === CONTAINER_RELAY_PORT;
+    const onMacForwarder = url.port === String(process.env.FORWARDER_PORT ?? "11010");
+    routeCache.value = onContainerRelay || onMacForwarder ? "relay" : "direct";
+  } catch {
+    routeCache.value = "unknown";
+  }
+  return routeCache.value;
+}
 
 function fetchLiveInflight() {
   if (process.env.INFLIGHT_SOURCE === "log") return Promise.resolve(null);
@@ -472,6 +523,7 @@ async function readHostTurnReport(now) {
 
 async function checkStalledTurns(now) {
   stallReport.length = 0;
+  const route = await detectInferenceRoute(now);
   // Stale mtimes would let the canary verdict read a pre-restart write as
   // post-restart proof; if this round cannot read them, carry none forward.
   lastTranscriptMtimes = new Map();
@@ -495,6 +547,14 @@ async function checkStalledTurns(now) {
         // that moment: health is judged against writes NEWER than the spawn,
         // never against the previous turn's tail sitting under the same file.
         if (match) state.lastSpawnSeen[match[1]] = { seenAt: now, baselineMtime: -1 };
+        // Route-independent inference heartbeat: the host logs one
+        // AGENT_REQUEST_START/END pair per model call no matter which route
+        // the Router points at, so on the direct route this marker is the
+        // only "the box is inferring" signal there is. Dated at read time
+        // because the host log carries no timestamps of its own.
+        if (line.includes("AGENT_REQUEST_START") || line.includes("AGENT_REQUEST_END")) {
+          state.lastAgentRequestSeenAt = now;
+        }
       }
     }
   }
@@ -585,8 +645,13 @@ async function checkStalledTurns(now) {
       // worse, each alert fed the wedge signature that RESTARTED the host
       // mid-turn. If the forwarder has seen inference traffic inside the
       // stall window, the box is working, not wedged.
-      const inferring = forwarderActivity.lastPostAt > 0
-        && now - forwarderActivity.lastPostAt < STALL_UPSTREAM_EXEMPT_MS;
+      // 2026-10-04: on the direct route the forwarder sees NOTHING by
+      // design, so the exemption would never apply and every upstream
+      // brownout read as death (17 useless host restarts). There the
+      // host's own AGENT_REQUEST heartbeat carries the same verdict.
+      const directRoute = route === "direct";
+      const activityAt = directRoute ? state.lastAgentRequestSeenAt : forwarderActivity.lastPostAt;
+      const inferring = activityAt > 0 && now - activityAt < STALL_UPSTREAM_EXEMPT_MS;
       const name = await agentName(agentId);
       if (inferring) {
         stallReport.push({ agentId, seenAt, turnAge, inferring: true });
@@ -596,13 +661,15 @@ async function checkStalledTurns(now) {
         // healthy, burying the real stalls in noise.
         alert(
           `stall-slow:${agentId}`,
-          `bot「${name}」(${agentId.slice(0, 8)}) 回合派出后 ${Math.round(turnAge / 60000)} 分钟 transcript 零写入，但中继 ${Math.round((now - forwarderActivity.lastPostAt) / 1000)} 秒前还有推理流量——判定为上游慢/长回合，未重启任何进程。`,
+          directRoute
+            ? `bot「${name}」(${agentId.slice(0, 8)}) 回合派出后 ${Math.round(turnAge / 60000)} 分钟 transcript 零写入，但 host 侧 ${Math.round((now - activityAt) / 1000)} 秒前仍有推理请求活动（直连路线：推理不走中继，中继流量不可见）——判定为上游慢/长回合，未重启任何进程。`
+            : `bot「${name}」(${agentId.slice(0, 8)}) 回合派出后 ${Math.round(turnAge / 60000)} 分钟 transcript 零写入，但中继 ${Math.round((now - activityAt) / 1000)} 秒前还有推理流量——判定为上游慢/长回合，未重启任何进程。`,
           { agent: agentId, name, slow: true },
         );
         continue;
       }
       stallReport.push({ agentId, seenAt, turnAge });
-      alert(`stall:${agentId}`, `bot「${name}」(${agentId.slice(0, 8)}) 疑似卡死：回合派出后 ${Math.round(turnAge / 60000)} 分钟 transcript 零写入（该 bot 最后一次写入 ${new Date(mtime).toLocaleString()}，早于本回合派出），且同期无任何推理流量。`, { agent: agentId, name });
+      alert(`stall:${agentId}`, `bot「${name}」(${agentId.slice(0, 8)}) 疑似卡死：回合派出后 ${Math.round(turnAge / 60000)} 分钟 transcript 零写入（该 bot 最后一次写入 ${new Date(mtime).toLocaleString()}，早于本回合派出），且同期无任何推理流量${directRoute ? "（直连路线：中继侧本就无流量，此判定仅凭 transcript 与 host 侧推理标记）" : ""}。`, { agent: agentId, name });
     }
   }
 }
@@ -637,12 +704,17 @@ function checkForwarderLiveness(now) {
     let token = "";
     try { token = fs.readFileSync(path.join(RELAY_DIR, "token"), "utf8").trim(); } catch { /* probe unauthenticated */ }
     const req = http.get(
-      { host: "127.0.0.1", port: 11010, path: "/v1/models", headers: token ? { "x-relay-token": token } : {}, timeout: 5000 },
+      { host: "127.0.0.1", port: 11010, path: "/v1/relay/inflight", headers: token ? { "x-relay-token": token } : {}, timeout: 5000 },
       (res) => {
         res.resume();
-        // The probe answers while chat requests hang, so it separates a stuck
-        // request from a dead path. Both directions are recorded: an outage is
-        // only declared when the relay has been seen FAILING.
+        // The probe must be answered by the forwarder ITSELF, not proxied:
+        // /v1/relay/inflight is served locally in ~0ms, so it separates a
+        // dead forwarder process from a slow upstream behind it. Probing
+        // /v1/models (proxied to opencodex) inherited upstream latency and
+        // produced 27 false forwarder-down alerts during the 2026-10-04
+        // brownout while the forwarder was alive the whole time. Both
+        // directions are recorded: an outage is only declared when the relay
+        // has been seen FAILING.
         if (res.statusCode === 200) {
           forwarderActivity.lastProbeOkAt = Date.now();
           clearCondition("forwarder-down", "中继 11010 已恢复响应。");
@@ -1054,6 +1126,24 @@ async function checkHostWedge(now) {
     alert(
       "host-wedge-capacity",
       `上游容量不足（近 ${Math.round(CAPACITY_WINDOW_MS / 60000)} 分钟 ${terms.length} 个终态全是 ${[...new Set(terms.map((t) => t.code))].join("/")}），${stalledLong.length} 个 bot 回合停滞但属上游原因——不重启 host（重启也变不出回复），请检查模型配额或切换模型。`,
+    );
+    return;
+  }
+  // Route gate (2026-10-04 incident): every piece of evidence above — the
+  // in-flight JSON, the POST lines, the per-turn "inferring" exemption — is
+  // relay-side. When the Router points the host at a direct internet endpoint
+  // those signals are permanently zero and the signature fires on any stalled
+  // turn, including ones merely waiting out an upstream brownout. A restart
+  // cannot fix an upstream, and that brownout burned 17 of them (4 "completed"
+  // + 13 respawn false-negatives) while killing every queued turn. The
+  // restart therefore requires POSITIVE knowledge of the relay route;
+  // direct or unreadable settings both fail safe to alert-only. The host's
+  // own 600s turn watchdog keeps clearing genuinely hung turns either way.
+  const route = await detectInferenceRoute(now);
+  if (route !== "relay") {
+    alert(
+      "host-wedge-direct-route",
+      `检测到 ${deadLong.length} 个回合的僵死签名（${Math.round(HOST_WEDGE_STALL_MS / 60000)}+ 分钟零写入零派发），但当前推理路线为${route === "direct" ? "互联网直连（baseUrl 不指向中继）" : "未知（容器设置不可读）"}——中继侧零流量在直连下恒成立，不构成僵死证据，自动重启已停用（2026-10-04 实证：直连上游劣化时 17 次重启全部无效并误杀排队回合）。host 自带 600s 回合看门狗仍在兜底；若确认 host 真僵死请人工检查容器。`,
     );
     return;
   }

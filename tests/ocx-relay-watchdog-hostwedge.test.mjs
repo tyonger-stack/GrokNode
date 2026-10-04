@@ -22,6 +22,11 @@ case "$5" in
   *"tail -c +"*) if [ -n "$FAKE_SPAWN_FILE" ]; then cat "$FAKE_SPAWN_FILE" 2>/dev/null; fi ;;
   *"agent-transcripts"*) cat "\$FAKE_TRANSCRIPT_FILE" 2>/dev/null ;;
   *"profile.json"*) echo '{"name":"测试Bot"}' ;;
+  *"settings.json"*)
+    # The watchdog classifies the inference route from the container's
+    # persisted openRouterBaseUrl. Default fixture = the relay chain, which
+    # is the route every pre-existing wedge test was written against.
+    if [ -n "\$FAKE_CONTAINER_SETTINGS" ]; then echo "\$FAKE_CONTAINER_SETTINGS"; else echo '{"openRouterBaseUrl":"http://127.0.0.1:10100/v1"}'; fi ;;
   *"127.0.0.1:10100"*|*"host.internal:11010"*)
     # Faithful to mac-forwarder.mjs: no/wrong token -> 403, not 200. The fake
     # only answers with the fixture code when the probe carries auth.
@@ -736,4 +741,106 @@ test("a recent successful outage repair does not silence upstream normalization"
   const stdout = await runWatchdog(fx, { FAKE_UPSTREAM_ENV: "192.168.5.216" });
 
   assert.ok(stdout.includes("normalized relay upstream 192.168.5.216 -> host.internal"), `normalization must not wait for the repair cooldown, got: ${stdout}`);
+});
+
+// ---------------------------------------------------------------------------
+// Route-aware wedge policy (2026-10-04 incident). The Router legitimately
+// points the host at a DIRECT internet endpoint (api.minimax.cn + key in the
+// box); on that route the relay-side evidence the wedge signature reads is
+// permanently zero, so a stalled-turn signature must NOT earn a host TERM.
+// ---------------------------------------------------------------------------
+
+function wedgeFixtures() {
+  return {
+    forwarderLog: [
+      `${isoMinutesAgo(15)} relay listening on 0.0.0.0:11010 -> 127.0.0.1:10100 (chat slots=2 queue=4)`,
+      `${isoMinutesAgo(15)} POST /v1/chat/completions started id=aaaa1111 try=0 queued=0ms`,
+      `${isoMinutesAgo(14)} POST /v1/chat/completions -> 200 30000ms queued=0ms try=0 id=aaaa1111`,
+      "",
+    ].join("\n"),
+    transcriptFile: [
+      transcriptLine(AGENT_A, 20),
+      transcriptLine(AGENT_B, 22),
+      transcriptLine(CANARY_AGENT_ID, 30),
+      "",
+    ].join("\n"),
+  };
+}
+
+test("direct-route inference (baseUrl off the relay) never TERMs the host and reports the route blindness", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  const fix = wedgeFixtures();
+  await writeFile(fx.forwarderLog, fix.forwarderLog);
+  await writeFile(fx.transcriptFile, fix.transcriptFile);
+
+  // The exact 2026-10-04 shape: a full wedge signature while the box is on
+  // https://api.minimax.cn/v1. The restart must be suppressed and the alert
+  // must say WHY relay silence is not evidence on this route.
+  await runWatchdog(fx, { FAKE_CONTAINER_SETTINGS: '{"openRouterBaseUrl":"https://api.minimax.cn/v1"}' });
+
+  const alerts = await readFile(fx.alerts, "utf8");
+  assert.ok(alerts.includes("host-wedge-direct-route"), `expected route-blindness alert, got: ${alerts}`);
+  assert.ok(alerts.includes("互联网直连"), `alert must name the direct route, got: ${alerts}`);
+  assert.ok(alerts.includes("自动重启已停用"), `alert must state the restart is disabled, got: ${alerts}`);
+  assert.ok(!alerts.includes("host-wedge-restarted"), "direct route must not restart the host");
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "direct route must never TERM the host pid");
+  // The per-bot stall notice must carry the direct-route caveat instead of
+  // asserting relay traffic absence as if it were meaningful.
+  assert.ok(alerts.includes("直连路线：中继侧本就无流量"), `stall alert must explain the direct-route caveat, got: ${alerts}`);
+});
+
+test("unreadable container settings fail safe: wedge signature alerts but does not restart", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  const fix = wedgeFixtures();
+  await writeFile(fx.forwarderLog, fix.forwarderLog);
+  await writeFile(fx.transcriptFile, fix.transcriptFile);
+
+  // settings.json present but unparseable: the route is unknown, and the
+  // restart requires POSITIVE relay knowledge, so this must fail safe.
+  await runWatchdog(fx, { FAKE_CONTAINER_SETTINGS: "not-json" });
+
+  const alerts = await readFile(fx.alerts, "utf8");
+  assert.ok(alerts.includes("host-wedge-direct-route"), `expected route-blindness alert, got: ${alerts}`);
+  assert.ok(alerts.includes("未知"), `alert must name the unknown route, got: ${alerts}`);
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "unknown route must never TERM the host pid");
+});
+
+test("direct route with a fresh AGENT_REQUEST heartbeat reads as slow, not dead", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  const fix = wedgeFixtures();
+  await writeFile(fx.forwarderLog, fix.forwarderLog);
+  await writeFile(fx.transcriptFile, fix.transcriptFile);
+  // Fresh host-log bytes carrying only the route-independent heartbeat: the
+  // spawn stays the one seeded 12 minutes ago, so the turn IS old, but the
+  // AGENT_REQUEST marker proves the box is still inferring.
+  const heartbeat = path.join(fx.dir, "heartbeat.log");
+  await writeFile(heartbeat, "[sand-host] [codebase-telemetry] debug: snapshot trigger dropped (telemetry inactive): AGENT_REQUEST_START\n");
+
+  await runWatchdog(fx, {
+    FAKE_CONTAINER_SETTINGS: '{"openRouterBaseUrl":"https://api.minimax.cn/v1"}',
+    FAKE_HOST_LOG_SIZE: "2000",
+    FAKE_SPAWN_FILE: heartbeat,
+  });
+
+  const alerts = await readFile(fx.alerts, "utf8");
+  assert.ok(alerts.includes("stall-slow:"), `fresh heartbeat must read as slow, got: ${alerts}`);
+  assert.ok(alerts.includes("直连路线：推理不走中继"), `slow notice must explain the direct-route signal, got: ${alerts}`);
+  assert.ok(!/^\S+ \[stall:/m.test(alerts), "a heartbeat-backed turn must not raise the hard stall");
+  assert.ok(!alerts.includes("host-wedge-direct-route"), "an inferring box is not a wedge, even on the direct route");
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "heartbeat-backed slow turn must never TERM the host");
 });
