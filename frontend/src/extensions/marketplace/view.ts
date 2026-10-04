@@ -31,6 +31,7 @@ import {
   COPY_LINK_BUTTON_CLASSES,
   DETAIL_ACCOUNTS_CLASSES,
   DETAIL_ACCOUNT_NAME_CLASSES,
+  DETAIL_ACCOUNT_NAME_ROW_CLASSES,
   DETAIL_ACTIONS_CLASSES,
   DETAIL_APP_COUNT_CLASSES,
   DETAIL_BACK_BUTTON_CLASSES,
@@ -45,6 +46,7 @@ import {
   DETAIL_DIVIDER_CLASSES,
   DETAIL_EDIT_ACCOUNT_FULL_CLASSES,
   DETAIL_HEADER_CLASSES,
+  DETAIL_HEAD_CLASSES,
   DETAIL_INFO_LIST_CLASSES,
   DETAIL_INFO_ROW_CLASSES,
   DETAIL_INFO_TERM_CLASSES,
@@ -1067,7 +1069,10 @@ function renderDetail(
   const root = el("div", DETAIL_ROOT_FULL_CLASSES);
 
   /* --- header band: logo, name, source link, 分享 + 添加/卸载 --- */
-  const head = el("div", []);
+  // Official wraps the band and the description in a flex column with a 12px gap, so the pair
+  // measures 88px. An unclassed div here is a plain block with no gap, which is 12px short and,
+  // worse, left the icon with no box to size against.
+  const head = el("div", DETAIL_HEAD_CLASSES);
   const header = el("header", DETAIL_HEADER_CLASSES);
   header.append(buildDetailToolIcon(detail.iconUrl, detail.name));
 
@@ -1140,14 +1145,18 @@ function renderDetail(
     const list = el("div", DETAIL_ACCOUNTS_CLASSES);
     detail.accounts.forEach((account, index) => {
       const accountRow = el("div", DETAIL_INFO_ROW_CLASSES);
-      const term = el("dt", DETAIL_INFO_TERM_CLASSES, account.key);
+      // Official nests the label and the edit button in a 5px-gap flex row inside a 1px-gap column.
+      // This build put a <dt> carrying the ellipsizing term recipe directly in a block span, so the
+      // name was clipped to "d..." at 21px wide and the pencil fell to a second line — 57px tall
+      // against official's 42.
       const holder = el("span", DETAIL_ACCOUNT_NAME_CLASSES);
-      holder.append(term);
+      const nameRow = el("span", DETAIL_ACCOUNT_NAME_ROW_CLASSES, account.key);
       const edit = el("button", DETAIL_EDIT_ACCOUNT_FULL_CLASSES);
       edit.type = "button";
       edit.setAttribute("aria-label", TEXT.editAccount(account.key));
       edit.append(glyph("pencil", GLYPH.pencil, 10));
-      holder.append(edit);
+      nameRow.append(edit);
+      holder.append(nameRow);
       accountRow.append(holder);
       const status = el("dd", DETAIL_STATUS_FULL_CLASSES, statusLabel(account.status));
       accountRow.append(status);
@@ -1207,12 +1216,22 @@ function renderDetail(
 function buildDetailToolIcon(iconUrl: string, name: string): HTMLElement {
   const box = el("span", DETAIL_TOOL_ICON_CLASSES);
   box.setAttribute("aria-hidden", "true");
+  // The 56x56 box comes from an INLINE style on official's span, not from a class: every one of
+  // DETAIL_TOOL_ICON_CLASSES resolves identically in 0.18, and `sand-tool-icon--logo` has no rule
+  // in either stylesheet. With nothing constraining the span, the img's own `width:100%`
+  // (sand-h8yej3) resolved against an unconstrained flex item and the logo rendered 401x401 —
+  // which is what pushed the whole detail page from 677px to 1023px tall.
+  box.style.width = "56px";
+  box.style.height = "56px";
+  box.style.borderRadius = "16px";
   if (iconUrl.length > 0) {
     const image = document.createElement("img");
     image.alt = "";
     image.decoding = "async";
-    image.width = 55;
-    image.height = 55;
+    // Official's attributes are 56/56; the img computes to 55x55 because its box is border-box
+    // with a 1px border. Sizing the attributes to the rendered 55 instead would be off by one.
+    image.width = 56;
+    image.height = 56;
     image.src = iconUrl;
     applyClasses(image, TOOL_IMG_CLASSES);
     box.append(image);

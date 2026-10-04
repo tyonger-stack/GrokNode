@@ -707,6 +707,18 @@ export const SECTION_RESULTS_TITLE_CLASSES = [
 ];
 
 
+/** The column that wraps the detail hero: `<header>` plus the description `<p>`.
+ *
+ * Official renders it as 734x88 — a flex column with a 12px gap, so the 56px band and the 20px
+ * description stack to 88. This build had a bare unclassed `div` there, which rendered as a block
+ * with no gap. All four declarations exist identically in 0.18, so nothing needs lifting; the
+ * classes simply were not being applied.
+ *
+ * @evidence official 0.66.0, Gmail detail page: outer box 734x88, display:flex, gap 12px. */
+export const DETAIL_HEAD_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-1v2ro7d",
+];
+
 /** `HEADER.sand-plugins-detail__header` — 56px band: 56px logo, name + copy-link, source link,
  *  then 分享 / 添加(卸载). */
 export const DETAIL_HEADER_CLASSES = [
@@ -916,7 +928,18 @@ export const DETAIL_EDIT_ACCOUNT_FULL_CLASSES = [
 ];
 
 /** The account name + pencil pair, measured `[79,385,57,18]`. */
-export const DETAIL_ACCOUNT_NAME_CLASSES = ["sand-1nejdyq", "sand-euugli"];
+export const DETAIL_ACCOUNT_NAME_CLASSES = ["sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-12mrbbr", "sand-euugli"];
+
+/** Inside the name column, official puts the label and the edit button side by side in a 5px-gap
+ *  flex row. Without `display:flex` the pencil wrapped onto its own line, which is what made the
+ *  account row 57px tall against official's 42.
+ *
+ * @evidence official 0.66.0, Gmail detail page: column `sand-9f619 sand-78zum5 sand-dt5ytf
+ * sand-12mrbbr sand-euugli` containing a row `sand-9f619 sand-78zum5 sand-6s0dn4 sand-1nejdyq
+ * sand-euugli`, 57x18, label "default" and a 10x10 编辑 button on the same baseline. */
+export const DETAIL_ACCOUNT_NAME_ROW_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-1nejdyq", "sand-euugli",
+];
 
 /** The 添加账户 row — the official class list continues past the shared `__add-account` prefix. */
 export const DETAIL_ADD_ACCOUNT_FULL_CLASSES = [
