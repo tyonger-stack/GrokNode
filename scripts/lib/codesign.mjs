@@ -34,13 +34,40 @@ export function adHocDesignatedRequirement(bundleId) {
   return `=designated => identifier "${bundleId}"`;
 }
 
-export function adHocCodesignArguments(target, bundleId) {
+/** First pass: sign everything, nested code included, with the default requirements. */
+export function adHocCodesignArguments(target) {
   if (typeof target !== "string" || target.length === 0) {
     throw new TypeError("An explicit application bundle path is required for ad-hoc signing.");
   }
   return [
     "--force",
     "--deep",
+    "--timestamp=none",
+    "--sign",
+    AD_HOC_CODESIGN_IDENTITY,
+    target,
+  ];
+}
+
+/**
+ * Second pass: give the top-level bundle a content-independent designated requirement.
+ *
+ * This pass must NOT be `--deep`. `--deep` applies the same arguments to every nested framework and
+ * helper, so it would stamp `identifier "com.anysphere.sand.reconstructed"` onto
+ * `Electron Framework.framework`, whose own identifier is `com.github.Electron.framework`. A
+ * requirement that names a different identifier than the code it is attached to does not describe
+ * that code, and `codesign --verify --deep --strict` then fails with
+ * "nested code is modified or invalid" — which is exactly how the first attempt at this broke
+ * packaging.
+ *
+ * Signing only the top level is sufficient: the bundle and its main executable share
+ * `CFBundleIdentifier`, so both end up carrying the stable requirement, and the keychain ACL that
+ * matters is the one recorded for the running main executable. Nested code keeps the cdhash-keyed
+ * default, which is correct for it — those binaries legitimately have their own identifiers.
+ */
+export function adHocRequirementCodesignArguments(target, bundleId) {
+  return [
+    "--force",
     "--timestamp=none",
     "--sign",
     AD_HOC_CODESIGN_IDENTITY,
@@ -51,7 +78,10 @@ export function adHocCodesignArguments(target, bundleId) {
 }
 
 export async function signAppBundleAdHoc(target, bundleId, runCommand = run) {
-  await runCommand("/usr/bin/codesign", adHocCodesignArguments(target, bundleId), {
+  await runCommand("/usr/bin/codesign", adHocCodesignArguments(target), {
+    stdio: NONINTERACTIVE_CODESIGN_STDIO,
+  });
+  await runCommand("/usr/bin/codesign", adHocRequirementCodesignArguments(target, bundleId), {
     stdio: NONINTERACTIVE_CODESIGN_STDIO,
   });
 }
