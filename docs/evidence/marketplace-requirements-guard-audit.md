@@ -115,4 +115,43 @@ C-M6 一次杀 3 条，因为它同时踩了 missing-bridge / throw / 契约三�
   SecurityAgent 29128 的钥匙串弹窗未应答，9232 无响应。open-latency 的实机数字仍未取到，
   详见 `marketplace-open-latency.md`。这两份新测试是 happy-dom 运行时断言，**不是**实机证据；
   它们证明的是节点树和回调载荷，不证明像素。
-- **parity 脚本「类目页 行未渲染」的间歇性归因**仍是 unexplained，未硬凑改法。
+- **parity 脚本间歇性「行未渲染」**：仍是 unexplained，**不硬凑改法**。见下节。
+
+## 附：那条 unexplained 的定位又收窄了一步
+
+之前记的归因方向是错的。`行未渲染` 那条错误不在类目页 —— 它在**首页**，
+`scripts/verify-marketplace-parity.mjs:568`：
+
+```js
+const rows = await until(() => { const n = visAll(".sand-plugins-row__open", d); return n.length ? n : null; }, 40000);
+if (!rows) return { err: "行未渲染" };
+```
+
+### 已排除：陈旧节点（读代码可证伪，无需实机）
+
+最自然的猜测是 `open()` 复用了一个已被 `close()` 摘掉的 `d`：先点「关闭」、`sleep(900)`、
+再 `dlg()`；若 `dlg()` 返回了脱离文档的旧节点，`visAll` 的
+`getBoundingClientRect().width > 0 && height > 0` 会全灭，40 秒等来一个必然的空集。
+
+**不成立。** `createMarketplaceDialog` 里 `role="dialog"` 的 `dialog` 是 `layer` 的后代，而
+`destroy()` 是 `layer.remove()` —— 同步、整棵子树一起摘。所以 `close()` 返回后文档里不可能
+还留着那个节点，`dlg()` 要么拿到新弹窗、要么拿到 null。900ms 的等待绰绰有余。
+
+### 剩下的线索：同一文件里两个探针的失败模式不对称
+
+| | `SECTIONS_EXPR`（第 268 行附近） | 类目页探针（504–568） |
+|---|---|---|
+| 打开方式 | 同 | 同 |
+| 等行的判据 | `querySelectorAll('[class*="row__name"]').length > 20` | `visAll(".sand-plugins-row__open", d)` |
+| 可见性过滤 | **无** | 有 |
+| 预算 | 20 × 700ms | 40s |
+| **失败后重开重试** | **3 次** | **无** |
+
+也就是说：能成功的那条探针在失败时会重开三次并放宽到「20 个以上任意 row__name」，
+失败的那条只有一次机会。两者测的是同一个首页，判据却不同。
+
+**这是线索，不是结论。** 要坐实它需要一个可测的量：失败那次 `visAll` 到底返回 0 个、
+还是返回了 N 个但全被判为不可见。前者指向数据没到，后者指向 `checkVisibility` /
+`getBoundingClientRect` 在那一轮读到了异常值。**没有这个数之前不改 harness** ——
+把等待改成重试很可能只是把症状盖住，正是本项目反复吃过的那种亏。
+
