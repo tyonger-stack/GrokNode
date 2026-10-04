@@ -24,9 +24,11 @@ case "$5" in
   *"profile.json"*) echo '{"name":"测试Bot"}' ;;
   *"settings.json"*)
     # The watchdog classifies the inference route from the container's
-    # persisted openRouterBaseUrl. Default fixture = the relay chain, which
-    # is the route every pre-existing wedge test was written against.
-    if [ -n "\$FAKE_CONTAINER_SETTINGS" ]; then echo "\$FAKE_CONTAINER_SETTINGS"; else echo '{"openRouterBaseUrl":"http://127.0.0.1:10100/v1"}'; fi ;;
+    # PERSISTED openRouterBaseUrl (desktop form; the host rewrites it at dial
+    # time per resolveOpenRouterTransport). Default fixture = the opencodex
+    # relay form 127.0.0.1:11010, which every pre-existing wedge test was
+    # written against.
+    if [ -n "\$FAKE_CONTAINER_SETTINGS" ]; then echo "\$FAKE_CONTAINER_SETTINGS"; else echo '{"openRouterBaseUrl":"http://127.0.0.1:11010/v1"}'; fi ;;
   *"127.0.0.1:10100"*|*"host.internal:11010"*)
     # Faithful to mac-forwarder.mjs: no/wrong token -> 403, not 200. The fake
     # only answers with the fixture code when the probe carries auth.
@@ -843,4 +845,66 @@ test("direct route with a fresh AGENT_REQUEST heartbeat reads as slow, not dead"
   assert.ok(!alerts.includes("host-wedge-direct-route"), "an inferring box is not a wedge, even on the direct route");
   const calls = await readFile(fx.log, "utf8");
   assert.ok(!calls.includes("kill -TERM"), "heartbeat-backed slow turn must never TERM the host");
+});
+
+test("a Mac-local service on ANOTHER port (persisted 127.0.0.1:10923) is direct: it bypasses the forwarder", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  const fix = wedgeFixtures();
+  await writeFile(fx.forwarderLog, fix.forwarderLog);
+  await writeFile(fx.transcriptFile, fix.transcriptFile);
+
+  // resolveOpenRouterTransport rewrites loopback:10923 to
+  // host.docker.internal:10923 — the traffic never touches the Mac forwarder
+  // on 11010, so relay-side silence there is not wedge evidence either.
+  await runWatchdog(fx, { FAKE_CONTAINER_SETTINGS: '{"openRouterBaseUrl":"http://127.0.0.1:10923/v1"}' });
+
+  const alerts = await readFile(fx.alerts, "utf8");
+  assert.ok(alerts.includes("host-wedge-direct-route"), `off-forwarder local port must classify direct, got: ${alerts}`);
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "off-forwarder local port must never TERM the host pid");
+});
+
+test("unset baseUrl resolves to the openrouter cloud default — direct, not relay", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  const fix = wedgeFixtures();
+  await writeFile(fx.forwarderLog, fix.forwarderLog);
+  await writeFile(fx.transcriptFile, fix.transcriptFile);
+
+  // resolveOpenRouterBaseUrl's fallback chain ends at https://openrouter.ai/api/v1,
+  // never at the local forwarder, so an unset override is evidence-blind.
+  await runWatchdog(fx, { FAKE_CONTAINER_SETTINGS: "{}" });
+
+  const alerts = await readFile(fx.alerts, "utf8");
+  assert.ok(alerts.includes("host-wedge-direct-route"), `unset baseUrl must classify direct, got: ${alerts}`);
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(!calls.includes("kill -TERM"), "unset baseUrl must never TERM the host pid");
+});
+
+test("a LAN-IP forwarder form (192.168.5.216:11010) is relay: traffic lands on the Mac forwarder", async () => {
+  const fx = await makeFixtures();
+  await writeFile(fx.repairScript, "#!/bin/sh\nexit 0\n");
+  await chmod(fx.repairScript, 0o755);
+  await seedState(fx, 12);
+  await seedToken(fx);
+  const fix = wedgeFixtures();
+  await writeFile(fx.forwarderLog, fix.forwarderLog);
+  await writeFile(fx.transcriptFile, fix.transcriptFile);
+
+  // The DHCP-published Mac forwarder address: dialed as-is, every POST is
+  // visible to the watchdog, so the restart path stays armed.
+  const stdout = await runWatchdog(fx, { FAKE_CONTAINER_SETTINGS: '{"openRouterBaseUrl":"http://192.168.5.216:11010/v1"}' });
+
+  const alerts = await readFile(fx.alerts, "utf8");
+  assert.ok(alerts.includes("host-wedge-restarted"), `LAN forwarder form must keep the restart path, got: ${alerts}`);
+  assert.ok(!alerts.includes("host-wedge-direct-route"), "LAN forwarder form is not direct");
+  const calls = await readFile(fx.log, "utf8");
+  assert.ok(calls.includes("kill -TERM"), "LAN forwarder form must TERM the wedged host");
 });

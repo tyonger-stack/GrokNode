@@ -119,9 +119,17 @@ QUEUE_TIMEOUT_MS=75000          # 每个请求的排队上限，不变
 
 ### 双推理路线（2026-10-04 事故后的路线感知）
 
-桌面 Router 允许默认模型走两条路线，都是一等公民：**本地 opencodex 中继链**（容器内 baseUrl 指向 `http://127.0.0.1:10100/v1` 或 Mac 中继 11010）和**互联网直连**（baseUrl 指向 `https://api.minimax.cn/v1` 之类，key 随 settings 下发进盒子）。watchdog 的全部中继侧信号（in-flight JSON、POST 日志行、逐回合「推理中」豁免）只在**中继路线**存在；直连下恒为零。因此：
+桌面 Router 允许默认模型走两条路线，都是一等公民：**本地 opencodex 中继链**与**互联网直连**（openrouter.com 的 OpenAI 兼容地址、api.minimax.cn 等，key 随 settings 下发进盒子）。判定以 `resolveOpenRouterTransport`（`source/shared/node/openrouter-proxy.ts`）的路由表为准——**容器 settings.json 里存的是桌面持久化形态，改写发生在 host 拨号时**：
 
-- **路线判定**：每轮读容器 `/home/box/sand-data/settings.json` 的 `openRouterBaseUrl`（60s 缓存），按「指向容器中继/Mac 中继端口 = relay，其他 = direct，读不到 = unknown」分类；
+| 持久化 baseUrl | 容器内实际拨号 | 看门狗可见？ |
+| --- | --- | --- |
+| `http://127.0.0.1:11010/v1`（opencodex 标准形态） | 改写为 `127.0.0.1:10100`（容器内中继→Mac 11010） | ✅ relay |
+| `http://192.168.x.x:11010/v1` / `host.docker.internal:11010` | 原样 → Mac 11010 | ✅ relay |
+| `https://openrouter.ai/api/v1`、`https://api.minimax.cn/v1` 等 | 原样直连 | ❌ direct |
+| `http://127.0.0.1:10923/v1`（**其他本地端口**） | 改写为 `host.docker.internal:10923`，**绕过 Mac 中继** | ❌ direct |
+| 未设置 | 兜底链 env→codex config→**openrouter.ai 云端** | ❌ direct |
+
+- **路线判定**：每轮读容器 `/home/box/sand-data/settings.json` 的 `openRouterBaseUrl`（60s 缓存），按上表分类（端口 11010 且主机名为 loopback / host.docker.internal / host.internal / 内网 IP = relay，其他一律 direct，读不到 = unknown）；该表若与 `resolveOpenRouterTransport` 漂移须同步改；
 - **直连/未知路线下 host-wedge 自动重启停用**（告警 `host-wedge-direct-route`）：重启治不了直连上游劣化——2026-10-04 一次上游劣化烧掉 17 次无效重启并误杀全部排队回合。重启需要**正向确认** relay 路线，fail-safe 方向永远是「不重启」；host 自带 600s 回合看门狗继续兜底真挂起；
 - **直连的慢回合豁免改读 host 日志的 `AGENT_REQUEST_START/END` 标记**（无时间戳，按读取时刻记龄，状态字段 `lastAgentRequestSeenAt`）——这是唯一与路线无关的「盒子在推理」信号；
 - 测试接缝：`INFERENCE_ROUTE_PIN=relay|direct|unknown`。

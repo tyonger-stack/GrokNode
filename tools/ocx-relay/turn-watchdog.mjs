@@ -37,17 +37,21 @@ const TURN_REPORT_MAX_AGE_MS = Number(process.env.TURN_REPORT_MAX_AGE_MS ?? "450
 const TRANSCRIPT_ROOT = process.env.TRANSCRIPT_ROOT || "/home/box/sand-data/agent-transcripts";
 const AGENT_ROOT = process.env.AGENT_ROOT || "/home/box/sand-data/agents";
 // Inference route (2026-10-04 incident). The desktop Router lets the default
-// model ride either the local relay chain (opencodex via the in-container hop,
-// baseUrl http://127.0.0.1:10100/v1, or straight at the Mac forwarder on
-// 11010) or a DIRECT internet endpoint (https://api.minimax.cn/v1 with the
-// key delivered into the box). Every relay-side signal this watchdog uses —
-// the in-flight JSON, POST log lines, the per-turn "inferring" exemption —
-// only exists on the relay route; on the direct route they are permanently
-// zero, so the host-wedge signature fires on any stalled turn even when the
-// box is merely waiting out an upstream brownout. The verdicts below must
-// therefore know the route before believing relay silence.
+// model ride either the local opencodex relay chain (persisted baseUrl
+// http://127.0.0.1:11010/v1 — the container host rewrites it at DIAL time,
+// see resolveOpenRouterTransport in source/shared/node/openrouter-proxy.ts:
+// loopback:11010 becomes the in-container hop 127.0.0.1:10100, which feeds
+// the Mac forwarder; a non-loopback host.docker.internal/LAN-IP form dials
+// the Mac forwarder directly) or a DIRECT internet endpoint
+// (https://openrouter.ai/api/v1, https://api.minimax.cn/v1 — and note the
+// unset-baseUrl default ALSO resolves to the openrouter cloud, never to the
+// relay). Every relay-side signal this watchdog uses — the in-flight JSON,
+// POST log lines, the per-turn "inferring" exemption — only exists where the
+// traffic lands on the Mac forwarder; everywhere else it is permanently zero,
+// so the host-wedge signature fires on any stalled turn even when the box is
+// merely waiting out an upstream brownout. The verdicts below must therefore
+// know the route before believing relay silence.
 const CONTAINER_SETTINGS_PATH = process.env.CONTAINER_SETTINGS_PATH || "/home/box/sand-data/settings.json";
-const CONTAINER_RELAY_PORT = process.env.CONTAINER_RELAY_PORT || "10100";
 const ROUTE_CACHE_TTL_MS = Number(process.env.ROUTE_CACHE_TTL_MS ?? "60000");
 
 const INTERVAL_MS = Number(process.env.WATCH_INTERVAL_MS ?? "120000");
@@ -260,13 +264,23 @@ const forwarderActivity = {
 // the wedge would already have aged out of a shorter capacity window.
 const CAPACITY_WINDOW_MS = Number(process.env.CAPACITY_WINDOW_MS ?? "1800000");
 
-// "relay" = the host's baseUrl points at a hop whose traffic this watchdog
-// can see (the in-container relay, or the Mac forwarder itself); "direct" =
-// anywhere else, where relay-side silence is not evidence of anything;
-// "unknown" = settings unreadable. The wedge restart requires "relay"
-// POSITIVELY: anything else fails safe to alert-only, because a restart that
-// fires on garbage evidence murdered a fleet's queued turns on 2026-10-04.
+// "relay" = the host's chat traffic lands on THIS Mac's forwarder (port 11010
+// on a loopback / host.docker.internal / host.internal / private-LAN name),
+// where the watchdog can see it; "direct" = anywhere else — internet
+// endpoints, unset baseUrl (cloud default), and Mac-local services on OTHER
+// ports (persisted 127.0.0.1:10923 dials host.docker.internal:10923, which
+// bypasses the forwarder entirely); "unknown" = settings unreadable. The
+// wedge restart requires "relay" POSITIVELY: anything else fails safe to
+// alert-only, because a restart that fires on garbage evidence murdered a
+// fleet's queued turns on 2026-10-04. Mirrors resolveOpenRouterTransport's
+// routing table — if that table changes, this must change with it.
 const routeCache = { at: 0, value: "unknown" };
+const MAC_FORWARDER_HOSTNAMES = new Set(["127.0.0.1", "localhost", "host.docker.internal", "host.internal"]);
+function macForwarderVisible(url) {
+  if (url.port !== String(process.env.FORWARDER_PORT ?? "11010")) return false;
+  if (MAC_FORWARDER_HOSTNAMES.has(url.hostname)) return true;
+  return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(url.hostname);
+}
 async function detectInferenceRoute(now = Date.now()) {
   const pinned = process.env.INFERENCE_ROUTE_PIN;
   if (pinned === "relay" || pinned === "direct" || pinned === "unknown") return pinned;
@@ -276,17 +290,14 @@ async function detectInferenceRoute(now = Date.now()) {
     const raw = await execInContainer(`cat ${CONTAINER_SETTINGS_PATH}`);
     const baseUrl = JSON.parse(raw)?.openRouterBaseUrl;
     if (typeof baseUrl !== "string" || baseUrl.trim().length === 0) {
-      // No override persisted: the host runs its built-in default, which is
-      // the relay chain. That default is what every pre-2026-10-04 incident
-      // was diagnosed on, so keep counting it as evidence-visible.
-      routeCache.value = "relay";
+      // Unset baseUrl resolves (resolveOpenRouterBaseUrl) through env → codex
+      // config → https://openrouter.ai/api/v1 — never the local forwarder.
+      // Evidence-blind, so it classifies direct, never "relay".
+      routeCache.value = "direct";
       return routeCache.value;
     }
     const url = new URL(baseUrl.trim());
-    const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1";
-    const onContainerRelay = loopback && url.port === CONTAINER_RELAY_PORT;
-    const onMacForwarder = url.port === String(process.env.FORWARDER_PORT ?? "11010");
-    routeCache.value = onContainerRelay || onMacForwarder ? "relay" : "direct";
+    routeCache.value = macForwarderVisible(url) ? "relay" : "direct";
   } catch {
     routeCache.value = "unknown";
   }
