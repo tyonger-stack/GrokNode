@@ -48,7 +48,14 @@ test("Gmail Add requests a user-owned OAuth client and never persists its secret
   const flow = new SandMcpCatalogFlow({ localOnly: true, getMachineId: () => "test", requireAccountWriter() { throw new Error("No Cursor account allowed"); }, getLocalMcpServers: () => servers, setLocalMcpServers: value => { servers = value; }, configureLocalOAuth: async value => { configured = value; }, reloadServers: async () => servers, fetchMarketplace: async () => ({ plugins: [plugin], includesPrivateMarketplaces: false }) });
   try {
     globalThis.fetch = async () => new Response(JSON.stringify({ mcpServers: { gmail: { url: gmailUrl } } }));
-    const [view] = await flow.getCatalog(null);
+    // Select by identity, not by position. This used to destructure element 0, which happened to be
+    // the gmail view only because the fixture's server listing had exactly one entry. The local
+    // catalog now also carries pinned supplements, so the merged list is sorted by displayName and
+    // element 0 is a different plugin. The assertion's INTENT is unchanged — that the gmail view
+    // carries the local OAuth fields — only the way it finds that view is now stated correctly.
+    const view = (await flow.getCatalog(null)).find(candidate => candidate.id === "1");
+    assert.ok(view, "the gmail view is in the catalog");
+    assert.equal(view.name, "gmail");
     assert.deepEqual(view.fields.map(field => [field.key, field.isSecret, field.isRequired]), [["GOOGLE_CLIENT_ID", false, true], ["GOOGLE_CLIENT_SECRET", true, true]]);
     await assert.rejects(() => flow.installEntry({ entryId: "1" }, null), /needs a value/);
     await flow.installEntry({ entryId: "1", values: { GOOGLE_CLIENT_ID: "fixture-client", GOOGLE_CLIENT_SECRET: "fixture-secret" } }, null);

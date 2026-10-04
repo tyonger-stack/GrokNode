@@ -4,6 +4,7 @@ import { findMissingRequiredCatalogFields } from "./mcp-plugin-variables.js";
 import { fetchPluginServers } from "./mcp-marketplace.js";
 import type { SandMarketplacePlugin } from "./mcp-marketplace.js";
 import { GMAIL_LOCAL_OAUTH_FIELDS, GMAIL_MCP_URL } from "./local-http-gmail.js";
+import { mergeLocalCatalogSupplements } from "./local-catalog-supplements.js";
 import { parseMcpServerConfig, type McpServerConfig } from "./mcp-display-runtime.js";
 export class SandMcpCatalogFlow {
   private readonly catalog = new Map<string, SandMarketplacePlugin>();
@@ -89,13 +90,22 @@ export class SandMcpCatalogFlow {
       return cached.views;
     }
     this.catalog.clear();
-    const views = listing.plugins
+    const serverViews = listing.plugins
       .map((plugin) => {
         if (this.core.localOnly && plugin.name === "gmail") plugin = { ...plugin, variableFields: GMAIL_LOCAL_OAUTH_FIELDS };
         this.catalog.set(plugin.pluginId, plugin);
         return marketplace.marketplacePluginToView(plugin);
       })
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    // Pinned entries the anonymous listing withheld, plus their install index.
+    //
+    // Both halves are load-bearing and the second one is easy to forget: `installEntry` resolves a
+    // plugin through `requirePlugin` -> `this.catalog.get(id)`, the RAW index. Appending views
+    // alone would render the row and then throw `Unknown marketplace plugin` on 添加 — a button
+    // that looks wired and is not. So a supplement is registered in both places.
+    const merged = mergeLocalCatalogSupplements(serverViews);
+    for (const plugin of merged.plugins) this.catalog.set(plugin.pluginId, plugin);
+    const views = merged.views.sort((a, b) => a.displayName.localeCompare(b.displayName));
     this.viewsCache = {
       views,
       atMs: this.core.now?.() ?? Date.now(),
