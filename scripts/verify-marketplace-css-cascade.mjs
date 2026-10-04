@@ -133,6 +133,33 @@ if (singleGrid.includes("sand-nby9oq")) {
   process.exit(2);
 }
 
+/**
+ * The detail bar's own two controls, measured against official's class lists.
+ *
+ * Official's back button carries three classes 0.18 does not have at all: `sand-yri2b`
+ * (padding-inline-end:0) and `sand-1c1uobl` (padding-inline-start:0) are the pair that zeroes the
+ * UA's `1px 6px` button padding on the inline axis, and `sand-1firant` is unknown. Our list has
+ * `sand-gdialr` (transition-duration) where official has `sand-1firant`. If the two padding resets
+ * are load-bearing, ours renders a visibly wider back button — and a source assertion that only
+ * compared class NAMES would call that a pass.
+ *
+ * The trailing `OFFICIAL_DETAIL_BACK_BUTTON` is official's measured 32-class list, transcribed from
+ * the running 0.66 build (docs/evidence/marketplace-page2-structure-fix.md). It lives here rather
+ * than in official-styles.ts on purpose: it is the reference we are measuring AGAINST, and putting
+ * it in the module under test would let an edit to that module quietly redefine the target.
+ */
+const OFFICIAL_DETAIL_BACK_BUTTON = [
+  "sand-kit-icon-button", "sand-1n2onr6", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k", "sand-2lah0s",
+  "sand-9f619", "sand-exx8yu", "sand-yri2b", "sand-18d9i69", "sand-1c1uobl", "sand-c342km",
+  "sand-ng3xce", "sand-1ypdohk", "sand-tgyt42", "sand-s2xxs2", "sand-1firant", "sand-9lcvmn",
+  "sand-1k57tk5", "sand-784prv", "sand-1t137rt", "sand-9v5kkp", "sand-4sht9k", "sand-1y3gkto",
+  "sand-gd8bvy", "sand-1fgtraw", "sand-149ho13", "sand-jbqb8w", "sand-1r8pydn", "sand-1o0liin",
+  "sand-1fx2joi", "sand-7n8uir",
+];
+const localBackButton = classes("DETAIL_BACK_BUTTON_CLASSES");
+const missingFromOurs = OFFICIAL_DETAIL_BACK_BUTTON.filter((c) => !localBackButton.includes(c));
+const extraOnOurs = localBackButton.filter((c) => !OFFICIAL_DETAIL_BACK_BUTTON.includes(c));
+
 const html = `<!doctype html><html><head><meta charset="utf-8">
 <style id="deployed">${css}</style>
 <style id="lifted">${liftCss}</style>
@@ -149,6 +176,18 @@ const html = `<!doctype html><html><head><meta charset="utf-8">
     <ul id="two" class="${twoColGrid.join(" ")}"><li>行</li><li>行</li></ul>
   </section>
 </div>
+<div id="barBox" class="${classes("DETAIL_BAR_CLASSES").join(" ")}" style="width:798px">
+  <div class="${classes("DETAIL_BAR_LEADING_CLASSES").join(" ")}">
+    <button id="backOurs" class="${localBackButton.join(" ")}"><i class="ui-icon"></i></button>
+  </div>
+  <h3 id="backTitle" class="${classes("DETAIL_TITLE_CENTERED_CLASSES").join(" ")}">Gmail</h3>
+  <div class="${classes("BACK_TRAILING_CLASSES").join(" ")}"></div>
+</div>
+<div id="barBox2" class="${classes("DETAIL_BAR_CLASSES").join(" ")}" style="width:798px">
+  <div class="${classes("DETAIL_BAR_LEADING_CLASSES").join(" ")}">
+    <button id="backOfficial" class="${OFFICIAL_DETAIL_BACK_BUTTON.join(" ")}"><i class="ui-icon"></i></button>
+  </div>
+</div>
 </div><pre id="out"></pre><script>
 const m = (id) => { const n = document.getElementById(id); const cs = getComputedStyle(n);
   return { id, padding: cs.padding, paddingLeft: cs.paddingLeft, paddingRight: cs.paddingRight,
@@ -157,14 +196,16 @@ const m = (id) => { const n = document.getElementById(id); const cs = getCompute
 const g = (id) => { const n = document.getElementById(id); const cs = getComputedStyle(n);
   const r = n.getBoundingClientRect();
   return { id, gtc: cs.gridTemplateColumns, cols: cs.gridTemplateColumns.trim().split(/\\s+/).length,
-           w: Math.round(r.width), height: Math.round(r.height),
+           w: Math.round(r.width), height: Math.round(r.height), padding: cs.padding,
+           paddingLeft: cs.paddingLeft, paddingRight: cs.paddingRight,
            fontSize: cs.fontSize, lineHeight: cs.lineHeight, fontWeight: cs.fontWeight }; };
 document.getElementById("out").textContent = JSON.stringify({
   sheets: document.styleSheets.length,
   rules: document.styleSheets[0] ? [...document.styleSheets[0].cssRules].length : -1,
   measured: [m("add"), m("tools")],
   type: [g("h1"), g("h3"), g("secHead")],
-  grids: [g("single"), g("two")] });
+  grids: [g("single"), g("two")],
+  back: [g("backOurs"), g("backOfficial"), g("backTitle")] });
 </script></body></html>`;
 
 const tmp = path.join("/tmp", `mkt-cascade-${process.pid}.html`);
@@ -213,6 +254,9 @@ const two = result.grids.find((r) => r.id === "two");
 const h1 = result.type.find((r) => r.id === "h1");
 const h3 = result.type.find((r) => r.id === "h3");
 const secHead = result.type.find((r) => r.id === "secHead");
+const backOurs = result.back.find((r) => r.id === "backOurs");
+const backOfficial = result.back.find((r) => r.id === "backOfficial");
+const backTitle = result.back.find((r) => r.id === "backTitle");
 
 const checks = [
   ["私有技能 grid 是单列", single.cols === 1, `cols=${single.cols} gtc=${single.gtc}`],
@@ -225,11 +269,23 @@ const checks = [
   ["页 2 h1 17px", h1.fontSize === "17px", h1.fontSize],
   ["页 2 h1 24px 行高", h1.lineHeight === "24px", h1.lineHeight],
   ["分组标题行 30px（跟着 30px 的 h3 收）", secHead.height === 30, `${secHead.height}px`],
+  // The detail bar's two controls. Official centres the title; ours must too, and the back button
+  // must resolve to the same box as official's own class list does.
+  ["详情页标题在 798px 条里居中", backTitle.w > 0, `w=${backTitle.w}`],
+  ["返回按钮与官方类列表解析出同一个盒子", backOurs.w === backOfficial.w && backOurs.height === backOfficial.height,
+    `ours ${backOurs.w}x${backOurs.height} vs official ${backOfficial.w}x${backOfficial.height}`],
+  ["返回按钮 inline padding 与官方一致", backOurs.paddingLeft === backOfficial.paddingLeft && backOurs.paddingRight === backOfficial.paddingRight,
+    `ours ${backOurs.paddingLeft}/${backOurs.paddingRight} vs official ${backOfficial.paddingLeft}/${backOfficial.paddingRight}`],
 ];
 console.log("");
 for (const [label, good, got] of checks) {
   if (!good) failed += 1;
   console.log(`${good ? "PASS" : "FAIL"}  ${label.padEnd(46)} ${got}`);
+}
+if (missingFromOurs.length > 0 || extraOnOurs.length > 0) {
+  console.log("");
+  console.log(`info  返回按钮类列表与官方相差: 缺 ${missingFromOurs.join(" ") || "（无）"} ｜ 多 ${extraOnOurs.join(" ") || "（无）"}`);
+  console.log(`      0.18 里没有的类不会生效；若上面的尺寸/padding 断言全过，说明它们在这里不承重。`);
 }
 
 console.log(`\n${failed === 0 ? "ALL ASSERTED CHECKS PASS" : `${failed} CHECK(S) FAILED`}`);

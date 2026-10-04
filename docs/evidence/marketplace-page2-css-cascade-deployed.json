@@ -22,5 +22,11 @@ PASS  组标题常规字重（ui-20ajya 的 400 兜底）                    400
 PASS  页 2 h1 17px                                    17px
 PASS  页 2 h1 24px 行高                                 24px
 PASS  分组标题行 30px（跟着 30px 的 h3 收）                     30px
+PASS  详情页标题在 798px 条里居中                              w=38
+PASS  返回按钮与官方类列表解析出同一个盒子                             ours 28x28 vs official 28x28
+PASS  返回按钮 inline padding 与官方一致                      ours 0px/0px vs official 0px/0px
+
+info  返回按钮类列表与官方相差: 缺 sand-yri2b sand-1c1uobl sand-1firant ｜ 多 sand-gdialr
+      0.18 里没有的类不会生效；若上面的尺寸/padding 断言全过，说明它们在这里不承重。
 
 ALL ASSERTED CHECKS PASS

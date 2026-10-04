@@ -58,7 +58,7 @@ const STYLES_MOD = await loadEntry(
   "frontend/src/extensions/marketplace/official-styles.ts",
   "tests-mkt-styles-runtime.mjs",
 );
-const { GRID_CLASSES, GRID_SINGLE_CLASSES, MANAGE_BAND_CLASSES, PIN_BAND_CLASSES } = STYLES_MOD;
+const { GRID_CLASSES, GRID_SINGLE_CLASSES, MANAGE_BAND_CLASSES, PIN_BAND_CLASSES, DETAIL_TITLE_CENTERED_CLASSES } = STYLES_MOD;
 
 const noop = () => {};
 const HANDLERS = {
@@ -234,6 +234,22 @@ test("a pushed page (插件详情) also puts its bar in the band, with the brows
     // Measured on official 插件详情: strip[17] > row[10] > bar — the BROWSE variants, not page 2's.
     const bandClasses = classList(band).filter((c) => c !== "sand-mkt-pin-band");
     assert.deepEqual(bandClasses, [...PIN_BAND_CLASSES]);
+
+    // The bar is not just a chevron. Official's is `icon-only 返回` on the left and the PAGE NAME
+    // centred (measured x=367 w=130 on a 798px bar → centre 432 = the bar's midline). The row's
+    // own name is the payload; a pushed page whose title is empty renders a blank bar, which is
+    // what a screenshot of the market page showed before the bar was moved into the band.
+    const title = bar.querySelector("h3");
+    assert.ok(title, "the pushed page's bar carries a title");
+    assert.equal(title.textContent, "Gmail", "the title is the row's own name");
+    assert.deepEqual(classList(title), [...DETAIL_TITLE_CENTERED_CLASSES]);
+    assert.equal(classList(title).length, 23, "official's 23-class title recipe");
+    // The leading control is icon-only — no text node next to the glyph.
+    const back = bar.querySelector("button");
+    assert.ok(back, "the leading control is a button");
+    assert.equal(back.getAttribute("aria-label"), "返回");
+    assert.equal(back.textContent.trim(), "", "official's detail back button is icon-only");
+    assert.equal(classList(back)[0], "sand-kit-icon-button");
   } finally { h.destroy(); }
 });
 

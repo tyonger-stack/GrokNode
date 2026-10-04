@@ -119,7 +119,7 @@ nt = Xn                                                          // 别名，不
 
 `npm run marketplace:css` → `docs/evidence/marketplace-page2-css-cascade-deployed.json`
 
-从**已部署 asar** 里读样式表，headless Chrome 真实解析，10 条页 2 断言全过：
+从**已部署 asar** 里读样式表，headless Chrome 真实解析，**13 条**断言全过：
 
 ```
 PASS  私有技能 grid 是单列                       cols=1 gtc=734px
@@ -129,7 +129,13 @@ PASS  私有技能 grid 占满 734                    w=734
 PASS  组标题 12px / 16px 行高 / 常规字重          12px / 16px / 400
 PASS  页 2 h1 17px / 24px 行高                   17px / 24px
 PASS  分组标题行 30px（跟着 30px 的 h3 收）        30px
+PASS  详情页标题在 798px 条里居中                w=38（Gmail）
+PASS  返回按钮与官方类列表解析出同一个盒子          ours 28x28 vs official 28x28
+PASS  返回按钮 inline padding 与官方一致          ours 0px/0px vs official 0px/0px
 ```
+
+官方类列表作为**参照**写在这个脚本里（而不是 `official-styles.ts`）—— 放进被测模块的话，
+改一下那个模块就能悄悄改掉目标本身。
 
 第 3 条是关键：不是断言「单列是一列」，而是断言**两份列表在同一宽度下解析出不同结果** ——
 如果有人又把两个类叠回去，这条会立刻变红。
@@ -155,6 +161,43 @@ PASS  分组标题行 30px（跟着 30px 的 h3 收）        30px
 不覆盖像素（happy-dom 不做布局），只覆盖三处结构修复在真正改动的节点树上成立。
 
 ---
+
+## 观察到但不改：详情页返回按钮的类列表与官方差 4 个（但不承重）
+
+用户 18:57 的截图里，详情页顶部只有返回箭头、看不到居中的标题。复查结论：**当前代码是对的**，
+那条截图来自更早的构建。为此做了一次完整的官方对照测量（CDP 9224，`probe-detail-title.mjs`）：
+
+```
+官方 插件详情 48px 条（798px 宽，中心 432）
+  DIV  x=43  28x28  sand-1lqcxt8 sand-euugli
+    BUTTON 28x28  [32 类]  ← icon-only，无文字节点
+  H3   x=367 130x20 "Agent Compatibility"  [23 类]  ← 中心 367+65=432 = 条的中线
+  DIV  x=821   0x0   sand-78zum5 sand-6s0dn4 sand-1qab1bc sand-euugli
+```
+
+本地实测产出：`H3` 文本 `Gmail`、23 类、w=38；返回按钮 28×28、无文字。
+**与官方一致** —— 标题在，配方逐条相同（`DETAIL_TITLE_CENTERED_CLASSES` 本来就对）。
+
+顺带查出一处类列表差异：
+
+| | 官方 | 本地 |
+|---|---|---|
+| 缺 | `sand-yri2b`（padding-inline-end:0）、`sand-1c1uobl`（padding-inline-start:0）、`sand-1firant` | |
+| 多 | | `sand-gdialr`（transition-duration:.12s） |
+
+那 3 个类**在 0.18 根本不存在**（`grep` 全表 0 处），挂上去也是空操作。但真正的问题是：
+那两个 padding 归零类如果承重，本地按钮会变宽。headless CSS 引擎量了**两份类列表各自解析出的盒子**：
+
+```
+PASS  返回按钮与官方类列表解析出同一个盒子    ours 28x28 vs official 28x28
+PASS  返回按钮 inline padding 与官方一致       ours 0px/0px vs official 0px/0px
+```
+
+**结论：0.18 自己的 icon-button 配方已经做了 inline padding 归零（另一个 hash），所以这 3 个类
+在这里不承重。** 记录不改 —— 既挂不上（0.18 没有），也确实不需要（量出来一致）。
+
+> 判据：类列表的**名字**对不上不等于**结果**对不上。这一条只有把两份类列表都塞进真 CSS 引擎
+> 各量一次才能分辨；只比名字会得出「缺 3 个类 = 有 bug」的错误结论。
 
 ## 观察到但不改：一处零视觉差异的嵌套差
 
