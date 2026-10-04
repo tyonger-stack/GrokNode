@@ -19,71 +19,31 @@
 
 - `添加其他账户` ✅ 实机通过，旧的 `添加账户` 字面量在界面上已不存在
 - `类别 精选` ✅ 实机通过，不再是英文 `Featured`
-- `网站 github.com` ❌ **仍是仓库域名**——但**不是代码问题**
+- `网站 github.com` ❌ 首轮**仍是仓库域名** —— 追下去发现**是代码问题，而且我一开始的结论是反的**
 
-第三条要说清楚：把 `mcp.catalog()` 的 393 条全查了一遍，
+### ⚠️ 更正：`websiteUrl` 一直都在，只是我读错了地方
 
-```
-entriesWithWebsiteUrl: 0
-entriesWithRepositoryUrl: 393
-```
+首轮我判定这是「数据缺口」，理由是本地 393 条的 `websiteUrl` 全为 null。**那个判断是错的。**
 
-**本地 catalog 根本没有 websiteUrl 这个值**（官方 0.66 的 Gmail 有 `https://cursor.com/`）。
-渲染代码是对的——部署 chunk 里就是 `网站 ← websiteUrl`、`查看源码 href ← repositoryUrl`——
-websiteUrl 为空时按设计回退到 homepage，于是显示仓库域名。
+顺着查下来：
 
-最可能的原因是**上游对未登录调用方不下发 websiteUrl**（本地构建按合规边界不登录），
-但这一点**我们这边没有证实**——没抓到本构建实际收到的原始响应。
-从插件名反推一个主机名就是编造，所以**没有伪造任何值**。
-在这条数据出现之前，这一行在本地就只能显示 `github.com`。
+1. 本地 `Plugin` proto 消息有 40 个字段，含 `repositoryUrl`，**没有** `websiteUrl`。
+2. 本地 `Publisher` proto 消息有 15 个字段，**含 `websiteUrl`**。
+3. 官方 asar 里扒出它自己的映射函数 `B7t`，其中一行是：
+   `websiteUrl: $t(n?.websiteUrl)`，而 `n = e.publisher`。
+   官方把**发布者的** website 提升到 view 对象顶层——这就是为什么官方 catalog 条目顶层有
+   `websiteUrl`，尽管 `Plugin` 消息本身没有这个字段。
 
+而我们的 `toPlugin` 恰好读的是 `plugin.websiteUrl`（顶层），**恒为 undefined**；
+同时我们把 publisher 投影成 `{name, displayName, isUserOwned}`，把 `websiteUrl` 丢掉了。
 
+**我犯的错**：看到「publisher 对象只有 name/displayName/isUserOwned」，就断定**线上**的 publisher
+也没有 websiteUrl。那其实是我们自己那个有损投影的形状——**拿自己的投影当成了 wire 形状**。
+数据一直都在，只是取错了路径。已改为 `websiteUrl: publisher?.websiteUrl`，
+并加了守卫：`toPlugin` 里禁止再出现 `plugin.websiteUrl`。
 
-**不经过界面**，直接 POST `http://127.0.0.1:1340/api/getAgentWorkflows` 读 box gateway 的原始返回：
-
-```
-totalRecords: 40
-source:      managed 31  /  workflow 9
-publishedByCurrentUser: false ×40
-```
-
-`workflows/`（用户自建）9 条 + `managed-skills/`（托管）31 条 = 40，**两路都到了**。
-`pluginId` 与 `sourceRef` 全为 null，所以没有第三条来源被静默丢掉。
-
-### 由此得到一个可被推翻的预测
-
-`privateSkillsFromRecords`（model.ts）只在 `source === "plugin" && publishedByCurrentUser !== true` 时丢弃记录，
-而这 40 条没有一条是 `plugin`，**所以 40 条全部保留**。再看 `canEditPrivateSkill`：
-
-```ts
-return skill.source === "workflow" && …
-```
-
-于是界面上必须是 **31 行只有 `删除`、9 行是 `删除|保存`**。
-
-⚠️ 存档的 A 走查只报了按钮**集合**是 `["删除", "删除|保存"]`，两种都出现过，但**没报各有多少行**——
-所以它并不能区分「9/31」和「20/20」。真正的走查必须复现 **31/9** 这个比例，只报集合等于没验。
-
-## requirement-c-gate-*.json（要求 C：host gateway 不可达 → 显式报错）
-
-采集于 2026-10-04 06:45–06:49，**已部署产物** `/Applications/Grok Node.app`（asar `80ad3559`），CDP 9232。
-探针 `probe-skills-gate.mjs`，每个状态都先关掉对话框再从 dock 重进（`open()` 在对话框存在时提前 return，
-不重进就只会读到上一次的旧 state）。
-
-| 文件 | 做法 | 行数 | isErrorState | 错误文案 |
-| --- | --- | --- | --- | --- |
-| `…-baseline.json` | 正常 | 40 | false | — |
-| `…-noconn.json` | 移走 `local-exec-daemon-connection.json` | 0 | **true** | `The local host gateway is not running.` |
-| `…-boxdown.json` | `docker stop grok-node-local-vm` | 0 | **true** | 同上 |
-| `…-deadport.json` | 只把 `baseUrl` 改到关闭端口 1399 | 0 | **true** | `…is unreachable while handling /api/getAgentWorkflows.` |
-| `…-selfheal.json` | 等 box 自己回来后重读 | 40 | false | — |
-
-**要看的不是「有没有报错」，而是 `rowCount === 0` 且 `isErrorState === true` 同时成立。** 这才是 C 的契约：
-不可达 ≠ 没有技能。只满足其一时就说明退化成了空列表。每个状态里 `previewText` 都还是 `已安装 8 个`，
-说明一条通道挂掉不会拖垮整页。
-
-⚠️ `boxdown` 命中的其实是「文件没了」那一支：应用自己的 supervisor 在 12 秒内把 box 拉起来了，
-连接文件已被清掉，所以读到的还是 `not running`。「文件在、daemon 死」这个组合由 `deadport` 覆盖。
+`信息 · 网站` 之所以还能「看起来接对了」，是因为我第一轮把 `websiteUrl`/`repositoryUrl` 分开透传
+这一步是对的；错的只是**取值来源**。这也说明「结构断言全绿」和「值是对的」是两回事。
 
 ## requirement-a-skill-walkthrough-ratio.json（要求 A：私有技能详情页）**—— 已补齐，可证伪**
 

@@ -10,6 +10,13 @@ const VIEW = readFileSync(path.join(EXT_DIR, "marketplace/view.ts"), "utf8");
 const MODEL = readFileSync(path.join(EXT_DIR, "marketplace/model.ts"), "utf8");
 const INDEX = readFileSync(path.join(EXT_DIR, "marketplace/index.ts"), "utf8");
 
+const MCP_MARKETPLACE = readFileSync(
+  path.join(import.meta.dirname, "..", "source/shared/node/mcp/mcp-marketplace.ts"),
+  "utf8",
+);
+/** Comment-stripped source, for guards that must not match their own explanatory prose. */
+const MCP_CODE = MCP_MARKETPLACE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
 /** The `installStyles` body — where the lifted rules are turned into selectors. */
 const STYLE_EXTRACT = () =>
   VIEW.slice(VIEW.indexOf("function installStyles"), VIEW.indexOf("const LAYOUT_MARKER"));
@@ -986,11 +993,6 @@ test("the detail bar's icon-only 返回 and the manage page's labelled ‹ 市�
  * official 0.66's own zh-CN message catalog, not measured one UI click at a time.
  * ------------------------------------------------------------------ */
 
-const MCP_MARKETPLACE = readFileSync(
-  path.join(import.meta.dirname, "..", "source/shared/node/mcp/mcp-marketplace.ts"),
-  "utf8",
-);
-
 test("the add-account row reads 添加其他账户, not 添加账户", () => {
   // Official's catalog carries BOTH strings: `FGnQEW` = 添加其他账户 and `MPPZ54` = 添加账户.
   // Only FGnQEW is the detail row — MPPZ54 is a different surface entirely (it resolves to
@@ -1017,23 +1019,27 @@ test("信息 · 网站 shows the publisher website while 查看源码 keeps the 
   // once, and a field added to `toPlugin` alone leaves the renderer with `undefined`.
   assert.match(
     MCP_MARKETPLACE,
-    /websiteUrl: plugin\.websiteUrl \|\| undefined,[\s\S]*?repositoryUrl: plugin\.repositoryUrl \|\| undefined,[\s\S]*?homepage: plugin\.repositoryUrl \|\| undefined,/,
+    /websiteUrl: publisher\?\.websiteUrl \|\| undefined,[\s\S]*?repositoryUrl: plugin\.repositoryUrl \|\| undefined,[\s\S]*?homepage: plugin\.repositoryUrl \|\| undefined,/,
     "toPlugin must carry websiteUrl and repositoryUrl as separate fields, and must not prefer the repo for homepage",
+  );
+  // The website lives on the PUBLISHER and upstream hoists it. The wire `Plugin` message has no
+  // top-level website field, so reading `plugin.websiteUrl` inside `toPlugin` is always undefined
+  // — which is how the 网站 row came to render `github.com` on every entry while looking correctly
+  // wired. Scope the ban to toPlugin: `marketplacePluginToView` reading `plugin.websiteUrl` is
+  // correct, because there `plugin` is our own already-hoisted SandMarketplacePlugin.
+  const TO_PLUGIN = MCP_CODE.slice(
+    MCP_CODE.indexOf("function toPlugin("),
+    MCP_CODE.indexOf("export async function fetchMarketplaceMcpPlugins"),
+  );
+  assert.doesNotMatch(
+    TO_PLUGIN,
+    /websiteUrl: plugin\.websiteUrl/,
+    "the wire Plugin has no top-level websiteUrl; upstream reads publisher.websiteUrl and hoists it",
   );
   assert.match(
     MCP_MARKETPLACE,
-    /websiteUrl: plugin\.websiteUrl,\s*\n\s*repositoryUrl: plugin\.repositoryUrl,/,
-    "marketplacePluginToView must carry both URL fields through the second projection",
-  );
-  // `publisher.websiteUrl` never existed — the publisher object only has name/displayName/
-  // isUserOwned, and the live local catalog has 0 entries carrying a website on the publisher.
-  // Comments are stripped first: the fix documents the dead fallback by name, and a guard that
-  // matched prose would be asserting on its own explanation.
-  const MCP_CODE = MCP_MARKETPLACE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  assert.doesNotMatch(
-    MCP_CODE,
-    /publisher\?\.websiteUrl/,
-    "the website lives at the top level, not on the publisher object",
+    /export interface SandMarketplacePlugin[\s\S]*?publisher\?: \{ name: string; displayName: string; isUserOwned: boolean \}/,
+    "the projected publisher shape is lossy — it is not the wire shape, so it cannot be used to conclude the wire lacks a field",
   );
 });
 

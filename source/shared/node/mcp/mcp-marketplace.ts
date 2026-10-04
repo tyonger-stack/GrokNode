@@ -190,12 +190,22 @@ function toPlugin(
             .join(" "),
     logoUrl,
     // `websiteUrl` and `repositoryUrl` are two different upstream fields and upstream keeps them
-    // apart: Gmail carries websiteUrl `https://cursor.com/` and repositoryUrl
-    // `https://github.com/cursor/plugins`, and official renders the former in `信息 · 网站` and the
-    // latter as the `查看源码` href. Preferring the repository here is what made the local build show
-    // `github.com`. Note the old `publisher?.websiteUrl` fallback was dead: the publisher object only
-    // ever carries name/displayName/isUserOwned — the website lives at the top level.
-    websiteUrl: plugin.websiteUrl || undefined,
+    // apart: Gmail renders `cursor.com` in `信息 · 网站` and links `查看源码` at
+    // `https://github.com/cursor/plugins`.
+    //
+    // `websiteUrl` lives on the PUBLISHER, not on the plugin. Upstream's own mapper reads
+    // `websiteUrl: $t(n?.websiteUrl)` with `n = e.publisher` and hoists it to the top level of
+    // the view object, which is why an official catalog entry has a top-level `websiteUrl` even
+    // though the `Plugin` message has no such field. The `Publisher` message does declare it.
+    //
+    // Reading `plugin.websiteUrl` — the obvious guess, and what this used to do — is always
+    // `undefined` because `Plugin` has no top-level website field, so the 网站 row silently fell
+    // back to the repository host and rendered `github.com` on every entry.
+    //
+    // Do not "simplify" this back to `plugin.publisher?.websiteUrl == null ? undefined : …` on
+    // the grounds that our own publisher projection only shows name/displayName/isUserOwned: that
+    // projection is lossy and is the reason this was ever wrong.
+    websiteUrl: publisher?.websiteUrl || undefined,
     repositoryUrl: plugin.repositoryUrl || undefined,
     homepage: plugin.repositoryUrl || undefined,
     sourceUrls: plugin.mcpServers
