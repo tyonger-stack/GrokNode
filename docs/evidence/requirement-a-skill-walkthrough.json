@@ -1,0 +1,65 @@
+{
+  "skills": {
+    "ok": true,
+    "total": 40,
+    "bySource": {
+      "null": 40
+    },
+    "byLocation": {
+      "?": 40
+    },
+    "buttonSets": [
+      "删除",
+      "删除|保存"
+    ],
+    "workflowExamples": [],
+    "managedExamples": [],
+    "anyBodyOverflowX": [],
+    "anySubtitleClipped": [],
+    "noButtons": []
+  },
+  "page2": {
+    "ok": false,
+    "why": "not on manage",
+    "title": "管理"
+  },
+  "page1": {
+    "title": "管理",
+    "rowCount": 48,
+    "switchLabel": null,
+    "headings": [
+      "管理",
+      "已安装",
+      "私有技能"
+    ],
+    "scroll": {
+      "h": 1824,
+      "client": 652
+    },
+    "rects": {
+      "band": {
+        "x": 33,
+        "y": 161,
+        "w": 798,
+        "h": 48
+      },
+      "scroller": {
+        "x": 33,
+        "y": 209,
+        "w": 798,
+        "h": 652
+      }
+    },
+    "pin": {
+      "before": {
+        "scrollTop": 0,
+        "searchInputs": 1
+      },
+      "after": {
+        "scrollTop": 300,
+        "searchInputs": 1
+      }
+    }
+  },
+  "errors": []
+}

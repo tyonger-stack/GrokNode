@@ -1,0 +1,15 @@
+{
+  "label": "selfheal",
+  "href": "file:///Applications/Grok%20Node.app/Contents/Resources/app.asar/dist/renderer/index.html",
+  "closedFirst": true,
+  "previewAria": "你的插件",
+  "previewText": "已安装 8 个",
+  "sectionTitle": "私有技能",
+  "rowCount": 40,
+  "firstRowAria": "打开 add-connector",
+  "emptyStateText": null,
+  "hasRows": true,
+  "isErrorState": false,
+  "sectionTextLen": 6622,
+  "ok": true
+}

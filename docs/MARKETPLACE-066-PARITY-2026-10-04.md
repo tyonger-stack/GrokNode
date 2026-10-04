@@ -335,6 +335,9 @@ Antom / Auth0 / Azure …），本地是 **0 条**。`buildPluginDetail` 里
 
 ## 要求 C：host gateway 不可达 → 显式报错（实机 box-down 观测，06:3x）
 
+> 原始输出已存档在 [`docs/evidence/`](../evidence/README.md)（五份 `requirement-c-gate-*.json`），
+> 便于评审者在**不改动外部状态**的前提下核对。
+
 这一条之前只有 15 条单测覆盖，**没有实机观测**。本轮在**已部署产物**上做完了，
 探针 `probe-skills-gate.mjs`，四个状态全部跑过。
 

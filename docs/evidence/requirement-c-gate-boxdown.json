@@ -1,0 +1,17 @@
+{
+  "label": "boxdown",
+  "href": "file:///Applications/Grok%20Node.app/Contents/Resources/app.asar/dist/renderer/index.html",
+  "closedFirst": true,
+  "previewAria": "你的插件",
+  "previewText": "已安装 8 个",
+  "sectionTitle": "私有技能",
+  "rowCount": 0,
+  "firstRowAria": null,
+  "emptyStateText": [
+    "无法连接本地运行环境，暂时读不到私有技能：The local host gateway is not running."
+  ],
+  "hasRows": false,
+  "isErrorState": true,
+  "sectionTextLen": 65,
+  "ok": true
+}
