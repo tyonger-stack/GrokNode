@@ -403,8 +403,10 @@ test("the pinned field is official's second render of the same field, not a CSS 
   // which have no search field at all.
   const syncPin = VIEW.slice(VIEW.indexOf("const syncPin"), VIEW.indexOf("const onScroll"));
   assert.doesNotMatch(syncPin, /"manage"/, "syncPin must gate on browse, not exclude one page by name");
-  // …and a browse page that stops being scrollable (a search with few hits) must retract it too.
-  assert.match(VIEW, /if \(searchHolder\.style\.display === "none"\) \{\s*\n\s*unmountPin\(\);/);
+  // …and a browse page whose in-flow field is not in the tree (the field is UNMOUNTED on the other
+  // pages, not hidden) must retract it too. Keyed off connectivity rather than a `display` flag,
+  // because the flag no longer exists — see the page-2 search-field note in view.ts.
+  assert.match(VIEW, /if \(!mainSearch\.shell\.isConnected\) \{\s*\n\s*unmountPin\(\);/);
   // Both inputs hold the same query: measured official leaves BOTH holding the typed text.
   assert.match(VIEW, /if \(pinSearch\.input\.value !== state\.query\) pinSearch\.input\.value = state\.query;/);
   assert.match(

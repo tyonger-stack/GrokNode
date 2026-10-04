@@ -2,7 +2,7 @@
 
 **日期**：2026-10-04
 **起因**：用户实机反馈「我随便打开看就不一样」。
-**已部署产物**：`/Applications/Grok Node.app`，asar `c20a7cf6741959b3`（68,603,324 字节），
+**已部署产物**：`/Applications/Grok Node.app`，asar `2fbc9d33f1709ee4`，
 签名 DR `designated => identifier "com.anysphere.sand.reconstructed"`，`codesign --verify --deep --strict` 通过。
 **官方对照**：Grok Bot 0.66.0（`/Applications/Grok Bot.app`，CDP 9224）。
 
@@ -18,6 +18,7 @@
 | A | 私有技能行宽度 | 单列 734，`button` 698 | 两列 363，`button` 339 | 单列 734，`button` 698 ✅ |
 | B | 分组 section 多一层包裹 | `SECTION > UL` | `SECTION > DIV(0fr) > UL` | `SECTION > UL` ✅ |
 | C | 详情条位置 | 带内 798×48 @y161 | scroller 内 734×48 @y216 | 带内 ✅ |
+| C′ | 页 2 搜索框 | 0 个 `<input>` | 1 个（`display:none`） | 0 个 ✅ |
 | D | 页 2 标题排版 | h1 24px / h3 30px / 标题行 30px | 37px / 35px / 65px | 24 / 30 / 30 ✅ |
 
 C 让**整个页 2 和整个详情页**低 55px、窄 64px —— 这是用户一眼看出的那个「不一样」。
@@ -89,6 +90,14 @@ nt = Xn                                                          // 别名，不
 > 关键：详情页（插件详情）犯的是**同一个错**。上一轮修 hero 时只比对了 hero 区块自身的尺寸，
 > 没有比绝对 y 坐标，所以漏掉了。
 
+### C′ 顺带解决：页 2 的搜索框
+
+原先页 2 是靠 `searchHolder.style.display = "none"` 隐藏搜索框的 —— 视觉上看不见，但 DOM 里**还留着
+一个 `<input>`**，而官方页 2 是 **0 个 input**（连置顶那份也没有）。既然带子已经归位，置顶那份自然不再挂载；
+剩下这一个改成 `unmountSearch()` 真正卸载，`syncPin` 改判 `shell.isConnected`。
+
+不损失功能：`display:none` 的 input 本来就不可聚焦，页 2 的筛选从来就触发不了。
+
 ## D — 0.66 的 `ui-*` 排版族与缺失的类型配方
 
 | 元素 | 官方类数 | 本地（修前） | 补上 |
@@ -127,7 +136,7 @@ PASS  分组标题行 30px（跟着 30px 的 h3 收）        30px
 
 ### 2. 产物字节
 
-- 已部署 chunk `index-UbX-y3il.js`（5,957,426 字节）经 `node --check` 解析通过
+- 已部署 chunk `index-UbX-y3il.js`（5,957,446 字节）经 `node --check` 解析通过
 - 新 marker `sand-mkt-manage-band-row` 存在于产物中
 - 两个网格字面量如上（`W` / `Xn` / `nt=Xn`）
 
@@ -140,6 +149,11 @@ PASS  分组标题行 30px（跟着 30px 的 h3 收）        30px
 官方 详情页 bar:    798×48 @y161，strip[17] > row[10] > bar
 ```
 
+### 4. 运行时 DOM（happy-dom，`npm test` 内）
+
+`tests/marketplace-page2-runtime-dom.test.mjs` 挂载真实的 `createMarketplaceDialog`，6 条全过。
+不覆盖像素（happy-dom 不做布局），只覆盖三处结构修复在真正改动的节点树上成立。
+
 ---
 
 ## 未完成
@@ -147,27 +161,57 @@ PASS  分组标题行 30px（跟着 30px 的 h3 收）        30px
 **实机（CDP 9232）几何复验未做**：验证时 Mac 处于锁屏状态
 （`ioreg -n Root -d1 -a` 中 `CGSSessionScreenIsLocked = true`），钥匙串弹窗挡住启动，
 AX 树退化、`screencapture -R` 直接报 `could not create image from rect`。
-解锁并点一次「始终允许」后即可跑
-`node $SP/cdp.mjs 9232 probe-page2-snapshot.mjs`（探针已写好，官方/local 各跑一次即可 diff）。
+两轮打包各确认一次：**端口正常 LISTEN 但 `/json/list` 为空** —— 主进程先开好调试端口、
+再卡在钥匙串，渲染进程根本没起来，所以「端口通」不等于「能取证」。
 
-源码与已部署产物两侧的证据都已齐备，缺的是这一条运行时确认，**不宣称已完成**。
+解锁并在钥匙串点一次「始终允许」后即可跑：
+
+```sh
+SP="/private/tmp/claude-501/-Users-wwzz-Downloads-proxyclawd/88833871-9d1c-410a-8425-a5a54e5377ef/scratchpad"
+node "$SP/cdp.mjs" 9224 "$SP/probe-page2-snapshot.mjs" > /tmp/off.json   # 官方
+node "$SP/cdp.mjs" 9232 "$SP/probe-page2-snapshot.mjs" > /tmp/loc.json   # 本地
+diff /tmp/off.json /tmp/loc.json
+```
+
+源码、已部署产物字节、headless CSS 引擎、运行时 DOM 四侧证据都已齐备，
+缺的是这一条实机确认，**不宣称已完成**。
 
 ---
 
 ## 守卫
 
-`tests/marketplace-page2-structure.test.mjs`（5 条），8 个变异全部变红：
+两层，互相不可替代 —— 变异验证证实了这一点。
+
+### 1. 源码断言 `tests/marketplace-page2-structure.test.mjs`（5 条）
+
+钉住类配方与 DOM 形状的**源码**。文件头已写明它不是运行时证明。
+
+### 2. 运行时 DOM `tests/marketplace-page2-runtime-dom.test.mjs`（6 条）
+
+用 happy-dom 挂载**真实的** `createMarketplaceDialog` 并断言产出的节点树。这是本项目反复吃亏之后
+补的一层：类配方全都在、名字全对，页面依然低 55px —— 源码断言对此完全无感。
+
+happy-dom 不做布局，所以它对**像素**只字不提；像素归 headless CSS 脚本，部署产物的真实测量归 CDP 探针。
+它负责的是三处**结构**修复在真正改动的那个节点树上成立：
+
+1. 详情条在 48px 带子里、不在滚动容器里（页 2 与详情页都验）
+2. 分组的网格是 section 的直接子节点，中间没有包裹层
+3. 单列网格列表没有同时带上两列类
+
+### 变异验证（9 个，全红）
 
 ```
-RED ✔ 私有技能网格重新带上两列类 sand-nby9oq
-RED ✔ GRID_FULLWIDTH 又变回 GRID_CLASSES 叠加
+RED ✔ 私有技能网格重新带上两列类 sand-nby9oq                    ← 运行时测试抓
+RED ✔ GRID_FULLWIDTH 又变回 GRID_CLASSES 叠加                    ← 运行时测试抓
 RED ✔ 分组 section 退回单 body，网格重新包一层 0fr wrapper
-RED ✔ detail bar 退回塞进 scroller 的 header
+RED ✔ detail bar 退回塞进 scroller 的 header                     ← 运行时测试抓
 RED ✔ 组标题去掉 16 个 ui-* 排版类
 RED ✔ h1 去掉 sand-19d36u7 / sand-1o2sk6j / sand-1deyeav
 RED ✔ section 标题行多塞回 sand-euugli
+RED ✔ 页 2 搜索框退回 display:none（官方页 2 是 0 个 input）        ← 只有运行时测试能抓
 RED ✔ 带子只 add 类不换类（页2 残留页1 的 17 类）
 基线(未变异): GREEN ✔
 ```
 
-守卫是**源码断言**，文件头已写明它不是运行时证明；运行时由上面的 CSS 级联脚本 + 部署产物探针负责。
+> 最后两条是分层守卫的直接证据：把它们改回去，源码断言**一条都不红**，只有运行时测试抓得住。
+> 写这三处修复时如果只有源码守卫，它们会带着全绿测试进部署。

@@ -1446,6 +1446,21 @@ export function createMarketplaceDialog(
   };
 
   /**
+   * The search field is a MARKETPLACE-page affordance, and official's other pages do not carry it at
+   * all — measured: 页 2 管理插件和技能 and every pushed page contain ZERO `<input>` nodes, not one
+   * hidden one. Hiding it with `display:none` left a dead input in the tree on those pages, which is
+   * why this unmounts the shell instead. It is inert either way (a `display:none` input cannot be
+   * focused, so the manage page's filter was never reachable), so nothing is lost and the DOM now
+   * matches. `syncPin` keys off `shell.isConnected` for the same reason.
+   */
+  const unmountSearch = (): void => {
+    mainSearch.shell.remove();
+  };
+  const mountSearch = (): void => {
+    if (!mainSearch.shell.isConnected) searchHolder.append(mainSearch.shell);
+  };
+
+  /**
    * Official's switch, reproduced from its measured geometry rather than a scroll listener with a
    * magic number: the band is a real 48px strip and the pinned field appears once the in-flow
    * field's bottom edge has passed the band's bottom edge. On official that boundary sits between
@@ -1460,7 +1475,7 @@ export function createMarketplaceDialog(
       unmountPin();
       return;
     }
-    if (searchHolder.style.display === "none") {
+    if (!mainSearch.shell.isConnected) {
       unmountPin();
       return;
     }
@@ -1538,7 +1553,7 @@ export function createMarketplaceDialog(
       // scroller starting right below it. Kept in the scroller header it measured 734x48 y=216.
       setBandPage(false);
       mountBar(bar, PIN_ROW_CLASSES);
-      searchHolder.style.display = "none";
+      unmountSearch();
     } else if (state.page === "manage") {
       // The bar belongs in the 48px band, NOT in the scroller's header — see MANAGE_BAND_CLASSES.
       // `header` stays empty on this page, exactly as official leaves it, so nothing is appended
@@ -1561,7 +1576,7 @@ export function createMarketplaceDialog(
       bar.append(detailTitle);
       bar.append(el("div", BACK_TRAILING_CLASSES));
       mountBar(bar, MANAGE_BAND_ROW_CLASSES);
-      searchHolder.style.display = "none";
+      unmountSearch();
     } else {
       // `header` already carries TITLE_ROW_CLASSES — it IS official's single header row. The h2
       // and the trailing slot go straight into it. Wrapping them in a second row here nested two
@@ -1575,7 +1590,7 @@ export function createMarketplaceDialog(
       trailing.append(buildInstalledPreview(state, handlers));
       header.append(trailing);
       setBandPage(false);
-      searchHolder.style.display = "";
+      mountSearch();
     }
 
     if (input.value !== state.query) input.value = state.query;
