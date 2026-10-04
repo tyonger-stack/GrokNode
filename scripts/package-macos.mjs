@@ -81,13 +81,13 @@ console.log(`Registered URL schemes: ${urlSchemes.join(", ")} (claim mode: ${cla
 
 await rm(path.join(outputApp, "Contents", "_CodeSignature"), { recursive: true, force: true });
 try {
-  await signAppBundleAdHoc(outputApp);
+  await signAppBundleAdHoc(outputApp, reconstructedBundleId);
 } catch (error) {
   // macOS can transiently deny replacement of a nested framework signature
   // immediately after the copied runtime was in use. A second idempotent pass
   // succeeds once the kernel releases that code object.
   console.warn(`Initial ad-hoc signing pass failed; retrying once: ${String(error)}`);
-  await signAppBundleAdHoc(outputApp);
+  await signAppBundleAdHoc(outputApp, reconstructedBundleId);
 }
 await run(SYSTEM_TOOLS.codesign, ["--verify", "--deep", "--strict", outputApp]);
 const verification = await verifyReconstructedMacPackage({

@@ -68,12 +68,15 @@ await cp(archivePath, packagedAsar);
 await cp(unpackedRoot, packagedUnpacked, { recursive: true, dereference: false, preserveTimestamps: true });
 
 const infoPlist = path.join(stagedApp, "Contents", "Info.plist");
+const diagnosticBundleId = `com.anysphere.sand.reconstructed.fidelity.diagnostic.build${shortHash}`;
 await run(SYSTEM_TOOLS.plutil, ["-remove", "ElectronAsarIntegrity", infoPlist]);
-await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleIdentifier", "-string", `com.anysphere.sand.reconstructed.fidelity.diagnostic.build${shortHash}`, infoPlist]);
+await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleIdentifier", "-string", diagnosticBundleId, infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleDisplayName", "-string", `Grok Bot 0.18 Fidelity Diagnostic-${shortHash}`, infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-remove", "CFBundleURLTypes", infoPlist]);
 await rm(path.join(stagedApp, "Contents", "_CodeSignature"), { recursive: true, force: true });
-await signAppBundleAdHoc(stagedApp);
+// The designated requirement must name the identifier this bundle actually carries, not the
+// reconstructed one — a DR naming a different identifier would never match the bundle itself.
+await signAppBundleAdHoc(stagedApp, diagnosticBundleId);
 await run(SYSTEM_TOOLS.codesign, ["--verify", "--deep", "--strict", stagedApp]);
 await verifyReconstructedMacPackage({
   officialApp: built.runtimeApp,
