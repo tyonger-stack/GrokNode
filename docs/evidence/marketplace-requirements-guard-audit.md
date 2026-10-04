@@ -155,3 +155,68 @@ if (!rows) return { err: "行未渲染" };
 `getBoundingClientRect` 在那一轮读到了异常值。**没有这个数之前不改 harness** ——
 把等待改成重试很可能只是把症状盖住，正是本项目反复吃过的那种亏。
 
+
+## 附二：钥匙串反复弹的取证（2026-10-05，纯命令行，不依赖 GUI）
+
+背景：AGENTS.md 记着「DR 改成 identifier 型之后，重打包不再弹」。**2026-10-05 观察到相反的行为**
+—— 用户已经点过三次「始终允许」，仍在弹。这条记录要么前提不成立，要么修的不完整；先查。
+
+### 已证
+
+1. **主可执行文件的 DR 确实改对了。**
+   `codesign -d -r- "/Applications/Grok Node.app"` → `designated => identifier "com.anysphere.sand.reconstructed"`。
+   （`-r-` 走 **stdout**，`-d` 的 `Executable=` 头走 **stderr**，取错流拿到空串。）
+
+2. **但 bundle 内仍有 9 个组件是 cdhash 型 DR**，包括：
+
+   | 组件 | DR |
+   |---|---|
+   | `Electron Framework` | `cdhash H"d84843427fa9ef8bf4ceb62748dcbdeff4deabcd"` |
+   | `Grok Bot Helper` (GPU / Plugin / Renderer / 主) | 各自的 cdhash |
+   | `Mantle` / `ReactiveObjC` / `Squirrel` | 各自的 cdhash |
+
+3. **`safeStorage` 的实现在 `Electron Framework` 这个 dylib 里**，不在主可执行文件里。
+   证据：框架二进制 `strings` 命中 `safeStorage` 11 次、`OSCrypt` 11 次；主可执行文件 0 次。
+   主程序通过 `@rpath/Electron Framework.framework/Electron Framework` 动态链接它。
+   `app.asar` 里另有 **35 处** `safeStorage` 调用，即我们自己就在调。
+
+   ⚠️ `nm -gU` 在这里返回 0，**那是 Electron 剥了符号，不是「不存在」**。用符号表下结论会得到
+   假否定 —— 和之前「按名字 grep 撞假阳性」同一个家族。
+
+4. **钥匙串条目自创建起从未被修改。**
+   `security find-generic-password -s "Grok Node Safe Storage"`：
+   `acct` = `Grok Node Key`（**同一个条目的账号，不是第二个条目** —— 按 `Grok Node Key` 查会
+   `SecKeychainSearchCopyNext: item could not be found`），
+   `cdat == mdat == 20260925014623Z`。
+   所以反复弹窗是 **ACL 授权判定**，不是条目被重建或被清。这一整类假设可以排除。
+
+### 未证：ACL 里现在记的是哪条 requirement
+
+三条路都读不到，本机没有第四条：
+
+- `security dump-keychain` **不打印 `acl:` 块**（全文 1957 行、0 个 `acl:`；AGENTS.md 记的
+  「同一条路径重复堆叠几十次」那个指纹，本次没能复现 —— 可能来自另一种 dump 格式）
+- PyObjC 的 `Security` 模块**未安装**（`No module named 'Security'`）
+- 统一日志**默认级别不记 ACL 决策**（`com.apple.securityd` 只记错误；`com.apple.security`
+  子系统里只有别的 app 的 `CSSMERR_*`，没有本 app 的条目）
+
+### 两个竞争解释，判别式是 ACL
+
+- **(a) 那三次「始终允许」根本没落地。** `mdat` 未变与此一致；且锁屏时 GUI 自动化静默失效
+  （AGENTS.md 已记），若当时是靠脚本点的，很可能点了个寂寞。
+- **(b) ACL 比对的是框架的 requirement，而它是 cdhash** → 每次重打包就变 → 「始终允许」
+  写下也白写。
+
+若坐实 (b)：给 `Electron Framework` 签**它自己的** `identifier "com.github.Electron.framework"`
+DR。这与 AGENTS.md 那条「`-r` 绝不能带 `--deep`」**不矛盾** —— 那次的错是把 **app 的**
+identifier 贴到框架上（指向别的 identifier 的 requirement 根本不描述那段代码，会炸
+`--verify --deep --strict`）；框架用自己的 identifier 是准确的、且跨重打包稳定。
+
+**方案未执行**：改签名需要重打包 + 实机复验才能确认，而屏幕锁着。**本机读不到 ACL，
+所以「框架 DR 是原因」是假设，不是结论。**
+
+### 顺带确认：源码没有漂移，不需要重打包
+
+最近两个提交（`4e18aaa` / `385eae1`）只动了 `tests/`、`docs/`、`AGENTS.md`。
+`frontend/` 与 `source/` 最后一次变更是 `b64dd56`，正是打进 asar `2d510279b108bfdf` 那次。
+**解锁后直接重启 app 即可，不用重打包。**
