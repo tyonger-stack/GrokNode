@@ -1,0 +1,32 @@
+{
+  "probe": "deployed-artifact check of the three detail-page value fixes — FINAL",
+  "collectedAt": "2026-10-04T14:33",
+  "collectedVia": "CDP 9232 against /Applications/Grok Node.app (asar b93b1ebeece3)",
+  "identity": "file:///Applications/Grok%20Node.app/Contents/Resources/app.asar/dist/renderer/index.html",
+  "entry": "Gmail (installed, account 已连接)",
+
+  "rendered": {
+    "功能": "1 个应用",
+    "开发者": "Cursor",
+    "类别": "精选",
+    "网站": "cursor.com",
+    "可用性": "公开",
+    "查看源码_href": "https://github.com/cursor/plugins",
+    "addAccount_aria": "添加其他账户"
+  },
+
+  "checks": {
+    "类别 is localized (not English)": "PASS",
+    "网站 is cursor.com (not github.com)": "PASS",
+    "查看源码 href is the repository": "PASS",
+    "add-account reads 添加其他账户": "PASS",
+    "stale 添加账户 label gone": "PASS"
+  },
+  "verdict": "ALL CHECKS PASS — all three fixes verified live on the deployed build",
+
+  "history": [
+    "round 1 (asar 0cc51a446b90): 添加其他账户 PASS, 类别 精选 PASS, 网站 github.com FAIL",
+    "round 1 diagnosis was WRONG: I called the 网站 gap a data problem and wrote it up as auth-gated / not fixable locally",
+    "round 2 (asar b93b1ebeece3): 网站 cursor.com PASS after reading publisher.websiteUrl instead of the non-existent top-level field"
+  ]
+}

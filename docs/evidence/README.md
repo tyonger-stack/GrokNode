@@ -8,7 +8,20 @@
 **先看 href 再看结论**：本项目栽过一次——标着「官方」的取证脚本其实是本地脚本的逐字节副本，端口和 URL
 都没改，静默取到了本地数据还不报错、不为空。
 
-## deployed-detail-values-2026-10-04.json + `deployed-gmail-detail-2026-10-04.png`
+## deployed-detail-values-final.json（最终态：五项全过）
+
+asar `b93b1ebeece3`，CDP 9232，Gmail（已安装 + `已连接`）：
+
+```
+功能 1 个应用 | 开发者 Cursor | 类别 精选 | 网站 cursor.com | 可用性 公开
+查看源码 href = https://github.com/cursor/plugins
+账户区加号 aria-label = 添加其他账户
+```
+
+**五项检查全过。** `网站` 之所以第一轮没过，是我读错了字段（见下面的更正），
+改读 `publisher.websiteUrl` 后即恢复为官方的 `cursor.com`；`查看源码` 仍指向仓库，两者是不同字段。
+
+## deployed-detail-values-2026-10-04.json + `deployed-gmail-detail-2026-10-04.png`（第一轮，含被推翻的结论）
 
 三个详情页取值修复在**已部署产物**上的实机读数（CDP 9232，Gmail，已安装 + `已连接`）：
 
