@@ -220,3 +220,41 @@ identifier 贴到框架上（指向别的 identifier 的 requirement 根本不�
 最近两个提交（`4e18aaa` / `385eae1`）只动了 `tests/`、`docs/`、`AGENTS.md`。
 `frontend/` 与 `source/` 最后一次变更是 `b64dd56`，正是打进 asar `2d510279b108bfdf` 那次。
 **解锁后直接重启 app 即可，不用重打包。**
+
+## 附三：解锁后的两项实机结论（2026-10-05）
+
+### 1. parity 那个「精选 51 vs 本地 6」是脚本的测量假象，产品无差异
+
+`verify-marketplace-parity.mjs` 报「精选类目页 有行 — 官方 51 / 本地 6」并标 ✅（它只断言
+`> 0`）。8.5 倍的差藏在「含首页残留，不比等号」的注释后面。
+
+用一支带**页面身份硬断言**（h1 必须是 `精选插件`，不符就停止输出）的定点探针重测，两侧完全一致：
+
+```
+LOCAL    headingText=精选插件  wholeDialog=6  scopedToScroller=6  nonEmptyGridRowCounts=[6]  totalGrids=1
+OFFICIAL headingText=精选插件  wholeDialog=6  scopedToScroller=6  nonEmptyGridRowCounts=[6]  totalGrids=1
+```
+
+官方那个 51 是脚本点完「查看全部」**立刻**测的（`until(back 按钮出现)` 之后没有 settle），
+那一刻上一页的 45 行还在 DOM 里且仍算可见；本地那次旧节点已经换掉了，所以读到 6。
+**两侧真实的精选页都是 6 行、1 个网格。** 断言比需求宽松时，差值会藏在注释里而不是报错。
+
+**没有改脚本**：本轮目标是确认产品有没有差异，答案是没有。脚本的 settle 缺失是已知的
+测量脆弱点（同族问题见 AGENTS.md「推栈 UI 里上层节点仍在 DOM 且仍算可见」），
+改它需要连同它所有的断言一起重跑才算数，不该在一次取证里顺手改。
+
+### 2. 钥匙串：当前 bundle 重启不再弹窗
+
+杀进程重启（带 CDP），结果：
+
+- app 起来了，9232 出现 page target，渲染进程正常启动 —— **没被钥匙串挡住**
+  （被挡住时的指纹是「main 进程活着、渲染进程没起、9232 无 page target」）
+- `SecurityAgent` 确实会被拉起，但**只存活 0.01s 就退出**，不是等待中的弹窗
+- 钥匙串条目 `mdat` 仍是 `2026-09-25T01:46:23Z` —— **ACL 从未被写过**
+
+补一个决定性对照实验（临时副本，已清理 411M）：在副本上用 `--force --sign -`（**不带 `-r`**）
+重签主程序，DR 立刻退回 `cdhash H"fe294dba…"`。这**确认了打包器那第二次 `-r` 调用是承重的**，
+去掉它就回到 AGENTS.md 记的旧病。
+
+**仍未测**：**重部署（重新 ditto）之后会不会再弹**。本轮没有重打包，所以没测到。
+「同 bundle 重启不弹」与「重打包不弹」是两件事，不应混为一谈。
