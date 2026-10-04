@@ -26,7 +26,8 @@
     "test:offline": "node --test $(ls tests/*.test.mjs | grep -v local-web-tools-network)",
     "typecheck": "tsc --project frontend/tsconfig.json",
     "source:typecheck": "tsc --project source/tsconfig.json",
-    "verify": "node scripts/verify.mjs"
+    "verify": "node scripts/verify.mjs",
+    "marketplace:parity": "node scripts/verify-marketplace-detail-parity.mjs"
   },
   "devDependencies": {
     "@electron/asar": "4.2.1",
