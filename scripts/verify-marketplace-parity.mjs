@@ -679,13 +679,18 @@ if (officialSections && deployedSections) {
   }
 
   const onlyOfficial = Object.keys(officialSections).filter((t) => !(t in deployedSections));
-  for (const title of onlyOfficial) console.log(`       ❌ ${title}（本地无此区块：官方: ${officialSections[title].names.join(" / ")}）`);
+  // 判词与字形必须一致：这里只是**明细**（哪个区块、官方放了什么），不计入 failures ——
+  // 缺口本身已经由上面的 known(..., isGap=true) 报出。用 ❌ 字形会被读成「门禁失败」，
+  // 而它实际不影响退出码；同一个缺口报两遍、其中一遍还撒谎，比不报更糟。
+  for (const title of onlyOfficial) {
+    console.log(`       ·  ${title}（仅官方有，官方: ${officialSections[title].names.join(" / ")} —— 缺口见上方 ⚠️）`);
+  }
   console.log("\n     剩余差异请对照 docs/MARKETPLACE-066-EVIDENCE.md §18–§20 归因：本地 catalog 已补齐为");
   console.log("     与官方同规模（下方「catalog payload 对拍」逐条核对，缺失条目应为「无」）；");
   console.log("     1Password 不在任何一侧 catalog。");
   console.log("     「为你推荐」：代码侧已对齐。已部署产物的 affinity 键是");
   console.log("     `ye(n)=L(n.category).trim()` —— 直接取 category 标签、不经映射表，");
-  console.log("     与官方 `v(e,t)=j(e.category.trim(),t)` 同源，实测 403 条里键为空 0 条。");
+  console.log("     与官方 `v(e,t)=j(e.category.trim(),t)` 同源，键为空 0 条。");
   console.log("     残留差异**只有一层且不可消除**：官方那 4 个赢家的 category 四取四全是 MCP，");
   console.log("     而本地已装的 8 条里没有 MCP 类 → 亲和表只有 {Featured:6, Productivity:2}。");
   console.log("     历史：20:12 之前部署侧走 `as` 映射表（该表缺 MCP/AGENT_ORCHESTRATION/FEATURED，");
