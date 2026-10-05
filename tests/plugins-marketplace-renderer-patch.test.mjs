@@ -201,7 +201,14 @@ test("each lifted rule is emitted as a selector that can actually match", () => 
   assert.match(STYLES, /grid-template-columns:repeat\(2/, "the two-column template must be a lifted/styled class, not ad-hoc CSS");
 });
 
-test("the two-column grid class is present, since the row grid is not one column", () => {
+// `.build/fidelity/app/dist/renderer/assets` is the packaging staging dir: it only exists after
+// `npm run package`, which CI never runs. `cssName()` already returns "" for that case (and
+// `CSS_TEXT()` below already handles it) — the one caller that forgot to check took the whole
+// file down with a readFileSync on the directory itself. Same half-done-guard shape as the
+// src/app/dist guards.
+const stagedCssSkip = () => (cssName() === "" ? ".build is the packaging staging dir and only exists after npm run package; staged-CSS assertions skipped." : false);
+
+test("the two-column grid class is present, since the row grid is not one column", { skip: stagedCssSkip() }, () => {
   // The official marketplace lays each section out in two columns. That comes from
   // `.sand-nby9oq { grid-template-columns:repeat(2,minmax(0,1fr)) }`, which the upstream style-object
   // extraction missed. 0.18 carries the identical declaration under the identical hash.

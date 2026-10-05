@@ -66,17 +66,17 @@ function moduleLevelBindings(source) {
 let topLevel = null;
 
 const patched = bundle == null ? null : patchOriginalSelectionAddToPrompt(bundle);
+// The two slices below are derived from `patched`, which is null whenever the pinned bundle is
+// absent (CI never runs `npm run bootstrap`). Slicing null throws at module load and takes the
+// whole file down — which is how this guard read as "done": `bundleSkip` was in place, but the
+// derivation below it was not. Every test that consumes these is already skipped by `bundleSkip`,
+// so an empty string is the correct derived value when there is no bundle to slice.
+const sliceBetween = (from, to) => (patched == null ? "" : patched.slice(patched.indexOf(from), patched.indexOf(to)));
 // Everything the patch injects as components: the toolbar and the button it renders.
-const toolbar = patched.slice(
-  patched.indexOf("function RSelToolbar("),
-  patched.indexOf("function e9n({fieldClassName:n,"),
-);
+const toolbar = sliceBetween("function RSelToolbar(", "function e9n({fieldClassName:n,");
 // The chip view on its own. 0.18's own code renders `chat-bubbles` elsewhere, so icon
 // assertions must be scoped to what this patch injects rather than the whole chunk.
-const chipView = patched.slice(
-  patched.indexOf("function RSelChip("),
-  patched.indexOf("const RSelQuoteNode="),
-);
+const chipView = sliceBetween("function RSelChip(", "const RSelQuoteNode=");
 
 test("selection patch applies once to the pinned 0.18 chunk and stays parseable", { skip: bundleSkip }, () => {
   assert.doesNotThrow(() => parse(patched, { ecmaVersion: "latest", sourceType: "module" }));
