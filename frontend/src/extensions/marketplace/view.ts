@@ -1195,7 +1195,12 @@ function renderDetail(
       edit.append(glyph("pencil", GLYPH.pencil, 10));
       // 官方点「编辑 <account> 账户」后**内联**展开重命名 + 标签表单，并把按钮换成
       // 「保存 / 移除」（`role=dialog` 数不变 —— 不是弹层）。这层此前完全没接线，按钮点不动。
-      const editSlot = el("span", DETAIL_ACCOUNT_FORM_SLOT_CLASSES);
+      // 标签用 `div` 而非 `span`：官方该角色（ve() 里包裹 nameRow 与编辑按钮的那层，
+      // 由 `chunk-plugin-detail-view-tZskkHRA.js` 逐字确认）就是 `div`。此前渲染成 `span`，
+      // 而展开内容本身是 `div`，构成 `div` 嵌 `span` 的非法内容模型。
+      // **仍未对齐的形状**（需实机量测后再改，勿盲改）：官方那个槽位 div **包住** nameRow
+      // 与编辑按钮；我们是 accountRow 之外的兄弟节点，挂在 list 上。
+      const editSlot = el("div", DETAIL_ACCOUNT_FORM_SLOT_CLASSES);
       edit.addEventListener("click", () => {
         if (editSlot.firstChild != null) {
           editSlot.replaceChildren();

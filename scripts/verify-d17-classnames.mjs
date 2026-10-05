@@ -455,8 +455,132 @@ for (const [name, variants] of Object.entries(OFFICIAL)) {
   console.log();
 }
 
+// ── 部署字节层：源码对了 ≠ 部署包里有 ───────────────────────────────────────
+// 上面四组比对的是**源码**。但产物是 esbuild 后的 IIFE：类名被抽成短名常量
+// （`var St=fn` 这种别名链），且注入代码里根本没有 `className:` 字面量。
+// 所以必须再验一层：从**已部署的 /Applications asar** 里把注入 IIFE 切出来，
+// 顺着常量绑定把三组类名解回来，确认落地字节与官方逐字相同。
+// 纪律：取样对象必须是**部署态**那一份字节。上一轮「产物逐 chunk node --check 全过」
+// 就是假绿 —— 检查的 staged 副本和 ditto 部署的不是同一份。
+const DEPLOYED_CHUNK = "dist/renderer/assets/index-UbX-y3il.js";
+const MARKER = "data-account-edit-form";
+
+/** 从 `(()=>{` 处按花括号深度切出 IIFE；`from` 为锚点偏移。 */
+function extractIife(source, from) {
+  let start = -1;
+  for (let i = from; i >= 0 && i > from - 200000; i--) {
+    if (source.startsWith("(()=>{", i)) { start = i; break; }
+  }
+  if (start < 0) return null;
+  const brace = source.indexOf("{", start);
+  let d = 0;
+  for (let j = brace; j < source.length; j++) {
+    const c = source[j];
+    if (c === "{") d++;
+    else if (c === "}") {
+      d--;
+      if (d === 0) return { start, end: j + 1, text: source.slice(start, j + 1) };
+    }
+  }
+  return null;
+}
+
+/**
+ * 在 IIFE 内解析字符串数组常量与别名链。
+ * ⚠️ 踩过的坑：esbuild 把多个声明压成**逗号连写**（`var A=…, Yn=[…], fn=Yn, et=[…]`），
+ * 只匹配 `var|let|const NAME=` 只能认出逗号后的第一个，后面全是漏的 —— 表现为
+ * 「常量认出来了却解析不出数组」。因此不依赖声明关键字，直接找 `NAME=[…]` 赋值。
+ * 同一名字出现多个**不同**数组时 fail-closed（短名在 5.9MB chunk 里会重名，不猜）。
+ */
+function resolveConsts(iifeText) {
+  const arrays = new Map();
+  const aliases = new Map();
+  for (const [name, value] of [
+    ...[...iifeText.matchAll(/\b([A-Za-z_$][\w$]{0,3})\s*=\s*\[([^\]]*)\]/g)].map((m) => [m[1], m[2]]),
+  ]) {
+    const arr = [...value.matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+    if (arr.length) {
+      if (!arrays.has(name)) arrays.set(name, new Set());
+      arrays.get(name).add(arr.join(" "));
+    }
+  }
+  for (const m of iifeText.matchAll(/\b([A-Za-z_$][\w$]{0,3})\s*=\s*([A-Za-z_$][\w$]{0,3})\b(?!\s*[\[(.])/g)) {
+    const [, name, target] = m;
+    if (!aliases.has(name)) aliases.set(name, new Set());
+    aliases.get(name).add(target);
+  }
+  const resolve = (name, depth = 0) => {
+    if (depth > 8) return null;
+    const set = arrays.get(name);
+    if (set) return set.size === 1 ? [...set][0].split(" ") : { ambiguous: [...set] };
+    const al = aliases.get(name);
+    if (al && al.size === 1) return resolve([...al][0], depth + 1);
+    return null;
+  };
+  return resolve;
+}
+
+const deployedSrc = readFromAsar(DEPLOYED_ASAR, DEPLOYED_CHUNK);
+console.log(`\n──────── 部署字节层（${DEPLOYED_ASAR}）────────`);
+if (deployedSrc == null) {
+  console.log(`⚠️ 读不到部署版 ${DEPLOYED_CHUNK}（尚未部署？）—— 跳过该层`);
+} else {
+  const markerAt = deployedSrc.indexOf(MARKER);
+  const iife = markerAt < 0 ? null : extractIife(deployedSrc, markerAt);
+  if (iife == null) {
+    console.log(`⚠️ 部署字节里找不到注入 IIFE（${MARKER} 命中 ${markerAt}）—— 跳过该层`);
+  } else {
+    // 注入代码里上类的形式是 B(el, LIST)。找出 Et/createAccountEditForm 那个函数体里用到的三个列表常量。
+    const fnAt = iife.text.indexOf(MARKER);
+    const bodyStart = iife.text.lastIndexOf("function ", fnAt);
+    const body = iife.text.slice(bodyStart, bodyStart + 2000);
+    const used = [...new Set([...body.matchAll(/B\([A-Za-z_$][\w$]*,\s*([A-Za-z_$][\w$]*)\)/g)].map((m) => m[1]))];
+    console.log(`注入 IIFE ${iife.text.length} B（@${iife.start}–${iife.end}）；表单函数用到的类列表常量: ${used.join(", ") || "未识别"}`);
+
+    const resolve = resolveConsts(iife.text);
+    const EXPECT = {
+      "表单槽位": "DETAIL_ACCOUNT_FORM_SLOT_CLASSES",
+      "重命名输入框": "DETAIL_ACCOUNT_FORM_INPUT_CLASSES",
+      "编辑/保存按钮": "DETAIL_ACCOUNT_SAVE_CLASSES",
+    };
+    let deployProblems = 0;
+    if (used.length === 0) {
+      console.log("❌ 未能从注入代码里识别出类列表常量（形状变了？）");
+      deployProblems++;
+    }
+    for (const list of used) {
+      const actual = resolve(list);
+      if (actual == null) {
+        console.log(`❌ 常量 ${list} 解析不出字符串数组`);
+        deployProblems++;
+        continue;
+      }
+      if (!Array.isArray(actual)) {
+        console.log(`❌ 常量 ${list} 在注入 IIFE 内有 ${actual.ambiguous.length} 个不同数组（短名重名），拒绝猜测`);
+        for (const v of actual.ambiguous) console.log(`   候选: ${v}`);
+        deployProblems++;
+        continue;
+      }
+      // 不去猜 minified 名对应哪个源码常量（esbuild 会重命名，猜就是臆造）。
+      // 改为**按内容**在官方四组里找匹配项：解出来的数组必须逐字等于某一组。
+      const hit = Object.entries(OFFICIAL).find(([, v]) => v[0].join(" ") === actual.join(" "));
+      if (hit) {
+        console.log(`✅ ${list} → ${hit[0]}: 部署字节 ${actual.length} 类，与官方逐字相同`);
+      } else {
+        const near = Object.entries(OFFICIAL)
+          .map(([n, v]) => ({ n, d: v[0].filter((c) => !actual.includes(c)).length + actual.filter((c) => !v[0].includes(c)).length }))
+          .sort((a, b) => a.d - b.d)[0];
+        console.log(`❌ ${list} (${actual.length} 类) 与官方四组都不相等；最接近 ${near.n}，差 ${near.d} 个`);
+        console.log(`   部署: ${actual.join(" ")}`);
+        deployProblems++;
+      }
+    }
+    if (deployProblems > 0) problems += deployProblems;
+  }
+}
+
+console.log();
 console.log(problems === 0
-  ? "✅ 四组配方全部与官方语义绑定结果完全相等"
-  : `⚠️ ${problems} 组存在问题`);
-process.exit(problems === 0 ? 0 : 1);
+  ? "✅ 源码层与部署字节层均与官方逐字相同"
+  : `⚠️ 共 ${problems} 组存在问题`);
 process.exit(problems === 0 ? 0 : 1);
