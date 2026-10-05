@@ -619,13 +619,23 @@ if (officialSections && deployedSections) {
     if (want.join("|") === got.join("|")) console.log(`       ✅ ${title}`);
     else console.log(`       ⚠️  ${title}\n            官方: ${want.join(" / ") || "—"}\n            本地: ${got.join(" / ") || "—"}`);
   }
-  // 缺一个区块是真缺口（要求 3「直至无遗漏页面为止」）；多一个只作事实报出，不计为缺口 ——
-  // 可能是本机 catalog 数据更多，不构成「没复刻」。两者都印出来，避免读者默认没提到就没有。
-  for (const title of officialOnly) {
-    known(`仅官方有的区块：${title}`, true, "本地缺这一整块内容");
+  // **0 行的标题是容器，不是内容区块。** 官方实测：14 个标题里第 1 个是「市场」，
+  // 0 行 —— 它是弹窗自身的标题（对应「官方 13 区块」= 14 个标题减掉这一个容器）。
+  // 若把它当内容，单边判定就会把「本地没渲染这个容器标题」误报成缺一整块内容。
+  // 所以单边报告只针对**至少 1 行**的标题，容器单列一行报出。
+  const isContent = (t, side) => (side[t]?.names?.length ?? 0) > 0;
+  const officialOnlyContent = officialOnly.filter((t) => isContent(t, officialSections));
+  const officialOnlyContainers = officialOnly.filter((t) => !isContent(t, officialSections));
+  const deployedOnlyContent = deployedOnly.filter((t) => isContent(t, deployedSections));
+  const deployedOnlyContainers = deployedOnly.filter((t) => !isContent(t, deployedSections));
+  for (const title of officialOnlyContent) {
+    known(`仅官方有的区块：${title}`, true, `本地缺这一整块内容（官方 ${officialSections[title].names.length} 行）`);
   }
-  for (const title of deployedOnly) {
+  for (const title of deployedOnlyContent) {
     known(`仅本地有的区块：${title}`, false, "官方没有这一块（可能是本机 catalog 数据更多）");
+  }
+  for (const title of [...officialOnlyContainers, ...deployedOnlyContainers]) {
+    known(`单边出现的容器标题（0 行）：${title}`, false, "容器不是内容区块，不计为缺口");
   }
   // Icon comparison, keyed on `section|name` rather than row index: the two builds put different
   // numbers of rows in a section, so pairing by index would compare unrelated entries.
