@@ -35,6 +35,20 @@ const ok = (label, pass, detail = "") => {
   console.log(`  ${pass ? "✅" : "❌"} ${label}${detail ? `  — ${detail}` : ""}`);
 };
 
+/**
+ * A third reporting state, deliberately distinct from both pass and fail.
+ *
+ * A known defect that is understood, attributed and awaiting a decision is neither "this is fine"
+ * nor "this is a new failure" — collapsing it into `ok()` would either hide it or make every future
+ * run look broken for a reason nobody is working on. `known()` reports it loudly and changes
+ * nothing about the exit code, so the gate still means "nothing newly broke".
+ */
+let knownGaps = 0;
+const known = (label, isGap, detail = "") => {
+  if (isGap) knownGaps += 1;
+  console.log(`  ${isGap ? "⚠️ " : "   "} ${label}${isGap ? "（已知差异，未计入失败）" : ""}${detail ? `  — ${detail}` : ""}`);
+};
+
 /* ---------------------------------------------------------------- asar ---- */
 
 function readEntries(asar) {
@@ -196,6 +210,38 @@ if (!fs.existsSync(DEPLOYED_ASAR)) {
   const pluginNameNotFromHandle = !/pluginName:\s*plugin\.mcpServers/.test(main);
   ok("第一层投影 toPlugin 的 pluginName 取自 Plugin.name（非 MCP server 句柄）", pluginNameFirstHop && pluginNameNotFromHandle);
   ok("第二层投影 marketplacePluginToView 保留 pluginName", pluginNameSecondHop, `main.cjs 中共 ${pluginNameHits} 处`);
+
+  // ---- 为你推荐 的 affinity 键：部署侧仍按分区桶（上游 0.18 的行为）----
+  //
+  // 官方 0.66 的 selectForYou 按条目自己的 `category` 标签算 affinity；0.18 的同名函数
+  // （bundle 里压缩成 `ms`）按解析后的分区桶算，而桶表不认 `MCP` → 151/403 条 affinity 恒为
+  // 0，结构上进不了这一行。重建侧已修（667018c），部署侧尚未打补丁。
+  //
+  // 这一项刻意用 `known()` 而不是 `ok()`：它是**已知、已归因、待决策**的差异，不是新回归。
+  // 一旦部署侧打了补丁，下面这个判定会翻成「已对齐」，届时可以改回 `ok()`。
+  const forYouFn = (() => {
+    const at = renderer.indexOf("function ms(n,e,a){");
+    if (at < 0) return null;
+    let depth = 0;
+    for (let k = renderer.indexOf("{", at); k < renderer.length; k += 1) {
+      if (renderer[k] === "{") depth += 1;
+      else if (renderer[k] === "}") { depth -= 1; if (depth === 0) return renderer.slice(at, k + 1); }
+    }
+    return null;
+  })();
+  if (forYouFn == null) {
+    known("部署版渲染器：为你推荐 的 selectForYou 位置", true, "未能在产物里定位到 ms()，无法核查 affinity 键");
+  } else {
+    const bucketsKeyed = /for\(let\s+\w+\s+of\s+vn\(\w+\.entry\)\)/.test(forYouFn);
+    const labelKeyed = /\.category/.test(forYouFn);
+    known(
+      "部署版渲染器：为你推荐 的 affinity 键按 category 标签（与官方一致）",
+      bucketsKeyed || !labelKeyed,
+      bucketsKeyed
+        ? "仍是 0.18 的桶版（vn(entry)）—— 151/403 条 MCP 类条目结构性失格；补丁待定"
+        : "已按 category 标签算，与官方 0.66 一致",
+    );
+  }
 
   const chunks = app.paths.filter((p) => p.startsWith("dist/renderer/assets/") && p.endsWith(".js"));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mkt-chunks-"));
@@ -452,8 +498,11 @@ if (officialSections && deployedSections) {
   for (const title of onlyOfficial) console.log(`       ❌ ${title}（本地无此区块：官方: ${officialSections[title].names.join(" / ")}）`);
   console.log("\n     剩余差异请对照 docs/MARKETPLACE-066-EVIDENCE.md §18–§20 归因：本地 catalog 已补齐为");
   console.log("     与官方同规模（下方「catalog payload 对拍」逐条核对，缺失条目应为「无」）；");
-  console.log("     1Password 不在任何一侧 catalog，为你推荐 因 teamPopularity() 双方同为 0 且");
-  console.log("     affinity 取自本机各自的已安装集合 —— 均属数据面，不是渲染行为差异。");
+  console.log("     1Password 不在任何一侧 catalog；「为你推荐」的差异是**两层叠加**，别只记一层：");
+  console.log("       (1) 已安装集合不同（机器状态，不可消除）—— affinity 取自各自的已装条目；");
+  console.log("       (2) affinity 键错误 —— 官方 0.66 按 category 标签算，0.18（及本仓库此前的重建）");
+  console.log("           按分区桶算，而桶表不认 MCP → 151/403 条结构性失格。重建侧已修(667018c)，");
+  console.log("           部署侧仍是 0.18 的 ms，未打补丁。详见 docs/evidence/marketplace-foryou-affinity-key.md");
 
   console.log("\n     首页形状：");
   ok("查看全部 数量", officialShape.seeAll === deployedShape.seeAll, `官方 ${officialShape.seeAll} / 本地 ${deployedShape.seeAll}`);
@@ -782,6 +831,6 @@ if (ctaRuns["官方"] && ctaRuns["部署版"]) {
   ok("详情返回后回到首页", ctaRuns["部署版"].backStackWorks === true);
 }
 
-console.log(`\n${failures === 0 ? "✅ 全部核验通过" : `❌ ${failures} 项核验未通过`}\n`);
+console.log(`\n${failures === 0 ? "✅ 全部核验通过" : `❌ ${failures} 项核验未通过`}${knownGaps > 0 ? `（另有 ${knownGaps} 项已知差异，未计入失败）` : ""}\n`);
 
 process.exit(failures === 0 ? 0 : 1);
