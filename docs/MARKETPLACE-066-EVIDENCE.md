@@ -973,3 +973,58 @@ PORT §6 早就记过这个坑（「DOM 选择器读数在推栈页面里可能�
 第一次跑这段时本地 `fetch failed`、进程数为 0，且 `DiagnosticReports` 里没有近期崩溃报告——
 不是崩溃，是**并发 agent 重新部署时 `pkill` 掉了正在运行的实例**。重启后同一段代码连续通过。
 判据是「无崩溃报告 + 进程干净消失」⇒ 外部终止，不是自己的代码问题。
+
+---
+
+## 26. 需求 #5 审计：能移植的是否都移植了（2026-10-05）
+
+要求是「能从 grok bot 移植的就不要重新写」。把两边包内**全部** `sand-plugins*` 类名集合拿出来对比：
+
+| | 数量 |
+|---|---|
+| 官方 0.66 包内 `sand-plugins*` 类 | **36** |
+| 本地 0.18 缺少的 | **3** |
+| 本地 0.18 多出的（我们自建） | **14** |
+
+**本地缺的 3 个**：`sand-plugins-row__byline`、`sand-plugins__chip`、`sand-plugins__chips`
+**本地多出的 14 个**：`sand-plugins-dock-*`（10）、`sand-plugins-detail__list`、
+`sand-plugins__bar`、`sand-plugins__search`、`sand-plugins__search-input`
+
+### 读出来的三件事
+
+1. **0.18 自带的视图与 0.66 是同一血脉**（33/36 类名重合）。0.18 的 marketplace 在
+   `dist/renderer/assets/view-B5Ug8wEm.js`（107,074 B），官方对应
+   `chunk-view-BudImuR0.js`（136,075 B）+ `chunk-plugins-rows-2d0UrD7L.js`（10,161 B）。
+   所以「直接复用 0.18 包内那份」在**结构上可行**——这一点必须承认：`view.ts`（1,650 行）
+   属于按 0.66 实机取证重建，不是移植。
+2. **但它缺的东西正是要求 1 点名的**：`sand-plugins__chip` / `sand-plugins__chips` 是区块行的
+   **分类标签**，`sand-plugins-row__byline` 是行内副标题的���二行。0.18 那份里这三样**不存在**。
+3. **多出的 14 个说明页头/搜索/列表容器的结构本身就不同**：`sand-plugins__bar`、`__search*`、
+   `detail__list` 是按 0.66 实机 DOM 建的，不是套 0.18 的。
+
+### 已移植的部分（逐字来自官方，不是重写）
+
+| 内容 | 取自 |
+|---|---|
+| 归桶表 `Le` 14 条、厂商 override `Te` 16 条、`ke`/`Y`/`Ue`/`Re`/`Me`/`ve` | `chunk-marketplace-browse-model-DoOY91TS.js` **全文 12,928 字节读完**后转写 |
+| 全部 `sand-*` 类名 | 官方实机 CDP dump 的 `className` |
+| PUA 字形码位 | 官方实机 `--cursor-icon-content`，不从图标名推断 |
+| 区块顺序、查看全部的出现条件 | 官方实机逐区块走查 |
+| 详情页四分区、动作、文案 | 官方实机逐字比对 |
+
+### 为什么不把 0.66 的 chunk 整块搬进 0.18
+
+- 0.66 与 0.18 的 **React runtime、i18n 机制、数据桥形状都不同**：官方的中文走 **i18n 消息 id**
+  （实测 `查看全部`/`为你推荐`/`精选插件` 在 0.66 产物里 0 命中），0.18 是**内联 CJK**。直接换 chunk 会同时踩这两处。
+- AGENTS.md 硬约束：渲染器基线是 **checksum 钉死的上游产物**，`npm run bootstrap` 会校验 DMG 与
+  `app.asar` SHA-256。往 0.18 的 asar 里塞 0.66 的 chunk 属于跨版本替换上游产物，
+  且会打破「不弱化校验」这条红线。
+
+**结论**：在「基线不可换」这个硬约束下，移植已经做到上限——能逐字搬的都搬了，
+剩下 3 个类对应的结构在 0.18 里根本不存在，只能按官方实机取证后重建，且已逐项对拍通过。
+
+### 一条方法论（本轮踩到）
+
+比较两个版本的产物时，**不要用 CJK 字符串当判据**。0.66 走 i18n id、0.18 内联 CJK，
+用中文 grep 会得到「官方 0 命中」的假结论，方向完全反了。可跨版本比较的锚点是
+**结构标识**（类名、DOM 签名、字节码位）和**实测 DOM**。
