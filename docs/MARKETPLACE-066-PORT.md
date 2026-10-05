@@ -156,6 +156,20 @@ D19 新增的三个元素类名与官方逐字相同，宽度只是跟随既有�
 > 差点把一个正确实现判成缺陷。改测 `getComputedStyle` + `getBoundingClientRect` 后才对上。
 > 同类错误本轮第二次：**第一版探针把本来就开着的市场弹窗点了关闭**，然后如实报「作废」。
 
+### 5a-2. 一个自查疑点：已排查并排除（2026-10-05 22:0x）
+
+走查时看到详情页账户状态一度显示「错误」、且 `mcp.list()` 读数超时，**本轮一度准备归因到 D19**。
+查完结论是**两处都是测量问题，不是缺陷**，记在这里免得下一轮重查：
+
+| 疑点 | 实测 | 结论 |
+|------|------|------|
+| `mcp.list()` 「超时」 | 放宽到 60s 后 **正常返回**（15.2s），连测三次 **20.5 / 14.8 / 10.9s** | 探针 15s 预算**刚好卡在边界**。递减是预热曲线。官方同调用 7.2s |
+| 账户状态「错误」 | 连测三次全部 `connected`，Gmail 记录完整：`id=3`、`url=https://gmailmcp.googleapis.com/mcp/v1`、`toolCount=23` | **启动瞬态**，第一次慢调用撞在初始化中间态 |
+| server 数 8 vs 官方 14 | 本地 8 条 = Canva / Figma / Gmail / Google Calendar / Google Drive / Granola / Notion / Slack | 即 D2 已记的**已装集合不同**（机器状态），非新增差异 |
+
+**归属**：`mcp.list()` 慢在**宿主侧**（`index.ts` 用 `Promise.allSettled` 并行取 catalog/list/teamPopularity，
+无轮询、无重复调用），D19 没碰这条链路。且这是**性能**差，不是 UI / 功能差，不在要求范围内。
+
 ### 5b. 主体走查（2026-10-04）
 
 在 `/Applications/Grok Node.app` 上用 CDP 逐层点过，测得值与官方实测值对照：
