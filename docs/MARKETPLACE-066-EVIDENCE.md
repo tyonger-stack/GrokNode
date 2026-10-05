@@ -1348,3 +1348,22 @@ h8t(u) = sha256(`${RG}:` + u).slice(0, 32)          // 键里含尺寸
 
 `npm test` **977/977**、两个 typecheck 干净。**尚未重打包部署**（改动涉及 `source/` 宿主与
 renderer 扩展两侧，需完整重打包）。实机验收仍卡在钥匙串弹窗。
+
+### 附：`npm test` 偶发 1 条失败不是回归（2026-10-05 20:2x）
+
+本轮有两次全量跑是 **976/977**、三次是 **977/977**。追出来的失败用例固定是：
+
+```
+tests/local-web-tools-network.test.mjs:41
+  the local web fetch service reads a real page and strips markup
+  AssertionError: fetch must succeed: {"error":"fetch failed"}   （约 5s）
+```
+
+该文件**头三行就写明**这是故意的联网测试：
+
+> Excluded from the CI check job on purpose… these three call the public internet, and
+> **runner-network wobble is enough to fail them**.
+
+所以这是**已知的公网抖动**（本机走 Clash 代理），与 marketplace 改动无关。
+**不要去「修」它** —— 改掉就等于放弃真实的网络覆盖。正确处置是：看到这条失败先确认
+失败名是不是它，是就别追；`npm test` 因此**不是完全 hermetic**，报数时该带上这个前提。
