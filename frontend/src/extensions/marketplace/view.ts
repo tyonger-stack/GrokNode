@@ -972,7 +972,10 @@ function buildDetailListRow(
  *  - editing is offered ONLY for `source === "workflow"` (`canEditPrivateSkill`,
  *    `view-B5Ug8wEm.js#L1377`). A `managed` skill is installed by the platform; writing to its file
  *    would edit something the product owns.
- *  - the provenance line is `已发布` only for `plugin` (`skillSubtitle`, `#L770`).
+ *
+ * The provenance line is NOT rendered in the header band — official 0.66 leaves that slot empty
+ * there (see D14 below). `skillSubtitle` still drives the manage page's list row (`buildRowText`),
+ * which is where official does show it.
  */
 function renderSkillDetail(
   groups: HTMLElement,
@@ -996,7 +999,18 @@ function renderSkillDetail(
   name.id = "sand-plugins-detail-heading";
   nameRow.append(name);
   titleCol.append(nameRow);
-  titleCol.append(el("span", DETAIL_SOURCE_ROW_CLASSES, skillSubtitle(skill)));
+  // D14: the provenance/description subtitle is rendered **empty** here, matching official 0.66.
+  //
+  // Measured on the official build's private-skill detail (`画图`): the `sand-settings-detail-bar`
+  // text is the title ONLY, `DETAIL_SOURCE_ROW_CLASSES` has **0 hits** on that page, and the slot
+  // that would hold it is a `w=0` **empty flex** node — `display:flex`, no text.
+  //
+  // This used to render `${provenance} · ${description}` and hard-clip 603px
+  // (`textOverflow:clip`, `scrollWidth 1213 / clientWidth 610`). The fix is NOT an ellipsis: official
+  // has no element there to ellipsize, so any truncation would be invented behaviour. The node is
+  // kept (empty) rather than dropped because official demonstrably has one; at zero width the two
+  // are visually identical, so this is a DOM-fidelity call, not a visual one.
+  titleCol.append(el("span", DETAIL_SOURCE_ROW_CLASSES));
   header.append(titleCol);
 
   const actions = el("div", DETAIL_ACTIONS_CLASSES);

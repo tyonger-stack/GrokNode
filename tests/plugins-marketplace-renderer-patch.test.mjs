@@ -1155,3 +1155,40 @@ test("the full-width detail row family's 14px horizontal inset is lifted", () =>
     assert.match(arr, /sand-1onr9mi/, `${list} must keep sand-1onr9mi`);
   }
 });
+
+test("D14: the private-skill detail subtitle is rendered empty, not clipped", () => {
+  // Slice renderSkillDetail by brace depth from the function's OWN opening brace. Starting the scan
+  // at a needle inside the body instead picks up the previous function's tail — which is exactly how
+  // the deployed-artifact reads got mis-cut earlier today (a 799B function read as 938B).
+  const sig = "function renderSkillDetail(";
+  const start = VIEW.indexOf(sig);
+  assert.ok(start > 0, "renderSkillDetail must exist");
+  const brace = VIEW.indexOf("{", start + sig.length - 1);
+  let depth = 0, end = -1;
+  for (let j = brace; j < VIEW.length; j += 1) {
+    if (VIEW[j] === "{") depth += 1;
+    else if (VIEW[j] === "}") { depth -= 1; if (depth === 0) { end = j + 1; break; } }
+  }
+  assert.ok(end > start, "renderSkillDetail braces must balance — otherwise the slice is not a guard");
+  const body = VIEW.slice(start, end);
+  assert.ok(!body.includes("function renderPluginDetail("), "slice must not swallow the next function");
+
+  // The node is kept (official has an empty w=0 flex slot there) but carries NO text.
+  assert.match(
+    body,
+    /el\("span",\s*DETAIL_SOURCE_ROW_CLASSES\)/,
+    "the subtitle slot must be appended with no text argument",
+  );
+  assert.doesNotMatch(
+    body,
+    /DETAIL_SOURCE_ROW_CLASSES,\s*skillSubtitle\(/,
+    "the detail bar must NOT render the provenance/description subtitle — official 0.66 leaves that slot empty",
+  );
+
+  // …and the manage page's list row still shows it, which is where official does.
+  assert.match(
+    VIEW,
+    /buildRowText\(skill\.name, skillSubtitle\(skill\)\)/,
+    "the manage-page list row must keep the subtitle — D14 only removes the detail-bar one",
+  );
+});
