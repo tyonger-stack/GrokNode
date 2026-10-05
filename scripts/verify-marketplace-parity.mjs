@@ -211,17 +211,41 @@ if (!fs.existsSync(DEPLOYED_ASAR)) {
   ok("第一层投影 toPlugin 的 pluginName 取自 Plugin.name（非 MCP server 句柄）", pluginNameFirstHop && pluginNameNotFromHandle);
   ok("第二层投影 marketplacePluginToView 保留 pluginName", pluginNameSecondHop, `main.cjs 中共 ${pluginNameHits} 处`);
 
-  // ---- 为你推荐 的 affinity 键：部署侧仍按分区桶（上游 0.18 的行为）----
+  // ---- 为你推荐 的 affinity 键：部署侧用哪个键算 ----
   //
-  // 官方 0.66 的 selectForYou 按条目自己的 `category` 标签算 affinity；0.18 的同名函数
-  // （bundle 里压缩成 `ms`）按解析后的分区桶算，而桶表不认 `MCP` → 151/403 条 affinity 恒为
-  // 0，结构上进不了这一行。重建侧已修（667018c），部署侧尚未打补丁。
+  // 两侧真源（都从产物逐字读出，不是转述）：
+  //   官方 0.66  chunk-marketplace-browse-model-DoOY91TS.js
+  //     function v(e,t){return j(e.category.trim(),t)}      ← 键 = 条目自己的 category 标签
+  //     function J(e,t,n){ ... i.set(s,(i.get(s)??0)+1) }   ← 已装按同一把尺子计数
+  //   0.18 部署版  index-UbX-y3il.js
+  //     function ms(n,e,a){ ... for(let y of vn(S.entry)) }  ← 键 = vn(entry)，返回**标签数组**
+  //     function vn(n){ ...ts[t]... as[cs({category:t})]... }
+  //   `as` 是「category 枚举 → 规范标签」的映射表，只有 14 个键：
+  //     LOGIN_AND_CREDENTIAL_MANAGEMENT / PRODUCTIVITY / INBOX_AND_COLLABORATION / SCHEDULING /
+  //     SALES / CUSTOMER_SUPPORT / PAYMENTS / FINANCE_AND_LEGAL / DATA_ANALYTICS / DESIGN /
+  //     CANVAS / DOCUMENTS_AND_FILES / INFRASTRUCTURE / RESEARCH
+  //   **没有 MCP、没有 AGENT_ORCHESTRATION、没有 FEATURED。** 而 `cs()` 把 category 归一化成
+  //   大写下划线形式（`"MCP"` → `"MCP"`、`"Agent Orchestration"` → `"AGENT_ORCHESTRATION"`），
+  //   这三类查表得 undefined → vn 返回空数组 → 该条目 affinityStrength 恒为 0。
+  //   实测官方实机 403 条里 **169 条**键为空（MCP 151 / Agent Orchestration 17 / Featured 1），
+  //   官方侧 **0 条**（官方直接用标签，从不查表）。
   //
-  // 这一项刻意用 `known()` 而不是 `ok()`：它是**已知、已归因、待决策**的差异，不是新回归。
-  // 一旦部署侧打了补丁，下面这个判定会翻成「已对齐」，届时可以改回 `ok()`。
+  // 所以判据是**键是否经过映射表间接**（会被表缺项吞掉），**不是**「有没有 for..of」——
+  // vn 体内那两个 `for..of` 遍历的是 plugin 名 token 与 category token，都不是桶。
+  // ⚠️ 别拿「有没有遍历」当判据：那样对正确实现也会误判成有缺陷。
+  //
+  // 定位方式：按产物里必然存在的稳定串 `affinityStrength` 定位 selectForYou（4 次命中全在其
+  // 体内），再按**调用点在体内的偏移**定位键函数。压缩产物里短名重名 abound —— 实测
+  // `function ge(` 有 4 个同名定义，按名字全文件反查会读到 5851700 处的
+  // marketplace/teamName 探针，而不是 affinity 键。所以这里强制唯一性校验，不唯一就报失灵。
   const forYouFn = (() => {
-    const at = renderer.indexOf("function ms(n,e,a){");
-    if (at < 0) return null;
+    const probe = renderer.indexOf("affinityStrength");
+    if (probe < 0) return null;
+    const head = renderer.lastIndexOf("function ", probe);
+    if (head < 0) return null;
+    const m = /^function [A-Za-z_$][\w$]*\(/.exec(renderer.slice(head, probe + 40));
+    if (!m) return null;
+    const at = renderer.indexOf(m[0], head);
     let depth = 0;
     for (let k = renderer.indexOf("{", at); k < renderer.length; k += 1) {
       if (renderer[k] === "{") depth += 1;
@@ -230,16 +254,58 @@ if (!fs.existsSync(DEPLOYED_ASAR)) {
     return null;
   })();
   if (forYouFn == null) {
-    known("部署版渲染器：为你推荐 的 selectForYou 位置", true, "未能在产物里定位到 ms()，无法核查 affinity 键");
-  } else {
-    const bucketsKeyed = /for\(let\s+\w+\s+of\s+vn\(\w+\.entry\)\)/.test(forYouFn);
-    const labelKeyed = /\.category/.test(forYouFn);
     known(
-      "部署版渲染器：为你推荐 的 affinity 键按 category 标签（与官方一致）",
-      bucketsKeyed || !labelKeyed,
-      bucketsKeyed
-        ? "仍是 0.18 的桶版（vn(entry)）—— 151/403 条 MCP 类条目结构性失格；补丁待定"
-        : "已按 category 标签算，与官方 0.66 一致",
+      "部署版渲染器：为你推荐 的 selectForYou 定位",
+      false,
+      "产物里找不到 affinityStrength —— 无法核查 affinity 键。这是检测器问题，不是已知的对齐状态",
+    );
+  } else {
+    const gsAt = renderer.indexOf(forYouFn);
+    const keyCalls = [...forYouFn.matchAll(/\b([A-Za-z_$][\w$]*)\(\s*\w+\.entry\s*\)/g)].map((m) => m[1]);
+    const uniqKeys = [...new Set(keyCalls)];
+    const readKey = keyCalls.map((name) => {
+      const re = new RegExp(`function ${name}\\(`, "g");
+      const decls = [];
+      let d;
+      while ((d = re.exec(renderer)) !== null) decls.push(d.index);
+      if (decls.length !== 1) return { name, ambiguous: decls.length };
+      const at = decls[0];
+      let depth = 0;
+      for (let k = renderer.indexOf("{", at); k < renderer.length; k += 1) {
+        if (renderer[k] === "{") depth += 1;
+        else if (renderer[k] === "}") { depth -= 1; if (depth === 0) return { name, body: renderer.slice(at, k + 1) }; }
+      }
+      return { name, body: null };
+    });
+    const bodies = readKey.filter((k) => k.body).map((k) => k.body);
+    const ambiguous = readKey.filter((k) => k.ambiguous !== undefined);
+
+    // 表间接：局部变量由 X[...] 赋值、且随后做 != null 判空 —— 这正是「键可能被表缺项吞掉」的形态
+    const tableLookups = bodies.flatMap((b) =>
+      [...b.matchAll(/(?:let|const|var)\s+(\w+)\s*=\s*([A-Za-z_$][\w$]*)\[/g)]
+        .filter((m) => new RegExp(`\\b${m[1]}\\s*!=\\s*null`).test(b))
+        .map((m) => m[2]),
+    );
+    const tableKeyed = tableLookups.length > 0;
+    const labelKeyed = !tableKeyed && bodies.some((b) => /\.category\b/.test(b));
+
+    // `tableKeyed` = 键经映射表间接 = **与官方不同源**（官方 `v` 直接用 `e.category.trim()`），
+    // 所以「一致」的条件是 labelKeyed，即 `!tableKeyed`。
+    // ⚠️ 17:2x 实测：这里曾写成 `!detectorOk || tableKeyed`，于是「有缺陷」被判成「与官方一致」，
+    //    输出与同行的说明文字自相矛盾。判据与判词必须同向。
+    const aligned = ambiguous.length === 0 && uniqKeys.length > 0 && labelKeyed;
+    known(
+      "部署版渲染器：为你推荐 的 affinity 键未经映射表间接（与官方一致）",
+      aligned,
+      ambiguous.length > 0
+        ? `键函数 ${ambiguous.map((k) => `${k.name}（同名定义 ${k.ambiguous} 个）`).join(", ")} 无法唯一定位 —— 检测器失灵`
+        : uniqKeys.length === 0
+          ? "selectForYou 体内未解析出 .entry 形态的键函数调用 —— 检测器失灵"
+          : tableKeyed
+            ? `键函数 ${uniqKeys.join(", ")} 经 ${[...new Set(tableLookups)].join(", ")} 查表间接；官方直接用 category 标签。as 表缺 MCP/AGENT_ORCHESTRATION/FEATURED → 403 条里 169 条键为空（见 docs/evidence/marketplace-foryou-affinity-key.md）`
+            : labelKeyed
+              ? `键函数 ${uniqKeys.join(", ")} 直接取 category 标签，与官方 0.66 同源`
+              : `键函数 ${uniqKeys.join(", ")} 既非标签直取也非表间接 —— 无法判定`,
     );
   }
 
@@ -498,11 +564,15 @@ if (officialSections && deployedSections) {
   for (const title of onlyOfficial) console.log(`       ❌ ${title}（本地无此区块：官方: ${officialSections[title].names.join(" / ")}）`);
   console.log("\n     剩余差异请对照 docs/MARKETPLACE-066-EVIDENCE.md §18–§20 归因：本地 catalog 已补齐为");
   console.log("     与官方同规模（下方「catalog payload 对拍」逐条核对，缺失条目应为「无」）；");
-  console.log("     1Password 不在任何一侧 catalog；「为你推荐」的差异是**两层叠加**，别只记一层：");
-  console.log("       (1) 已安装集合不同（机器状态，不可消除）—— affinity 取自各自的已装条目；");
-  console.log("       (2) affinity 键错误 —— 官方 0.66 按 category 标签算，0.18（及本仓库此前的重建）");
-  console.log("           按分区桶算，而桶表不认 MCP → 151/403 条结构性失格。重建侧已修(667018c)，");
-  console.log("           部署侧仍是 0.18 的 ms，未打补丁。详见 docs/evidence/marketplace-foryou-affinity-key.md");
+  console.log("     1Password 不在任何一侧 catalog。");
+  console.log("     「为你推荐」的差异是**两层叠加**：① 已安装集合不同（机器状态）；② 部署版渲染器的");
+  console.log("     affinity 键经 `as` 映射表间接，该表缺 MCP / AGENT_ORCHESTRATION / FEATURED →");
+  console.log("     官方实机 403 条里 169 条键为空（MCP 151 / Agent Orchestration 17 / Featured 1），");
+  console.log("     官方侧 0 条（官方 `v(e,t)` 直接取 category 标签，从不查表）。");
+  console.log("     ⚠️ 2026-10-05 16:25 那次「部署侧无缺陷」的复核结论**已撤回**：它把 `ge`（真身是");
+  console.log("     marketplace/teamName 探针）当成了 affinity 键。本次按 `affinityStrength` 定位 +");
+  console.log("     调用点偏移定位键函数，重新逐字节确认。详见");
+  console.log("     docs/evidence/marketplace-foryou-affinity-key.md §八");
 
   console.log("\n     首页形状：");
   ok("查看全部 数量", officialShape.seeAll === deployedShape.seeAll, `官方 ${officialShape.seeAll} / 本地 ${deployedShape.seeAll}`);

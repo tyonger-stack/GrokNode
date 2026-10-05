@@ -28,7 +28,8 @@
     "source:typecheck": "tsc --project source/tsconfig.json",
     "verify": "node scripts/verify.mjs",
     "marketplace:parity": "node scripts/verify-marketplace-detail-parity.mjs",
-    "marketplace:css": "node scripts/verify-marketplace-css-cascade.mjs"
+    "marketplace:css": "node scripts/verify-marketplace-css-cascade.mjs",
+    "marketplace:affinity:audit": "node scripts/audit-deployed-affinity-key.mjs"
   },
   "devDependencies": {
     "@electron/asar": "4.2.1",

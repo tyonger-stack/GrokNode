@@ -657,6 +657,17 @@ export function buildMarketplaceModel(
  *
  * There is also no "max over several buckets" step: `category` is a single string upstream, so an
  * entry has exactly one affinity key. The previous multi-bucket max was part of the same mistake.
+ *
+ * ⚠️ **Do not describe the deployed app as having "the same bug" — it has a different one.**
+ * The deployed renderer's `selectForYou` (`ms`) does NOT use the bucket table either; its key
+ * function `vn(entry)` returns a *category-label array* resolved through a different mapping table
+ * (`as`, 14 keys, plus the vendor-override table `ts`). `as` likewise has no `MCP`, no
+ * `AGENT_ORCHESTRATION` and no `FEATURED`, so **169 of the 403 real rows** get an empty key there
+ * (`MCP` 151 / `Agent Orchestration` 17 / `Featured` 1) where official gets 0. Same *shape* of
+ * failure, different table, different number. Verified byte-for-byte from the deployed asar:
+ *   node scripts/audit-deployed-affinity-key.mjs
+ * and see docs/evidence/marketplace-foryou-affinity-key.md. An earlier note here claimed the
+ * deployed app keyed on the bucket table; that was a misread and has been corrected.
  */
 export function selectForYou(
   catalog: readonly BrowseRow[],

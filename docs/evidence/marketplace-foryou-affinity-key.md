@@ -1,169 +1,187 @@
-# 「为你推荐」affinity 键错误 —— 重建与**已部署产物**都中招（2026-10-05）
+# 「为你推荐」affinity 键 —— **已部署产物同样有缺陷**（2026-10-05 17:0x 二次纠正）
 
-## 结论
+> ## ⚠️ 本文档 §一、§三、§六、§八 全部作废，以本文档正文为准
+>
+> 16:25 那次「纠正」说「0.18 部署产物的 affinity 键是 `entry.category` 标签，与官方同源，
+> 部署侧不需要补丁」。**这个结论是错的，已撤回。**
+>
+> 错因：它按函数**名**反查，认为 `selectForYou` 压缩名是 `gs`、键函数是 `ge`。
+> 实测部署 chunk 里 `affinityStrength` 的 4 次命中**全部落在 `ms` 内**，
+> 而 `ge` 的真身是 `function ge(n){let e=n.marketplace; …}` —— marketplace/teamName 探针，
+> 与 affinity 无关（`function ge(` 在 chunk 里有 **4 个同名定义**，按名字反查必然读错）。
+>
+> 撤回依据与正确机制见下文 §八。
 
-官方 0.66 的 `selectForYou`（`te`）按**条目自己的 `category` 标签**算 affinity。
-0.18 —— 以及本仓库的可读重建 —— 按**解析后的分区桶**算。
+## 结论（现行）
 
-桶表 `Le` 没有 `MCP` 的映射，也没有 `AGENT_ORCHESTRATION`。所以这两类条目
-（实机 403 条里 **151 条**）的 `affinityStrength` 恒为 0，**结构上永远进不了「为你推荐」**。
+**两侧的 affinity 键语义不同，且部署侧会把条目吞掉。**
 
-**两条线都受影响：**
-
-1. 可读重建 `frontend/src/extensions/marketplace/model.ts` —— **已修**（`selectForYou` 改用
-   `categoryAffinityKey`），守卫 6 条 + 5/5 变异全红。
-2. **已部署的 `/Applications/Grok Node.app`** —— 渲染器是 0.18 的上游 chunk，
-   它自带的 `ms`（即 `selectForYou`）**带着同一个 bug**，而本轮修复不改变部署产物
-   （`frontend/` 不进 asar）。要修部署侧必须给被 checksum 钉死的上游 chunk 打补丁，
-   **属需要先定方案的改动，未执行**。
-
-## 一、怎么坐实的：一个 2×2 交叉实验
-
-先把两侧的已装信号摸清（这一步本身就纠正了一个错误前提）：
-
-| | 本地 | 官方 |
+| | 官方 0.66 | 0.18 部署版 |
 | --- | --- | --- |
-| 界面显示 | 已安装 8 个 | 已安装 16 个 |
-| `mcp.list()` | 8 条 | 13 条 |
-| `effectivePlugins()` | **[]（空数组）** | 13 条，带真实 `pluginId` |
-| `teamPopularity()` | 0 | 0 |
-| 管理页行数 | — | 28（**前 16 条 = 已装**，后 12 条是私有技能/Bot） |
+| `selectForYou` | `te` @ `chunk-marketplace-browse-model-DoOY91TS.js` (12,928 B) | `ms` @ `index-UbX-y3il.js` (5,957,907 B) |
+| 键函数 | `v(e,t){return j(e.category.trim(),t)}` | `vn(n)` → **标签数组** |
+| 是否查表 | **否**，直接用标签 | **是**：`ts[pluginName]` 或 `as[cs({category})]` |
+| 官方实机 403 条里键为空的 | **0** | **169**（`MCP` 151 / `Agent Orchestration` 17 / `Featured` 1） |
 
-用仓库里真实的 `buildMarketplaceModel` 跑交叉组合，`catalog` 与「已装集合」交叉：
+`as` 表只有 14 个键（`PRODUCTIVITY`、`DESIGN`、`SCHEDULING`…），**没有 `MCP`、
+没有 `AGENT_ORCHESTRATION`、没有 `FEATURED`**。`cs()` 把 category 归一化成大写下划线形式
+（`"MCP"` → `"MCP"`、`"Agent Orchestration"` → `"AGENT_ORCHESTRATION"`），这三类查表得
+`undefined` → `vn` 返回空数组 → 该条目 `affinityStrength` 恒为 0 → 在
+`filter(affinityStrength>0)` 那一关被筛掉，**结构性进不了 affinity 那两个名额**。
 
-```
-修复前  A) 官方已装(16) + 官方 catalog → ActiveCampaign / AgentMail / Ando / Bird     ✗
-        B) 官方已装(16) + 本地 catalog → 同上                                          ✗
-        C) 本地已装(8)  + 本地 catalog → ActiveCampaign / Adobe… / AgentMail / Airtable ✓
-        D) 本地已装(8)  + 官方 catalog → 同上                                          ✓
+「为你推荐」与官方的差异是**两层叠加**：① 已安装集合不同（机器状态）；② 部署侧这个算法缺陷。
 
-修复后  A) 官方已装(16) + 任一 catalog → Agent Compatibility / Aikido / Aleph / Algolia Productivity ✓
-```
+## 一、两段历史结论的处置
 
-A≡B、C≡D 说明 **catalog 来自哪个 app 完全不影响输出**；变的只有已装集合。
-而修复后 A 精确复现了官方实际渲染的那 4 行。
+| 版本 | 结论 | 处置 |
+| --- | --- | --- |
+| 初版 | 部署侧按**首页分区桶**算 affinity，151 条结构性失格 | **数字对、机制错**。`151` 正是 `MCP` 类条目数；但部署侧走的不是分区桶表 `Le`，而是 category→标签映射表 `as`。两者都缺 `MCP`，所以后果相同 |
+| 16:25「纠正」 | 部署侧与官方同源，不需要补丁 | **整体作废**，见 §八 |
 
-## 二、为什么桶版「不可能」选中官方那 4 个
+## 二、实测的两侧字节（逐字读出，非转述）
 
-逐条查它们的分区归属：
-
-```
-官方 forYou 赢家   categoryKey        我们模型下的分区
-Agent Compatibility  undefined        (不在任何分区)
-Aikido               undefined        (不在任何分区)
-Aleph                undefined        (不在任何分区)
-Algolia Productivity undefined        (不在任何分区)
-```
-
-四条全落不到任何桶 → 桶版的 `affinityStrength` 全是 0 → 在
-`o.filter(S=>S.affinityStrength>0)` 那一关就被筛掉了。
-**桶版不是「算错」，是根本选不到它们。** 详情页也确认它们的渲染类别就是 `MCP`。
-
-按 category 标签算出来的 affinity 表正好对上：
-
-```
-"Featured" → 6      （Gmail / Google Calendar / Google Drive / Granola / Notion / Slack）
-"MCP"      → 5      （oh-my-claudecode / Finance / Cursor Team Kit / Cursor SDK / pstack）
-"Productivity" → 1  "Design" → 1  "Scheduling" → 1
-```
-
-`MCP` 权重 5，于是同为 `MCP` 的未装条目按名称取前 4 —— 就是官方那 4 个。
-
-## 三、0.18 上游 chunk 里那段代码（已部署产物原文）
-
-`/Applications/Grok Node.app/Contents/Resources/app.asar` →
-`dist/renderer/assets/index-UbX-y3il.js`，`ms` = 该版本的 `selectForYou`：
+官方 `chunk-marketplace-browse-model-DoOY91TS.js`：
 
 ```js
-function ms(n,e,a){
-  if(a<=0)return[];
-  let t=n.filter(S=>S.isInstalled), s=new Map;
-  for(let S of t) for(let y of vn(S.entry)) s.set(y,(s.get(y)??0)+1);   // ← affinity 表按【桶】
-  let o=[];
-  for(let S of n){
-    if(S.isInstalled)continue;
-    let y=0;
-    for(let w of vn(S.entry)) y=Math.max(y,s.get(w)??0);               // ← 多桶取最大
-    o.push({row:S, teammateCount:e[S.id]??0, affinityStrength:y});
-  }
-  let l=(S,y)=>S.row.name.localeCompare(y.row.name),
-      r=o.filter(S=>S.teammateCount>0).sort((S,y)=>y.teammateCount-S.teammateCount||l(S,y)),
-      u=o.filter(S=>S.affinityStrength>0).sort((S,y)=>y.affinityStrength-S.affinityStrength||y.teammateCount-S.teammateCount||l(S,y)),
-      k=new Set, m=[], f=S=>{k.has(S.row.id)||m.length===a||(k.add(S.row.id),m.push(S))},
-      A=Math.max(1,Math.floor(a*Zt));
-  for(let S of r.slice(0,A))f(S);
-  for(let S of u)f(S);
-  for(let S of r)f(S);
-  return m.sort((S,y)=>Ee(S)-Ee(y)).map(S=>S.row)
-}
+function v(e,t){return j(e.category.trim(),t)}
+function J(e,t,n){const i=new Map;for(const o of e){if(!t(o))continue;const s=v(o,n);s.length!==0&&i.set(s,(i.get(s)??0)+1)}return i}
+function ee(e,t,n,i){const o=v(e,i);return{entry:e,teammateCount:t.teamInstallCounts[e.id]??0,affinityStrength:o.length===0?0:n.get(o)??0}}
+function te(e,t){const n=g(),i=new Intl.Collator(n),o=(r,c)=>i.compare(r.entry.displayName,c.entry.displayName),s=J(e.catalog,e.isInstalled,n),…}
 ```
 
-`vn(entry)` 与构建 `categoryGroups` 用的是**同一个桶解析函数**，所以 affinity 与首页分区
-被绑死在同一套映射上 —— 这正是错的地方。
+**键是单个字符串**（标签本身），`J`（建表）与 `ee`（取值）用同一个 `v`，所以已装与候选被同一把
+尺子量。`o.length===0` 只会因空标签触发 —— 实测 403 条**没有空标签**。
 
-**除 affinity 键之外，其余与官方 `te` 逐项一致**：team 配额
-`max(1, floor(limit*0.5))`、先 team 后 affinity 再补 team、末尾按 signal 种类排序、
-同分一律 `localeCompare(displayName)`。所以这不是移植走样，是**上游 0.18 本身就与 0.66 有分歧**。
+0.18 部署版 `index-UbX-y3il.js`：
 
-## 四、为什么这么久没被发现
+```js
+function ms(n,e,a){if(a<=0)return[];let t=n.filter(S=>S.isInstalled),s=new Map;
+  for(let S of t)for(let y of vn(S.entry))s.set(y,(s.get(y)??0)+1);        // ← 键 = vn(entry)
+  let o=[];for(let S of n){if(S.isInstalled)continue;let y=0;
+  for(let w of vn(S.entry))y=Math.max(y,s.get(w)??0);                      // ← 跨标签取 max
+  o.push({row:S,teammateCount:e[S.id]??0,affinityStrength:y})} …}
 
-- 官方与本地渲染出的 4 行**都看起来像字母序**，很容易被读成「个性化推荐」或巧合。
-- 整站 parity 逐区块比对是绿的：12/13 个共有区块逐行一致。首页那个 `为你推荐` 区块一直被
-  记为「数据面差异（已装集合不同）」，**归因是对的但不完整** —— 它同时还叠了一个算法错误。
-- 关键的 4 个赢家全是 `MCP` 类，恰好又都是**没装**的，所以在任何「已装清单」视图里都不显眼。
+function vn(n){let e=!ds(n);
+  for(let t of ps(n)){let s=ts[t];if(s!=null&&!(ss.has(t)&&!e))return s}    // 厂商覆盖表
+  let a=[];for(let t of us(n)){let s=as[cs({category:t})];s!=null&&!a.includes(s)&&a.push(s)}  // 枚举表
+  return a}
 
-## 五、守卫
+as={LOGIN_AND_CREDENTIAL_MANAGEMENT:"credentials",PRODUCTIVITY:"productivity",
+    INBOX_AND_COLLABORATION:"communication",SCHEDULING:"communication",SALES:"sales",
+    CUSTOMER_SUPPORT:"support",PAYMENTS:"finance",FINANCE_AND_LEGAL:"finance",
+    DATA_ANALYTICS:"data",DESIGN:"design",CANVAS:"design",
+    DOCUMENTS_AND_FILES:"productivity",INFRASTRUCTURE:"code",RESEARCH:"research"}
+
+cs(n)=L(n.categoryKey||n.category).trim().toUpperCase().replace(/&/gu," AND ").replace(/[^A-Z0-9]+/gu,"_").replace(/^_+|_+$/gu,"")
+ts={slack:["communication"],notion:["productivity"],"notion-workspace":["productivity"],
+    linear:["productivity"],figma:["design"],tldraw:["design"],github:["code"],…}
+ss=new Set(["canva","mailerlite"])
+```
+
+`vn` 返回的是**规范后的 category 标签数组**，不是首页分区桶 —— 这一点纠正了初版的措辞。
+但它**经 `as` 查表**，而 `as` 缺三项，于是这 169 条拿不到任何键。
+
+## 三、影响面量化（官方实机 403 条）
+
+用上面逐字读出的 `as` / `ts` / `cs` / `us` / `ps` 重放 `vn`，数据取
+`tests/fixtures/official-foryou-attribution.json` 的 403 条 catalog：
+
+```
+部署侧 affinity 键为空 : 169 / 403
+  "MCP"                 : 151
+  "Agent Orchestration" : 17
+  "Featured"            : 1
+靠厂商覆盖表 ts 拿到标签 : 14
+靠 as 映射表拿到标签     : 220
+官方侧键为空            :   0 / 403
+```
+
+可复现：`node scripts/audit-deployed-affinity-key.mjs`
+
+## 四、实机读数（同一时刻两个 app 都在跑，各连跑两遍逐字节一致）
+
+```
+官方 9224  为你推荐: Agent Compatibility / Aikido / Aleph / Algolia Productivity
+本地 9232  为你推荐: ActiveCampaign / Adobe Developer App Builder / AgentMail / Airtable
+```
+
+> ⚠️ **待核**：本地这 4 行恰好是字母序前四，但按 `ms` 的字面逻辑，当 team 与 affinity 两个池
+> 都为空时它应当返回空数组。所以「本地这 4 行是字母序回退」这个解释**尚未证实** ——
+> 更可能本地有条目被标记为已装（从而产生 team 或 affinity 信号）。
+> **本轮没有取证这一层，不写成结论。** 归因「两层叠加」中的第 ① 层（已装集合不同）也因此
+> 只有 catalog × 已装集合交叉实验的间接证据，没有实机读数。
+
+## 五、为什么这么久没被发现
+
+- 官方与本地渲染出的 4 行**看起来都像字母序**，很容易被读成巧合。
+- 整站 parity 逐区块比对是绿的，`为你推荐` 区块一直被记为「数据面差异」。
+- 关键的赢家全是 `MCP` 类，又恰好都没装，在任何「已装清单」视图里都不显眼。
+- 16:25 的「纠正」又给了一层虚假安心：它给出了一个**具体符号名**（`gs`/`ge`）和
+  一张「两侧输出逐字相同」的表，而那两张表都不是从产物读出来的。
+
+## 六、部署侧：**需要补丁**（结论已改回）
+
+要给 checksum 钉死的上游 chunk 打 affinity 补丁。改的是 `ms` 里 `vn` 的取值路径：
+让它在没有 `as` 映射时回落到 `category` 归一后的标签本身，与官方 `v` 同形。
+
+**本轮未执行** —— 改 checksum 钉死的产物要单独一轮完整回归，且属产品行为变更，需用户拍板。
+
+可读重建侧（`frontend/`）的修复 `667018c` **保留且仍然必要**，但要改一处措辞：
+它修的是 `bucketsOf()`（首页分区桶表 `Le` 同样缺 `MCP`），机制与部署侧的 `as` 缺项**不同源**，
+不能写成「部署侧带同一个 bug」。
+
+## 七、守卫
 
 `tests/marketplace-foryou-affinity.test.mjs`（6 条）+ 夹具
-`tests/fixtures/official-foryou-attribution.json`（官方实机全量 403 条 catalog +
-官方自己的 16 条已装名单 + 官方渲染的那 4 行）：
+`tests/fixtures/official-foryou-attribution.json`：
 
 1. 用官方 catalog + 官方已装名单 → 必须复现官方那 4 行
-2. 那 4 个赢家必须落不到任何桶（否则「桶版也算得对」无法被排除）
+2. 那 4 个赢家必须落不到任何桶
 3. 最小判别：同 category 标签、都落不到桶的两条，必须互相给 affinity
 4. 反向判别：同桶但不同 category 标签的两条，**不应**互相给 affinity
-5. `selectForYou` 函数体内不得再出现 `bucketsOf`（切片起止锚点都断言在正确位置）
+5. `selectForYou` 函数体内不得再出现 `bucketsOf`
 6. 上限仍是 4
 
-变异 5/5 全红（桶版 / `categoryKey` 版 / `categoryKeys` 版 / 只认 MCP / 去掉 `trim`），
-脚本先注入必然失败断言确认退出码真的是 1。
+`scripts/verify-marketplace-parity.mjs` 里另有一个**部署侧**检测：按 `affinityStrength`
+定位 `selectForYou`，再按调用点偏移定位键函数（并强制唯一性校验），判定
+**键是否经映射表间接**。⚠️ 判据不是「有没有 `for..of`」—— `vn` 体内那两个 `for..of`
+遍历的是 plugin 名 token 与 category token，都不是桶，拿「有没有遍历」当判据会对
+正确实现也误判。
 
-## 六、还没做的：部署侧
+## 八、2026-10-05 二次纠正：16:25 那次错在哪
 
-重建修好了，但**已部署的 app 仍然是 0.18 的 `ms`**。要修必须给被 checksum 钉死的上游
-renderer chunk 打补丁。项目里有先例（`router-renderer-patch.mjs` 做最小化、可审计注入），
-但那会改变钉死产物的行为，属需要先定方案的改动，**本轮未执行**。
+### 错因：按函数名反查 minified 符号
 
-在打补丁之前，本地「为你推荐」那一行与官方的差异是**两层原因叠加**：
+16:25 的复核称「`function ms(n,e,a){` 在 5.9 MB 的 chunk 里**一次都没有**」，
+「`affinityStrength` 只出现 4 次，全部落在 `gs` 内」，「键函数是 `ge(entry)` → `A(n.category).trim()`」。
 
-1. 已装集合不同（机器状态，不可消除）
-2. affinity 键错误（算法，可修，但本轮只在重建侧修了）
+实测（`node scripts/audit-deployed-affinity-key.mjs` 可复现）：
 
-## 七、复现
+| 断言 | 实测 |
+| --- | --- |
+| `function ms(n,e,a){` 不存在 | **存在，恰好 1 次，809 字节** |
+| 4 次 `affinityStrength` 全在 `gs` 内 | 4 次偏移 5854338 / 5854511 / 5854545 / 5854564，**最近具名函数全是 `ms`** |
+| 键函数是 `ge` | `ge` 定义 **4 次**；按名字反查读到的是 `function ge(n){let e=n.marketplace; …}` —— teamName 探针 |
+| chunk 大小 5,939,561 B | 当前 5,957,907 B；重打包前留存的副本 5,939,528 B（`ms` 区域偏移与当前**完全相同**） |
 
-```sh
-export PATH=/Users/Apple/Documents/grokbot/.tools/node-26/bin:$PATH
-REPO=/Users/Apple/Documents/grokbot/grok-bot-0.18-reconstructed
-cd "$REPO"
+最后一行顺带排除了一个可疑解释：**不是我的重打包换了压缩名**。重打包前后该区域字节一致。
 
-# 守卫
-node --test tests/marketplace-foryou-affinity.test.mjs
+### 方法上缺的那一环
 
-# 从已部署 asar 里读出 0.18 的 ms
-node -e '
-const {readFileSync}=require("fs");
-const A="/Applications/Grok Node.app/Contents/Resources/app.asar";
-const b=readFileSync(A), ds=8+b.readUInt32LE(4), jl=b.readUInt32LE(12);
-const h=JSON.parse(b.subarray(16,16+jl).toString("utf8"));
-(function w(n,p){for(const [k,c] of Object.entries(n.files??{})){const q=p?p+"/"+k:k;
- if(c.files)w(c,q); else if(q==="dist/renderer/assets/index-UbX-y3il.js"){
-   const o=Number(BigInt(ds)+BigInt(c.offset));
-   const s=b.subarray(o,o+c.size).toString("utf8");
-   const i=s.indexOf("function ms(n,e,a){"); let d=0,j=s.indexOf("{",i),k=j;
-   for(;k<s.length;k++){ if(s[k]==="{")d++; else if(s[k]==="}"){d--; if(!d)break;} }
-   console.log(s.slice(i,k+1));
- }}})("",0);'
-```
+正确做法是**按产物里必然存在的稳定串定位**（`affinityStrength` 是 esbuild 保留的对象属性名），
+再**按调用点在函数体内的偏移**定位被调用的键函数。16:25 跳过了第二步，直接按名字找 ——
+而 minified 短名重名是常态（`ge` 4 个、`A` 15 个、`ds` 2 个）。
 
-注意：产物里的中文是 `\uXXXX` 转义，直接 grep「为你推荐」是 0 命中 —— 必须先转义再匹配
-（`为你推荐` → `\u4E3A\u4F60\u63A8\u8350`）。
+配套的教训已扩写进抽取器：切片边界必须落在**函数自己的** `{` 上。
+本轮第一次抽取官方 `te` 时，从 `affinityStrength` 字面量处开始深度扫描，读出的是
+`ee` 的尾巴 + 整个 `te`（官方 799 字节被读成 938），部署侧同样被截断（658 vs 809）。
+修法是先在合成夹具上自检抽取器（7/7 通过，含「不得吞掉相邻函数」用例），再用它读产物。
+
+### 教训
+
+- **minified 产物里不能用函数名当锚点**，也不能用「我记得它长什么样」当锚点。
+  定位链必须是：稳定串 → 所在的函数 → 该函数体内的**调用点偏移** → 被调函数的声明（且唯一）。
+- **否定结论（「搜不到」）比肯定结论更危险**：搜不到时该做的是换定位方式，不是据此否定存在性。
+  16:25 用「搜不到 `ms`」推翻了三条真实观察。
+- **一份「纠正」文档必须能被新一轮复核推翻**。本节就是为此保留的：下次若再有人给出
+  「部署侧无缺陷」的结论，请从这里开始，而不是从结论开始。
