@@ -1131,6 +1131,75 @@ export const DETAIL_ADD_ACCOUNT_FULL_CLASSES = [
   "sand-12oo3zp", "sand-1yc453h", "sand-1ypdohk",
 ];
 
+/* ------------------------------------------------------------------ *
+ * 「添加其他账户」展开后的内联表单（2026-10-05 实机 + 产物双向取证）
+ *
+ * 官方 `ve()` 里这一块与账户编辑表单是**两件事**：
+ *   · 编辑表单在账户行正下方，输入框是 14 类的 `DETAIL_ACCOUNT_FORM_INPUT_CLASSES`；
+ *   · 本表单是账户列表末尾 `添加其他账户` 按钮的同一位置就地替换，输入框是**另一套 17 类**。
+ * 两者外层 div 的类列表恰好**逐字相同**（都读出那 9 个类），容易误当成同一个常量 ——
+ * 之前正是因为把这块当「编辑表单的一部分」，把它的输入框错放进了 `createAccountEditForm`。
+ * 所以下面给独立常量，即使字面量与 `DETAIL_ACCOUNT_FORM_SLOT_CLASSES` 相同。
+ * ------------------------------------------------------------------ */
+
+/** 折叠态的 `添加其他账户` 按钮点开后就地替换成这个 div。实机 614×52。 */
+export const DETAIL_ADD_ACCOUNT_FORM_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-1qughib", "sand-167g77z",
+  "sand-z9dl7a", "sand-1pic42t", "sand-sag5q8", "sand-1onr9mi",
+];
+
+/** 包住输入框的 span，实机 478×28。官方渲染的标签是 `新账户标签`，placeholder 是
+ *  「为此账户添加标签，例如“工作”或“个人”」。前 5 个类与 `DETAIL_ACCOUNT_NAME_CLASSES` 相同
+ *  —— 官方就是这么写的，所以不合并常量。 */
+export const DETAIL_ADD_ACCOUNT_FIELD_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-dt5ytf", "sand-12mrbbr", "sand-euugli",
+  "sand-1iyjqo2", "sand-s83m0k", "sand-dl72j9",
+];
+
+/** `新账户标签` 输入框自身的 17 类。与编辑表单那 14 类**不是**同一套配方，别混用。 */
+export const DETAIL_ADD_ACCOUNT_INPUT_CLASSES = [
+  "sand-9f619", "sand-1iyjqo2", "sand-s83m0k", "sand-dl72j9", "sand-1i9suas", "sand-1fgtraw",
+  "sand-mzvs34", "sand-f159sx", "sand-ur7f20", "sand-mkeg23", "sand-1y0btm7", "sand-qz0629",
+  "sand-18gyud7", "sand-1wd3ewq", "sand-jb2p0i", "sand-1wm8ruf", "sand-1t137rt",
+];
+
+/**
+ * 「输入的标签是保留标签」红色提示的 5 类。官方在 `DETAIL_ADD_ACCOUNT_FIELD_CLASSES`
+ * 那个 span 里，把本节点作为 input 的**兄弟**条件渲染（`S ? <span …> : null`）。
+ *
+ * @evidence live 0.66, Gmail 详情页「添加其他账户」展开态，输入 `Grok` / `grok` 时出现、
+ * 输 `default` / `个人` / `工作` 时不出现 —— 即判定是 `trim(label).toLowerCase() === "grok"`。
+ * 逐字取自 `chunk-plugin-detail-view-tZskkHRA.js` 的 `ve()`：消息 id `wLsCed`，
+ * 中文表（`chunk-core-*.js` 默认表）解出「Grok 是保留的账户标签」。
+ * 5 个类在 0.18 与 0.66 的 CSS 里声明**逐字相同**，无需任何替换：
+ *   `.sand-1jh5svw{color:var(--cursor-text-red-primary)}`、`.sand-1d3mw78{line-height:16px}`、
+ *   `.sand-12oo3zp{letter-spacing:0}` —— 已对 `index-lCyB53CO.css` 与官方
+ *   `index-B9V4agTc.css` 双向 grep 核对。
+ */
+export const DETAIL_ADD_ACCOUNT_HINT_CLASSES = [
+  "sand-9f619", "sand-1wm8ruf", "sand-1d3mw78", "sand-12oo3zp", "sand-1jh5svw",
+];
+
+/**
+ * 「取消」的官方类列表 —— `授权` 去掉默认 variant 专属的 3 个类、再加 4 个 ghost 专属类。
+ *
+ * 依据不是「猜一个 ghost 变体」，而是**在浏览器里对两枚按钮的 class 集合求差**（实机，两个按钮
+ * 各 54 / 55 个类）：交集 51，`授权` 独有 `sand-1kxuqrf sand-uo9n5k sand-1wd3ewq`，
+ * `取消` 独有 `sand-jbqb8w sand-8cg4aw sand-19aaqeu sand-1dsx48b`。7 个差集类在 0.18 侧
+ * 全部存在，无一需要提升。
+ */
+export const CANCEL_BUTTON_OFFICIAL_CLASSES = [
+  ...ACTION_BUTTON_OFFICIAL_CLASSES.slice(0, -3),
+  "sand-jbqb8w", "sand-8cg4aw", "sand-19aaqeu", "sand-1dsx48b",
+];
+
+/** 同上的 0.18 可渲染形：那 7 个逻辑属性类换成物理属性等价类（与 `ACTION_BUTTON_CLASSES` 同一套
+ *  替换，`ACTION_BUTTON_018_SUBSTITUTES` 已逐条 grep 验证存在于 0.18 产物）。 */
+export const CANCEL_BUTTON_CLASSES = [
+  ...ACTION_BUTTON_CLASSES.slice(0, -3),
+  "sand-jbqb8w", "sand-8cg4aw", "sand-19aaqeu", "sand-1dsx48b",
+];
+
 /** The 工具 row itself — a button, `[65,504,734,42]`. */
 export const DETAIL_TOOLS_ROW_CLASSES = [
   "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-1qughib", "sand-167g77z", "sand-z9dl7a",

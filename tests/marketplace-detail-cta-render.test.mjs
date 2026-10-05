@@ -172,8 +172,12 @@ test("the 工具 row renders its label and chevron, and keeps the 14px inset cla
 test("view.ts actually calls these builders, rather than re-inlining them", () => {
   // Without this the two tests above could keep passing while the render path drifted back to
   // building the button inline — the classic way a guard protects dead code.
+  // 2026-10-05: the add-account CTA is no longer appended directly. It became a collapsible
+  // sibling (collapsed button ⇄ expanded form) so the node reference has to be mutable; the
+  // builder call is what this test pins, not the literal `list.append(...)` form.
   const view = readFileSync(path.join(repoRoot, "frontend", "src", "extensions", "marketplace", "view.ts"), "utf8");
-  assert.match(view, /list\.append\(createAddAccountCta\(document\)\);/);
+  assert.match(view, /const buildCollapsed = \(\): HTMLButtonElement => \{\s*\n\s*const cta = createAddAccountCta\(document\);/);
+  assert.match(view, /const buildForm = \(\): HTMLElement =>\s*\n\s*createAddAccountForm\(document,/);
   assert.match(view, /list\.append\(createToolsRowCta\(document, detail\.toolsLabel\)\);/);
   assert.doesNotMatch(view, /setAttribute\("aria-label", TEXT\.addAccount\)/);
   assert.doesNotMatch(view, /createTextNode\(TEXT\.addAccount\)/, "the text node now belongs to detail-cta.ts");
