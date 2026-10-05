@@ -25,6 +25,11 @@ const OFFICIAL_ASAR = "/Applications/Grok Bot.app/Contents/Resources/app.asar";
 const DEPLOYED_ASAR = "/Applications/Grok Node.app/Contents/Resources/app.asar";
 const UPSTREAM_MODEL_CHUNK = "dist/renderer/assets/chunk-marketplace-browse-model-DoOY91TS.js";
 const OFFICIAL_CDP = "9224";
+/** 一次 CDP 读取的上限。超时要抛错、不许静默挂起 —— 见 cdpDump 的说明。
+ *  可用 MARKETPLACE_CDP_TIMEOUT_MS 覆盖，便于用真实端口做快速端到端验证。 */
+const CDP_DUMP_TIMEOUT_MS = Number(process.env.MARKETPLACE_CDP_TIMEOUT_MS ?? 120000) || 120000;
+const withTimeout = (promise, ms, label) =>
+  Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(label)), ms))]);
 const DEPLOYED_CDP = "9232";
 const OFFICIAL_URL_HINT = "Grok%20Bot.app";
 const DEPLOYED_URL_HINT = "Grok%20Node.app";
@@ -352,6 +357,15 @@ if (!fs.existsSync(DEPLOYED_ASAR)) {
 /* ---------------------------------------------------------- live checks ---- */
 
 async function cdpDump(port, urlHint, expression) {
+  // ⚠️ 2026-10-05 21:4x 加超时。此前**完全没有**：一个 app 不响应（本次是钥匙串弹窗把主
+  // 进程卡在 SecItemCopyMatching，CDP 端口虽 LISTEN 但不服务）会让 `await` 永远挂着，
+  // 整轮以 Node 的 "unsettled top-level await" 收场 —— **零产出、零结论**。
+  // 检测器挂死比它报红更糟：报红至少是一条可复核的判词，挂死什么也没说。
+  // 超时抛出的错误会被调用方的 try/catch 接住、记成「该端不可用」这一条。
+  return withTimeout(cdpDumpInner(port, urlHint, expression), CDP_DUMP_TIMEOUT_MS, `${port} 上读取超时`);
+}
+
+async function cdpDumpInner(port, urlHint, expression) {
   const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
   const page = targets.find((t) => t.type === "page" && t.url.includes(urlHint));
   if (!page) throw new Error(`${port} 上找不到含 "${urlHint}" 的 page target`);
