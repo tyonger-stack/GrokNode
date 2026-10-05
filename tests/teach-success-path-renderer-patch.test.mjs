@@ -41,6 +41,14 @@ const PINNED_CSS = path.join(REPO_ROOT, "src/app/dist/renderer/assets/index-lCyB
 const run = promisify(execFile);
 
 const readPinnedChunk = () => readFile(PINNED_CHUNK, "utf8");
+
+// src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped.
+// 2026-10-05 补：本文件此前硬读该产物，而 CI 从不执行 `npm run bootstrap`（bootstrap 用的是
+// macOS 专有的 hdiutil），于是 13 个依赖产物的文件里有 7 个在 CI 上 ENOENT —— main 的 CI
+// 已因此连续红 10 次。写法照抄仓库另外 6 个已守卫的文件，不新造模式。守卫对象取「声明的用例名
+// ∩ 实测失败名」，不是靠猜哪个用例读了产物。
+const pinnedChunk = await readPinnedChunk().catch(() => null);
+const pinnedSkip = pinnedChunk == null ? "src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped." : false;
 const readPinnedCss = () => readFile(PINNED_CSS, "utf8");
 
 const GATE_BEFORE = "function pWn(){return es(Qe().experiments.snapshots)?.featureGates?.publish_user_skills??!1}";
@@ -95,7 +103,7 @@ function gateReader(source) {
   return snapshot => fn(x => x, () => ({ experiments: { snapshots: snapshot } }));
 }
 
-test("every anchor resolves exactly once in the pristine bundle", async () => {
+test("every anchor resolves exactly once in the pristine bundle", { skip: pinnedSkip }, async () => {
   const chunk = await readPinnedChunk();
   assert.equal(chunk.split("publish_user_skills").length - 1, 1,
     "publish_user_skills should occur exactly once in the renderer chunk");
@@ -110,7 +118,7 @@ test("every anchor resolves exactly once in the pristine bundle", async () => {
     "the skill chip destructure is not unique");
 });
 
-test("the patch flips only the publish gate and leaves every other gate alone", async () => {
+test("the patch flips only the publish gate and leaves every other gate alone", { skip: pinnedSkip }, async () => {
   const pristine = await readPinnedChunk();
   const patched = await patchedChunk();
   assert.ok(!patched.includes(GATE_BEFORE), "the publish gate fallback was left unflipped");
@@ -123,7 +131,7 @@ test("the patch flips only the publish gate and leaves every other gate alone", 
   void pristine;
 });
 
-test("the flipped gate reader really returns true — polarity is evaluated, not compared", async () => {
+test("the flipped gate reader really returns true — polarity is evaluated, not compared", { skip: pinnedSkip }, async () => {
   const evaluate = gateReader(await patchedChunk());
   assert.equal(evaluate({ featureGates: { publish_user_skills: true } }), true, "a served true must stay true");
   assert.equal(evaluate({ featureGates: {} }), true, "an absent gate must fall back to the flipped default");
@@ -132,7 +140,7 @@ test("the flipped gate reader really returns true — polarity is evaluated, not
   assert.equal(evaluate(undefined), true, "an absent snapshot must fall back to the flipped default");
 });
 
-test("the transcript line renders the 0.62.0 zh-Hans string and only for teach-recording entries", async () => {
+test("the transcript line renders the 0.62.0 zh-Hans string and only for teach-recording entries", { skip: pinnedSkip }, async () => {
   const helpers = await evaluateHelpers(await patchedChunk(), "zh-CN");
   const teachEntry = { clientNonce: "teach-recording:abc123:teach-2026-09-30-010101.json", content: "The recording is finished. Learn the task from it." };
   assert.equal(helpers.RTeachIsRecording(teachEntry), true, "the real host payload must classify as teach-recording");
@@ -151,14 +159,14 @@ test("the transcript line renders the 0.62.0 zh-Hans string and only for teach-r
   assert.equal(helpers.RTeachIsRecording({ content: undefined }), false, "a contentless entry must not classify");
 });
 
-test("the classifier falls back to the English string in an English UI", async () => {
+test("the classifier falls back to the English string in an English UI", { skip: pinnedSkip }, async () => {
   const helpers = await evaluateHelpers(await patchedChunk(), "en-US");
   assert.equal(helpers.RTeachRecordingText(), "The recording is finished. Learn the task from it.",
     "the English value must be 0.62.0's /WKm9a source string");
   assert.equal(helpers.RTeachSkillLabel("learn-from-demonstration", "Learn from demonstration"), "Learn from demonstration");
 });
 
-test("the managed-skill chip label localizes only the learn-from-demonstration skill", async () => {
+test("the managed-skill chip label localizes only the learn-from-demonstration skill", { skip: pinnedSkip }, async () => {
   const helpers = await evaluateHelpers(await patchedChunk(), "zh-CN");
   assert.equal(helpers.RTeachSkillLabel("learn-from-demonstration", "Learn from demonstration"), "从演示中学习",
     "the managed teach skill must read as 0.62.0's zh-Hans 3Fgqpv value");
@@ -173,7 +181,7 @@ test("the managed-skill chip label localizes only the learn-from-demonstration s
   assert.equal(helpers.RTeachSkillLabel("", ""), "", "an empty chip must stay empty");
 });
 
-test("the message renderer takes contentBeforeRichText and puts it BEFORE the rich text", async () => {
+test("the message renderer takes contentBeforeRichText and puts it BEFORE the rich text", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   assert.ok(patched.includes("contentBeforeRichText:RTeachBefore"), "BPn must destructure the new prop");
   assert.ok(patched.includes('children:[RTeachNode,l]'), "the prose container must render the line before the rich text");
@@ -186,7 +194,7 @@ test("the message renderer takes contentBeforeRichText and puts it BEFORE the ri
   assert.ok(patched.includes('gpt(x,r,"c")'), "the no-rich-text path must keep its 0.18 key prefix");
 });
 
-test("the call site classifies the entry and forwards both strings", async () => {
+test("the call site classifies the entry and forwards both strings", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   assert.ok(patched.includes("content:RTeachIsRecording(r)?RTeachRecordingText():r.content"),
     "the call site must localize the content for teach-recording entries and pass the rest through");
@@ -196,7 +204,7 @@ test("the call site classifies the entry and forwards both strings", async () =>
     "the caller's memo must depend on clientNonce or a relabelled entry would reuse the stale node");
 });
 
-test("the skill chip localizes its label at the single point 0.62.0 uses", async () => {
+test("the skill chip localizes its label at the single point 0.62.0 uses", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   assert.ok(patched.includes("label:RTeachRawLabel,iconId:r,iconUrl:i}=n,o=ict(),s=RTeachSkillLabel(t,RTeachRawLabel);"),
     "the chip must re-bind its label to the localized value");
@@ -229,7 +237,7 @@ function sliceFunction(source, signature) {
   throw new Error(`${signature} did not brace-balance`);
 }
 
-test("memo-cache sizes are grown to cover every slot the patch adds", async () => {
+test("memo-cache sizes are grown to cover every slot the patch adds", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   for (const [signature, size] of [["function BPn(n){const e=he.c(26),", 26], ["function KWn(n){const e=he.c(45);", 45]]) {
     const body = sliceFunction(patched, signature);
@@ -246,19 +254,19 @@ test("memo-cache sizes are grown to cover every slot the patch adds", async () =
   }
 });
 
-test("the ported classes all exist in the pinned stylesheet", async () => {
+test("the ported classes all exist in the pinned stylesheet", { skip: pinnedSkip }, async () => {
   const css = await readPinnedCss();
   assert.equal(assertTeachSuccessPathClassesResolve(css), TEACH_SUCCESS_PATH_CLASS_NAMES.length);
   assert.throws(() => assertTeachSuccessPathClassesResolve(".sand-10im51j{color:red}"), /missing from the pinned/,
     "a stylesheet missing a class must fail the build, not ship an unstyled line");
 });
 
-test("the patched chunk parses as real JavaScript", async () => {
+test("the patched chunk parses as real JavaScript", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   await assertParses(patched, "patched chunk");
 });
 
-test("applying the patch writes a provenance record and a patched chunk", async () => {
+test("applying the patch writes a provenance record and a patched chunk", { skip: pinnedSkip }, async () => {
   const stageRoot = await mkdtemp(path.join(tmpdir(), "teach-success-stage-"));
   const assets = path.join(stageRoot, "dist/renderer/assets");
   await mkdir(assets, { recursive: true });
@@ -280,12 +288,12 @@ test("applying the patch writes a provenance record and a patched chunk", async 
   assert.equal(provenance.upstream.version, "0.62.0");
 });
 
-test("a drifted anchor fails closed instead of silently no-oping", async () => {
+test("a drifted anchor fails closed instead of silently no-oping", { skip: pinnedSkip }, async () => {
   const chunk = (await readPinnedChunk()).replace(GATE_BEFORE, "function pWn(){return false}");
   assert.throws(() => patchOriginalTeachSuccessPath(chunk), /publish gate fallback anchor is missing or ambiguous/);
 });
 
-test("MUTATION: an unfipped gate keeps the publish button hidden", async () => {
+test("MUTATION: an unfipped gate keeps the publish button hidden", { skip: pinnedSkip }, async () => {
   const chunk = await readPinnedChunk();
   const mutated = patchOriginalTeachSuccessPath(chunk).replace(
     "featureGates?.publish_user_skills??!0",
@@ -300,7 +308,7 @@ test("MUTATION: an unfipped gate keeps the publish button hidden", async () => {
     "with the fallback back at ??!1 an empty snapshot reads the gate as off");
 });
 
-test("MUTATION: dropping the classifier makes the transcript line unreachable", async () => {
+test("MUTATION: dropping the classifier makes the transcript line unreachable", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   const mutated = patched.replace(
     "function RTeachIsRecording(e){return e.clientNonce?.startsWith(RTeachRecordingNoncePrefix)===!0&&e.content===RTeachRecordingContent}",
@@ -312,7 +320,7 @@ test("MUTATION: dropping the classifier makes the transcript line unreachable", 
     "with the classifier neutered the line can never render");
 });
 
-test("MUTATION: a widened classifier relabels ordinary user messages", async () => {
+test("MUTATION: a widened classifier relabels ordinary user messages", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   // Drop the content half of 0.62.0's conjunction and keep only the nonce prefix.
   const widened = patched.replace("&&e.content===RTeachRecordingContent", "");
@@ -330,12 +338,12 @@ test("MUTATION: a widened classifier relabels ordinary user messages", async () 
   );
 });
 
-test("MUTATION: rendering the line after the rich text reverses 0.62.0's order", async () => {
+test("MUTATION: rendering the line after the rich text reverses 0.62.0's order", { skip: pinnedSkip }, async () => {
   const mutated = (await patchedChunk()).replace("children:[RTeachNode,l]", "children:[l,RTeachNode]");
   assert.ok(!mutated.includes("children:[RTeachNode,l]"), "the mutation must actually reverse the order");
 });
 
-test("MUTATION: an un-grown memo cache makes the new slots read out of bounds", async () => {
+test("MUTATION: an un-grown memo cache makes the new slots read out of bounds", { skip: pinnedSkip }, async () => {
   const mutated = (await patchedChunk()).replace("function BPn(n){const e=he.c(26),", "function BPn(n){const e=he.c(22),");
   const body = mutated.slice(mutated.indexOf("function BPn(n){const e=he.c(22),"));
   const used = [...new Set([...body.slice(0, 12000).matchAll(/\be\[(\d+)\]/g)].map(m => Number(m[1])))];

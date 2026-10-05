@@ -25,6 +25,14 @@ const PINNED_CHUNK = path.join(REPO_ROOT, "src/app/dist/renderer/assets/index-Ub
 const PINNED_HOST = path.join(REPO_ROOT, "src/app/dist/host/host-main.cjs");
 
 const readPinnedChunk = () => readFile(PINNED_CHUNK, "utf8");
+
+// src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped.
+// 2026-10-05 补：本文件此前硬读该产物，而 CI 从不执行 `npm run bootstrap`（bootstrap 用的是
+// macOS 专有的 hdiutil），于是 13 个依赖产物的文件里有 7 个在 CI 上 ENOENT —— main 的 CI
+// 已因此连续红 10 次。写法照抄仓库另外 6 个已守卫的文件，不新造模式。守卫对象取「声明的用例名
+// ∩ 实测失败名」，不是靠猜哪个用例读了产物。
+const pinnedChunk = await readPinnedChunk().catch(() => null);
+const pinnedSkip = pinnedChunk == null ? "src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped." : false;
 const readPinnedHost = () => readFile(PINNED_HOST, "utf8");
 const run = promisify(execFile);
 
@@ -52,7 +60,7 @@ function extractBracedObject(source, start) {
   return source.slice(bodyStart, end);
 }
 
-test("anchors resolve exactly once in the pristine bundles", async () => {
+test("anchors resolve exactly once in the pristine bundles", { skip: pinnedSkip }, async () => {
   const chunk = await readPinnedChunk();
   assert.equal(chunk.split("sand_teach_by_demonstration").length - 1, 1,
     "the gate name should occur exactly once in the renderer chunk");
@@ -62,7 +70,7 @@ test("anchors resolve exactly once in the pristine bundles", async () => {
     "host extension read is not unique");
 });
 
-test("the flip changes the renderer fallback and nothing else in the chunk", async () => {
+test("the flip changes the renderer fallback and nothing else in the chunk", { skip: pinnedSkip }, async () => {
   const { patchedRenderer } = patchTeachGateRestore({
     rendererSource: await readPinnedChunk(),
     hostSource: await readPinnedHost(),
@@ -85,7 +93,7 @@ test("the flip changes the renderer fallback and nothing else in the chunk", asy
     "the teach label literal count changed");
 });
 
-test("the patched gate reader really evaluates true when no snapshot carries the gate", async () => {
+test("the patched gate reader really evaluates true when no snapshot carries the gate", { skip: pinnedSkip }, async () => {
   const { patchedRenderer } = patchTeachGateRestore({
     rendererSource: await readPinnedChunk(),
     hostSource: await readPinnedHost(),
@@ -118,7 +126,7 @@ test("the patched gate reader really evaluates true when no snapshot carries the
     "polarity guard: original must be false");
 });
 
-test("the host FLAGS default flips and the extension read survives untouched", async () => {
+test("the host FLAGS default flips and the extension read survives untouched", { skip: pinnedSkip }, async () => {
   const { patchedHost } = patchTeachGateRestore({
     rendererSource: await readPinnedChunk(),
     hostSource: await readPinnedHost(),
@@ -148,7 +156,7 @@ test("the host FLAGS default flips and the extension read survives untouched", a
     "sand_client_pause default must stay false");
 });
 
-test("re-applying onto patched sources fails closed", async () => {
+test("re-applying onto patched sources fails closed", { skip: pinnedSkip }, async () => {
   const { patchedRenderer, patchedHost } = patchTeachGateRestore({
     rendererSource: await readPinnedChunk(),
     hostSource: await readPinnedHost(),
@@ -159,7 +167,7 @@ test("re-applying onto patched sources fails closed", async () => {
   );
 });
 
-test("both patched outputs are still parseable JavaScript", async (t) => {
+test("both patched outputs are still parseable JavaScript", { skip: pinnedSkip }, async (t) => {
   const { patchedRenderer, patchedHost } = patchTeachGateRestore({
     rendererSource: await readPinnedChunk(),
     hostSource: await readPinnedHost(),
@@ -174,7 +182,7 @@ test("both patched outputs are still parseable JavaScript", async (t) => {
   await run(process.execPath, ["--check", hostTmp]);
 });
 
-test("the staged renderer and host both get patched with provenance", async (t) => {
+test("the staged renderer and host both get patched with provenance", { skip: pinnedSkip }, async (t) => {
   const stageRoot = await mkdtemp(path.join(tmpdir(), "grok-node-teach-gate-"));
   t.after(() => rm(stageRoot, { recursive: true, force: true }));
   const assets = path.join(stageRoot, "dist", "renderer", "assets");

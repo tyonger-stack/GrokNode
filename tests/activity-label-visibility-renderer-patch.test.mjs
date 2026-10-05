@@ -26,6 +26,14 @@ const PINNED_CHUNK = path.join(REPO_ROOT, "src/app/dist/renderer/assets/index-Ub
 const PINNED_CSS = path.join(REPO_ROOT, "src/app/dist/renderer/assets/index-lCyB53CO.css");
 
 const readPinnedChunk = () => readFile(PINNED_CHUNK, "utf8");
+
+// src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped.
+// 2026-10-05 补：本文件此前硬读该产物，而 CI 从不执行 `npm run bootstrap`（bootstrap 用的是
+// macOS 专有的 hdiutil），于是 13 个依赖产物的文件里有 7 个在 CI 上 ENOENT —— main 的 CI
+// 已因此连续红 10 次。写法照抄仓库另外 6 个已守卫的文件，不新造模式。守卫对象取「声明的用例名
+// ∩ 实测失败名」，不是靠猜哪个用例读了产物。
+const pinnedChunk = await readPinnedChunk().catch(() => null);
+const pinnedSkip = pinnedChunk == null ? "src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped." : false;
 const readPinnedCss = () => readFile(PINNED_CSS, "utf8");
 
 const HOVER_GATED_INDEX = '[!!(ce&&H!=="idle")<<0]';
@@ -61,7 +69,7 @@ function resolveLabelClasses(source) {
   return (hovered, state) => select(hovered, state);
 }
 
-test("the pinned stylesheet keeps the label transparent at rest and opaque when revealed", async () => {
+test("the pinned stylesheet keeps the label transparent at rest and opaque when revealed", { skip: pinnedSkip }, async () => {
   const css = await readPinnedCss();
   const declarations = className => {
     const escaped = className.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -83,7 +91,7 @@ test("the pinned stylesheet keeps the label transparent at rest and opaque when 
   }
 });
 
-test("0.18 gates the label on pointer hover — the reported defect", async () => {
+test("0.18 gates the label on pointer hover — the reported defect", { skip: pinnedSkip }, async () => {
   const resolve = resolveLabelClasses(await readPinnedChunk());
   // The bug, stated as a fact about the artefact: working agent, pointer elsewhere ->
   // transparent. The label only exists on screen while the mouse is over the row.
@@ -96,7 +104,7 @@ test("0.18 gates the label on pointer hover — the reported defect", async () =
   assert.ok(resolve(true, "idle").includes(LABEL_HIDDEN_CLASS));
 });
 
-test("the patch makes the label follow the agent state instead of the pointer", async () => {
+test("the patch makes the label follow the agent state instead of the pointer", { skip: pinnedSkip }, async () => {
   const resolve = resolveLabelClasses(patchOriginalActivityLabelVisibility(await readPinnedChunk()));
 
   // The reported case: agent working, pointer anywhere -> opaque.
@@ -115,7 +123,7 @@ test("the patch makes the label follow the agent state instead of the pointer", 
   assert.equal(strip(resolve(true, "idle")), strip(resolve(false, "working")));
 });
 
-test("the rewrite is exactly the removal of the hover term", async () => {
+test("the rewrite is exactly the removal of the hover term", { skip: pinnedSkip }, async () => {
   const component = extractActivityMark(patchOriginalActivityLabelVisibility(await readPinnedChunk()));
   assert.ok(component.includes(STATE_ONLY_INDEX), "patched index is not the state-only form");
   assert.ok(!component.includes(HOVER_GATED_INDEX), "the hover gate survived the patch");
@@ -125,7 +133,7 @@ test("the rewrite is exactly the removal of the hover term", async () => {
   assert.ok(component.includes("onPointerLeave:()=>{xe(!1),se(!1)}"), "pointer leave handler was removed");
 });
 
-test("a drifted or duplicated anchor fails closed instead of patching the wrong row", async () => {
+test("a drifted or duplicated anchor fails closed instead of patching the wrong row", { skip: pinnedSkip }, async () => {
   const chunk = await readPinnedChunk();
   assert.throws(
     () => patchOriginalActivityLabelVisibility(chunk.replace(HOVER_GATED_INDEX, '[!!(H!=="idle")<<0]')),
@@ -147,12 +155,12 @@ test("a drifted or duplicated anchor fails closed instead of patching the wrong 
   );
 });
 
-test("re-applying the patch fails closed instead of stacking", async () => {
+test("re-applying the patch fails closed instead of stacking", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalActivityLabelVisibility(await readPinnedChunk());
   assert.throws(() => patchOriginalActivityLabelVisibility(patched), /anchor is missing or ambiguous/);
 });
 
-test("the stylesheet gate refuses a row whose visibility classes stopped meaning opacity", async () => {
+test("the stylesheet gate refuses a row whose visibility classes stopped meaning opacity", { skip: pinnedSkip }, async () => {
   const css = await readPinnedCss();
   assert.doesNotThrow(() => assertActivityLabelStylesResolve(css));
   assert.throws(
@@ -177,7 +185,7 @@ test("the stylesheet gate refuses a row whose visibility classes stopped meaning
   );
 });
 
-test("the patched chunk is still parseable JavaScript", async () => {
+test("the patched chunk is still parseable JavaScript", { skip: pinnedSkip }, async () => {
   const { writeFile, rm } = await import("node:fs/promises");
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
@@ -191,7 +199,7 @@ test("the patched chunk is still parseable JavaScript", async () => {
   }
 });
 
-test("the staged renderer gets exactly one patched chunk plus provenance", async (t) => {
+test("the staged renderer gets exactly one patched chunk plus provenance", { skip: pinnedSkip }, async (t) => {
   const { mkdtemp, readFile: rf, cp, mkdir, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const stageRoot = await mkdtemp(path.join(tmpdir(), "grok-node-activity-label-"));

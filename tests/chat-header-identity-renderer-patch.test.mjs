@@ -30,6 +30,14 @@ const PINNED_CSS = path.join(
 );
 
 const readPinnedChunk = () => readFile(PINNED_CHUNK, "utf8");
+
+// src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped.
+// 2026-10-05 补：本文件此前硬读该产物，而 CI 从不执行 `npm run bootstrap`（bootstrap 用的是
+// macOS 专有的 hdiutil），于是 13 个依赖产物的文件里有 7 个在 CI 上 ENOENT —— main 的 CI
+// 已因此连续红 10 次。写法照抄仓库另外 6 个已守卫的文件，不新造模式。守卫对象取「声明的用例名
+// ∩ 实测失败名」，不是靠猜哪个用例读了产物。
+const pinnedChunk = await readPinnedChunk().catch(() => null);
+const pinnedSkip = pinnedChunk == null ? "src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped." : false;
 const readPinnedCss = () => readFile(PINNED_CSS, "utf8");
 
 const ROOT_GRID = 'q={className:"sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-euugli sand-rvj5dj",style:RChHeaderGrid};';
@@ -68,7 +76,7 @@ function extractChatHeaderComponent(patched) {
   return patched.slice(start, next < 0 ? undefined : next);
 }
 
-test("every anchor still resolves exactly once in the pinned 0.18 chunk", async () => {
+test("every anchor still resolves exactly once in the pinned 0.18 chunk", { skip: pinnedSkip }, async () => {
   const source = await readPinnedChunk();
   for (const label of ["function aSn(n){const e=he.c(109),", ROOT_GRID.slice(0, 60)]) {
     assert.ok(source.includes(label), `anchor drifted: ${label}`);
@@ -83,7 +91,7 @@ test("every anchor still resolves exactly once in the pinned 0.18 chunk", async 
   }
 });
 
-test("the header root becomes a three-column grid and the identity sits in the middle cell", async () => {
+test("the header root becomes a three-column grid and the identity sits in the middle cell", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalChatHeaderIdentity(await readPinnedChunk());
   assert.ok(patched.includes(ROOT_GRID), "root class/style replacement did not apply");
   assert.ok(patched.includes(THREE_COLUMN_GRID), "three-column grid template missing");
@@ -112,7 +120,7 @@ test("the header root becomes a three-column grid and the identity sits in the m
   assert.ok(patched.includes("sand-1qughib"), "justify-content:space-between was removed");
 });
 
-test("the identity control opens the details pane and carries 0.61.0's label", async () => {
+test("the identity control opens the details pane and carries 0.61.0's label", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalChatHeaderIdentity(await readPinnedChunk());
   assert.ok(patched.includes(IDENTITY_OPEN_DETAILS), "identity control replacement did not apply");
   assert.ok(
@@ -131,7 +139,7 @@ test("the identity control opens the details pane and carries 0.61.0's label", a
   );
 });
 
-test("opening from the header always lands on the overview section", async () => {
+test("opening from the header always lands on the overview section", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalChatHeaderIdentity(await readPinnedChunk());
   // The landing is a three-hop wire; a dropped hop still builds and still looks right.
   for (const [needle, what] of [
@@ -174,7 +182,7 @@ test("opening from the header always lands on the overview section", async () =>
   );
 });
 
-test("the injected handler toggles, and only asks for overview when it opened", async () => {
+test("the injected handler toggles, and only asks for overview when it opened", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalChatHeaderIdentity(await readPinnedChunk());
   const openInfo = extractOpenInfoHandler(patched);
 
@@ -207,7 +215,7 @@ test("the injected handler toggles, and only asks for overview when it opened", 
   assert.doesNotThrow(() => openInfo(undefined, false, () => {}));
 });
 
-test("the pill surface copies 0.61.0's box-shadow verbatim", async () => {
+test("the pill surface copies 0.61.0's box-shadow verbatim", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalChatHeaderIdentity(await readPinnedChunk());
   assert.ok(
     patched.includes(
@@ -220,14 +228,14 @@ test("the pill surface copies 0.61.0's box-shadow verbatim", async () => {
   }
 });
 
-test("every borrowed class and custom property resolves in the pinned stylesheet", async () => {
+test("every borrowed class and custom property resolves in the pinned stylesheet", { skip: pinnedSkip }, async () => {
   const css = await readPinnedCss();
   const result = assertChatHeaderIdentityStylesResolve(css);
   assert.equal(result.classes, HEADER_CLASS_NAMES.length);
   assert.equal(result.customProperties, HEADER_CUSTOM_PROPERTIES.length);
 });
 
-test("the style gate fails closed when a class or custom property disappears", async () => {
+test("the style gate fails closed when a class or custom property disappears", { skip: pinnedSkip }, async () => {
   const css = await readPinnedCss();
   assert.throws(
     () => assertChatHeaderIdentityStylesResolve(css, { classNames: ["sand-does-not-exist"] }),
@@ -248,7 +256,7 @@ test("the style gate fails closed when a class or custom property disappears", a
   );
 });
 
-test("re-applying the patch fails closed instead of stacking", async () => {
+test("re-applying the patch fails closed instead of stacking", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalChatHeaderIdentity(await readPinnedChunk());
   assert.throws(
     () => patchOriginalChatHeaderIdentity(patched),
@@ -256,7 +264,7 @@ test("re-applying the patch fails closed instead of stacking", async () => {
   );
 });
 
-test("the patched chunk is still parseable JavaScript", async () => {
+test("the patched chunk is still parseable JavaScript", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalChatHeaderIdentity(await readPinnedChunk());
   // A regex-only smoke test is not enough: the injected component is real JSX-free
   // code inside a function body, so hand it to the real parser.
@@ -273,7 +281,7 @@ test("the patched chunk is still parseable JavaScript", async () => {
   }
 });
 
-test("the staged renderer gets exactly one patched chunk plus provenance", async (t) => {
+test("the staged renderer gets exactly one patched chunk plus provenance", { skip: pinnedSkip }, async (t) => {
   const { mkdtemp, readFile: rf, cp, mkdir, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const stageRoot = await mkdtemp(path.join(tmpdir(), "grok-node-chat-header-"));
@@ -322,7 +330,7 @@ test("clean-build runs the chat-header patch between the renderer extensions and
   );
 });
 
-test("no native style prop receives an array (the class of bug that broke the chat view)", async () => {
+test("no native style prop receives an array (the class of bug that broke the chat view)", { skip: pinnedSkip }, async () => {
   // React walks a `style` array with for..in and throws "Failed to set an indexed property
   // [0] on 'CSSStyleDeclaration'", which the view error boundary reports as "This view
   // failed to load." It compiles, passes `node --check`, and only shows up at render time.
@@ -347,7 +355,7 @@ test("no native style prop receives an array (the class of bug that broke the ch
   assert.ok(!patched.includes("style:[X,"), "the undefined X slot is still being spread in");
 });
 
-test("the chat toolbar no longer paints an opaque band over the transcript", async () => {
+test("the chat toolbar no longer paints an opaque band over the transcript", { skip: pinnedSkip }, async () => {
   // 0.18's sand-toolbar carries sand-1ua6jya -> background-color:var(--cursor-bg-editor),
   // an opaque fill that hides transcript text passing under the header. 0.61.0's
   // sand-toolbar has no background declaration at all; that transparency is what makes the
@@ -382,7 +390,7 @@ test("the chat toolbar no longer paints an opaque band over the transcript", asy
   }
 });
 
-test("the chat header renders no computer control", async () => {
+test("the chat header renders no computer control", { skip: pinnedSkip }, async () => {
   // 0.61.0 keeps the class name only as a container-name and as a focus fallback; it never
   // renders the button. 0.18 renders it whenever the details pane is closed, which is the
   // stray icon reported against this build.
@@ -409,7 +417,7 @@ test("the chat header renders no computer control", async () => {
   );
 });
 
-test("the chat header renders no toolbar hairline", async () => {
+test("the chat header renders no toolbar hairline", { skip: pinnedSkip }, async () => {
   // 0.18 renders sand-toolbar-divider, whose opacity is driven by a scroll-timeline
   // animation, so it keeps painting after the bar behind it is made transparent. 0.61.0
   // has no such element. Measured on the live build: y=44..45, rgba(252,252,252,0.1).
@@ -430,7 +438,7 @@ test("the chat header renders no toolbar hairline", async () => {
   assert.match(hairline[1], /background-color/, "sand-qjr0ry is not the hairline fill we expected");
 });
 
-test("the suppressed branches really evaluate to null, not to the element", async () => {
+test("the suppressed branches really evaluate to null, not to the element", { skip: pinnedSkip }, async () => {
   // String matching alone missed this: `!1?null:X` contains the substring "null", passes any
   // `includes("…?null:…")` assertion, and still evaluates to `X` — so the hairline kept
   // rendering after a green build and a green test run. Evaluate the actual ternaries.
@@ -467,7 +475,7 @@ test("the suppressed branches really evaluate to null, not to the element", asyn
   assert.ok(!patched.includes("!0?p.jsx(yo,{content:iSn"), "computer control would render unconditionally");
 });
 
-test("the identity avatar is sized like 0.61.0's (24px fill, sm)", async () => {
+test("the identity avatar is sized like 0.61.0's (24px fill, sm)", { skip: pinnedSkip }, async () => {
   // 0.61.0: Sa({agent, fillPx:t2, size:"sm"}) with t2=24. 0.18: ml({…, fillPx:Tve, size:"xs"})
   // with Tve=20 — the whole 20-vs-24 difference the pill inherits.
   const original = await readPinnedChunk();
