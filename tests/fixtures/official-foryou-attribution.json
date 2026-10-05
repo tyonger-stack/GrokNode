@@ -1,0 +1,3885 @@
+{
+ "_note": "官方 0.66.0 实机取证：selectForYou 的 affinity 键是条目的 category 标签本身，不是解析后的分区桶。用官方自己的 catalog 与官方界面上的「已安装 16 个」，本仓库的 selectForYou 必须复现官方渲染的那 4 行；bucket 版做不到。",
+ "_source": "官方 app（已登录）CDP 9224 的 mcp.catalog() 与「已安装 N 个」管理页",
+ "_capturedAt": "2026-10-05",
+ "officialForYou": [
+  "Agent Compatibility",
+  "Aikido",
+  "Aleph",
+  "Algolia Productivity"
+ ],
+ "officialInstalledNames": [
+  "Gmail",
+  "Google Calendar",
+  "Notion",
+  "Google Drive",
+  "Google Slides",
+  "Outlook Calendar",
+  "oh-my-claudecode",
+  "Granola",
+  "Canva",
+  "Slack",
+  "Finance",
+  "GitHub",
+  "Origin",
+  "Cursor Team Kit",
+  "Cursor SDK",
+  "pstack"
+ ],
+ "catalog": [
+  {
+   "id": "32922580",
+   "name": "1inch-mcp",
+   "pluginName": "1inch-mcp",
+   "displayName": "1inch",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "59964755",
+   "name": "aave",
+   "pluginName": "aave-mcp",
+   "displayName": "Aave",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "68811927",
+   "name": "activecampaign",
+   "pluginName": "activecampaign",
+   "displayName": "ActiveCampaign",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "70141458",
+   "name": "adapter",
+   "pluginName": "adapter-mind",
+   "displayName": "Adapter",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "21002971",
+   "name": "app-builder",
+   "pluginName": "app-builder",
+   "displayName": "Adobe Developer App Builder",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "66672239",
+   "name": "adspirer",
+   "pluginName": "adspirer",
+   "displayName": "Adspirer",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "3644",
+   "name": "agent-compatibility",
+   "pluginName": "agent-compatibility",
+   "displayName": "Agent Compatibility",
+   "category": "MCP"
+  },
+  {
+   "id": "48668144",
+   "name": "agentmail",
+   "pluginName": "agentmail",
+   "displayName": "AgentMail",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "56809965",
+   "name": "ahrefs",
+   "pluginName": "ahrefs",
+   "displayName": "Ahrefs",
+   "category": "Research",
+   "categoryKey": "RESEARCH",
+   "categoryKeys": [
+    "RESEARCH"
+   ]
+  },
+  {
+   "id": "9345",
+   "name": "aikido",
+   "pluginName": "aikido-cursor-plugin",
+   "displayName": "Aikido",
+   "category": "MCP"
+  },
+  {
+   "id": "22025095",
+   "name": "airtable",
+   "pluginName": "airtable",
+   "displayName": "Airtable",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "52586766",
+   "name": "airwallex-dev",
+   "pluginName": "airwallex-agentos",
+   "displayName": "Airwallex AgentOS",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "52586767",
+   "name": "airwallex-dev",
+   "pluginName": "airwallex-dev",
+   "displayName": "Airwallex Developer",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "51597430",
+   "name": "aleph",
+   "pluginName": "aleph",
+   "displayName": "Aleph",
+   "category": "MCP"
+  },
+  {
+   "id": "59961146",
+   "name": "algolia",
+   "pluginName": "algolia-productivity",
+   "displayName": "Algolia Productivity",
+   "category": "MCP"
+  },
+  {
+   "id": "3315",
+   "name": "aws-mcp",
+   "pluginName": "amazon-location-service",
+   "displayName": "Amazon Location Service",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "39669369",
+   "name": "amd-skills",
+   "pluginName": "amd-skills",
+   "displayName": "AMD",
+   "category": "MCP"
+  },
+  {
+   "id": "53338791",
+   "name": "amplemarket",
+   "pluginName": "amplemarket",
+   "displayName": "Amplemarket",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "786",
+   "name": "amplitude",
+   "pluginName": "amplitude",
+   "displayName": "Amplitude",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "59967207",
+   "name": "ando",
+   "pluginName": "ando",
+   "displayName": "Ando",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "3167",
+   "name": "antimetal",
+   "pluginName": "antimetal",
+   "displayName": "Antimetal",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "60747522",
+   "name": "antom",
+   "pluginName": "antom-integration",
+   "displayName": "Antom",
+   "category": "MCP"
+  },
+  {
+   "id": "32913266",
+   "name": "apify",
+   "pluginName": "apify",
+   "displayName": "Apify",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "32704904",
+   "name": "apollo",
+   "pluginName": "apollo",
+   "displayName": "Apollo.io",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "4902",
+   "name": "appwrite-api",
+   "pluginName": "appwrite-plugin",
+   "displayName": "Appwrite",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "23114788",
+   "name": "arize-skills",
+   "pluginName": "arize-skills",
+   "displayName": "Arize",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "64134776",
+   "name": "artie",
+   "pluginName": "artie",
+   "displayName": "Artie",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "26107310",
+   "name": "asana",
+   "pluginName": "asana",
+   "displayName": "Asana",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "49104326",
+   "name": "ashby",
+   "pluginName": "ashby",
+   "displayName": "Ashby",
+   "category": "MCP"
+  },
+  {
+   "id": "4450",
+   "name": "astronomer-data",
+   "pluginName": "astronomer-data",
+   "displayName": "Astronomer",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "7850",
+   "name": "atlan",
+   "pluginName": "atlan",
+   "displayName": "Atlan",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "717",
+   "name": "atlassian",
+   "pluginName": "atlassian",
+   "displayName": "Atlassian",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "6391",
+   "name": "forge",
+   "pluginName": "forge-skills",
+   "displayName": "Atlassian Forge",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "49981383",
+   "name": "atlassian-twg-cli",
+   "pluginName": "atlassian-twg-cli",
+   "displayName": "Atlassian Teamwork Graph CLI",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "47472300",
+   "name": "atscale",
+   "pluginName": "atscale",
+   "displayName": "AtScale",
+   "category": "MCP"
+  },
+  {
+   "id": "62459236",
+   "name": "attio",
+   "pluginName": "attio",
+   "displayName": "Attio",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "4787",
+   "name": "auth0",
+   "pluginName": "auth0",
+   "displayName": "Auth0",
+   "category": "MCP"
+  },
+  {
+   "id": "26098676",
+   "name": "awsknowledge",
+   "pluginName": "aws-agents",
+   "displayName": "AWS Agents",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "3318",
+   "name": "aws-mcp",
+   "pluginName": "aws-amplify",
+   "displayName": "AWS Amplify",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "26098678",
+   "name": "aws-mcp",
+   "pluginName": "aws-core",
+   "displayName": "AWS Core",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "26098679",
+   "name": "aws-mcp",
+   "pluginName": "aws-data-analytics",
+   "displayName": "AWS Data Analytics",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "6198",
+   "name": "awsknowledge",
+   "pluginName": "databases-on-aws",
+   "displayName": "AWS Databases",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "650",
+   "name": "awsiac",
+   "pluginName": "deploy-on-aws",
+   "displayName": "AWS Deployments",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "6199",
+   "name": "aws-mcp",
+   "pluginName": "sagemaker-ai",
+   "displayName": "AWS SageMaker",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "3317",
+   "name": "aws-serverless-mcp",
+   "pluginName": "aws-serverless",
+   "displayName": "AWS Serverless",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "6392",
+   "name": "azure",
+   "pluginName": "azure",
+   "displayName": "Azure",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "2044",
+   "name": "azure-cosmosdb",
+   "pluginName": "azure-cosmosdb",
+   "displayName": "Azure Cosmos DB",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "55646269",
+   "name": "basedash",
+   "pluginName": "basedash",
+   "displayName": "Basedash",
+   "category": "MCP"
+  },
+  {
+   "id": "69591832",
+   "name": "beehiiv",
+   "pluginName": "beehiiv",
+   "displayName": "beehiiv",
+   "category": "MCP"
+  },
+  {
+   "id": "60856710",
+   "name": "bird",
+   "pluginName": "bird",
+   "displayName": "Bird",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION",
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "1092",
+   "name": "box",
+   "pluginName": "box",
+   "displayName": "Box",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "2046",
+   "name": "braintrust",
+   "pluginName": "braintrust",
+   "displayName": "Braintrust",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "56809966",
+   "name": "brevo",
+   "pluginName": "brevo",
+   "displayName": "Brevo",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "56809967",
+   "name": "brex",
+   "pluginName": "brex",
+   "displayName": "Brex",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "4793",
+   "name": "bright-data",
+   "pluginName": "bright-data",
+   "displayName": "Bright Data",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "47477538",
+   "name": "browser-use",
+   "pluginName": "browser-use",
+   "displayName": "Browser Use",
+   "category": "MCP"
+  },
+  {
+   "id": "675",
+   "name": "browse",
+   "pluginName": "browse",
+   "displayName": "Browserbase",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "66639982",
+   "name": "browserless",
+   "pluginName": "browserless",
+   "displayName": "Browserless",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "546",
+   "name": "browserstack",
+   "pluginName": "browserstack",
+   "displayName": "Browserstack",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "69591833",
+   "name": "buffer",
+   "pluginName": "buffer",
+   "displayName": "Buffer",
+   "category": "MCP"
+  },
+  {
+   "id": "2507579",
+   "name": "buildkite",
+   "pluginName": "buildkite",
+   "displayName": "Buildkite",
+   "category": "MCP"
+  },
+  {
+   "id": "56809968",
+   "name": "calendly",
+   "pluginName": "calendly",
+   "displayName": "Calendly",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "32197178",
+   "name": "canva",
+   "pluginName": "canva",
+   "displayName": "Canva",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY",
+    "DESIGN"
+   ]
+  },
+  {
+   "id": "52959543",
+   "name": "capital-com",
+   "pluginName": "capital-com-mcp",
+   "displayName": "Capital.com",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "55887870",
+   "name": "cartesia",
+   "pluginName": "cartesia",
+   "displayName": "Cartesia",
+   "category": "MCP"
+  },
+  {
+   "id": "56634535",
+   "name": "catalyst-by-zoho",
+   "pluginName": "catalyst-by-zoho",
+   "displayName": "Catalyst by Zoho",
+   "category": "MCP"
+  },
+  {
+   "id": "60856333",
+   "name": "cello",
+   "pluginName": "cello",
+   "displayName": "Cello",
+   "category": "MCP"
+  },
+  {
+   "id": "9294",
+   "name": "cg-api",
+   "pluginName": "chainguard",
+   "displayName": "Chainguard",
+   "category": "MCP"
+  },
+  {
+   "id": "3983",
+   "name": "chargebee-integration",
+   "pluginName": "chargebee-integration",
+   "displayName": "Chargebee",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "14371557",
+   "name": "chatprd",
+   "pluginName": "chatprd",
+   "displayName": "ChatPRD",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "45990366",
+   "name": "checkmarx",
+   "pluginName": "checkmarx",
+   "displayName": "Checkmarx",
+   "category": "MCP"
+  },
+  {
+   "id": "21020287",
+   "name": "chrome-devtools",
+   "pluginName": "devtools-for-agents",
+   "displayName": "Chrome Devtools for Agents",
+   "category": "MCP"
+  },
+  {
+   "id": "2804",
+   "name": "circle",
+   "pluginName": "circle",
+   "displayName": "Circle",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "49339687",
+   "name": "circleback",
+   "pluginName": "circleback",
+   "displayName": "Circleback",
+   "category": "MCP"
+  },
+  {
+   "id": "50433623",
+   "name": "circleci",
+   "pluginName": "circleci",
+   "displayName": "CircleCI",
+   "category": "MCP"
+  },
+  {
+   "id": "2049",
+   "name": "thousandeyes",
+   "pluginName": "thousandeyes",
+   "displayName": "Cisco ThousandEyes",
+   "category": "MCP"
+  },
+  {
+   "id": "70598720",
+   "name": "clarify",
+   "pluginName": "clarify",
+   "displayName": "Clarify",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "49110469",
+   "name": "clay",
+   "pluginName": "clay",
+   "displayName": "Clay",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "710",
+   "name": "clerk",
+   "pluginName": "clerk",
+   "displayName": "Clerk",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "3845",
+   "name": "cli-for-agent",
+   "pluginName": "cli-for-agent",
+   "displayName": "CLI for Agents",
+   "category": "MCP"
+  },
+  {
+   "id": "71291346",
+   "name": "clickfunnels",
+   "pluginName": "clickfunnels",
+   "displayName": "ClickFunnels",
+   "category": "MCP"
+  },
+  {
+   "id": "729",
+   "name": "clickhouse",
+   "pluginName": "clickhouse-cursor-plugin",
+   "displayName": "ClickHouse",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "5069",
+   "name": "clickup",
+   "pluginName": "clickup",
+   "displayName": "ClickUp",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "407",
+   "name": "cloudflare",
+   "pluginName": "cloudflare",
+   "displayName": "Cloudflare",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "3793",
+   "name": "cloudinary-asset-mgmt",
+   "pluginName": "cloudinary",
+   "displayName": "Cloudinary",
+   "category": "MCP"
+  },
+  {
+   "id": "4457",
+   "name": "cockroachdb-toolbox",
+   "pluginName": "cockroachdb",
+   "displayName": "CockroachDB",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "56809969",
+   "name": "coda",
+   "pluginName": "coda",
+   "displayName": "Coda",
+   "category": "Documents And Files",
+   "categoryKey": "DOCUMENTS_AND_FILES",
+   "categoryKeys": [
+    "DOCUMENTS_AND_FILES"
+   ]
+  },
+  {
+   "id": "66825228",
+   "name": "coder",
+   "pluginName": "coder",
+   "displayName": "Coder",
+   "category": "MCP"
+  },
+  {
+   "id": "41762204",
+   "name": "coderabbit",
+   "pluginName": "coderabbit",
+   "displayName": "CodeRabbit",
+   "category": "MCP"
+  },
+  {
+   "id": "68516158",
+   "name": "coinbase",
+   "pluginName": "coinbase",
+   "displayName": "Coinbase",
+   "category": "MCP"
+  },
+  {
+   "id": "32661537",
+   "name": "composio",
+   "pluginName": "composio",
+   "displayName": "Composio",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "680",
+   "name": "compound-engineering",
+   "pluginName": "compound-engineering",
+   "displayName": "Compound Engineering",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "26119850",
+   "name": "confidence-flags",
+   "pluginName": "confidence",
+   "displayName": "Confidence by Spotify",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "53497710",
+   "name": "context",
+   "pluginName": "context-dev",
+   "displayName": "Context.dev",
+   "category": "Research",
+   "categoryKey": "RESEARCH",
+   "categoryKeys": [
+    "RESEARCH"
+   ]
+  },
+  {
+   "id": "406",
+   "name": "context7",
+   "pluginName": "context7-plugin",
+   "displayName": "Context7",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "701",
+   "name": "continual-learning",
+   "pluginName": "continual-learning",
+   "displayName": "Continual Learning",
+   "category": "MCP"
+  },
+  {
+   "id": "71395258",
+   "name": "contracko",
+   "pluginName": "contracko",
+   "displayName": "Contracko",
+   "category": "MCP"
+  },
+  {
+   "id": "233",
+   "name": "convex",
+   "pluginName": "convex",
+   "displayName": "Convex",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "20988446",
+   "name": "coralogix",
+   "pluginName": "coralogix-mcp",
+   "displayName": "Coralogix",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "10038",
+   "name": "corridor",
+   "pluginName": "corridor",
+   "displayName": "Corridor",
+   "category": "MCP"
+  },
+  {
+   "id": "56809970",
+   "name": "craft",
+   "pluginName": "craft",
+   "displayName": "Craft",
+   "category": "Documents And Files",
+   "categoryKey": "DOCUMENTS_AND_FILES",
+   "categoryKeys": [
+    "DOCUMENTS_AND_FILES"
+   ]
+  },
+  {
+   "id": "648",
+   "name": "create-plugin",
+   "pluginName": "create-plugin",
+   "displayName": "Create Plugin",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "53576511",
+   "name": "crowdstrike-falcon-foundry",
+   "pluginName": "crowdstrike-falcon-foundry",
+   "displayName": "CrowdStrike Falcon Foundry",
+   "category": "MCP"
+  },
+  {
+   "id": "57280658",
+   "name": "crowdstrike-falcon-fusion",
+   "pluginName": "crowdstrike-falcon-fusion",
+   "displayName": "CrowdStrike Falcon Fusion",
+   "category": "MCP"
+  },
+  {
+   "id": "60860738",
+   "name": "crustdata",
+   "pluginName": "crustdata",
+   "displayName": "Crustdata",
+   "category": "Research",
+   "categoryKey": "RESEARCH",
+   "categoryKeys": [
+    "RESEARCH"
+   ]
+  },
+  {
+   "id": "7975",
+   "name": "cursor-sdk",
+   "pluginName": "cursor-sdk",
+   "displayName": "Cursor SDK",
+   "category": "MCP"
+  },
+  {
+   "id": "677",
+   "name": "cursor-team-kit",
+   "pluginName": "cursor-team-kit",
+   "displayName": "Cursor Team Kit",
+   "category": "MCP"
+  },
+  {
+   "id": "56809971",
+   "name": "customer-io",
+   "pluginName": "customer-io",
+   "displayName": "Customer.io",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "56366542",
+   "name": "customerio",
+   "pluginName": "customerio",
+   "displayName": "Customer.io",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS",
+    "SALES"
+   ]
+  },
+  {
+   "id": "44949530",
+   "name": "dnb-dplus-mcp",
+   "pluginName": "dnb-commercial-graph",
+   "displayName": "D&B Commercial Graph",
+   "category": "MCP"
+  },
+  {
+   "id": "26111414",
+   "name": "dnb-risk-analytics",
+   "pluginName": "dnb-risk-analytics",
+   "displayName": "D&B Risk Analytics",
+   "category": "MCP"
+  },
+  {
+   "id": "6643",
+   "name": "dagster-expert",
+   "pluginName": "dagster-expert",
+   "displayName": "Dagster",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "63408929",
+   "name": "daloopa",
+   "pluginName": "daloopa",
+   "displayName": "Daloopa",
+   "category": "MCP"
+  },
+  {
+   "id": "63834585",
+   "name": "dart-mcp-server",
+   "pluginName": "dart-flutter",
+   "displayName": "Dart and Flutter",
+   "category": "MCP"
+  },
+  {
+   "id": "60857816",
+   "name": "dash",
+   "pluginName": "dash",
+   "displayName": "Dash Security",
+   "category": "MCP"
+  },
+  {
+   "id": "26723531",
+   "name": "databricks",
+   "pluginName": "databricks",
+   "displayName": "Databricks",
+   "category": "MCP"
+  },
+  {
+   "id": "1411",
+   "name": "datadog",
+   "pluginName": "datadog",
+   "displayName": "Datadog",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "7624",
+   "name": "datarobot-agent-skills",
+   "pluginName": "datarobot-agent-skills",
+   "displayName": "DataRobot",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "3795",
+   "name": "dbt",
+   "pluginName": "dbt",
+   "displayName": "dbt Labs",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "63853950",
+   "name": "descript",
+   "pluginName": "descript",
+   "displayName": "Descript",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "71289756",
+   "name": "docker-skills",
+   "pluginName": "docker-skills",
+   "displayName": "Docker",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "6306",
+   "name": "docs-canvas",
+   "pluginName": "docs-canvas",
+   "displayName": "Docs Canvas",
+   "category": "Canvas",
+   "categoryKey": "CANVAS",
+   "categoryKeys": [
+    "CANVAS"
+   ]
+  },
+  {
+   "id": "49339688",
+   "name": "docusign",
+   "pluginName": "docusign",
+   "displayName": "Docusign",
+   "category": "Finance And Legal",
+   "categoryKey": "FINANCE_AND_LEGAL",
+   "categoryKeys": [
+    "FINANCE_AND_LEGAL"
+   ]
+  },
+  {
+   "id": "53761261",
+   "name": "dropbox",
+   "pluginName": "dropbox",
+   "displayName": "Dropbox",
+   "category": "MCP"
+  },
+  {
+   "id": "70760422",
+   "name": "dyl-stack",
+   "pluginName": "dyl-stack",
+   "displayName": "dyl-stack",
+   "category": "MCP"
+  },
+  {
+   "id": "51244788",
+   "name": "dynatrace",
+   "pluginName": "dynatrace",
+   "displayName": "Dynatrace",
+   "category": "MCP"
+  },
+  {
+   "id": "4331",
+   "name": "elastic-docs",
+   "pluginName": "elastic",
+   "displayName": "Elastic",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "56235003",
+   "name": "elevenlabs",
+   "pluginName": "elevenlabs",
+   "displayName": "ElevenLabs",
+   "category": "MCP"
+  },
+  {
+   "id": "3780",
+   "name": "encore-mcp",
+   "pluginName": "encore",
+   "displayName": "Encore",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "760",
+   "name": "endor-cli-tools",
+   "pluginName": "endorlabs",
+   "displayName": "Endor Labs Agent Kit",
+   "category": "MCP"
+  },
+  {
+   "id": "68516159",
+   "name": "etoro-trading",
+   "pluginName": "etoro-trading",
+   "displayName": "etoro",
+   "category": "MCP"
+  },
+  {
+   "id": "55648770",
+   "name": "euler",
+   "pluginName": "euler-for-partner-managers",
+   "displayName": "EULER for Partner Managers",
+   "category": "MCP"
+  },
+  {
+   "id": "55648771",
+   "name": "euler",
+   "pluginName": "euler-for-partners",
+   "displayName": "EULER for Partners",
+   "category": "MCP"
+  },
+  {
+   "id": "5636",
+   "name": "exa",
+   "pluginName": "exa",
+   "displayName": "Exa",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "63408930",
+   "name": "excalidraw",
+   "pluginName": "excalidraw",
+   "displayName": "Excalidraw",
+   "category": "MCP"
+  },
+  {
+   "id": "56284038",
+   "name": "executor",
+   "pluginName": "executor",
+   "displayName": "Executor",
+   "category": "MCP"
+  },
+  {
+   "id": "68002823",
+   "name": "extend",
+   "pluginName": "extend",
+   "displayName": "Extend",
+   "category": "MCP"
+  },
+  {
+   "id": "48899256",
+   "name": "falconer",
+   "pluginName": "falconer",
+   "displayName": "Falconer",
+   "category": "MCP"
+  },
+  {
+   "id": "56809972",
+   "name": "fathom",
+   "pluginName": "fathom",
+   "displayName": "Fathom",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "657",
+   "name": "figma",
+   "pluginName": "figma",
+   "displayName": "Figma",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY",
+    "DESIGN"
+   ]
+  },
+  {
+   "id": "63408931",
+   "name": "finance",
+   "pluginName": "finance",
+   "displayName": "Finance",
+   "category": "MCP"
+  },
+  {
+   "id": "3777",
+   "name": "firebase",
+   "pluginName": "firebase",
+   "displayName": "Firebase",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "789",
+   "name": "firecrawl",
+   "pluginName": "firecrawl",
+   "displayName": "Firecrawl",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "56809973",
+   "name": "fireflies",
+   "pluginName": "fireflies",
+   "displayName": "Fireflies",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY",
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "1410",
+   "name": "firetiger",
+   "pluginName": "firetiger",
+   "displayName": "Firetiger",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "70330838",
+   "name": "flexport",
+   "pluginName": "flexport",
+   "displayName": "Flexport",
+   "category": "MCP"
+  },
+  {
+   "id": "71286482",
+   "name": "floot",
+   "pluginName": "floot",
+   "displayName": "Floot",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "32632546",
+   "name": "forge",
+   "pluginName": "forge",
+   "displayName": "Forge",
+   "category": "MCP"
+  },
+  {
+   "id": "68859981",
+   "name": "fullstory",
+   "pluginName": "fullstory",
+   "displayName": "Fullstory",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "63354503",
+   "name": "gamma",
+   "pluginName": "gamma",
+   "displayName": "Gamma",
+   "category": "MCP"
+  },
+  {
+   "id": "39789426",
+   "name": "gitbook",
+   "pluginName": "gitbook",
+   "displayName": "GitBook",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "47475084",
+   "name": "githits",
+   "pluginName": "githits",
+   "displayName": "GitHits",
+   "category": "MCP"
+  },
+  {
+   "id": "1220",
+   "name": "gitlab",
+   "pluginName": "gitlab",
+   "displayName": "GitLab",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "734",
+   "name": "gleanplugin",
+   "pluginName": "glean",
+   "displayName": "Glean",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY",
+    "DOCUMENTS_AND_FILES"
+   ]
+  },
+  {
+   "id": "58732520",
+   "name": "glean-dev-docs",
+   "pluginName": "glean-dev-docs",
+   "displayName": "Glean Developer Docs",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "45893410",
+   "name": "gmail",
+   "pluginName": "gmail",
+   "displayName": "Gmail",
+   "category": "Featured",
+   "categoryKey": "FEATURED",
+   "categoryKeys": [
+    "FEATURED",
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "56809974",
+   "name": "godaddy",
+   "pluginName": "godaddy",
+   "displayName": "GoDaddy",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "62120239",
+   "name": "gojiberry",
+   "pluginName": "gojiberry",
+   "displayName": "Gojiberry AI",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "63467641",
+   "name": "golf",
+   "pluginName": "golf",
+   "displayName": "Golf Intelligence by Stracka",
+   "category": "MCP"
+  },
+  {
+   "id": "47725204",
+   "name": "gong",
+   "pluginName": "gong",
+   "displayName": "Gong",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "45893411",
+   "name": "google-calendar",
+   "pluginName": "google-calendar",
+   "displayName": "Google Calendar",
+   "category": "Featured",
+   "categoryKey": "FEATURED",
+   "categoryKeys": [
+    "FEATURED",
+    "SCHEDULING"
+   ]
+  },
+  {
+   "id": "45893412",
+   "name": "google-docs",
+   "pluginName": "google-docs",
+   "displayName": "Google Docs",
+   "category": "Documents And Files",
+   "categoryKey": "DOCUMENTS_AND_FILES",
+   "categoryKeys": [
+    "DOCUMENTS_AND_FILES"
+   ]
+  },
+  {
+   "id": "45893413",
+   "name": "google-drive",
+   "pluginName": "google-drive",
+   "displayName": "Google Drive",
+   "category": "Featured",
+   "categoryKey": "FEATURED",
+   "categoryKeys": [
+    "FEATURED"
+   ]
+  },
+  {
+   "id": "45893414",
+   "name": "google-sheets",
+   "pluginName": "google-sheets",
+   "displayName": "Google Sheets",
+   "category": "MCP"
+  },
+  {
+   "id": "45893415",
+   "name": "google-slides",
+   "pluginName": "google-slides",
+   "displayName": "Google Slides",
+   "category": "Design",
+   "categoryKey": "DESIGN",
+   "categoryKeys": [
+    "DESIGN"
+   ]
+  },
+  {
+   "id": "146017",
+   "name": "grafana-cloud",
+   "pluginName": "grafana-cloud-mcp",
+   "displayName": "Grafana Cloud",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "736",
+   "name": "grafana-assistant",
+   "pluginName": "grafana-assistant",
+   "displayName": "Grafana Labs",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "5609",
+   "name": "granola",
+   "pluginName": "granola",
+   "displayName": "Granola",
+   "category": "Featured",
+   "categoryKey": "FEATURED",
+   "categoryKeys": [
+    "FEATURED",
+    "PRODUCTIVITY",
+    "SALES"
+   ]
+  },
+  {
+   "id": "70729788",
+   "name": "greenhouse",
+   "pluginName": "greenhouse",
+   "displayName": "Greenhouse",
+   "category": "MCP"
+  },
+  {
+   "id": "62459237",
+   "name": "grok-voice",
+   "pluginName": "grok-voice",
+   "displayName": "Grok Voice",
+   "category": "MCP"
+  },
+  {
+   "id": "7194",
+   "name": "gsap-skills",
+   "pluginName": "gsap-skills",
+   "displayName": "GSAP",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "58735216",
+   "name": "gumloop",
+   "pluginName": "gumloop",
+   "displayName": "Gumloop",
+   "category": "MCP"
+  },
+  {
+   "id": "56809975",
+   "name": "guru",
+   "pluginName": "guru",
+   "displayName": "Guru",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "62309982",
+   "name": "harmonic",
+   "pluginName": "harmonic",
+   "displayName": "Harmonic",
+   "category": "Research",
+   "categoryKey": "RESEARCH",
+   "categoryKeys": [
+    "RESEARCH"
+   ]
+  },
+  {
+   "id": "8006",
+   "name": "harness",
+   "pluginName": "harness",
+   "displayName": "Harness",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "50420288",
+   "name": "here.now",
+   "pluginName": "here.now",
+   "displayName": "here.now",
+   "category": "MCP"
+  },
+  {
+   "id": "651",
+   "name": "hex",
+   "pluginName": "hex",
+   "displayName": "Hex",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "14372196",
+   "name": "heygen",
+   "pluginName": "heygen",
+   "displayName": "HeyGen",
+   "category": "MCP"
+  },
+  {
+   "id": "5420454",
+   "name": "higgsfield",
+   "pluginName": "higgsfield",
+   "displayName": "Higgsfield",
+   "category": "MCP"
+  },
+  {
+   "id": "53543399",
+   "name": "hostinger-hosting",
+   "pluginName": "hostinger-cursor-plugin",
+   "displayName": "Hostinger",
+   "category": "MCP"
+  },
+  {
+   "id": "66353838",
+   "name": "hcti",
+   "pluginName": "html-css-to-image",
+   "displayName": "HTML/CSS to Image",
+   "category": "MCP"
+  },
+  {
+   "id": "49339689",
+   "name": "hubspot",
+   "pluginName": "hubspot",
+   "displayName": "HubSpot",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "735",
+   "name": "huggingface-skills",
+   "pluginName": "huggingface-skills",
+   "displayName": "Hugging Face",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "62459238",
+   "name": "hunter",
+   "pluginName": "hunter",
+   "displayName": "Hunter",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "12838857",
+   "name": "icepanel",
+   "pluginName": "icepanel",
+   "displayName": "IcePanel",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "68852239",
+   "name": "ifttt",
+   "pluginName": "ifttt",
+   "displayName": "IFTTT",
+   "category": "MCP"
+  },
+  {
+   "id": "59966080",
+   "name": "incidentio",
+   "pluginName": "incident-io",
+   "displayName": "incident.io",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "63835155",
+   "name": "infobip-sms",
+   "pluginName": "infobip-mcp",
+   "displayName": "Infobip",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "57102943",
+   "name": "inkbox",
+   "pluginName": "inkbox",
+   "displayName": "Inkbox",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "49339690",
+   "name": "intercom",
+   "pluginName": "intercom",
+   "displayName": "Intercom",
+   "category": "Customer Support",
+   "categoryKey": "CUSTOMER_SUPPORT",
+   "categoryKeys": [
+    "CUSTOMER_SUPPORT"
+   ]
+  },
+  {
+   "id": "66347861",
+   "name": "jam",
+   "pluginName": "jam",
+   "displayName": "Jam",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "1291",
+   "name": "jfrog",
+   "pluginName": "jfrog",
+   "displayName": "JFrog",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "56809976",
+   "name": "jotform",
+   "pluginName": "jotform",
+   "displayName": "Jotform",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "52606141",
+   "name": "juicebox",
+   "pluginName": "juicebox",
+   "displayName": "Juicebox",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "56809977",
+   "name": "klaviyo",
+   "pluginName": "klaviyo",
+   "displayName": "Klaviyo",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "60302089",
+   "name": "knock",
+   "pluginName": "knock",
+   "displayName": "Knock",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE",
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "56286216",
+   "name": "kody",
+   "pluginName": "kody",
+   "displayName": "Kody",
+   "category": "MCP"
+  },
+  {
+   "id": "26159727",
+   "name": "kraken",
+   "pluginName": "kraken-cli",
+   "displayName": "Kraken",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "70800059",
+   "name": "krea",
+   "pluginName": "krea",
+   "displayName": "Krea",
+   "category": "MCP"
+  },
+  {
+   "id": "738",
+   "name": "langfuse",
+   "pluginName": "langfuse",
+   "displayName": "Langfuse",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "800",
+   "name": "launchdarkly-feature-management",
+   "pluginName": "launchdarkly",
+   "displayName": "LaunchDarkly",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "68828758",
+   "name": "lightrun",
+   "pluginName": "lightrun-ai",
+   "displayName": "Lightrun",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "512",
+   "name": "linear",
+   "pluginName": "linear",
+   "displayName": "Linear",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "47709840",
+   "name": "link",
+   "pluginName": "link",
+   "displayName": "Link",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS",
+    "FINANCE_AND_LEGAL"
+   ]
+  },
+  {
+   "id": "57763987",
+   "name": "linq",
+   "pluginName": "linq",
+   "displayName": "Linq",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "70331341",
+   "name": "co-invest",
+   "pluginName": "co-invest",
+   "displayName": "Liquid",
+   "category": "MCP"
+  },
+  {
+   "id": "66341987",
+   "name": "listen-labs",
+   "pluginName": "listen-labs",
+   "displayName": "Listen Labs",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "26115160",
+   "name": "lovable",
+   "pluginName": "lovable",
+   "displayName": "Lovable",
+   "category": "MCP"
+  },
+  {
+   "id": "41756884",
+   "name": "lucid",
+   "pluginName": "lucid",
+   "displayName": "Lucid",
+   "category": "MCP"
+  },
+  {
+   "id": "66823866",
+   "name": "macaly-cloud",
+   "pluginName": "macaly-code",
+   "displayName": "Macaly Cloud",
+   "category": "MCP"
+  },
+  {
+   "id": "33865099",
+   "name": "magic-patterns",
+   "pluginName": "magic-patterns",
+   "displayName": "Magic Patterns",
+   "category": "MCP"
+  },
+  {
+   "id": "21951242",
+   "name": "magicpath",
+   "pluginName": "magicpath",
+   "displayName": "MagicPath",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "56809978",
+   "name": "mailerlite",
+   "pluginName": "mailerlite",
+   "displayName": "MailerLite",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION",
+    "CUSTOMER_SUPPORT"
+   ]
+  },
+  {
+   "id": "53566285",
+   "name": "mailgun",
+   "pluginName": "mailgun-cursor",
+   "displayName": "Mailgun",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "21022343",
+   "name": "mainframe",
+   "pluginName": "mainframe",
+   "displayName": "Mainframe",
+   "category": "MCP"
+  },
+  {
+   "id": "52964995",
+   "name": "manufact",
+   "pluginName": "manufact",
+   "displayName": "Manufact",
+   "category": "MCP"
+  },
+  {
+   "id": "71291168",
+   "name": "mastercard-developers",
+   "pluginName": "mastercard-developers",
+   "displayName": "Mastercard Developers",
+   "category": "MCP"
+  },
+  {
+   "id": "56809979",
+   "name": "mem",
+   "pluginName": "mem",
+   "displayName": "Mem",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "5648",
+   "name": "mem0",
+   "pluginName": "mem0",
+   "displayName": "Mem0",
+   "category": "MCP"
+  },
+  {
+   "id": "56809980",
+   "name": "mercury",
+   "pluginName": "mercury",
+   "displayName": "Mercury",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "47679354",
+   "name": "metavr",
+   "pluginName": "meta-vr",
+   "displayName": "Meta Reality Labs",
+   "category": "MCP"
+  },
+  {
+   "id": "47739056",
+   "name": "meticulous",
+   "pluginName": "meticulous",
+   "displayName": "Meticulous",
+   "category": "MCP"
+  },
+  {
+   "id": "26156871",
+   "name": "dataverse",
+   "pluginName": "dataverse",
+   "displayName": "Microsoft Dataverse",
+   "category": "MCP"
+  },
+  {
+   "id": "65888866",
+   "name": "migma",
+   "pluginName": "migma",
+   "displayName": "Migma",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "25808295",
+   "name": "mintlify-search",
+   "pluginName": "mintlify-cursor-plugin",
+   "displayName": "Mintlify",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "2911",
+   "name": "miro",
+   "pluginName": "miro",
+   "displayName": "Miro",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "11976",
+   "name": "mixpanel",
+   "pluginName": "mixpanel-mcp",
+   "displayName": "Mixpanel",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "52632771",
+   "name": "mobbin",
+   "pluginName": "mobbin",
+   "displayName": "Mobbin",
+   "category": "Design",
+   "categoryKey": "DESIGN",
+   "categoryKeys": [
+    "DESIGN"
+   ]
+  },
+  {
+   "id": "66676653",
+   "name": "modem",
+   "pluginName": "modem",
+   "displayName": "Modem",
+   "category": "MCP"
+  },
+  {
+   "id": "6398877",
+   "name": "modern-web-guidance",
+   "pluginName": "modern-web-guidance",
+   "displayName": "Modern Web Guidance",
+   "category": "MCP"
+  },
+  {
+   "id": "60854710",
+   "name": "monaco",
+   "pluginName": "agent-plugins",
+   "displayName": "Monaco",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "21010834",
+   "name": "monday",
+   "pluginName": "monday-crm",
+   "displayName": "Monday.com",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "3277",
+   "name": "mongodb",
+   "pluginName": "mongodb",
+   "displayName": "MongoDB",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "47235838",
+   "name": "mongodb-atlas",
+   "pluginName": "mongodb-atlas",
+   "displayName": "MongoDB Atlas",
+   "category": "MCP"
+  },
+  {
+   "id": "63373743",
+   "name": "monid",
+   "pluginName": "monid",
+   "displayName": "Monid",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "13750661",
+   "name": "monk",
+   "pluginName": "monk",
+   "displayName": "Monk.io",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "68822953",
+   "name": "natural",
+   "pluginName": "natural",
+   "displayName": "Natural",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "50103284",
+   "name": "navan",
+   "pluginName": "navan",
+   "displayName": "Navan",
+   "category": "MCP"
+  },
+  {
+   "id": "669",
+   "name": "neon",
+   "pluginName": "neon-postgres",
+   "displayName": "Neon Postgres",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "20992516",
+   "name": "netlify-skills",
+   "pluginName": "netlify-skills",
+   "displayName": "Netlify",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "68824395",
+   "name": "skills",
+   "pluginName": "skills",
+   "displayName": "ngrok",
+   "category": "MCP"
+  },
+  {
+   "id": "66400682",
+   "name": "nitrosend",
+   "pluginName": "nitrosend",
+   "displayName": "Nitrosend",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "404",
+   "name": "notion",
+   "pluginName": "notion-workspace",
+   "displayName": "Notion",
+   "category": "Featured",
+   "categoryKey": "FEATURED",
+   "categoryKeys": [
+    "FEATURED",
+    "PRODUCTIVITY",
+    "DOCUMENTS_AND_FILES"
+   ]
+  },
+  {
+   "id": "43019816",
+   "name": "nvidia-skills",
+   "pluginName": "nvidia-skills",
+   "displayName": "Nvidia Skills",
+   "category": "MCP"
+  },
+  {
+   "id": "41749318",
+   "name": "observe",
+   "pluginName": "observe",
+   "displayName": "Observe by Snowflake",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "71001007",
+   "name": "t",
+   "pluginName": "oh-my-claudecode",
+   "displayName": "oh-my-claudecode",
+   "category": "MCP"
+  },
+  {
+   "id": "63841619",
+   "name": "omneky",
+   "pluginName": "omneky",
+   "displayName": "Omneky",
+   "category": "MCP"
+  },
+  {
+   "id": "2729",
+   "name": "omni-analytics",
+   "pluginName": "omni-analytics",
+   "displayName": "Omni Analytics",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "70599228",
+   "name": "omni-integrations",
+   "pluginName": "omni-integrations",
+   "displayName": "Omni Integrations",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "57302028",
+   "name": "onedrive",
+   "pluginName": "onedrive",
+   "displayName": "OneDrive",
+   "category": "Documents And Files",
+   "categoryKey": "DOCUMENTS_AND_FILES",
+   "categoryKeys": [
+    "DOCUMENTS_AND_FILES"
+   ]
+  },
+  {
+   "id": "38157427",
+   "name": "onesignal",
+   "pluginName": "onesignal",
+   "displayName": "OneSignal",
+   "category": "MCP"
+  },
+  {
+   "id": "6846",
+   "name": "opensearch-mcp-server",
+   "pluginName": "opensearch-agent-skills",
+   "displayName": "OpenSearch",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "6848",
+   "name": "opsera",
+   "pluginName": "opsera-devsecops",
+   "displayName": "Opsera",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "67997498",
+   "name": "opusclip",
+   "pluginName": "opusclip",
+   "displayName": "OpusClip",
+   "category": "MCP"
+  },
+  {
+   "id": "9333",
+   "name": "orchestrate",
+   "pluginName": "orchestrate",
+   "displayName": "Orchestrate",
+   "category": "MCP"
+  },
+  {
+   "id": "66674618",
+   "name": "orthogonal",
+   "pluginName": "orthogonal",
+   "displayName": "Orthogonal",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "56809981",
+   "name": "otter",
+   "pluginName": "otter",
+   "displayName": "Otter.ai",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "57302029",
+   "name": "outlook",
+   "pluginName": "outlook",
+   "displayName": "Outlook",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "57302030",
+   "name": "outlook-calendar",
+   "pluginName": "outlook-calendar",
+   "displayName": "Outlook Calendar",
+   "category": "Scheduling",
+   "categoryKey": "SCHEDULING",
+   "categoryKeys": [
+    "SCHEDULING"
+   ]
+  },
+  {
+   "id": "53338793",
+   "name": "outreach",
+   "pluginName": "outreach",
+   "displayName": "Outreach",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "1089",
+   "name": "pagerduty-mcp",
+   "pluginName": "pagerduty",
+   "displayName": "PagerDuty",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "62966224",
+   "name": "cortex-appsec",
+   "pluginName": "appsecmcp",
+   "displayName": "Palo Alto Networks",
+   "category": "MCP"
+  },
+  {
+   "id": "6062",
+   "name": "paper",
+   "pluginName": "paper-desktop",
+   "displayName": "Paper",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY",
+    "DESIGN"
+   ]
+  },
+  {
+   "id": "13955831",
+   "name": "paradedb",
+   "pluginName": "paradedb",
+   "displayName": "ParadeDB",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "698",
+   "name": "parallel",
+   "pluginName": "parallel",
+   "displayName": "Parallel",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "64133030",
+   "name": "pascal",
+   "pluginName": "pascal-agent-skills",
+   "displayName": "Pascal",
+   "category": "MCP"
+  },
+  {
+   "id": "66633711",
+   "name": "paybox",
+   "pluginName": "paybox-plugin",
+   "displayName": "PayBox",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "3508",
+   "name": "pendo-external",
+   "pluginName": "pendo-analytics",
+   "displayName": "Pendo",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "66341380",
+   "name": "perspective",
+   "pluginName": "perspective-ai",
+   "displayName": "Perspective AI",
+   "category": "MCP"
+  },
+  {
+   "id": "704",
+   "name": "phantom-connect-sdk",
+   "pluginName": "phantom-connect",
+   "displayName": "Phantom",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "60310094",
+   "name": "pi-security",
+   "pluginName": "pi-security",
+   "displayName": "Pi Security",
+   "category": "MCP"
+  },
+  {
+   "id": "68515718",
+   "name": "picsart",
+   "pluginName": "picsart",
+   "displayName": "PicsArt",
+   "category": "MCP"
+  },
+  {
+   "id": "4339",
+   "name": "pinecone",
+   "pluginName": "pinecone",
+   "displayName": "Pinecone",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "3131",
+   "name": "plain",
+   "pluginName": "plain",
+   "displayName": "Plain",
+   "category": "Customer Support",
+   "categoryKey": "CUSTOMER_SUPPORT",
+   "categoryKeys": [
+    "CUSTOMER_SUPPORT"
+   ]
+  },
+  {
+   "id": "741",
+   "name": "planetscale",
+   "pluginName": "planetscale",
+   "displayName": "PlanetScale",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "69591834",
+   "name": "plaud",
+   "pluginName": "plaud",
+   "displayName": "Plaud",
+   "category": "MCP"
+  },
+  {
+   "id": "48677659",
+   "name": "playwright",
+   "pluginName": "playwright",
+   "displayName": "Playwright",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "26177969",
+   "name": "port",
+   "pluginName": "port",
+   "displayName": "Port",
+   "category": "MCP"
+  },
+  {
+   "id": "730",
+   "name": "posthog",
+   "pluginName": "posthog",
+   "displayName": "PostHog",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "69591835",
+   "name": "posthog",
+   "pluginName": "posthog-mcp",
+   "displayName": "PostHog MCP",
+   "category": "MCP"
+  },
+  {
+   "id": "58737848",
+   "name": "postiz",
+   "pluginName": "postiz",
+   "displayName": "postiz",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "2050",
+   "name": "postman",
+   "pluginName": "postman",
+   "displayName": "Postman",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "6307",
+   "name": "pr-review-canvas",
+   "pluginName": "pr-review-canvas",
+   "displayName": "PR Review Canvas",
+   "category": "Canvas",
+   "categoryKey": "CANVAS",
+   "categoryKeys": [
+    "CANVAS"
+   ]
+  },
+  {
+   "id": "353",
+   "name": "prisma",
+   "pluginName": "prisma",
+   "displayName": "prisma",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "51168001",
+   "name": "profound",
+   "pluginName": "profound",
+   "displayName": "Profound",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "9717366",
+   "name": "pstack",
+   "pluginName": "pstack",
+   "displayName": "pstack",
+   "category": "MCP"
+  },
+  {
+   "id": "71398422",
+   "name": "qrstuff",
+   "pluginName": "qrstuff-mcp-server",
+   "displayName": "QRStuff",
+   "category": "MCP"
+  },
+  {
+   "id": "20785328",
+   "name": "quiverai",
+   "pluginName": "quiverai",
+   "displayName": "QuiverAI",
+   "category": "MCP"
+  },
+  {
+   "id": "63446691",
+   "name": "quo",
+   "pluginName": "quo",
+   "displayName": "Quo",
+   "category": "MCP"
+  },
+  {
+   "id": "29413143",
+   "name": "railway",
+   "pluginName": "railway",
+   "displayName": "Railway",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "18281353",
+   "name": "raisely",
+   "pluginName": "raisely",
+   "displayName": "Raisely",
+   "category": "MCP"
+  },
+  {
+   "id": "32766883",
+   "name": "ramp",
+   "pluginName": "ramp",
+   "displayName": "Ramp",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS",
+    "FINANCE_AND_LEGAL"
+   ]
+  },
+  {
+   "id": "70798451",
+   "name": "razorpay",
+   "pluginName": "razorpay-remote-mcp-server",
+   "displayName": "Razorpay",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "41082969",
+   "name": "react-doctor",
+   "pluginName": "react-doctor",
+   "displayName": "React Doctor",
+   "category": "MCP"
+  },
+  {
+   "id": "66638239",
+   "name": "readme",
+   "pluginName": "readme",
+   "displayName": "ReadMe",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "56809982",
+   "name": "readwise",
+   "pluginName": "readwise",
+   "displayName": "Readwise",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "733",
+   "name": "redis-development",
+   "pluginName": "redis-development",
+   "displayName": "Redis",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "68854789",
+   "name": "refero",
+   "pluginName": "refero",
+   "displayName": "Refero",
+   "category": "Design",
+   "categoryKey": "DESIGN",
+   "categoryKeys": [
+    "DESIGN"
+   ]
+  },
+  {
+   "id": "49339676",
+   "name": "remotion",
+   "pluginName": "remotion",
+   "displayName": "Remotion",
+   "category": "MCP"
+  },
+  {
+   "id": "1295",
+   "name": "render",
+   "pluginName": "render",
+   "displayName": "Render",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "71289865",
+   "name": "replit",
+   "pluginName": "replit",
+   "displayName": "Replit",
+   "category": "MCP"
+  },
+  {
+   "id": "5188",
+   "name": "resend",
+   "pluginName": "resend",
+   "displayName": "Resend",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "42859383",
+   "name": "resolve",
+   "pluginName": "resolve-ai",
+   "displayName": "Resolve AI",
+   "category": "MCP"
+  },
+  {
+   "id": "59963775",
+   "name": "restream",
+   "pluginName": "restream",
+   "displayName": "Restream",
+   "category": "MCP"
+  },
+  {
+   "id": "26087976",
+   "name": "revenuecat",
+   "pluginName": "revenuecat",
+   "displayName": "RevenueCat",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "26087977",
+   "name": "revenuecat-play-billing",
+   "pluginName": "revenuecat-play-billing",
+   "displayName": "RevenueCat Play Billing",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "12836227",
+   "name": "revolut-x",
+   "pluginName": "revolut-x",
+   "displayName": "Revolut X",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "44746620",
+   "name": "revyl",
+   "pluginName": "revyl",
+   "displayName": "Revyl",
+   "category": "MCP"
+  },
+  {
+   "id": "63383076",
+   "name": "riverside",
+   "pluginName": "riverside",
+   "displayName": "Riverside",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "68492778",
+   "name": "robinhood",
+   "pluginName": "robinhood",
+   "displayName": "Robinhood",
+   "category": "MCP"
+  },
+  {
+   "id": "26126658",
+   "name": "roboflow",
+   "pluginName": "roboflow",
+   "displayName": "Roboflow",
+   "category": "MCP"
+  },
+  {
+   "id": "739",
+   "name": "runlayer",
+   "pluginName": "runlayer",
+   "displayName": "Runlayer",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "65140224",
+   "name": "runway",
+   "pluginName": "runway",
+   "displayName": "Runway",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "59510268",
+   "name": "ryze-ai",
+   "pluginName": "ryze-ai",
+   "displayName": "Ryze AI",
+   "category": "MCP"
+  },
+  {
+   "id": "63408934",
+   "name": "sp-global",
+   "pluginName": "sp-global",
+   "displayName": "S&P Global",
+   "category": "MCP"
+  },
+  {
+   "id": "47725205",
+   "name": "salesforce",
+   "pluginName": "salesforce",
+   "displayName": "Salesforce",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "1198",
+   "name": "sanity",
+   "pluginName": "sanity",
+   "displayName": "Sanity",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "7851",
+   "name": "scandit",
+   "pluginName": "scandit-sdk",
+   "displayName": "Scandit",
+   "category": "MCP"
+  },
+  {
+   "id": "66823500",
+   "name": "scx",
+   "pluginName": "scx-mcp-server",
+   "displayName": "SCX AI",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "14021272",
+   "name": "scylladb",
+   "pluginName": "scylladb",
+   "displayName": "ScyllaDB",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "764",
+   "name": "semgrep",
+   "pluginName": "semgrep-plugin",
+   "displayName": "Semgrep",
+   "category": "MCP"
+  },
+  {
+   "id": "56809983",
+   "name": "semrush",
+   "pluginName": "semrush",
+   "displayName": "Semrush",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS",
+    "RESEARCH"
+   ]
+  },
+  {
+   "id": "60864284",
+   "name": "senselab",
+   "pluginName": "senselab",
+   "displayName": "SenseLab",
+   "category": "MCP"
+  },
+  {
+   "id": "579",
+   "name": "sentry",
+   "pluginName": "sentry",
+   "displayName": "Sentry",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "6948",
+   "name": "shadcn",
+   "pluginName": "shadcn",
+   "displayName": "shadcn/ui",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "64745996",
+   "name": "sharepoint",
+   "pluginName": "sharepoint",
+   "displayName": "SharePoint",
+   "category": "MCP"
+  },
+  {
+   "id": "3970",
+   "name": "shopify-plugin",
+   "pluginName": "shopify-plugin",
+   "displayName": "Shopify",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "58735209",
+   "name": "sideshift",
+   "pluginName": "sideshift",
+   "displayName": "SideShift",
+   "category": "MCP"
+  },
+  {
+   "id": "56809984",
+   "name": "similarweb",
+   "pluginName": "similarweb",
+   "displayName": "Similarweb",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "8279",
+   "name": "sinch",
+   "pluginName": "sinch-cursor-plugin",
+   "displayName": "Sinch",
+   "category": "MCP"
+  },
+  {
+   "id": "674",
+   "name": "slack",
+   "pluginName": "slack",
+   "displayName": "Slack",
+   "category": "Featured",
+   "categoryKey": "FEATURED",
+   "categoryKeys": [
+    "FEATURED",
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "70801387",
+   "name": "slides",
+   "pluginName": "slides",
+   "displayName": "Slides.com",
+   "category": "Design",
+   "categoryKey": "DESIGN",
+   "categoryKeys": [
+    "DESIGN"
+   ]
+  },
+  {
+   "id": "56809985",
+   "name": "smartsheet",
+   "pluginName": "smartsheet",
+   "displayName": "Smartsheet",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS",
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "653",
+   "name": "snowflake",
+   "pluginName": "snowflake-cursor-plugin",
+   "displayName": "Snowflake",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "1292",
+   "name": "snyk",
+   "pluginName": "snyk-secure-development",
+   "displayName": "Snyk",
+   "category": "MCP"
+  },
+  {
+   "id": "26101348",
+   "name": "saw",
+   "pluginName": "snyk-api-web",
+   "displayName": "Snyk API & Web",
+   "category": "MCP"
+  },
+  {
+   "id": "20784535",
+   "name": "sonarqube",
+   "pluginName": "sonarqube",
+   "displayName": "SonarQube",
+   "category": "MCP"
+  },
+  {
+   "id": "10089",
+   "name": "sonatype-mcp",
+   "pluginName": "sonatype-cursor-plugin",
+   "displayName": "Sonatype",
+   "category": "MCP"
+  },
+  {
+   "id": "9347",
+   "name": "sourcegraph",
+   "pluginName": "sourcegraph-cursor-plugin",
+   "displayName": "Sourcegraph",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "66811936",
+   "name": "statsig",
+   "pluginName": "statsig",
+   "displayName": "Statsig",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "408",
+   "name": "stripe",
+   "pluginName": "stripe",
+   "displayName": "Stripe",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "9297",
+   "name": "subtext",
+   "pluginName": "subtext",
+   "displayName": "Subtext",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "652",
+   "name": "supabase",
+   "pluginName": "supabase",
+   "displayName": "Supabase",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "71287587",
+   "name": "superagent",
+   "pluginName": "superagent",
+   "displayName": "Superagent",
+   "category": "MCP"
+  },
+  {
+   "id": "55647251",
+   "name": "superdesign",
+   "pluginName": "superdesign",
+   "displayName": "Superdesign",
+   "category": "Design",
+   "categoryKey": "DESIGN",
+   "categoryKeys": [
+    "DESIGN"
+   ]
+  },
+  {
+   "id": "55650410",
+   "name": "superhuman-mail",
+   "pluginName": "mcp-mail",
+   "displayName": "Superhuman Mail",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "60293083",
+   "name": "superme",
+   "pluginName": "superme",
+   "displayName": "SuperMe",
+   "category": "Research",
+   "categoryKey": "RESEARCH",
+   "categoryKeys": [
+    "RESEARCH"
+   ]
+  },
+  {
+   "id": "58578698",
+   "name": "supermemory",
+   "pluginName": "cursor-supermemory",
+   "displayName": "Supermemory",
+   "category": "MCP"
+  },
+  {
+   "id": "684",
+   "name": "superpowers",
+   "pluginName": "superpowers",
+   "displayName": "Superpowers",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "2246",
+   "name": "svelte",
+   "pluginName": "svelte",
+   "displayName": "Svelte",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "71396845",
+   "name": "switchbooks",
+   "pluginName": "switchbooks",
+   "displayName": "Switchbooks",
+   "category": "MCP"
+  },
+  {
+   "id": "7621",
+   "name": "tabnine-context",
+   "pluginName": "tabnine",
+   "displayName": "Tabnine",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "7620",
+   "name": "ctx",
+   "pluginName": "ctx",
+   "displayName": "Tabnine Context Engine",
+   "category": "Agent Orchestration",
+   "categoryKey": "AGENT_ORCHESTRATION",
+   "categoryKeys": [
+    "AGENT_ORCHESTRATION"
+   ]
+  },
+  {
+   "id": "3165",
+   "name": "tavily",
+   "pluginName": "tavily",
+   "displayName": "Tavily",
+   "category": "MCP"
+  },
+  {
+   "id": "63354504",
+   "name": "teams",
+   "pluginName": "teams",
+   "displayName": "Teams",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "6344",
+   "name": "temporal",
+   "pluginName": "temporal",
+   "displayName": "Temporal",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "13566132",
+   "name": "thermos",
+   "pluginName": "thermos",
+   "displayName": "Thermos",
+   "category": "MCP"
+  },
+  {
+   "id": "6394",
+   "name": "spottercode",
+   "pluginName": "spottercode",
+   "displayName": "ThoughtSpot",
+   "category": "Data Analytics",
+   "categoryKey": "DATA_ANALYTICS",
+   "categoryKeys": [
+    "DATA_ANALYTICS"
+   ]
+  },
+  {
+   "id": "9295",
+   "name": "tierzero",
+   "pluginName": "tierzero",
+   "displayName": "TierZero",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "68810740",
+   "name": "tines-3b",
+   "pluginName": "tines-3b",
+   "displayName": "Tines 3B",
+   "category": "MCP"
+  },
+  {
+   "id": "69569192",
+   "name": "tinyfish",
+   "pluginName": "tinyfish",
+   "displayName": "TinyFish",
+   "category": "MCP"
+  },
+  {
+   "id": "788",
+   "name": "tldraw",
+   "pluginName": "tldraw",
+   "displayName": "tldraw",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY",
+    "DESIGN"
+   ]
+  },
+  {
+   "id": "56809986",
+   "name": "todoist",
+   "pluginName": "todoist",
+   "displayName": "Todoist",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "68996624",
+   "name": "token-security",
+   "pluginName": "token-security",
+   "displayName": "Token Security",
+   "category": "MCP"
+  },
+  {
+   "id": "60857554",
+   "name": "transcend-agent-governance",
+   "pluginName": "transcend-agent-governance",
+   "displayName": "Transcend Rails Agent Controls",
+   "category": "MCP"
+  },
+  {
+   "id": "55647425",
+   "name": "treg",
+   "pluginName": "treg",
+   "displayName": "Treg",
+   "category": "Research",
+   "categoryKey": "RESEARCH",
+   "categoryKeys": [
+    "RESEARCH"
+   ]
+  },
+  {
+   "id": "69591836",
+   "name": "trello",
+   "pluginName": "trello",
+   "displayName": "Trello",
+   "category": "MCP"
+  },
+  {
+   "id": "68849961",
+   "name": "tubealfred-youtube",
+   "pluginName": "tubealfred-youtube",
+   "displayName": "TubeAlfred",
+   "category": "MCP"
+  },
+  {
+   "id": "55065452",
+   "name": "tuist",
+   "pluginName": "tuist",
+   "displayName": "Tuist",
+   "category": "MCP"
+  },
+  {
+   "id": "5057",
+   "name": "turbopuffer",
+   "pluginName": "turbopuffer",
+   "displayName": "turbopuffer",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "60858255",
+   "name": "turso",
+   "pluginName": "turso",
+   "displayName": "Turso",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "9105",
+   "name": "twilio-docs",
+   "pluginName": "twilio-developer-kit",
+   "displayName": "Twilio",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "56809987",
+   "name": "typeform",
+   "pluginName": "typeform",
+   "displayName": "Typeform",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY",
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "53558411",
+   "name": "uipath",
+   "pluginName": "uipath",
+   "displayName": "UiPath",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "56809988",
+   "name": "upwork",
+   "pluginName": "upwork",
+   "displayName": "Upwork",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY",
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "60859419",
+   "name": "usertesting",
+   "pluginName": "usertesting",
+   "displayName": "UserTesting",
+   "category": "Research",
+   "categoryKey": "RESEARCH",
+   "categoryKeys": [
+    "RESEARCH"
+   ]
+  },
+  {
+   "id": "7619",
+   "name": "vantage",
+   "pluginName": "vantage",
+   "displayName": "Vantage",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "649",
+   "name": "vercel",
+   "pluginName": "vercel",
+   "displayName": "Vercel",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "71396492",
+   "name": "vertiso-memory",
+   "pluginName": "vertiso-memory",
+   "displayName": "Vertiso Memory",
+   "category": "MCP"
+  },
+  {
+   "id": "70741864",
+   "name": "vexo",
+   "pluginName": "vexo",
+   "displayName": "Vexo",
+   "category": "MCP"
+  },
+  {
+   "id": "1090",
+   "name": "webflow",
+   "pluginName": "webflow",
+   "displayName": "Webflow",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "63408935",
+   "name": "webull",
+   "pluginName": "webull",
+   "displayName": "Webull",
+   "category": "MCP"
+  },
+  {
+   "id": "50389919",
+   "name": "whop",
+   "pluginName": "whop",
+   "displayName": "Whop",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS"
+   ]
+  },
+  {
+   "id": "69591831",
+   "name": "windmill",
+   "pluginName": "windmill-hr",
+   "displayName": "Windmill HR",
+   "category": "MCP"
+  },
+  {
+   "id": "70335978",
+   "name": "wispr-flow",
+   "pluginName": "wispr-flow",
+   "displayName": "Wispr Flow",
+   "category": "MCP"
+  },
+  {
+   "id": "761",
+   "name": "wix-mcp",
+   "pluginName": "wix",
+   "displayName": "Wix",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "58954938",
+   "name": "wonder",
+   "pluginName": "wonder",
+   "displayName": "Wonder",
+   "category": "Design",
+   "categoryKey": "DESIGN",
+   "categoryKeys": [
+    "DESIGN"
+   ]
+  },
+  {
+   "id": "67998937",
+   "name": "wordpress",
+   "pluginName": "mcp-server-for-wordpress",
+   "displayName": "WordPress",
+   "category": "MCP"
+  },
+  {
+   "id": "60855173",
+   "name": "wordpress-com",
+   "pluginName": "wordpress-com",
+   "displayName": "WordPress.com",
+   "category": "MCP"
+  },
+  {
+   "id": "56809989",
+   "name": "workable",
+   "pluginName": "workable",
+   "displayName": "Workable",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY",
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "6067",
+   "name": "workos",
+   "pluginName": "workos",
+   "displayName": "WorkOS",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  },
+  {
+   "id": "56809990",
+   "name": "wrike",
+   "pluginName": "wrike",
+   "displayName": "Wrike",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "70796588",
+   "name": "writer",
+   "pluginName": "writer-mcp",
+   "displayName": "Writer",
+   "category": "MCP"
+  },
+  {
+   "id": "49086599",
+   "name": "x",
+   "pluginName": "x",
+   "displayName": "X",
+   "category": "Inbox And Collaboration",
+   "categoryKey": "INBOX_AND_COLLABORATION",
+   "categoryKeys": [
+    "INBOX_AND_COLLABORATION"
+   ]
+  },
+  {
+   "id": "59384947",
+   "name": "x-ads",
+   "pluginName": "x-ads",
+   "displayName": "X Ads",
+   "category": "MCP"
+  },
+  {
+   "id": "68516160",
+   "name": "x-money",
+   "pluginName": "x-money",
+   "displayName": "X Money",
+   "category": "MCP"
+  },
+  {
+   "id": "56809991",
+   "name": "xero",
+   "pluginName": "xero",
+   "displayName": "Xero",
+   "category": "Payments",
+   "categoryKey": "PAYMENTS",
+   "categoryKeys": [
+    "PAYMENTS",
+    "DOCUMENTS_AND_FILES"
+   ]
+  },
+  {
+   "id": "70741109",
+   "name": "you",
+   "pluginName": "you",
+   "displayName": "You.com",
+   "category": "Research",
+   "categoryKey": "RESEARCH",
+   "categoryKeys": [
+    "RESEARCH"
+   ]
+  },
+  {
+   "id": "762",
+   "name": "zapier",
+   "pluginName": "zapier",
+   "displayName": "Zapier",
+   "category": "Productivity",
+   "categoryKey": "PRODUCTIVITY",
+   "categoryKeys": [
+    "PRODUCTIVITY"
+   ]
+  },
+  {
+   "id": "65143440",
+   "name": "zernio",
+   "pluginName": "zernio",
+   "displayName": "Zernio",
+   "category": "MCP"
+  },
+  {
+   "id": "49047809",
+   "name": "zoom",
+   "pluginName": "zoom",
+   "displayName": "Zoom",
+   "category": "Scheduling",
+   "categoryKey": "SCHEDULING",
+   "categoryKeys": [
+    "SCHEDULING"
+   ]
+  },
+  {
+   "id": "32610026",
+   "name": "zoominfo",
+   "pluginName": "zoominfo",
+   "displayName": "ZoomInfo",
+   "category": "Sales",
+   "categoryKey": "SALES",
+   "categoryKeys": [
+    "SALES"
+   ]
+  },
+  {
+   "id": "5670",
+   "name": "zscaler-mcp-server",
+   "pluginName": "zscaler",
+   "displayName": "Zscaler",
+   "category": "Infrastructure",
+   "categoryKey": "INFRASTRUCTURE",
+   "categoryKeys": [
+    "INFRASTRUCTURE"
+   ]
+  }
+ ]
+}

@@ -474,6 +474,16 @@ function categoryToken(entry: CatalogEntry): string {
     .replace(/^_+|_+$/gu, "");
 }
 
+/** Upstream's `collated(r.category)` — the affinity key `selectForYou` groups by.
+ *
+ *  It is the entry's own `category` string, trimmed, and NOTHING else. Deliberately not
+ *  `bucketsOf()` and not `categoryTokensOf()`: the first drops every category the bucket table does
+ *  not map (`MCP`, `AGENT_ORCHESTRATION` — 151 of 403 live rows) and the second is the *key array*,
+ *  a different field entirely. Both mistakes zero out real affinity. See `selectForYou`. */
+function categoryAffinityKey(entry: CatalogEntry): string {
+  return str(entry.category).trim();
+}
+
 /** Upstream's `Ue` — the vendor override probe, keyed on `pluginName` then `name` only (never
  *  `displayName`), lower-cased with the `en-US` locale, and returning the **first** hit outright
  *  rather than merging hits. */
@@ -626,10 +636,27 @@ export function buildMarketplaceModel(
  * `selectForYou` (`te`) — team-signal first, category-affinity second.
  *
  * Upstream's ranking is: fill half the slots from entries teammates have installed, then affinity
- * (how many of YOUR installed plugins share a category), then any remaining team entries; finally
- * re-sort so team entries lead. `affinityStrength` needs a shared category token between the
- * candidate and your installed set — upstream compares the normalized catalog-category token, and
- * the vendor overrides are what make that comparison meaningful.
+ * (how many of YOUR installed entries share its category label), then any remaining team entries;
+ * finally re-sort so team entries lead.
+ *
+ * ⚠️ **The affinity key is the raw `category` label, NOT the resolved bucket.** This is not a
+ * stylistic choice and it is load-bearing. Upstream reads
+ * `affinityStrength: r.category.trim().length === 0 ? 0 : (affinityByCategory.get(collated(r.category)) ?? 0)`
+ * — the entry's own category string. An earlier revision of this function used `bucketsOf(entry)`
+ * instead, on the reasonable-sounding theory that affinity should follow the same grouping the
+ * homepage sections use. That is wrong, and visibly so: the bucket table `Le` has **no mapping for
+ * `MCP`** (nor for `AGENT_ORCHESTRATION`), so every `MCP`-category entry got `affinityStrength === 0`
+ * and became **structurally impossible to select** — 151 of the 403 rows.
+ *
+ * Measured on the official build with its own installed set (16 plugins, 5 of them
+ * `category: "MCP"`): keying affinity on the label reproduces official's four rows exactly —
+ * `Agent Compatibility / Aikido / Aleph / Algolia Productivity`. The bucket-keyed version returns
+ * `ActiveCampaign / AgentMail / Ando / Bird` and *cannot* produce those four at all, since all four
+ * are `categoryKey: undefined`, land in no bucket, and the detail page confirms their rendered
+ * category is `MCP`.
+ *
+ * There is also no "max over several buckets" step: `category` is a single string upstream, so an
+ * entry has exactly one affinity key. The previous multi-bucket max was part of the same mistake.
  */
 export function selectForYou(
   catalog: readonly BrowseRow[],
@@ -637,20 +664,24 @@ export function selectForYou(
   limit: number,
 ): readonly BrowseRow[] {
   if (limit <= 0) return [];
-  const installed = catalog.filter((row) => row.isInstalled);
+  // `J(catalog, isInstalled, locale)` — count installed entries per category label.
   const affinity = new Map<string, number>();
-  for (const row of installed) {
-    for (const bucket of bucketsOf(row.entry)) {
-      affinity.set(bucket, (affinity.get(bucket) ?? 0) + 1);
-    }
+  for (const row of catalog) {
+    if (!row.isInstalled) continue;
+    const key = categoryAffinityKey(row.entry);
+    if (key.length === 0) continue;
+    affinity.set(key, (affinity.get(key) ?? 0) + 1);
   }
 
   const pool: Scored[] = [];
   for (const row of catalog) {
     if (row.isInstalled) continue;
-    let affinityStrength = 0;
-    for (const bucket of bucketsOf(row.entry)) affinityStrength = Math.max(affinityStrength, affinity.get(bucket) ?? 0);
-    pool.push({ row, teammateCount: teamInstallCounts[row.id] ?? 0, affinityStrength });
+    const key = categoryAffinityKey(row.entry);
+    pool.push({
+      row,
+      teammateCount: teamInstallCounts[row.id] ?? 0,
+      affinityStrength: key.length === 0 ? 0 : (affinity.get(key) ?? 0),
+    });
   }
 
   const byName = (a: Scored, b: Scored): number => a.row.name.localeCompare(b.row.name);
