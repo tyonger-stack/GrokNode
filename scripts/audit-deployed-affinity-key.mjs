@@ -255,5 +255,75 @@ console.log(`\n夹具记录的官方 forYou: ${JSON.stringify(fx.officialForYou)
 if (officialEmpty !== 0) fail(`官方侧应有 0 条键为空，实测 ${officialEmpty} —— 官方侧模型变了，本脚本需更新`);
 else pass("官方侧 0 条键为空（直接取标签，符合预期）");
 
+/* ------------------------------------------- stage 2: replay vs what we saw ---- */
+
+// Why stage 2 exists: the 169/403 figure says MCP rows CANNOT win affinity, but the local UI still
+// renders four rows. A previous note explained those four as "degrades to alphabetical order" —
+// which the algorithm cannot produce, since it returns [] when both pools are empty. That story was
+// an inference from the reading looking alphabetical, not a measurement. Replaying the artifact's
+// own algorithm settles it.
+
+const LOCAL_FIXTURE = path.join(REPO, "tests/fixtures/local-installed-servers.json");
+const local = JSON.parse(fs.readFileSync(LOCAL_FIXTURE, "utf8"));
+const servers = local.servers.map((name) => ({ name }));
+
+const K = (n) => L(n).trim().toLocaleLowerCase();
+const ke = (n) => (n.includes(":") ? n.slice(0, n.indexOf(":")) : n);
+const osId = (n) => L(n.id) || L(n.name);
+
+// `be(n,e)` — upstream's isInstalled: match the entry's displayName against the SERVER list.
+function buildRow(entry) {
+  const t = L(entry.displayName) || L(entry.name);
+  const hit = servers.find((o) => L(o.name).split(":")[0] === t)
+    ?? servers.find((o) => K(ke(L(o.name))) === K(t)) ?? null;
+  return { row: entry, id: osId(entry), name: t, isInstalled: hit != null };
+}
+
+const LIMIT = 4;
+const TEAM_INSTALL_COUNTS = {}; // both sides report teamPopularity 0
+const rows = fx.catalog.map(buildRow);
+const installed = rows.filter((r) => r.isInstalled);
+console.log(`\n== 第二阶段：用产物算法离线重放，与界面读数对拍 ==`);
+console.log(`本地判为已装 ${installed.length} 条: ${installed.map((r) => r.name).join(", ")}`);
+
+const affinity = new Map();
+for (const r of installed) for (const y of vn(r.row)) affinity.set(y, (affinity.get(y) ?? 0) + 1);
+console.log(`亲和表: ${JSON.stringify([...affinity])}`);
+
+const pool = [];
+for (const r of rows) {
+  if (r.isInstalled) continue;
+  let y = 0;
+  for (const w of vn(r.row)) y = Math.max(y, affinity.get(w) ?? 0);
+  pool.push({ row: r, name: r.name, teammateCount: TEAM_INSTALL_COUNTS[r.id] ?? 0, affinityStrength: y });
+}
+const anyTeam = pool.some((p) => p.teammateCount > 0);
+console.log(`team 池为空: ${!anyTeam}（为真才可跳过末尾 signal 排序；为假则本段结论作废）`);
+if (anyTeam) fail("team 池非空 —— 末尾 signal 排序不再是恒等置换，本脚本的跳过假设失效");
+
+const byName = (a, b) => a.name.localeCompare(b.name);
+const rTeam = pool.filter((p) => p.teammateCount > 0).sort((a, b) => b.teammateCount - a.teammateCount || byName(a, b));
+const rAff = pool.filter((p) => p.affinityStrength > 0).sort((a, b) => b.affinityStrength - a.affinityStrength || b.teammateCount - a.teammateCount || byName(a, b));
+console.log(`affinity 池非空 ${rAff.length} / ${pool.length}；前 4 行均并列在 strength=${rAff[0]?.affinityStrength}，靠 localeCompare 决胜`);
+
+const seen = new Set(), out = [];
+const half = Math.max(1, Math.floor(LIMIT * 0.5));
+const push = (c) => { if (seen.has(c.row.id) || out.length === LIMIT) return; seen.add(c.row.id); out.push(c); };
+for (const c of rTeam.slice(0, half)) push(c);
+for (const c of rAff) push(c);
+for (const c of rTeam) push(c);
+const replayed = out.map((c) => c.name);
+
+console.log(`离线重放: ${JSON.stringify(replayed)}`);
+console.log(`界面实测: ${JSON.stringify(local._observedForyou)}`);
+if (JSON.stringify(replayed) === JSON.stringify(local._observedForyou)) {
+  pass("离线重放与界面读数逐项一致 —— 因果链闭合：界面那 4 行就是这段产物代码算出来的");
+} else {
+  fail(`离线重放 ${JSON.stringify(replayed)} 与界面读数 ${JSON.stringify(local._observedForyou)} 不一致 —— 归因未闭合`);
+}
+const officialWinners = fx.officialForYou ?? [];
+const officialCats = officialWinners.map((w) => fx.catalog.find((e) => (e.displayName || e.name) === w)?.category);
+console.log(`官方那 4 赢家的 category: ${JSON.stringify(officialCats)}（全为 MCP → 部署侧键为空，结构性不可选）`);
+
 console.log(`\n${failures === 0 ? "✅ 审计通过" : `❌ ${failures} 项失败`}`);
 process.exit(failures === 0 ? 0 : 1);

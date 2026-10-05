@@ -1,0 +1,23 @@
+{
+  "_note": "本地已装 MCP server 名单，用于离线重放已部署渲染器的 selectForYou（ms）。",
+  "_why": "部署产物的 isInstalled 判据（函数 be）是「按条目的 displayName 去 server 列表匹配」，并不查 window.desktop.mcp.effectivePlugins()（本地实测为 []，是个红鲱鱼）。所以决定 affinity 的已装集合必须取 server 名单，不能取 effectivePlugins。",
+  "_capturedAt": "2026-10-05",
+  "_source": "已部署 /Applications/Grok Node.app，CDP 9232，window.desktop.mcp.list()",
+  "_observedForyou": [
+    "ActiveCampaign",
+    "Adobe Developer App Builder",
+    "AgentMail",
+    "Airtable"
+  ],
+  "_observedNote": "observedForyou 是同一时刻界面实测读数（连跑两遍逐字节一致）。审计脚本用它断言离线重放是否精确复现 —— 这才是因果链闭合，而不是「数字看起来对」。",
+  "servers": [
+    "Canva:canva",
+    "Figma:figma",
+    "Gmail:gmail",
+    "Google Calendar:google-calendar",
+    "Google Drive:google-drive",
+    "Granola:granola",
+    "Notion:notion",
+    "Slack:slack"
+  ]
+}

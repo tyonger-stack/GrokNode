@@ -96,20 +96,41 @@ ss=new Set(["canva","mailerlite"])
 官方侧键为空            :   0 / 403
 ```
 
-可复现：`node scripts/audit-deployed-affinity-key.mjs`
+可复现：`npm run marketplace:affinity:audit`（第二阶段还把本地 4 行重放出来对拍）
 
-## 四、实机读数（同一时刻两个 app 都在跑，各连跑两遍逐字节一致）
+## 四、实机读数与因果链闭合
 
 ```
 官方 9224  为你推荐: Agent Compatibility / Aikido / Aleph / Algolia Productivity
 本地 9232  为你推荐: ActiveCampaign / Adobe Developer App Builder / AgentMail / Airtable
 ```
 
-> ⚠️ **待核**：本地这 4 行恰好是字母序前四，但按 `ms` 的字面逻辑，当 team 与 affinity 两个池
-> 都为空时它应当返回空数组。所以「本地这 4 行是字母序回退」这个解释**尚未证实** ——
-> 更可能本地有条目被标记为已装（从而产生 team 或 affinity 信号）。
-> **本轮没有取证这一层，不写成结论。** 归因「两层叠加」中的第 ① 层（已装集合不同）也因此
-> 只有 catalog × 已装集合交叉实验的间接证据，没有实机读数。
+（各连跑两遍，逐字节一致。）
+
+**这 4 行不是「退化为字母序」。** 16:25 那次这么解释过，但 `ms` 在 team 池与 affinity 池皆空时
+返回空数组，产不出字母序回退 —— 那是从「读数看起来像字母序」倒推出来的，不是测出来的。
+
+用产物里逐字读出的算法**离线重放**，精确复现（`npm run marketplace:affinity:audit` 第二阶段）：
+
+```
+本地判为已装 8 条: Canva, Figma, Gmail, Google Calendar, Google Drive, Granola, Notion, Slack
+亲和表: productivity→3, design→2, communication→3, sales→1
+team 池为空: true
+affinity 池非空 105 / 395；前 4 行均并列在 strength=3，靠 localeCompare(name) 决胜
+离线重放: ActiveCampaign / Adobe Developer App Builder / AgentMail / Airtable   ← 与界面逐项一致
+```
+
+三点此前被写错的地方，一并纠正：
+
+1. **`effectivePlugins() = []` 是红鲱鱼。** 渲染器的 `isInstalled`（函数 `be`）是
+   `s = e.find(o=>L(o.name).split(":")[0]===t) ?? e.find(o=>K(ke(L(o.name)))===K(t))`，
+   `t = L(n.displayName)||L(n.name)` —— 拿 **server 列表**匹配，与 `effectivePlugins` 无关。
+   本地 8 条 server 照样把 8 个条目判为已装。
+2. **「字母序」是决胜结果，不是回退。** 前 4 行 `affinityStrength` 全是 3（并列），
+   才落到 `localeCompare(name)`。看起来像字母序是巧合的表象。
+3. **两层叠加现在都有机制了。** 官方那 4 个赢家的 `category` 全是 `MCP`（实测四取四），
+   而部署侧 `MCP` 类共 151 条键为空 → **结构性不可选**；于是本地改从
+   `communication` / `productivity` 里挑并列第一的 4 条。
 
 ## 五、为什么这么久没被发现
 
