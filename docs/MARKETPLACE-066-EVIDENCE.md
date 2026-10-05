@@ -1439,6 +1439,34 @@ k && !as ? <button aria-label={V!=null ? xzJ6xV : tT4tWM} …> : null
 ⇒ D19 需要**新桥契约 + 表单 + 提交流程**，涉及选哪个宿主调用、参数形状、以及 OAuth 回跳 UX ——
    这三处都有设计判断，没有实机可参照时盲写就是臆造，故**未擅自实施**，登记为待办。
 
+#### ⚠️ 2026-10-05 21:5x 上面的「实施前提」被逐字证伪，D19 已实施
+
+上面三行里「本项目桥没有 `addAccount`」「需要新桥契约」「三处设计判断待拍板」**全部是错的**，
+它们是按「桥里有什么」推出来的，而不是按官方怎么调推出来的。重新取证（全部逐字）：
+
+- **官方只有一条提交路径**（`chunk-view-BudImuR0.js` @111600 起，`de = Pe`）：
+  ```js
+  Pe = async ($, U) => { const ee = U === void 0 ? ps : U; …  await le(pe, se, ee) }
+  // 上游调用侧：
+  be = $ => de($.serverId, $.accountKey)   // onAuthenticate
+  Me = $ => de($.serverId, $.label)        // onAddAccount
+  ```
+  两个回调**是同一个函数、只有第二个实参名不同** ⇒「标签就是 accountKey」，
+  ⇒ 根本不存在「选哪个宿主调用 / 参数形状」这两问。
+- **本项目桥本来就有**：`preload.ts:175` 早已暴露 `authenticate(serverId, accountKey?, trigger?)`，
+  `mcp-desktop.ts:11` 把 `accountKey` 原样透传给 `authenticateServer`（只缺省成 `default`），
+  `mcp-auth-watch-lifecycle.ts:103` 交给 `checkAuthStatus`，**没有「槽位必须预先存在」的前置检查**。
+  ⇒ 不需要新桥契约。`addServersToAccount` 从头到尾都不相关。
+- **回跳 UX 不由渲染层决定**（宿主 `catchLoopbackAuthorization` + `onAuthCompleted` 订阅），
+  也不是移植的未知项。
+- **可见性门**：`k = featureGates.mcp_multi_account && url!=null && servedBy!=="grok" && cursorScmProvider==null`。
+  `mcp_multi_account` 在 `main-app.cjs` 注册的默认值是 `!0`，本地无条件渲染与官方默认路径一致。
+
+官方 `P` 处理器的三条「只收起、不提交」分支（`index.eager-app-Cj5f8Gby.js` 的 `hPe`/`dPe` 解出）：
+`q = trim().toLowerCase()`；① `q` 为空或 `q === 源账户键` → `b(null)`；② `q === "grok"`（常量 `dPe`）→ `b(null)`；
+③ 否则先 `b(null)` 再按 `C.has(q)` 分流 `t()` / `i()`。Enter 等价「授权」，Escape 等价「取消」。
+
+
 ### 三条方法论（本轮又踩）
 
 1. **基准本身可能是错的，而它会以「守卫」的形式长期合理化错误结论。**

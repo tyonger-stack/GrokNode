@@ -51,6 +51,14 @@ const PINNED_CSS = path.join(REPO_ROOT, "src/app/dist/renderer/assets/index-lCyB
 const run = promisify(execFile);
 
 const readPinnedChunk = () => readFile(PINNED_CHUNK, "utf8");
+
+// src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped.
+// 2026-10-05 补：本文件此前硬读该产物，而 CI 从不执行 `npm run bootstrap`（bootstrap 用的是
+// macOS 专有的 hdiutil），于是 13 个依赖产物的文件里有 7 个在 CI 上 ENOENT —— main 的 CI
+// 已因此连续红 10 次。写法照抄仓库另外 6 个已守卫的文件，不新造模式。守卫对象取「声明的用例名
+// ∩ 实测失败名」，不是靠猜哪个用例读了产物。
+const pinnedChunk = await readPinnedChunk().catch(() => null);
+const pinnedSkip = pinnedChunk == null ? "src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped." : false;
 const readPinnedCss = () => readFile(PINNED_CSS, "utf8");
 const patchedChunk = async () => patchMainAgentRenderer(await readPinnedChunk());
 
@@ -268,7 +276,7 @@ test("the injected literals contain no backtick and no interpolation", () => {
   }
 });
 
-test("every anchor resolves exactly once in the pristine bundle", async () => {
+test("every anchor resolves exactly once in the pristine bundle", { skip: pinnedSkip }, async () => {
   const chunk = await readPinnedChunk();
   for (const anchor of [
     "function u0n(n){",
@@ -284,7 +292,7 @@ test("every anchor resolves exactly once in the pristine bundle", async () => {
     "0.18 must already ship the arrow-swap icon the replacement row uses");
 });
 
-test("the injection names only bindings the bundle actually has", async () => {
+test("the injection names only bindings the bundle actually has", { skip: pinnedSkip }, async () => {
   // Checked against the PATCHED bundle, not the pristine one: that is the artifact that
   // ships, and it is also where the patch introduces its own names (the original sidebar
   // is renamed to RMainOriginalSidebar at the first anchor).
@@ -322,7 +330,7 @@ test("MUTATION: a fabricated binding is reported instead of shipping", () => {
   assert.ok(bindings.has("hnt"), "while the real resolver still resolves");
 });
 
-test("RLocT is absent from the bundle and the injection guards it", async () => {
+test("RLocT is absent from the bundle and the injection guards it", { skip: pinnedSkip }, async () => {
   const chunk = await readPinnedChunk();
   assert.equal(chunk.split("RLocT").length - 1, 0,
     "0.18 must not already provide the i18n runtime, or the fallback is untested");
@@ -330,7 +338,7 @@ test("RLocT is absent from the bundle and the injection guards it", async () => 
     "an unguarded RLocT reference would throw in the 0.18 bundle");
 });
 
-test("the agent-item splice keeps the caller's memoization coherent", async () => {
+test("the agent-item splice keeps the caller's memoization coherent", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   assert.ok(patched.includes("function RMainOriginalSidebar(n){"), "the original sidebar must be renamed, not replaced");
   assert.ok(patched.includes('Hs=p.jsx(RMainAgentItem,{base:lt,"aria-current":pt,'),
@@ -344,7 +352,7 @@ test("the agent-item splice keeps the caller's memoization coherent", async () =
   assert.ok(/function d4e\(n\)\{/.test(chunk), "d4e must be the agent item component");
 });
 
-test("the agent item really is called with the props the wrapper reads", async () => {
+test("the agent item really is called with the props the wrapper reads", { skip: pinnedSkip }, async () => {
   const chunk = await readPinnedChunk();
   const call = /Hs=p\.jsx\(lt,\{([^}]*)\}/.exec(chunk);
   assert.ok(call, "could not lift the agent-item call site");
@@ -353,7 +361,7 @@ test("the agent item really is called with the props the wrapper reads", async (
   }
 });
 
-test("the main marker yields to the corner resolver, as 0.66's s1e does", async () => {
+test("the main marker yields to the corner resolver, as 0.66's s1e does", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   assert.ok(patched.includes("const corner=hnt({layout:props.layout,marker:props.marker,isWorking:props.isWorking,isActivityNamed:props.isPreviewActivity});"),
     "the wrapper must reuse the bundle's own corner resolver");
@@ -367,7 +375,7 @@ test("the main marker yields to the corner resolver, as 0.66's s1e does", async 
     "the corner resolver's signature changed — the wrapper's call would be wrong");
 });
 
-test("the dialog is driven by the prop the 0.18 kit actually reads", async () => {
+test("the dialog is driven by the prop the 0.18 kit actually reads", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   assert.ok(patched.includes("onOpenChange:next=>{if(!next)close()}"),
     "Gt.Root is a passthrough that only 0.18's onOpenChange can close");
@@ -384,7 +392,7 @@ test("the dialog is driven by the prop the 0.18 kit actually reads", async () =>
     "the dismissible shipped dialogs drive visibility through onOpenChange");
 });
 
-test("the dialog width is a key of the kit's own width table", async () => {
+test("the dialog width is a key of the kit's own width table", { skip: pinnedSkip }, async () => {
   const chunk = await readPinnedChunk();
   const table = /_in=\{([^}]*)\}/.exec(chunk);
   assert.ok(table, "could not lift the dialog width table");
@@ -402,7 +410,7 @@ test("the dialog width is a key of the kit's own width table", async () => {
   assert.ok(!widths.has("400"), "if 400 ever ships, the dialog can go back to 0.66's width");
 });
 
-test("the dialog primitives and button variants the block uses are real", async () => {
+test("the dialog primitives and button variants the block uses are real", { skip: pinnedSkip }, async () => {
   const chunk = await readPinnedChunk();
   const namespace = /const Gt=\{([^}]*)\}/.exec(chunk);
   assert.ok(namespace, "could not lift the dialog namespace");
@@ -421,7 +429,7 @@ test("the dialog primitives and button variants the block uses are real", async 
     "0.18's Gt.Action does not take a secondary variant; the block must not pass one");
 });
 
-test("the replacement row uses the real menu and icon primitives", async () => {
+test("the replacement row uses the real menu and icon primitives", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   assert.ok(patched.includes("ee=p.jsx(RMainDeleteOrReplace,{batchCount:r,id:t.id,onRequestDelete:A})"),
     "the delete slot must be taken over, not duplicated");
@@ -433,7 +441,7 @@ test("the replacement row uses the real menu and icon primitives", async () => {
     "the replacement row must be replaced by delete in a multi-select, as in 0.66");
 });
 
-test("the sidebar wrapper keeps the original sidebar mounted", async () => {
+test("the sidebar wrapper keeps the original sidebar mounted", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   assert.ok(patched.includes("function u0n(props){return p.jsxs(p.Fragment,{children:[p.jsx(RMainOriginalSidebar,props),p.jsx(RMainRoot,{sidebar:props})]})}"),
     "the wrapper must render the original sidebar AND the chooser, never replace it");
@@ -538,7 +546,7 @@ test("the dialog copy is quoted from 0.66's message tables", () => {
     "the dialog title must keep 0.66's 'primary Bot' wording, not a tidied-up variant");
 });
 
-test("the picker binds only module-scope names from the bundle", async () => {
+test("the picker binds only module-scope names from the bundle", { skip: pinnedSkip }, async () => {
   // The injection is appended at module scope, so a name that merely exists somewhere inside
   // a function body is a ReferenceError at render time. `Ar` is the concrete case that a
   // regex misses: it is declared as `const pTt=1e4,fie=5,Ar=S.forwardRef(…)`.
@@ -551,7 +559,7 @@ test("the picker binds only module-scope names from the bundle", async () => {
     "the original sidebar is renamed by the first anchor, not a pre-existing binding");
 });
 
-test("the search row carries an inline icon, as 0.66's does", async () => {
+test("the search row carries an inline icon, as 0.66's does", { skip: pinnedSkip }, async () => {
   assert.ok(denseComponents().includes(
     "p.jsx(bt,{name:'search',size:'md',className:RMAIN_CLASSES.searchIcon+'r-main-searchicon','aria-hidden':true})"),
     "the search icon belongs inside the input row, not beside it");
@@ -583,7 +591,7 @@ test("Confirm stays disabled until a visible row is picked", () => {
     "0.66's picker has Cancel, not Back — the intro is a separate flow");
 });
 
-test("0.66's picker class list is reused verbatim where 0.18 has the same declarations", async () => {
+test("0.66's picker class list is reused verbatim where 0.18 has the same declarations", { skip: pinnedSkip }, async () => {
   // A stylix hash is a hash of the declarations, so a class keeps its name across versions.
   // 45 of the 47 survive; the two that do not ship without a rule in 0.66 either, so the port
   // drops them rather than inventing replacements.
@@ -600,7 +608,7 @@ test("0.66's picker class list is reused verbatim where 0.18 has the same declar
   assert.ok(unique.length >= 40, `expected the bulk of 0.66's picker classes to be reused, found ${unique.length}`);
 });
 
-test("the ported stylesheet tokens all resolve in the pinned sheet", async () => {
+test("the ported stylesheet tokens all resolve in the pinned sheet", { skip: pinnedSkip }, async () => {
   const css = await readPinnedCss();
   const used = [...new Set([...MAIN_AGENT_STYLE.matchAll(/var\((--sand-[a-z-]+)\)/g)].map(m => m[1]))];
   assert.ok(used.length >= 7, `the stylesheet should consume the design tokens it needs, found ${used.length}`);
@@ -611,12 +619,12 @@ test("the ported stylesheet tokens all resolve in the pinned sheet", async () =>
   }
 });
 
-test("the patched chunk parses as real JavaScript", async () => {
+test("the patched chunk parses as real JavaScript", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   await assertParses(patched);
 });
 
-test("applying the patch writes a provenance record and a patched chunk", async () => {
+test("applying the patch writes a provenance record and a patched chunk", { skip: pinnedSkip }, async () => {
   const stageRoot = await mkdtemp(path.join(tmpdir(), "main-agent-stage-"));
   const assets = path.join(stageRoot, "dist/renderer/assets");
   await mkdir(assets, { recursive: true });
@@ -640,12 +648,12 @@ test("applying the patch writes a provenance record and a patched chunk", async 
   assert.equal(provenance.files[1].file, "index-lCyB53CO.css");
 });
 
-test("re-applying onto patched sources fails closed", async () => {
+test("re-applying onto patched sources fails closed", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   assert.throws(() => patchMainAgentRenderer(patched), /already applied/);
 });
 
-test("a drifted anchor fails closed instead of silently no-oping", async () => {
+test("a drifted anchor fails closed instead of silently no-oping", { skip: pinnedSkip }, async () => {
   for (const [anchor, replacement] of [
     ["function u0n(n){", "function u0nRenamed(n){"],
     ['Hs=p.jsx(lt,{"aria-current":pt,', "Hs=p.jsx(d4e,{***"],
@@ -656,7 +664,7 @@ test("a drifted anchor fails closed instead of silently no-oping", async () => {
   }
 });
 
-test("an ambiguous anchor fails closed too", async () => {
+test("an ambiguous anchor fails closed too", { skip: pinnedSkip }, async () => {
   const chunk = await readPinnedChunk();
   const duplicated = chunk.replace("ee=p.jsx(mcn,{batchCount:r,id:t.id,onRequestDelete:A})",
     "ee=p.jsx(mcn,{batchCount:r,id:t.id,onRequestDelete:A});ee=p.jsx(mcn,{batchCount:r,id:t.id,onRequestDelete:A})");

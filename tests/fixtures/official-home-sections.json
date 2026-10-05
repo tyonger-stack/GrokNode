@@ -1,0 +1,128 @@
+{
+  "_note": "官方 0.66.0 首页区块基线。2026-10-05 用 scripts/verify-marketplace-parity.mjs 里的 SECTIONS_EXPR 原样跑的（从源文件切出，不手抄），CDP 9224。「市场」是弹窗容器标题 0 行 —— 官方 13 区块 = 14 个标题减掉它。",
+  "capturedAt": "2026-10-05T21:2x+08:00",
+  "app": "/Applications/Grok Bot.app",
+  "version": "0.66.0",
+  "totalHeadings": 14,
+  "totalRows": 45,
+  "sections": [
+    {
+      "title": "市场",
+      "rows": 0,
+      "first3": []
+    },
+    {
+      "title": "为你推荐",
+      "rows": 4,
+      "first3": [
+        "Aleph",
+        "Algolia Productivity",
+        "Allo"
+      ]
+    },
+    {
+      "title": "精选插件",
+      "rows": 4,
+      "first3": [
+        "Gmail",
+        "Google Calendar",
+        "Google Drive"
+      ]
+    },
+    {
+      "title": "团队插件",
+      "rows": 1,
+      "first3": [
+        "oh-my-claudecode"
+      ]
+    },
+    {
+      "title": "登录与凭据管理",
+      "rows": 1,
+      "first3": [
+        "1Password"
+      ]
+    },
+    {
+      "title": "效率",
+      "rows": 4,
+      "first3": [
+        "Adobe Developer App Builder",
+        "Airtable",
+        "Asana"
+      ]
+    },
+    {
+      "title": "通信",
+      "rows": 4,
+      "first3": [
+        "ActiveCampaign",
+        "AgentMail",
+        "Ando"
+      ]
+    },
+    {
+      "title": "设计",
+      "rows": 4,
+      "first3": [
+        "Canva",
+        "Docs Canvas",
+        "Figma"
+      ]
+    },
+    {
+      "title": "代码",
+      "rows": 4,
+      "first3": [
+        "Amazon Location Service",
+        "Appwrite",
+        "AWS Amplify"
+      ]
+    },
+    {
+      "title": "数据",
+      "rows": 4,
+      "first3": [
+        "Amplitude",
+        "Antimetal",
+        "Apify"
+      ]
+    },
+    {
+      "title": "销售",
+      "rows": 4,
+      "first3": [
+        "Adspirer",
+        "Amplemarket",
+        "Apollo.io"
+      ]
+    },
+    {
+      "title": "财务",
+      "rows": 4,
+      "first3": [
+        "1inch",
+        "Aave",
+        "Airwallex AgentOS"
+      ]
+    },
+    {
+      "title": "研究",
+      "rows": 4,
+      "first3": [
+        "Ahrefs",
+        "Context.dev",
+        "Context7"
+      ]
+    },
+    {
+      "title": "支持",
+      "rows": 3,
+      "first3": [
+        "Intercom",
+        "MailerLite",
+        "Plain"
+      ]
+    }
+  ]
+}

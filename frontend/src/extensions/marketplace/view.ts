@@ -141,6 +141,7 @@ import {
 import {
   createAccountEditForm,
   createAddAccountCta,
+  createAddAccountForm,
   createGlyph,
   createToolsRowCta,
 } from "./detail-cta.js";
@@ -1242,7 +1243,46 @@ function renderDetail(
     // `children.length === 1` — the glyph). Carrying the copy in aria-label only made the button
     // icon-only on screen, 34px tall instead of 43px, with the text existing purely for screen
     // readers. The construction lives in detail-cta.ts so a test can render it and assert that.
-    list.append(createAddAccountCta(document));
+    //
+    // D19：折叠态点它会**就地替换**成新账户表单（实机：文本从「添加其他账户」变成「授权 取消」，
+    // 可见输入框 0→1，表单 614×52）。此前只建按钮、无 handler，点了毫无反应。
+    // 官方那对按钮/表单是同一位置的**互斥兄弟节点**（`ve()` 里同一个三元的两支，中间没有包裹层），
+    // 所以这里也直接挂 `list`，不额外造一个 slot div。
+    const buildForm = (): HTMLElement =>
+      createAddAccountForm(document, {
+        // 官方草稿 hook 在这一块上的 `accountKey` 未在产物里单独暴露；账户列表首项
+        // （Gmail 实机即 `default`）是对每个现实取值都等价的替代。见 detail-cta.ts 的说明。
+        serverId: detail.accounts[0]?.serverId ?? "",
+        sourceAccountKey: detail.accounts[0]?.key ?? "",
+        existingAccountKeys: new Set(detail.accounts.map((a) => a.key.toLowerCase())),
+        handlers: {
+          onAddAccount: (a: { serverId: string; label: string }) => {
+            // 官方 `onAddAccount = $ => de($.serverId, $.label)`，
+            // `onAuthenticate = $ => de($.serverId, $.accountKey)` —— 同一个 `de`，
+            // 第二个实参不同而已：标签就是 accountKey。
+            void window.desktop?.mcp.authenticate(a.serverId, a.label);
+          },
+          onAuthenticate: (a: { serverId: string; accountKey: string }) => {
+            void window.desktop?.mcp.authenticate(a.serverId, a.accountKey);
+          },
+          onClose: () => {
+            addNode.remove();
+            addNode = buildCollapsed();
+            list.append(addNode);
+          },
+        },
+      });
+    const buildCollapsed = (): HTMLButtonElement => {
+      const cta = createAddAccountCta(document);
+      cta.addEventListener("click", () => {
+        addNode.remove();
+        addNode = buildForm();
+        list.append(addNode);
+      });
+      return cta;
+    };
+    let addNode: HTMLElement = buildCollapsed();
+    list.append(addNode);
     block.append(list);
     body.append(block);
   }

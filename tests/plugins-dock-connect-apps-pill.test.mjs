@@ -611,7 +611,11 @@ test("every rail class resolves in 0.18 or is lifted", () => {
     "RAIL_ICON_GLYPH_CLASSES",
   ];
   let css = null;
-  const staged = readdirSync(STAGED_ASSETS).filter((f) => f.endsWith(".css"));
+  // The same `existsSync` guard this file already uses at :214. `.build` is the packaging staging
+  // dir and only exists after `npm run package`, which CI never runs — so the directory itself can
+  // be absent, not merely empty. The line below already tolerated "no staged CSS"; it did not
+  // tolerate "no staged directory", which is the state CI is actually in.
+  const staged = existsSync(STAGED_ASSETS) ? readdirSync(STAGED_ASSETS).filter((f) => f.endsWith(".css")) : [];
   if (staged.length > 0) css = readFileSync(path.join(STAGED_ASSETS, staged[0]), "utf8");
   for (const name of arrays) {
     for (const className of readStringArray(name)) {

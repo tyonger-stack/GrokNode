@@ -1,0 +1,104 @@
+
+■ 上游真源（本机 0.66 的 browse-model chunk）
+  ✅ chunk 存在且为 12,928 字节  — 实际 12928 字节
+  ✅ Le 表逐条一致（14 条）
+  ✅ Le 中确无 AGENT_ORCHESTRATION / MCP
+  ✅ Te 表 16 个上游 slug 全部转写  — 额外 slug（须为补偿项）: canva, mailerlite
+  ✅ CATEGORY_BUCKET_ORDER 等于上游 Ce
+
+■ 部署版字节（/Applications/Grok Node.app）
+  ✅ 第一层投影 toPlugin 保留 categoryKeys
+  ✅ 第二层投影 marketplacePluginToView 保留 categoryKeys  — main.cjs 中共 17 处
+  ✅ 第一层投影 toPlugin 的 pluginName 取自 Plugin.name（非 MCP server 句柄）
+  ✅ 第二层投影 marketplacePluginToView 保留 pluginName  — main.cjs 中共 19 处
+      部署版渲染器：为你推荐 的 affinity 键与官方一致  — 键函数 fe 直接取 category 标签，与官方 0.66 同源
+  ✅ renderer chunk 逐个 node --check（101 个）
+     通过 101/101
+  ✅ 市场 UI 文案在产物中（先还原 \uXXXX 再匹配）
+
+■ 实机逐区块对拍（需要两个 app 同时带 CDP 端口运行）
+  ✅ 官方 9224 读取成功  — 14 个区块
+  ✅ 部署版 9232 读取成功  — 13 个区块
+
+     官方 14 个区块 / 本地 13 个 / 共有 13 个，逐行完全一致 12 个
+       ✅ 市场
+       ⚠️  为你推荐
+            官方: Aleph / Algolia Productivity / Allo / AMD
+            本地: Adobe Developer App Builder / Airtable / Asana / Atlassian
+       ✅ 精选插件
+       ✅ 团队插件
+       ✅ 效率
+       ✅ 通信
+       ✅ 设计
+       ✅ 代码
+       ✅ 数据
+       ✅ 销售
+       ✅ 财务
+       ✅ 研究
+       ✅ 支持
+  ⚠️  仅官方有的区块：登录与凭据管理（已知差异，未计入失败）  — 本地缺这一整块内容（官方 1 行）
+  ⚠️  首页行图标：交付方式与资产尺寸与官方一致（已知差异，未计入失败）  — 可比对 40 行；交付方式不同 1 行；两侧都解析出 <img> 后固有尺寸不同的 0 行，另有 27 行至少一侧未解析出图标（该数是下界，不是全量）。 官方把图标内联并统一到 112x112，本地透传 catalog 原始远端 URL。见 docs/evidence/marketplace-icon-assets.md
+       ·  登录与凭据管理（仅官方有，官方: 1Password —— 缺口见上方 ⚠️）
+
+     剩余差异请对照 docs/MARKETPLACE-066-EVIDENCE.md §18–§20 归因：本地 catalog 已补齐为
+     与官方同规模（下方「catalog payload 对拍」逐条核对，缺失条目应为「无」）；
+     1Password 不在任何一侧 catalog。
+     「为你推荐」：代码侧已对齐。已部署产物的 affinity 键是
+     `ye(n)=L(n.category).trim()` —— 直接取 category 标签、不经映射表，
+     与官方 `v(e,t)=j(e.category.trim(),t)` 同源，键为空 0 条。
+     残留差异**只有一层且不可消除**：官方那 4 个赢家的 category 四取四全是 MCP，
+     而本地已装的 8 条里没有 MCP 类 → 亲和表只有 {Featured:6, Productivity:2}。
+     历史：20:12 之前部署侧走 `as` 映射表（该表缺 MCP/AGENT_ORCHESTRATION/FEATURED，
+     169/403 条键为空）；16:25 曾误判为「无缺陷」—— 按 minified 名字反查，
+     `ge` 读到的是 teamName 探针。详见
+     docs/evidence/marketplace-foryou-affinity-key.md
+
+     首页形状：
+  ✅ 查看全部 数量  — 官方 9 / 本地 9
+  ✅ 市场包裹层存在  — 官方 true / 本地 true
+  ✅ 可继续纵向滚动  — scrollHeight 2372 / clientHeight 652（官方 2518 / 652）
+
+■ 类目页与管理页对拍
+  ✅ 官方 类目页读取成功  — 9 个查看全部
+  ✅ 部署版 类目页读取成功  — 9 个查看全部
+  ✅ 查看全部 总数  — 官方 9 / 本地 9
+  ✅ 精选类目页 有行  — 官方 51 / 本地 6（含首页残留，不比等号）
+  ✅ 类目桶 页 有行  — 官方 107 / 本地 60（含首页残留，不比等号）
+  ✅ 精选类目页 标题  — 精选插件
+  ✅ 类目桶 页 标题  — 效率
+  ✅ 类目页 无分页控件  — 官方 false / 本地 false
+  ✅ 精选与类目桶 是两个不同页面（两侧都须读到页面）  — 官方精选「精选插件」/ 官方桶「效率」/ 本地精选「精选插件」/ 本地桶「效率」
+  ✅ 管理页 可打开且有行  — 本地 48 行（官方 75，安装态不同故不比）
+  ✅ 管理页 能进入详情  — 点击首行应到达详情页
+  ✅ 管理页 返回后标题恢复  — 进入前「管理」/ 返回后「管理」
+  ✅ 管理页 返回后行数不变  — 进入前 48 / 返回后 48
+
+■ catalog payload 对拍
+  ✅ 官方 catalog 读取成功  — 405 条，其中 252 条带 categoryKeys
+  ✅ 部署版 catalog 读取成功  — 405 条，其中 252 条带 categoryKeys
+  ✅ categoryKeys 取值集合一致  — 15 个 key 两侧相同
+  ✅ categoryKeys 覆盖率无回退  — 本地 252/405（该字段修复前为 0）
+  ✅ isUserOwned 计数一致  — 官方 93 / 本地 93
+     catalog 总数 官方 405 / 本地 405 —— 数据面：两侧条目集合一致
+     本地缺失条目: （无）
+
+■ CTA 几何对拍（同一批控件，两侧实测互比，不用硬编码数字）
+  ✅ 官方 CTA 读取成功  — 45 行
+  ✅ 部署版 CTA 读取成功  — 44 行
+  ✅ 行尾 添加/连接 尺寸  — 46x26
+  ✅ 行尾 添加 padding  — 0px 10px
+  ✅ 行尾 添加 圆角  — 13px
+  ✅ 行尾 添加 字重  — 420
+  ✅ 行尾 添加 底色  — color(srgb 0.220753 0.220753 0.220753 / 0.32149)
+  ✅ 详情 返回 尺寸  — 28x28
+  ✅ 查看源码 尺寸  — 69x18
+  ✅ 查看源码 外链图标  — 13x13
+  ✅ 分享 尺寸  — 82x36
+  ✅ 分享 图标盒  — 18x18
+  ✅ 分享 label  — 28x20
+  ✅ 分享 子节点顺序  — SPAN.sand-kit-icon|SPAN.sand-euugli
+  ✅ 查看源码 图标在 <a> 内  — text:查看源码|I.ui-icon
+  ✅ 详情返回后回到首页
+
+✅ 全部核验通过（另有 2 项已知差异，未计入失败）
+

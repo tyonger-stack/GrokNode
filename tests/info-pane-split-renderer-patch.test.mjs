@@ -35,6 +35,14 @@ const PINNED_CHUNK = path.join(REPO_ROOT, "src/app/dist/renderer/assets/index-Ub
 
 const readPinnedChunk = () => readFile(PINNED_CHUNK, "utf8");
 
+// src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped.
+// 2026-10-05 补：本文件此前硬读该产物，而 CI 从不执行 `npm run bootstrap`（bootstrap 用的是
+// macOS 专有的 hdiutil），于是 13 个依赖产物的文件里有 7 个在 CI 上 ENOENT —— main 的 CI
+// 已因此连续红 10 次。写法照抄仓库另外 6 个已守卫的文件，不新造模式。守卫对象取「声明的用例名
+// ∩ 实测失败名」，不是靠猜哪个用例读了产物。
+const pinnedChunk = await readPinnedChunk().catch(() => null);
+const pinnedSkip = pinnedChunk == null ? "src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped." : false;
+
 // 0.18's layout constants, spelled out here rather than read back out of the patch, so the
 // tests assert against the audited values and not against whatever the patch happens to emit.
 const INFO_PANE_MIN = 280;
@@ -89,7 +97,7 @@ function persistedWidth(source, stored) {
   return RQ(bge(stored, K4e), DQ, upper);
 }
 
-test("the pinned chunk still carries every anchor this patch depends on", async () => {
+test("the pinned chunk still carries every anchor this patch depends on", { skip: pinnedSkip }, async () => {
   const source = await readPinnedChunk();
   assert.ok(source.includes(LAYOUT_CONSTANTS_BEFORE), "layout constant block anchor drifted");
   assert.ok(source.includes(LAYOUT_018_DRAG_HELPER), "drag helper anchor drifted");
@@ -143,7 +151,7 @@ const evalPredicates = (source) => {
   return fn(SIDEBAR_COLLAPSED, INFO_PANE_MIN, MIN_CHAT_COLUMN);
 };
 
-test("the open path consults the minimum pane width, never the persisted one", async () => {
+test("the open path consults the minimum pane width, never the persisted one", { skip: pinnedSkip }, async () => {
   const source = await readPinnedChunk();
   const patched = patchOriginalInfoPaneSplit(source);
 
@@ -168,7 +176,7 @@ test("the open path consults the minimum pane width, never the persisted one", a
   assert.equal(predicates.growByAt(280), 400 + 424 + 280 - 1000);
 });
 
-test("reverting either open-fit site reintroduces the wedge the patch exists to remove", async () => {
+test("reverting either open-fit site reintroduces the wedge the patch exists to remove", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalInfoPaneSplit(await readPinnedChunk());
   // Mutant 1: the subscribe site back on the persisted width — the exact 0.18 behaviour.
   const subscribeReverted = patched.replace(OPEN_FIT_SITES[0].after, OPEN_FIT_SITES[0].before);
@@ -180,7 +188,7 @@ test("reverting either open-fit site reintroduces the wedge the patch exists to 
   assert.equal(paneWidthTheOpenPathPasses(growReverted).grow, "u");
 });
 
-test("the render-time clamp the open-fit port leans on is present in chunk and CSS", async () => {
+test("the render-time clamp the open-fit port leans on is present in chunk and CSS", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalInfoPaneSplit(await readPinnedChunk());
   // The open pane's class pair carries the max-width clamp; without it an oversized stored
   // width would squeeze the chat column below its 424px minimum.
@@ -220,7 +228,7 @@ test("the patch is byte-exact against 0.62.0: the drag helper differs only by th
   );
 });
 
-test("a wide window is no longer capped at 480px", async () => {
+test("a wide window is no longer capped at 480px", { skip: pinnedSkip }, async () => {
   const source = await readPinnedChunk();
   const patched = patchOriginalInfoPaneSplit(source);
 
@@ -232,7 +240,7 @@ test("a wide window is no longer capped at 480px", async () => {
   assert.ok(dragPaneWidth(patched, at3456).width > REMOVED_INFO_PANE_MAX);
 });
 
-test("the pane grows with the window instead of pinning at one width", async () => {
+test("the pane grows with the window instead of pinning at one width", { skip: pinnedSkip }, async () => {
   const source = await readPinnedChunk();
   const patched = patchOriginalInfoPaneSplit(source);
   const previous = { width: -1 };
@@ -250,7 +258,7 @@ test("the pane grows with the window instead of pinning at one width", async () 
   }
 });
 
-test("the pane is still bounded by the window, the min chat column and the sidebar", async () => {
+test("the pane is still bounded by the window, the min chat column and the sidebar", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalInfoPaneSplit(await readPinnedChunk());
   for (const windowWidth of [1000, 1280, 1920, 2560, 3456]) {
     for (const sidebarWidth of [SIDEBAR_COLLAPSED, SIDEBAR_EXPANDED]) {
@@ -265,7 +273,7 @@ test("the pane is still bounded by the window, the min chat column and the sideb
   }
 });
 
-test("the minimum width and the collapse threshold are unchanged", async () => {
+test("the minimum width and the collapse threshold are unchanged", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalInfoPaneSplit(await readPinnedChunk());
   // Below 244px the pane collapses, exactly as in 0.18 and in 0.62.0.
   const collapsed = dragPaneWidth(patched, {
@@ -279,7 +287,7 @@ test("the minimum width and the collapse threshold are unchanged", async () => {
   assert.equal(narrow.width, INFO_PANE_MIN);
 });
 
-test("the drag helper is rewritten, not merely the persisted value", async () => {
+test("the drag helper is rewritten, not merely the persisted value", { skip: pinnedSkip }, async () => {
   const source = await readPinnedChunk();
   const patched = patchOriginalInfoPaneSplit(source);
   // Both layers mattered: had only the persistence clamps been relaxed, the first drag would
@@ -290,7 +298,7 @@ test("the drag helper is rewritten, not merely the persisted value", async () =>
   assert.equal(persistedWidth(patched, 100), INFO_PANE_MIN, "the 280px floor still holds");
 });
 
-test("the patch leaves no reference to the deleted ceiling", async () => {
+test("the patch leaves no reference to the deleted ceiling", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalInfoPaneSplit(await readPinnedChunk());
   assert.ok(!patched.includes("ume=480"), "the constant is still declared");
   assert.ok(!/\bume\b/.test(patched), "ume is still referenced somewhere in the chunk");
@@ -301,7 +309,7 @@ test("the patch leaves no reference to the deleted ceiling", async () => {
   }
 });
 
-test("the resize handle, the CSS variable and the window-derived maximum are untouched", async () => {
+test("the resize handle, the CSS variable and the window-derived maximum are untouched", { skip: pinnedSkip }, async () => {
   const patched = patchOriginalInfoPaneSplit(await readPinnedChunk());
   for (const needle of [
     "function han(n){return n.windowWidth-dme-jlt(n.sidebar)}",
@@ -344,7 +352,7 @@ test("the shape assertion fails closed on a chunk that lost an anchor", () => {
   );
 });
 
-test("a drifted anchor fails the patch instead of silently skipping a site", async () => {
+test("a drifted anchor fails the patch instead of silently skipping a site", { skip: pinnedSkip }, async () => {
   const source = await readPinnedChunk();
   // Re-introduce the deleted ceiling at one clamp site only: the other four anchors still
   // match, so a patch that ignored the miss would still "succeed".
@@ -365,7 +373,7 @@ test("a chunk carrying two copies of the target is rejected as ambiguous", () =>
   );
 });
 
-test("apply fails closed when no stylesheet is staged to validate the open-pane clamp", async (t) => {
+test("apply fails closed when no stylesheet is staged to validate the open-pane clamp", { skip: pinnedSkip }, async (t) => {
   const stageRoot = path.join(REPO_ROOT, ".test-tmp-info-pane-split-nocss");
   const assetsRoot = path.join(stageRoot, "dist", "renderer", "assets");
   const { mkdir, rm, writeFile: writeFileStage } = await import("node:fs/promises");
@@ -381,7 +389,7 @@ test("apply fails closed when no stylesheet is staged to validate the open-pane 
   );
 });
 
-test("applyOriginalRendererInfoPaneSplit rewrites the staged chunk and records provenance", async (t) => {
+test("applyOriginalRendererInfoPaneSplit rewrites the staged chunk and records provenance", { skip: pinnedSkip }, async (t) => {
   const stageRoot = path.join(REPO_ROOT, ".test-tmp-info-pane-split");
   const assetsRoot = path.join(stageRoot, "dist", "renderer", "assets");
   const { mkdir, rm, writeFile: writeFileStage } = await import("node:fs/promises");

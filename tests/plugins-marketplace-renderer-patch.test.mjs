@@ -201,7 +201,14 @@ test("each lifted rule is emitted as a selector that can actually match", () => 
   assert.match(STYLES, /grid-template-columns:repeat\(2/, "the two-column template must be a lifted/styled class, not ad-hoc CSS");
 });
 
-test("the two-column grid class is present, since the row grid is not one column", () => {
+// `.build/fidelity/app/dist/renderer/assets` is the packaging staging dir: it only exists after
+// `npm run package`, which CI never runs. `cssName()` already returns "" for that case (and
+// `CSS_TEXT()` below already handles it) — the one caller that forgot to check took the whole
+// file down with a readFileSync on the directory itself. Same half-done-guard shape as the
+// src/app/dist guards.
+const stagedCssSkip = () => (cssName() === "" ? ".build is the packaging staging dir and only exists after npm run package; staged-CSS assertions skipped." : false);
+
+test("the two-column grid class is present, since the row grid is not one column", { skip: stagedCssSkip() }, () => {
   // The official marketplace lays each section out in two columns. That comes from
   // `.sand-nby9oq { grid-template-columns:repeat(2,minmax(0,1fr)) }`, which the upstream style-object
   // extraction missed. 0.18 carries the identical declaration under the identical hash.
@@ -758,14 +765,60 @@ test("detail-page affordances that open nothing in 0.66 stay inert", () => {
     "the 工具 row must not grow a handler: 0.66 does not expand it",
   );
 
-  const addAccount = DETAIL_CTA.slice(
-    DETAIL_CTA.indexOf("export function createAddAccountCta"),
-    DETAIL_CTA.indexOf("export function createToolsRowCta"),
+  // ⚠️ 2026-10-05 21:3x 更正：原先这里断言「添加其他账户 **不得**有 handler」，
+  // 判词是「has no destination in 0.66」。**前提是错的** —— 当次取证账户区处于折叠态，
+  // 官方要点一下才展开，于是被读成「点了什么也不发生」。
+  // 重新取证（产物 + 实机双向）：
+  //   · `chunk-plugin-detail-view-tZskkHRA.js` 的 `ve()` 里，`.sand-plugins-detail__add-account`
+  //     按钮与一个 `div` 处在**同一个三元的两支**，两支互斥、无包裹层；按钮 `onClick:()=>y("")`
+  //     把它换成非 null，`y(null)` 换回来 ⇒ 官方确实就地展开表单。
+  //   · 实机 Gmail 详情页点它：文本「添加其他账户」→「授权 取消」，可见输入框 0→1，表单 614×52。
+  // 守卫方向随之反转：不是「不得有 handler」，而是「必须接到 createAddAccountForm」。
+  // 同款错误已连着错两次（本条 + 上方「编辑 <account> 账户」那条），两次都是**用折叠态的
+  // 读数去否定展开态的行为**。
+  //
+  // 判词写成可被证伪的断言（「必须展开」由 ⚠️/断言表示它成立），而不是把布尔取反了事 ——
+  // 取反只是让检查方向一致，不会让判词本身变成对的。
+  assert.doesNotMatch(
+    VIEW,
+    /if \(false\)[\s\S]{0,300}?createAddAccountCta\(document\)/,
+    "the add-account CTA's handler must stay reachable, not parked behind a dead branch",
   );
-  assert.ok(addAccount.length > 0, "createAddAccountCta is gone; this guard would silently pass");
-  assert.ok(
-    !/addEventListener/.test(addAccount),
-    "添加其他账户 has no destination in 0.66",
+  assert.match(
+    VIEW,
+    /const buildForm = \(\): HTMLElement =>\s*\n\s*createAddAccountForm\(document,/,
+    "添加其他账户 must expand the inline add-account form — 0.66 replaces the button in place",
+  );
+  assert.match(
+    VIEW,
+    /createAddAccountCta\(document\);\s*\n\s*cta\.addEventListener\("click",[\s\S]{0,300}?addNode = buildForm\(\);/,
+    "the collapsed CTA's click must swap the node for the form, not merely call something",
+  );
+  // 按钮与表单必须是**互斥兄弟**、直接挂在 list 上：官方 `ve()` 里它们是同一个三元的两支，
+  // 中间没有包裹层。多造一个 slot div 会凭空加一个官方不存在的节点。
+  assert.match(
+    VIEW,
+    /let addNode: HTMLElement = buildCollapsed\(\);\s*\n\s*list\.append\(addNode\);/,
+    "the add-account CTA goes straight onto the account list, with no wrapper node",
+  );
+  assert.doesNotMatch(
+    VIEW,
+    /createAddAccountForm\(document,[\s\S]{0,1200}?addSlot|addSlot[\s\S]{0,200}?createAddAccountForm\(/,
+    "no extra slot wrapper: official's button and form are two arms of one ternary",
+  );
+  // 官方只有一条提交路径：`onAddAccount` 与 `onAuthenticate` 是同一个函数的两种实参名
+  // （`chunk-view-BudImuR0.js`：`onAddAccount = $ => de($.serverId, $.label)`、
+  //  `onAuthenticate = $ => de($.serverId, $.accountKey)`）⇒ 两条都必须落到
+  // `mcp.authenticate`，不得自己造一个新增账户的桥契约。
+  assert.match(
+    VIEW,
+    /onAddAccount:[\s\S]{0,300}?mcp\.authenticate\(a\.serverId, a\.label\)/,
+    "onAddAccount must go through the host bridge's authenticate — the label IS the accountKey",
+  );
+  assert.match(
+    VIEW,
+    /onAuthenticate:[\s\S]{0,200}?mcp\.authenticate\(a\.serverId, a\.accountKey\)/,
+    "onAuthenticate must go through the same bridge call",
   );
 
   // ⚠️ 2026-10-05 19:4x 更正：原先这里断言「编辑 <account> 账户 不得有 handler」，
@@ -835,7 +888,11 @@ test("添加 is a one-shot install: no credential form, no destination picker", 
   //
   // What 0.66 DOES have for the grouping half of the brief is the account-label free-text field
   // (`新账户标签`, placeholder 为此账户添加标签，例如"工作"或"个人") — a text input, not a picker.
-  // That lives on the account edit form, not on the install path; guarded further down.
+  //
+  // 2026-10-05 更正：原文写「它在账户**编辑**表单上」。**归属搞错了**。该 input 属于账户列表末尾
+  // 「添加其他账户」按钮就地替换出的那块表单（`ve()` 里紧邻该按钮的同一个三元的另一支），与编辑
+  // 表单是两件事 —— 编辑表单只有重命名那一个输入框，官方 `ve()` 全文也只有 1 个 `<input>`。
+  // 归属错了会连带把验收基准写错（曾据此断言「点开后可见输入框 1→2」），故在此显式钉住。
   //
   // 26 catalog entries carry `fields[]`; none of them is a surface this page renders. The primary
   // button is therefore a one-shot install, which is exactly what `mcp.install` does here.

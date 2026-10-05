@@ -960,6 +960,15 @@ export const TEXT = {
   /** 取消 —— 官方该按钮的文案在 `textContent` 上，`aria-label` 为空。
    *  @evidence live 0.66, 编辑展开态按钮读数 `text="取消" aria=""`。 */
   cancel: "取消",
+  /** 授权 —— 「添加其他账户」表单里的提交按钮。
+   *  @evidence live 0.66, Gmail 详情页点开表单后按钮读数 `text="授权"`，46×26；
+   *  其 class 集合与列表行尾的 `添加`/`连接` 按钮逐字相同（54 类），可据此判定二者同一配方。 */
+  authorize: "授权",
+  /** 「添加其他账户」表单里，标签命中保留名时冒出的红色提示。
+   * @evidence live 0.66, Gmail 详情页表单展开态：输入 `Grok` / `grok` 时出现，输 `default` /
+   * `个人` / `工作` 不出现。官方消息 id `wLsCed`，逐字取自 `chunk-core-*.js` 的默认（中文）表。
+   * 官方把它作为 input 的兄弟节点渲染在字段 span 内，不是 placeholder、不是 aria。 */
+  reservedAccountLabelHint: "Grok 是保留的账户标签",
   /** The label under each connector name in the 应用 list — measured as 连接器 under `ahrefs`. */
   connectorLabel: "连接器",
   infoFeatures: "功能",

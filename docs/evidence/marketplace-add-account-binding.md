@@ -175,3 +175,62 @@ node /tmp/asar-find2.mjs "/Applications/Grok Bot.app/Contents/Resources/app.asar
 
 本文档所有偏移量都绑定 0.66.0 这一次产物。**换版本后偏移失效，但检索串稳定** ——
 按串重新定位，不要按偏移。
+
+---
+
+## 追加（2026-10-05 21:5x）：实机量测补上一处字节读不出的东西
+
+上面的结论全部来自字节。但字节里那个提示条件写的是
+`S = h != null && Bs(h) === Vs` —— `Vs` 是从 `index.eager-vendor-Qbf9YA6n.js`
+别名 `f6` 转进来的**压缩常量**，在同一文件里 `UL` 重名（撞上 `React.createContext`），
+继续追就要开始猜了。**不猜，直接在官方界面上试。**
+
+### 探针要过的两道关
+
+1. **命中测试**：`innerText` 读得到 ≠ 界面上看得见（推栈 UI 下层节点仍在 DOM 且仍算可见）。
+2. **自证起点**：先确认表单**确实是展开态**，否则「没变化」可能是压根没点开。
+
+第一轮探针返回「表单未展开」，是**窗口只有 720×76 像素高**——输入框在 DOM 里（478×28），
+滚动区 `clientHeight` 为 0，`elementFromPoint` 落在视口外外。命中测试正确地拒绝了读数。
+用 `Emulation.setDeviceMetricsOverride` 临时撑开布局视口（读完立即 `clearDeviceMetricsOverride`）。
+（`Browser.getWindowForTarget` 在 page 会话上不存在 —— `cdp.mjs` 连的是 page target。）
+
+### 量到的表单结构（与字节逐字吻合）
+
+| 角色 | tag | 类数 | 与本仓库常量 |
+| --- | --- | --- | --- |
+| 表单 | `div` | 9 | `DETAIL_ADD_ACCOUNT_FORM_CLASSES` ✅ |
+| 字段外层 | `span` | 8 | `DETAIL_ADD_ACCOUNT_FIELD_CLASSES` ✅ |
+| 输入框 | `input` | 17 | `DETAIL_ADD_ACCOUNT_INPUT_CLASSES` ✅ |
+| 授权 | `button` | 54 | `ACTION_BUTTON_OFFICIAL_CLASSES` ✅ |
+| 取消 | `button` | 55 | `CANCEL_BUTTON_OFFICIAL_CLASSES` ✅（= 授权 `slice(0,-3)` + 4 个 ghost 类） |
+
+> 五个配方**本来就已转写好且全部闲置未用**。缺的只是 DOM 组装 —— 与本文件上半部分的
+> 「桥不缺、只差渲染层接线」结论完全吻合。
+
+### 提示条件：实测而非推断 ★
+
+逐个标签输入，读字段 span 内的子节点：
+
+| 输入 | 提示 |
+| --- | --- |
+| `Grok` | **出现** |
+| `grok` | **出现** ⇒ 判定大小写不敏感 |
+| `default` | 不出现 |
+| `个人` | 不出现 |
+| `工作` | 不出现 |
+
+提示节点 = input 的**兄弟**（同一字段 span 内），5 类
+`sand-9f619 sand-1wm8ruf sand-1d3mw78 sand-12oo3zp sand-1jh5svw`，
+文案取官方默认（中文）表 `wLsCed` = 「Grok 是保留的账户标签」。
+`sand-1jh5svw` 的声明是 `color: var(--cursor-text-red-primary)` —— 红色警告，语义自洽。
+
+**跨版本可直接搬**：这 5 个类在 0.18（`index-lCyB53CO.css`）与 0.66
+（`index-B9V4agTc.css`）里声明**逐字相同**，无需任何逻辑/物理属性替换
+（这正是 AGENTS.md 记的那条「同一声明 ⇒ 同一类名」规律）。
+
+### 一处我自己写错的断言（被测试当场抓住）
+
+第一版用例把 `Grok2` 放进了「应显示」那一组。实现按官方的**精确相等**拒绝了它，
+是**测试错了不是实现错了** —— `Grok2` 我从没在官方界面上试过，属于凭空推断。
+判据是 `trim(h) === Vs`，不是 `startsWith`。已改正，并在用例里写下这条提醒。

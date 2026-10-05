@@ -25,6 +25,11 @@ const OFFICIAL_ASAR = "/Applications/Grok Bot.app/Contents/Resources/app.asar";
 const DEPLOYED_ASAR = "/Applications/Grok Node.app/Contents/Resources/app.asar";
 const UPSTREAM_MODEL_CHUNK = "dist/renderer/assets/chunk-marketplace-browse-model-DoOY91TS.js";
 const OFFICIAL_CDP = "9224";
+/** 一次 CDP 读取的上限。超时要抛错、不许静默挂起 —— 见 cdpDump 的说明。
+ *  可用 MARKETPLACE_CDP_TIMEOUT_MS 覆盖，便于用真实端口做快速端到端验证。 */
+const CDP_DUMP_TIMEOUT_MS = Number(process.env.MARKETPLACE_CDP_TIMEOUT_MS ?? 120000) || 120000;
+const withTimeout = (promise, ms, label) =>
+  Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(label)), ms))]);
 const DEPLOYED_CDP = "9232";
 const OFFICIAL_URL_HINT = "Grok%20Bot.app";
 const DEPLOYED_URL_HINT = "Grok%20Node.app";
@@ -352,6 +357,15 @@ if (!fs.existsSync(DEPLOYED_ASAR)) {
 /* ---------------------------------------------------------- live checks ---- */
 
 async function cdpDump(port, urlHint, expression) {
+  // ⚠️ 2026-10-05 21:4x 加超时。此前**完全没有**：一个 app 不响应（本次是钥匙串弹窗把主
+  // 进程卡在 SecItemCopyMatching，CDP 端口虽 LISTEN 但不服务）会让 `await` 永远挂着，
+  // 整轮以 Node 的 "unsettled top-level await" 收场 —— **零产出、零结论**。
+  // 检测器挂死比它报红更糟：报红至少是一条可复核的判词，挂死什么也没说。
+  // 超时抛出的错误会被调用方的 try/catch 接住、记成「该端不可用」这一条。
+  return withTimeout(cdpDumpInner(port, urlHint, expression), CDP_DUMP_TIMEOUT_MS, `${port} 上读取超时`);
+}
+
+async function cdpDumpInner(port, urlHint, expression) {
   const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
   const page = targets.find((t) => t.type === "page" && t.url.includes(urlHint));
   if (!page) throw new Error(`${port} 上找不到含 "${urlHint}" 的 page target`);
@@ -601,14 +615,41 @@ for (const [label, port, hint] of [["官方", OFFICIAL_CDP, OFFICIAL_URL_HINT], 
 }
 
 if (officialSections && deployedSections) {
-  const shared = Object.keys(officialSections).filter((t) => t in deployedSections);
+  const officialTitles = Object.keys(officialSections);
+  const deployedTitles = Object.keys(deployedSections);
+  const shared = officialTitles.filter((t) => t in deployedSections);
   const exact = shared.filter((t) => officialSections[t].names.join("|") === deployedSections[t].names.join("|"));
-  console.log(`\n     共有区块 ${shared.length} 个，逐行完全一致 ${exact.length} 个`);
+  // ⚠️ 2026-10-05 21:2x 修正：这一段原先只报「共有区块 N 个，逐行完全一致 M 个」，
+  // 而 N 取的是**交集**。交集之外的区块 —— 包括 D11 的 `登录与凭据管理` —— 被**整个丢掉**，
+  // 既不出 ⚠️ 也不进汇总。那个读法等于宣称「其余区块都一致」，而实际上其中有整整一个区块
+  // 本地根本没有。要求 1 写的是「逐页复刻…完全一致」，少报一个区块就是少计。
+  // 修法：汇总行**带出分母**，交集之外逐个显式报出 —— 判词是可被证伪的断言，不是调参。
+  const officialOnly = officialTitles.filter((t) => !(t in deployedSections));
+  const deployedOnly = deployedTitles.filter((t) => !(t in officialSections));
+  console.log(`\n     官方 ${officialTitles.length} 个区块 / 本地 ${deployedTitles.length} 个 / 共有 ${shared.length} 个，逐行完全一致 ${exact.length} 个`);
   for (const title of shared) {
     const want = officialSections[title].names;
     const got = deployedSections[title].names;
     if (want.join("|") === got.join("|")) console.log(`       ✅ ${title}`);
     else console.log(`       ⚠️  ${title}\n            官方: ${want.join(" / ") || "—"}\n            本地: ${got.join(" / ") || "—"}`);
+  }
+  // **0 行的标题是容器，不是内容区块。** 官方实测：14 个标题里第 1 个是「市场」，
+  // 0 行 —— 它是弹窗自身的标题（对应「官方 13 区块」= 14 个标题减掉这一个容器）。
+  // 若把它当内容，单边判定就会把「本地没渲染这个容器标题」误报成缺一整块内容。
+  // 所以单边报告只针对**至少 1 行**的标题，容器单列一行报出。
+  const isContent = (t, side) => (side[t]?.names?.length ?? 0) > 0;
+  const officialOnlyContent = officialOnly.filter((t) => isContent(t, officialSections));
+  const officialOnlyContainers = officialOnly.filter((t) => !isContent(t, officialSections));
+  const deployedOnlyContent = deployedOnly.filter((t) => isContent(t, deployedSections));
+  const deployedOnlyContainers = deployedOnly.filter((t) => !isContent(t, deployedSections));
+  for (const title of officialOnlyContent) {
+    known(`仅官方有的区块：${title}`, true, `本地缺这一整块内容（官方 ${officialSections[title].names.length} 行）`);
+  }
+  for (const title of deployedOnlyContent) {
+    known(`仅本地有的区块：${title}`, false, "官方没有这一块（可能是本机 catalog 数据更多）");
+  }
+  for (const title of [...officialOnlyContainers, ...deployedOnlyContainers]) {
+    known(`单边出现的容器标题（0 行）：${title}`, false, "容器不是内容区块，不计为缺口");
   }
   // Icon comparison, keyed on `section|name` rather than row index: the two builds put different
   // numbers of rows in a section, so pairing by index would compare unrelated entries.
@@ -652,13 +693,18 @@ if (officialSections && deployedSections) {
   }
 
   const onlyOfficial = Object.keys(officialSections).filter((t) => !(t in deployedSections));
-  for (const title of onlyOfficial) console.log(`       ❌ ${title}（本地无此区块：官方: ${officialSections[title].names.join(" / ")}）`);
+  // 判词与字形必须一致：这里只是**明细**（哪个区块、官方放了什么），不计入 failures ——
+  // 缺口本身已经由上面的 known(..., isGap=true) 报出。用 ❌ 字形会被读成「门禁失败」，
+  // 而它实际不影响退出码；同一个缺口报两遍、其中一遍还撒谎，比不报更糟。
+  for (const title of onlyOfficial) {
+    console.log(`       ·  ${title}（仅官方有，官方: ${officialSections[title].names.join(" / ")} —— 缺口见上方 ⚠️）`);
+  }
   console.log("\n     剩余差异请对照 docs/MARKETPLACE-066-EVIDENCE.md §18–§20 归因：本地 catalog 已补齐为");
   console.log("     与官方同规模（下方「catalog payload 对拍」逐条核对，缺失条目应为「无」）；");
   console.log("     1Password 不在任何一侧 catalog。");
   console.log("     「为你推荐」：代码侧已对齐。已部署产物的 affinity 键是");
   console.log("     `ye(n)=L(n.category).trim()` —— 直接取 category 标签、不经映射表，");
-  console.log("     与官方 `v(e,t)=j(e.category.trim(),t)` 同源，实测 403 条里键为空 0 条。");
+  console.log("     与官方 `v(e,t)=j(e.category.trim(),t)` 同源，键为空 0 条。");
   console.log("     残留差异**只有一层且不可消除**：官方那 4 个赢家的 category 四取四全是 MCP，");
   console.log("     而本地已装的 8 条里没有 MCP 类 → 亲和表只有 {Featured:6, Productivity:2}。");
   console.log("     历史：20:12 之前部署侧走 `as` 映射表（该表缺 MCP/AGENT_ORCHESTRATION/FEATURED，");
@@ -811,13 +857,29 @@ const SECTION_EXPR = `(async () => {
     return null;
   };
   const decorated = seeAlls.map((b) => ({ b, section: labelOf(b) }));
-  const featured = decorated.find((x) => /精选/.test(x.section ?? ""));
-  const bucket = decorated.find((x) => /效率|Productivity/i.test(x.section ?? ""));
-
   const out = { seeAllTotal: seeAlls.length, sections: decorated.map((x) => x.section) };
-  for (const [key, target] of [["featured", featured], ["bucket", bucket]]) {
-    if (!target) { out[key] = null; continue; }
-    target.b.click();
+  // ⚠️ 2026-10-05 21:3x 修正：**每一轮都要重新解析按钮节点，不能复用第一轮的引用。**
+  // 原先 decorated 在任何导航之前算好，随后 featured 那轮点进去、读、再点返回；
+  // 官方是 React，返回后首页重渲染，captured 的节点变成**游离节点** ——
+  // 对游离节点 click() 不会冒泡到活着的 React root，于是第二轮点了个寂寞，
+  // 稳定报「类目页未打开」（官方侧连跑两次同样结果，不是抖动）。
+  // 后果：**L1b 类目页这一层从来没有被真正验过** —— 读数恒为 err，
+  // 而下面那条「精选与类目桶是两个不同页面」在 undefined !== 「精选插件」上**恒真空洞通过**。
+  const pick = (re) => {
+    const hit = decorated.find((x) => re.test(x.section ?? ""));
+    if (!hit) return null;
+    // 节点可能已脱离文档 —— live 判断用 isConnected，不靠引用还在手里就当成有效。
+    if (hit.b.isConnected !== false) return hit.b;
+    const again = visAll("button", d)
+      .filter((b) => (b.textContent || "").trim() === "查看全部")
+      .map((b) => ({ b, section: labelOf(b) }))
+      .find((x) => re.test(x.section ?? ""));
+    return again?.b ?? null;
+  };
+  for (const [key, re] of [["featured", /精选/], ["bucket", /效率|Productivity/i]]) {
+    const b = pick(re);
+    if (!b) { out[key] = null; continue; }
+    b.click();
     const page = await until(() => (visAll('button[aria-label="返回"]', d).length ? d : null), 20000);
     out[key] = page ? shape(page) : { err: "类目页未打开" };
     const back = visAll('button[aria-label="返回"]', d)[0];
@@ -899,8 +961,13 @@ if (secRuns["官方"] && secRuns["部署版"]) {
   // here would be an invented surface.
   ok("类目页 无分页控件", o.bucket?.hasLoadMore === false && d.bucket?.hasLoadMore === false,
     `官方 ${o.bucket?.hasLoadMore} / 本地 ${d.bucket?.hasLoadMore}`);
-  ok("精选与类目桶 是两个不同页面", (d.featured?.headingText ?? "") !== (d.bucket?.headingText ?? ""),
-    `精选「${d.featured?.headingText}」/ 桶「${d.bucket?.headingText}」`);
+  // ⚠️ 这条原先在 bucket 读不出来时**恒真空洞通过**：`"" !== "精选插件"` 恒为真。
+  // 判词是「两者是不同页面」，前提是**两边都读到了页面**。前提不满足时必须失败，
+  // 否则「什么都没验到」会被记成「验过了且一致」。
+  const twoDistinct = (x) => (x?.headingText ?? "") !== (d.bucket?.headingText ?? "")
+    && x?.headingText != null && d.bucket?.headingText != null;
+  ok("精选与类目桶 是两个不同页面（两侧都须读到页面）", twoDistinct(o.featured) && twoDistinct(d.featured),
+    `官方精选「${o.featured?.headingText}」/ 官方桶「${o.bucket?.headingText}」/ 本地精选「${d.featured?.headingText}」/ 本地桶「${d.bucket?.headingText}」`);
 
   // The manage page lists what THIS machine has installed, so its row count and first row are
   // expected to differ between the two apps (official has 16 installed, local 8) — comparing them
