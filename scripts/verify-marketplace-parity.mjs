@@ -291,12 +291,14 @@ if (!fs.existsSync(DEPLOYED_ASAR)) {
 
     // `tableKeyed` = 键经映射表间接 = **与官方不同源**（官方 `v` 直接用 `e.category.trim()`），
     // 所以「一致」的条件是 labelKeyed，即 `!tableKeyed`。
-    // ⚠️ 17:2x 实测：这里曾写成 `!detectorOk || tableKeyed`，于是「有缺陷」被判成「与官方一致」，
-    //    输出与同行的说明文字自相矛盾。判据与判词必须同向。
-    const aligned = ambiguous.length === 0 && uniqKeys.length > 0 && labelKeyed;
+    // ⚠️ 17:3x 修正：第二个参数是 known() 的 **isGap**（true 才打 ⚠️ 并计入 knownGaps），
+    //    不是「是否一致」。这里一度传 `aligned`，于是部署侧**有**缺陷时反而不标 ⚠️、
+    //    也不计入已知差异 —— 一条真实缺陷被静默吞掉。isGap 必须是「检测器失灵 OR 存在缺陷」。
+    //    判词方向与判据不一致，改的是**判词**（把标签写成可被证伪的断言），不是把布尔反过来。
+    const isGap = ambiguous.length > 0 || uniqKeys.length === 0 || tableKeyed;
     known(
-      "部署版渲染器：为你推荐 的 affinity 键未经映射表间接（与官方一致）",
-      aligned,
+      "部署版渲染器：为你推荐 的 affinity 键与官方一致",
+      isGap,
       ambiguous.length > 0
         ? `键函数 ${ambiguous.map((k) => `${k.name}（同名定义 ${k.ambiguous} 个）`).join(", ")} 无法唯一定位 —— 检测器失灵`
         : uniqKeys.length === 0
@@ -415,6 +417,15 @@ const SECTIONS_EXPR = `(async () => {
     d = dlg();
     if (!d) return { err: "重开后市场弹窗仍不存在" };
   }
+  // Icons must be loaded before their intrinsic size is read: a not-yet-decoded <img> reports
+  // naturalWidth 0, which the comparison below silently skips — an UNDER-count, i.e. the check
+  // would report "fewer differences than exist". Wait for decode rather than trusting the count.
+  for (let i = 0; i < 40; i += 1) {
+    const imgs = [...d.querySelectorAll('img')].filter((im) => im.getBoundingClientRect().width > 0);
+    if (imgs.length === 0) break;
+    if (imgs.every((im) => im.complete && im.naturalWidth > 0)) break;
+    await sleep(300);
+  }
   const sections = [];
   let current = null;
   const walker = document.createTreeWalker(d, NodeFilter.SHOW_ELEMENT);
@@ -423,7 +434,7 @@ const SECTIONS_EXPR = `(async () => {
     if (/^H[1-5]$/.test(node.tagName)) {
       const title = (node.innerText || "").trim();
       if (!title) continue;
-      current = { title, names: [] };
+      current = { title, names: [], icons: [] };
       sections.push(current);
       continue;
     }
@@ -431,7 +442,38 @@ const SECTIONS_EXPR = `(async () => {
     const className = typeof node.className === "string" ? node.className : "";
     if (/row__name/.test(className)) {
       const text = (node.innerText || "").trim();
-      if (text && !current.names.includes(text)) current.names.push(text);
+      if (text && !current.names.includes(text)) {
+        current.names.push(text);
+        // Requirement 1 lists 图标 among the things that must match, and for a long time only the
+        // NAMES were compared — so a wholesale icon difference could sit here unmeasured. Record
+        // how the asset is delivered and its intrinsic size; the comparison happens below.
+        // The row__name node and the <img> are NOT always inside the same <li>: falling back to a
+        // single parentElement made 28 of 40 rows report "no icon", which silently under-counted the
+        // size differences (28 skipped + 12 counted = the wrong 12 I first reported). Walk UP until
+        // an ancestor that actually holds an <img>. An under-counting detector is worse than none.
+        // Getting this locator right took three attempts, and BOTH wrong versions failed silently
+        // in opposite directions — which is the part worth remembering:
+        //   v1  single parentElement fallback  -> 28/40 rows read "no icon"  (UNDER-count)
+        //   v2  walk up to any ancestor with an <img> -> a row with no icon of its own
+        //       (oh-my-claudecode, 1Password) picked up a NEIGHBOURING row's image (MIS-attribute)
+        // v3 anchors on the row itself: accept an ancestor only when it holds an <img> AND exactly
+        // one row__name. Once the ancestor holds two, we have left the row — stop and report none.
+        let img = null;
+        let p = node;
+        while (p && p !== d) {
+          const imgs = p.querySelectorAll("img");
+          if (imgs.length === 1 && p.querySelectorAll('[class*="row__name"]').length === 1) { img = imgs[0]; break; }
+          if (imgs.length > 1) break;   // more than one image in here => this is a container, not a row
+          p = p.parentElement;
+        }
+        const src = img ? (img.getAttribute("src") || "") : "";
+        current.icons.push({
+          name: text,
+          kind: !img ? "none" : src.startsWith("data:") ? "inline" : /^https?:/.test(src) ? "remote" : "other",
+          w: img ? img.naturalWidth : 0,
+          h: img ? img.naturalHeight : 0,
+        });
+      }
     }
   }
   // The section list alone does not prove the homepage *shape*. These three are the properties the
@@ -560,6 +602,47 @@ if (officialSections && deployedSections) {
     if (want.join("|") === got.join("|")) console.log(`       ✅ ${title}`);
     else console.log(`       ⚠️  ${title}\n            官方: ${want.join(" / ") || "—"}\n            本地: ${got.join(" / ") || "—"}`);
   }
+  // Icon comparison, keyed on `section|name` rather than row index: the two builds put different
+  // numbers of rows in a section, so pairing by index would compare unrelated entries.
+  const iconOf = (side, title, name) => (side[title]?.icons ?? []).find((i) => i.name === name);
+  let iconPairs = 0, iconKindDiff = 0, iconSizeDiff = 0, iconUnresolved = 0;
+  const iconSizeSamples = [];
+  for (const title of Object.keys(officialSections)) {
+    if (!(title in deployedSections)) continue;
+    for (const r of officialSections[title].names) {
+      const a = iconOf(officialSections, title, r);
+      const b = iconOf(deployedSections, title, r);
+      if (!a || !b) continue;
+      iconPairs += 1;
+      if (a.kind !== b.kind) iconKindDiff += 1;
+      // Only rows where BOTH sides resolved an <img> can be compared on intrinsic size. Rows where
+      // either side found none are counted separately rather than silently dropped: an unstated
+      // lower bound reads like a measurement, and that is how a 12 got reported when the real figure
+      // is closer to 38. State the denominator instead of tuning until the number looks right.
+      if (a.w > 0 && b.w > 0) {
+        if (a.w !== b.w || a.h !== b.h) {
+          iconSizeDiff += 1;
+          if (iconSizeSamples.length < 5) iconSizeSamples.push(`${r}: 官方 ${a.w}x${a.h} / 本地 ${b.w}x${b.h}`);
+        }
+      } else {
+        iconUnresolved += 1;
+      }
+    }
+  }
+  if (iconPairs === 0) {
+    known("首页行图标：采集不到可比对的一对", false, "两侧都没采到图标字段 —— 检测器问题，不是已知对齐状态");
+  } else {
+    known(
+      "首页行图标：交付方式与资产尺寸与官方一致",
+      iconKindDiff > 0 || iconSizeDiff > 0,
+      `可比对 ${iconPairs} 行；交付方式不同 ${iconKindDiff} 行；`
+      + `两侧都解析出 <img> 后固有尺寸不同的 ${iconSizeDiff} 行，另有 ${iconUnresolved} 行至少一侧未解析出图标`
+      + `（该数是下界，不是全量）。`
+      + (iconSizeSamples.length ? ` 例：${iconSizeSamples.join("；")}` : "")
+      + " 官方把图标内联并统一到 112x112，本地透传 catalog 原始远端 URL。见 docs/evidence/marketplace-icon-assets.md",
+    );
+  }
+
   const onlyOfficial = Object.keys(officialSections).filter((t) => !(t in deployedSections));
   for (const title of onlyOfficial) console.log(`       ❌ ${title}（本地无此区块：官方: ${officialSections[title].names.join(" / ")}）`);
   console.log("\n     剩余差异请对照 docs/MARKETPLACE-066-EVIDENCE.md §18–§20 归因：本地 catalog 已补齐为");
