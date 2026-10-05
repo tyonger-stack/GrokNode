@@ -261,24 +261,32 @@ if (!fs.existsSync(DEPLOYED_ASAR)) {
     );
   } else {
     const gsAt = renderer.indexOf(forYouFn);
-    const keyCalls = [...forYouFn.matchAll(/\b([A-Za-z_$][\w$]*)\(\s*\w+\.entry\s*\)/g)].map((m) => m[1]);
-    const uniqKeys = [...new Set(keyCalls)];
-    const readKey = keyCalls.map((name) => {
+    // Keep the call-site OFFSET. Minified short names collide (a re-package renamed the deployed
+    // key function and it then had 3 same-named declarations), so requiring global uniqueness made
+    // this check die permanently — a permanently dead check is a "always false" detector in disguise.
+    // In one flat bundle scope the declaration in effect at a call is the NEAREST PRECEDING one;
+    // that is scope resolution, not a guess. Report how many earlier same-named ones were skipped
+    // so a reviewer can check the resolution, and fail closed only when there are none.
+    const keyCalls = [...forYouFn.matchAll(/\b([A-Za-z_$][\w$]*)\(\s*\w+\.entry\s*\)/g)]
+      .map((m) => ({ name: m[1], at: gsAt + m.index }));
+    const uniqKeys = [...new Set(keyCalls.map((k) => k.name))];
+    const readKey = keyCalls.map(({ name, at: callAt }) => {
       const re = new RegExp(`function ${name}\\(`, "g");
       const decls = [];
       let d;
-      while ((d = re.exec(renderer)) !== null) decls.push(d.index);
-      if (decls.length !== 1) return { name, ambiguous: decls.length };
-      const at = decls[0];
+      while ((d = re.exec(renderer)) !== null) if (d.index < callAt) decls.push(d.index);
+      if (decls.length === 0) return { name, ambiguous: 0 };
+      const at = decls[decls.length - 1];
       let depth = 0;
       for (let k = renderer.indexOf("{", at); k < renderer.length; k += 1) {
         if (renderer[k] === "{") depth += 1;
-        else if (renderer[k] === "}") { depth -= 1; if (depth === 0) return { name, body: renderer.slice(at, k + 1) }; }
+        else if (renderer[k] === "}") { depth -= 1; if (depth === 0) return { name, body: renderer.slice(at, k + 1), skipped: decls.length - 1 }; }
       }
       return { name, body: null };
     });
     const bodies = readKey.filter((k) => k.body).map((k) => k.body);
     const ambiguous = readKey.filter((k) => k.ambiguous !== undefined);
+    const skippedNote = readKey.filter((k) => k.skipped > 0).map((k) => `${k.name}（越过 ${k.skipped} 个更早的同名声明）`);
 
     // 表间接：局部变量由 X[...] 赋值、且随后做 != null 判空 —— 这正是「键可能被表缺项吞掉」的形态
     const tableLookups = bodies.flatMap((b) =>
@@ -300,11 +308,11 @@ if (!fs.existsSync(DEPLOYED_ASAR)) {
       "部署版渲染器：为你推荐 的 affinity 键与官方一致",
       isGap,
       ambiguous.length > 0
-        ? `键函数 ${ambiguous.map((k) => `${k.name}（同名定义 ${k.ambiguous} 个）`).join(", ")} 无法唯一定位 —— 检测器失灵`
+        ? `键函数 ${ambiguous.map((k) => `${k.name}（前置声明 0 个）`).join(", ")} 无法定位 —— 检测器失灵`
         : uniqKeys.length === 0
           ? "selectForYou 体内未解析出 .entry 形态的键函数调用 —— 检测器失灵"
           : tableKeyed
-            ? `键函数 ${uniqKeys.join(", ")} 经 ${[...new Set(tableLookups)].join(", ")} 查表间接；官方直接用 category 标签。as 表缺 MCP/AGENT_ORCHESTRATION/FEATURED → 403 条里 169 条键为空（见 docs/evidence/marketplace-foryou-affinity-key.md）`
+            ? `键函数 ${uniqKeys.join(", ")} 经 ${[...new Set(tableLookups)].join(", ")} 查表间接${skippedNote.length ? `（${[...new Set(skippedNote)].join("、")}）` : ""}；官方直接用 category 标签。as 表缺 MCP/AGENT_ORCHESTRATION/FEATURED → 403 条里 169 条键为空（见 docs/evidence/marketplace-foryou-affinity-key.md）`
             : labelKeyed
               ? `键函数 ${uniqKeys.join(", ")} 直接取 category 标签，与官方 0.66 同源`
               : `键函数 ${uniqKeys.join(", ")} 既非标签直取也非表间接 —— 无法判定`,
@@ -648,14 +656,15 @@ if (officialSections && deployedSections) {
   console.log("\n     剩余差异请对照 docs/MARKETPLACE-066-EVIDENCE.md §18–§20 归因：本地 catalog 已补齐为");
   console.log("     与官方同规模（下方「catalog payload 对拍」逐条核对，缺失条目应为「无」）；");
   console.log("     1Password 不在任何一侧 catalog。");
-  console.log("     「为你推荐」的差异是**两层叠加**：① 已安装集合不同（机器状态）；② 部署版渲染器的");
-  console.log("     affinity 键经 `as` 映射表间接，该表缺 MCP / AGENT_ORCHESTRATION / FEATURED →");
-  console.log("     官方实机 403 条里 169 条键为空（MCP 151 / Agent Orchestration 17 / Featured 1），");
-  console.log("     官方侧 0 条（官方 `v(e,t)` 直接取 category 标签，从不查表）。");
-  console.log("     ⚠️ 2026-10-05 16:25 那次「部署侧无缺陷」的复核结论**已撤回**：它把 `ge`（真身是");
-  console.log("     marketplace/teamName 探针）当成了 affinity 键。本次按 `affinityStrength` 定位 +");
-  console.log("     调用点偏移定位键函数，重新逐字节确认。详见");
-  console.log("     docs/evidence/marketplace-foryou-affinity-key.md §八");
+  console.log("     「为你推荐」：代码侧已对齐。已部署产物的 affinity 键是");
+  console.log("     `ye(n)=L(n.category).trim()` —— 直接取 category 标签、不经映射表，");
+  console.log("     与官方 `v(e,t)=j(e.category.trim(),t)` 同源，实测 403 条里键为空 0 条。");
+  console.log("     残留差异**只有一层且不可消除**：官方那 4 个赢家的 category 四取四全是 MCP，");
+  console.log("     而本地已装的 8 条里没有 MCP 类 → 亲和表只有 {Featured:6, Productivity:2}。");
+  console.log("     历史：20:12 之前部署侧走 `as` 映射表（该表缺 MCP/AGENT_ORCHESTRATION/FEATURED，");
+  console.log("     169/403 条键为空）；16:25 曾误判为「无缺陷」—— 按 minified 名字反查，");
+  console.log("     `ge` 读到的是 teamName 探针。详见");
+  console.log("     docs/evidence/marketplace-foryou-affinity-key.md");
 
   console.log("\n     首页形状：");
   ok("查看全部 数量", officialShape.seeAll === deployedShape.seeAll, `官方 ${officialShape.seeAll} / 本地 ${deployedShape.seeAll}`);

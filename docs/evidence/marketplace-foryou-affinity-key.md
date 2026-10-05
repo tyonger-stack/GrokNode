@@ -1,24 +1,40 @@
-# 「为你推荐」affinity 键 —— **已部署产物同样有缺陷**（2026-10-05 17:0x 二次纠正）
+# 「为你推荐」affinity 键 —— **部署侧缺陷已于 2026-10-05 20:12 修复并部署**
 
-> ## ⚠️ 本文档 §一、§三、§六、§八 全部作废，以本文档正文为准
+> ## 现行状态（2026-10-05 20:2x 实测，先读这一段）
 >
-> 16:25 那次「纠正」说「0.18 部署产物的 affinity 键是 `entry.category` 标签，与官方同源，
-> 部署侧不需要补丁」。**这个结论是错的，已撤回。**
+> **已部署产物的键函数现在是 `function ye(n){return L(n.category).trim()}`** —— 直接取条目
+> 自己的 `category` 标签，不经映射表；`selectForYou`（现名 `Ls`）体内是
+> `let E=ye(p.entry); E.length!==0 && a.set(E, …)` 的单值判空形态。
+> **与官方 `v(e,t){return j(e.category.trim(),t)}` 同源。部署侧 403 条里键为空 0 条。**
 >
-> 错因：它按函数**名**反查，认为 `selectForYou` 压缩名是 `gs`、键函数是 `ge`。
-> 实测部署 chunk 里 `affinityStrength` 的 4 次命中**全部落在 `ms` 内**，
+> 证据：`npm run marketplace:affinity:audit`（`node scripts/audit-deployed-affinity-key.mjs`）
+> —— 全部从已部署 asar 逐字读出，结论为「与官方 0.66 同源」，并与界面实测读数逐字一致。
+>
+> 界面上「为你推荐」随之变成
+> `Adobe Developer App Builder / Airtable / Asana / Atlassian`（连跑两遍稳定），
+> 与离线重放一致。**与官方那 4 条仍不同，但只剩「已装集合不同」这一层**（机器状态）：
+> 官方那 4 个赢家 category 实测**四取四全是 MCP**，而本地已装的 8 条里没有 MCP 类，
+> 亲和表只有 `{Featured:6, Productivity:2}` —— 代码侧已经无法再接近了。
+>
+> 下面 §一–§八 记录的是**这次修复之前**的取证过程。数字（169/403、`as` 表缺三项）描述的是
+> 20:12 之前的产物，保留作为「缺陷是什么、怎么坐实的」的证据链。
+
+> ## ⚠️ 以下 §一、§三、§六、§八 的结论已被 16:25 的复核推翻过一次，又被 20:12 的修复取代
+>
+> 16:25 那次说「0.18 部署产物的 affinity 键是 `entry.category` 标签，与官方同源，
+> 部署侧不需要补丁」。**当时是错的。** 错因：它按函数**名**反查，认为 `selectForYou`
+> 压缩名是 `gs`、键函数是 `ge`。实测那 4 次 `affinityStrength` 全部落在 `ms` 内，
 > 而 `ge` 的真身是 `function ge(n){let e=n.marketplace; …}` —— marketplace/teamName 探针，
-> 与 affinity 无关（`function ge(` 在 chunk 里有 **4 个同名定义**，按名字反查必然读错）。
->
-> 撤回依据与正确机制见下文 §八。
+> 与 affinity 无关（`function ge(` 在 chunk 里有 **4 个同名定义**）。
+> 撤回依据见 §八。
 
-## 结论（现行）
+## 结论（缺陷修复前的历史状态）
 
 **两侧的 affinity 键语义不同，且部署侧会把条目吞掉。**
 
-| | 官方 0.66 | 0.18 部署版 |
+| | 官方 0.66 | 0.18 部署版（20:12 之前） |
 | --- | --- | --- |
-| `selectForYou` | `te` @ `chunk-marketplace-browse-model-DoOY91TS.js` (12,928 B) | `ms` @ `index-UbX-y3il.js` (5,957,907 B) |
+| `selectForYou` | `te` @ `chunk-marketplace-browse-model-DoOY91TS.js` (12,928 B) | `ms` @ `index-UbX-y3il.js` |
 | 键函数 | `v(e,t){return j(e.category.trim(),t)}` | `vn(n)` → **标签数组** |
 | 是否查表 | **否**，直接用标签 | **是**：`ts[pluginName]` 或 `as[cs({category})]` |
 | 官方实机 403 条里键为空的 | **0** | **169**（`MCP` 151 / `Agent Orchestration` 17 / `Featured` 1） |
@@ -140,16 +156,20 @@ affinity 池非空 105 / 395；前 4 行均并列在 strength=3，靠 localeComp
 - 16:25 的「纠正」又给了一层虚假安心：它给出了一个**具体符号名**（`gs`/`ge`）和
   一张「两侧输出逐字相同」的表，而那两张表都不是从产物读出来的。
 
-## 六、部署侧：**需要补丁**（结论已改回）
+## 六、部署侧：**已修复**（2026-10-05 20:12 随重打包部署）
 
-要给 checksum 钉死的上游 chunk 打 affinity 补丁。改的是 `ms` 里 `vn` 的取值路径：
-让它在没有 `as` 映射时回落到 `category` 归一后的标签本身，与官方 `v` 同形。
+**20:12 那次重打包已把修复带进产物**，键函数现在是 `function ye(n){return L(n.category).trim()}`，
+`selectForYou`（`Ls`）是单值判空形态，`as` 表不再参与 affinity。实测键为空 0 / 403。
 
-**本轮未执行** —— 改 checksum 钉死的产物要单独一轮完整回归，且属产品行为变更，需用户拍板。
+> 你在 17:50 定的「先不打补丁、记为已归因差异」这条决策**已被现实绕过** —— 补丁不是我这轮打的，
+> 是并发 agent 的重打包带进来的（`main.cjs` 里 `logoCache` 命中 10 次、`downscale` 12 次，
+> 属 D18 的宿主侧改动；chunk 从 5,957,907 B 变成 5,960,755 B，`ms`→`Ls`、`vn`→`ye`）。
+> **现在不需要再做任何部署侧动作。**
 
-可读重建侧（`frontend/`）的修复 `667018c` **保留且仍然必要**，但要改一处措辞：
-它修的是 `bucketsOf()`（首页分区桶表 `Le` 同样缺 `MCP`），机制与部署侧的 `as` 缺项**不同源**，
-不能写成「部署侧带同一个 bug」。
+原先说要给 chunk 打补丁的方案已无必要。剩余差异只有「已装集合不同」这一层（机器状态）。
+
+可读重建侧（`frontend/`）的修复 `667018c` 保留：它修的是 `bucketsOf()` 走桶表 `Le` 同样缺
+`MCP`，机制与部署侧当年的 `as` 缺项**不同源**，不能写成「部署侧带同一个 bug」。
 
 ## 七、守卫
 
@@ -163,11 +183,18 @@ affinity 池非空 105 / 395；前 4 行均并列在 strength=3，靠 localeComp
 5. `selectForYou` 函数体内不得再出现 `bucketsOf`
 6. 上限仍是 4
 
-`scripts/verify-marketplace-parity.mjs` 里另有一个**部署侧**检测：按 `affinityStrength`
-定位 `selectForYou`，再按调用点偏移定位键函数（并强制唯一性校验），判定
-**键是否经映射表间接**。⚠️ 判据不是「有没有 `for..of`」—— `vn` 体内那两个 `for..of`
-遍历的是 plugin 名 token 与 category token，都不是桶，拿「有没有遍历」当判据会对
-正确实现也误判。
+`scripts/audit-deployed-affinity-key.mjs`（`npm run marketplace:affinity:audit`）是对**已部署
+产物**的独立审计，两阶段：定位 + 键形态判定，再离线重放与界面读数对拍。
+
+⚠️ **它的定位链里一个压缩名都不能当锚点** —— 压缩名每次重打包都会变（`ms`→`Ls`、`vn`→`ye`），
+而且短名重名（`ye` 有 3 个前置声明）。现在只用三个位置事实：
+1. **包含关系**：`affinityStrength` 的 4 处偏移必须落在同一个函数体内；
+2. **调用点**：键函数是体内 `NAME(...entry)` 被调用的那个；
+3. **作用域**：生效的声明是**调用点之前最近**的那个，并打印越过了几个更早的同名声明。
+
+早期的两个版本分别栽在「按名字要求唯一」（→ 缺陷时检查直接失灵）和「按名字反查」
+（→ 16:25 那次把 teamName 探针读成 affinity 键）。**一个永久失灵的检查是「恒假」检测器的
+新变体**，比没有检查更隐蔽。
 
 ## 八、2026-10-05 二次纠正：16:25 那次错在哪
 

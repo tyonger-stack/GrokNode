@@ -4,12 +4,12 @@
   "_capturedAt": "2026-10-05",
   "_source": "已部署 /Applications/Grok Node.app，CDP 9232，window.desktop.mcp.list()",
   "_observedForyou": [
-    "ActiveCampaign",
     "Adobe Developer App Builder",
-    "AgentMail",
-    "Airtable"
+    "Airtable",
+    "Asana",
+    "Atlassian"
   ],
-  "_observedNote": "observedForyou 是同一时刻界面实测读数（连跑两遍逐字节一致）。审计脚本用它断言离线重放是否精确复现 —— 这才是因果链闭合，而不是「数字看起来对」。",
+  "_observedNote": "observedForyou 是界面实测读数（连跑两遍逐字节一致）。**2026-10-05 20:12 那次重打包修掉了部署侧 affinity 键之后刷新过一次**：在此之前是 ActiveCampaign / Adobe Developer App Builder / AgentMail / Airtable（旧算法）。现在的四条是 `ye(n)=L(n.category).trim()` 修复后、本地已装 8 条应有的结果，与 `npm run marketplace:affinity:audit` 的离线重放逐字一致。",
   "servers": [
     "Canva:canva",
     "Figma:figma",
@@ -19,5 +19,6 @@
     "Granola:granola",
     "Notion:notion",
     "Slack:slack"
-  ]
+  ],
+  "_observedAt": "2026-10-05 20:2x"
 }
