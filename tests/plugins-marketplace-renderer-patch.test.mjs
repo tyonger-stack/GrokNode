@@ -711,17 +711,21 @@ test("私有技能 subtitles follow upstream: 已发布 only for plugin, 本地�
 });
 
 test("detail-page affordances that open nothing in 0.66 stay inert", () => {
-  // 0.66's detail page has three elements that LOOK like navigation and are not. Each was pressed
+  // 0.66's detail page has TWO elements that LOOK like navigation and are not. Each was pressed
   // three times on the running build, once as a real pointer sequence, with the whole dialog's
   // innerText length and a TreeWalker search for tool names as the oracle:
   //
   //   工具 row (button + chevron)   box stays 42px / 1 child; no tool name ever appears
   //   添加账户                      dialog text unchanged, no new dialog
-  //   编辑 <account> 账户           same
   //
   // So there is no tool-list page and no account page to reproduce. A bridge method
   // (`mcp.listServerTools`) returning 23 records does not create a surface to render them on —
   // wiring it up would be inventing UI, which is the one thing this port must never do.
+  //
+  // ⚠️ A third element used to sit in this list — 编辑 <account> 账户 — and it was wrong.
+  // The capture behind it had used an entry whose account section never rendered (not installed),
+  // so the button did not exist and "pressing it did nothing" was vacuously true. Re-captured
+  // against an **installed** Gmail it expands an inline form; see the assertions below.
   //
   // These are rendered with official's geometry and left without handlers ON PURPOSE. If a future
   // capture shows any of them opening something, this test is the thing to update first.
@@ -735,7 +739,19 @@ test("detail-page affordances that open nothing in 0.66 stay inert", () => {
   // Scope each slice to the one function that creates the node. A bare `!x.addEventListener.test(VIEW)`
   // over the whole module would keep passing after the code moved out of view.ts, i.e. it would
   // guard a string that no longer exists.
-  const toolsRowBody = DETAIL_CTA.slice(DETAIL_CTA.indexOf("export function createToolsRowCta"));
+  //
+  // ⚠️ The slice MUST end at the next exported function, not at end-of-file. Slicing to EOF kept
+  //    passing/failing by accident once `createAccountEditForm` (which legitimately holds
+  //    handlers) was appended below, and this guard then read the account form's handlers as if
+  //    they belonged to the 工具 row. A guard whose window silently grows into unrelated code is
+  //    worse than no guard.
+  const sliceFunctionBody = (name) => {
+    const from = DETAIL_CTA.indexOf(`export function ${name}`);
+    if (from < 0) return "";
+    const next = DETAIL_CTA.indexOf("\nexport function ", from + 1);
+    return DETAIL_CTA.slice(from, next < 0 ? DETAIL_CTA.length : next);
+  };
+  const toolsRowBody = sliceFunctionBody("createToolsRowCta");
   assert.ok(toolsRowBody.length > 0, "createToolsRowCta is gone; this guard would silently pass");
   assert.ok(
     !/addEventListener/.test(toolsRowBody),
@@ -751,10 +767,55 @@ test("detail-page affordances that open nothing in 0.66 stay inert", () => {
     !/addEventListener/.test(addAccount),
     "添加其他账户 has no destination in 0.66",
   );
-  const editAccount = VIEW.slice(VIEW.indexOf("const edit = el("));
+
+  // ⚠️ 2026-10-05 19:4x 更正：原先这里断言「编辑 <account> 账户 不得有 handler」，
+  // 依据是「按三次点它什么也不打开」。**那条取证是错的** —— 当次探测用的条目未安装，
+  // 账户区根本没渲染。改用**已安装**的 Gmail 重测：点「编辑 default 账户」后
+  // 可见输入框 1→2、按钮换成「保存 default 账户」+「移除 default 账户」，
+  // 且 `role=dialog` 数不变（内联展开，不是弹层）。所以该按钮**有**官方行为，本地必须接上。
+  //
+  // 守卫方向随之反转：不是「不得有 handler」，而是「必须接到 createAccountEditForm」，
+  // 且不得自己实现重命名/移除逻辑（桥在 window.desktop.mcp 上，宿主已暴露）。
+  // ⚠️ 不能只查 `edit.addEventListener` 这个串存在 —— 变异测试证明过：把它挪进
+  //    `if (false)` 块里，全绿的旧断言照样匹配。**文本存在 ≠ 可达。**
+  assert.doesNotMatch(
+    VIEW,
+    /if \(false\)[\s\S]{0,200}?edit\.addEventListener/,
+    "the edit button's handler must stay reachable, not parked behind a dead branch",
+  );
+  assert.match(
+    VIEW,
+    /edit\.addEventListener\("click",[\s\S]{0,600}?createAccountEditForm\(document,/,
+    "编辑 <account> 账户 must open the inline edit form — 0.66 expands it (live 0.66, installed Gmail)",
+  );
+  // 形参必须保留显式类型标注，否则守卫会随 tsconfig 漂移。
+  assert.match(
+    VIEW,
+    /onSave: \(a: \{ serverId: string; key: string; newKey: string \}\) =>/,
+    "the save handler params must stay explicitly typed — the callback shape is part of the bridge contract",
+  );
+  assert.match(
+    VIEW,
+    /window\.desktop\?\.mcp\.renameAccount\(\{[\s\S]{0,200}?newAccountKey: a\.newKey/,
+    "the form must go through the host bridge's renameAccount, not a local account list",
+  );
+  assert.match(
+    VIEW,
+    /window\.desktop\?\.mcp\.removeAccount\(\{ serverId: a\.serverId, accountKey: a\.key \}\)/,
+    "the form must go through the host bridge's removeAccount",
+  );
+  // 0.66 没有任何位置/分组选择器：chip 与 select 都是 0，表单里不得凭空长出这类控件。
+  const formBody = DETAIL_CTA.slice(DETAIL_CTA.indexOf("export function createAccountEditForm"));
+  assert.ok(formBody.length > 0, "createAccountEditForm is gone; this guard would silently pass");
   assert.ok(
-    !/edit\.addEventListener/.test(editAccount),
-    "编辑 <account> 账户 has no destination in 0.66",
+    !/createElement\("select"\)|\[class\*="chip"\]|"chip"/.test(formBody),
+    "0.66's account form has no destination/group picker: chip=0 and select=0 on the live build",
+  );
+  // 重命名框不能为空时提交 —— 官方「保存」按钮在名称为空时不生效。
+  assert.match(
+    formBody,
+    /next\.length === 0 \|\| next === accountKey\) return;/,
+    "saving an empty or unchanged name must be a no-op, as on 0.66",
   );
 
   // The two elements that DO act, both wired to the same URL, because official's 分享 and its
@@ -764,11 +825,17 @@ test("detail-page affordances that open nothing in 0.66 stay inert", () => {
 });
 
 test("添加 is a one-shot install: no credential form, no destination picker", () => {
-  // The brief asked for "添加到指定位置/分组". 0.66 has no such surface. Pressed on the running
-  // build against two entries that bracket the catalog: Ahrefs (0 `fields`) and Capital.com
-  // (8 `fields` — CAP_ENV / CAP_API_KEY / CAP_DRY_RUN / CAP_IDENTIFIER / CAP_WS_ENABLED /
-  // CAP_API_PASSWORD / CAP_ALLOWED_EPICS / CAP_ALLOW_TRADING). Both times the dialog count, the
-  // input count and the detail text were unchanged: no credential form, no destination picker.
+  // The brief asked for "添加到指定位置/分组". Pressed on the running build against two entries
+  // that bracket the catalog: Ahrefs (0 `fields`) and Capital.com (8 `fields` — CAP_ENV /
+  // CAP_API_KEY / CAP_DRY_RUN / CAP_IDENTIFIER / CAP_WS_ENABLED / CAP_API_PASSWORD /
+  // CAP_ALLOWED_EPICS / CAP_ALLOW_TRADING). Both times the dialog count, the input count and the
+  // detail text were unchanged: no credential form, no destination picker. A later capture on an
+  // **installed** entry added the third data point: `sand-plugins__chip` elements = 0 and
+  // `<select>` = 0 across the whole flow, so 0.66 has no destination/group picker to reproduce.
+  //
+  // What 0.66 DOES have for the grouping half of the brief is the account-label free-text field
+  // (`新账户标签`, placeholder 为此账户添加标签，例如"工作"或"个人") — a text input, not a picker.
+  // That lives on the account edit form, not on the install path; guarded further down.
   //
   // 26 catalog entries carry `fields[]`; none of them is a surface this page renders. The primary
   // button is therefore a one-shot install, which is exactly what `mcp.install` does here.

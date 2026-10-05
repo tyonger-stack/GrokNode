@@ -33,6 +33,7 @@ import {
   DETAIL_ACCOUNT_NAME_CLASSES,
   DETAIL_ACCOUNT_TITLE_CLASSES,
   DETAIL_ACCOUNT_NAME_ROW_CLASSES,
+  DETAIL_ACCOUNT_FORM_SLOT_CLASSES,
   DETAIL_ACTIONS_CLASSES,
   DETAIL_APP_COUNT_CLASSES,
   DETAIL_BACK_BUTTON_CLASSES,
@@ -137,6 +138,7 @@ import {
   YOURS_ROOT_CLASSES,
 } from "./official-styles.js";
 import {
+  createAccountEditForm,
   createAddAccountCta,
   createGlyph,
   createToolsRowCta,
@@ -1191,6 +1193,34 @@ function renderDetail(
       edit.type = "button";
       edit.setAttribute("aria-label", TEXT.editAccount(account.key));
       edit.append(glyph("pencil", GLYPH.pencil, 10));
+      // 官方点「编辑 <account> 账户」后**内联**展开重命名 + 标签表单，并把按钮换成
+      // 「保存 / 移除」（`role=dialog` 数不变 —— 不是弹层）。这层此前完全没接线，按钮点不动。
+      const editSlot = el("span", DETAIL_ACCOUNT_FORM_SLOT_CLASSES);
+      edit.addEventListener("click", () => {
+        if (editSlot.firstChild != null) {
+          editSlot.replaceChildren();
+          return;
+        }
+        editSlot.replaceChildren(
+          createAccountEditForm(document, {
+            serverId: account.serverId,
+            accountKey: account.key,
+            handlers: {
+              onSave: (a: { serverId: string; key: string; newKey: string }) => {
+                void window.desktop?.mcp.renameAccount({
+                  serverId: a.serverId,
+                  accountKey: a.key,
+                  newAccountKey: a.newKey,
+                });
+              },
+              onRemove: (a: { serverId: string; key: string }) => {
+                void window.desktop?.mcp.removeAccount({ serverId: a.serverId, accountKey: a.key });
+              },
+              onCancel: () => editSlot.replaceChildren(),
+            },
+          }),
+        );
+      });
       nameRow.append(edit);
       holder.append(nameRow);
       accountRow.append(holder);
@@ -1198,6 +1228,7 @@ function renderDetail(
       accountRow.append(status);
       list.append(accountRow);
       if (index < detail.accounts.length - 1) list.append(el("div", DETAIL_DIVIDER_CLASSES));
+      if (account.serverId.length > 0) list.append(editSlot);
     });
     list.append(el("div", DETAIL_DIVIDER_CLASSES));
     // Official 0.66 renders the label as a **text node** next to the glyph, with no aria-label at

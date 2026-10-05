@@ -1082,6 +1082,41 @@ export const DETAIL_ACCOUNT_NAME_ROW_CLASSES = [
   "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-1nejdyq", "sand-euugli",
 ];
 
+/**
+ * 账户编辑表单的槽位容器 —— 官方在账户行下方插入的那层。
+ *
+ * 官方读数（live 0.66 Gmail，点「编辑 default 账户」后）自内向外：
+ *   input   sand-9f619 sand-5f5z56 sand-15kz4h8 sand-193iq5w sand-1717udv sand-c342km
+ *           sand-ng3xce sand-jbqb8w sand-1wd3ewq sand-jb2p0i sand-11wthnw sand-d4r4e8 sand-12oo3zp
+ *   span    sand-9f619 sand-78zum5 sand-6s0dn4 sand-1nejdyq sand-euugli      ← 复用 NAME_ROW
+ *   span    sand-9f619 sand-78zum5 sand-dt5ytf sand-12mrbbr sand-euugli
+ *   div     sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-z9dl7a
+ *           sand-1pic42t sand-sag5q8 sand-1onr9mi                          ← 表单外层
+ *
+ * 0.18 侧缺 3 个类（D16 同一批已知缺口）：`sand-15kz4h8`（chunk 里没有）、
+ * `sand-1pic42t` / `sand-1onr9mi`（chunk 有但 CSS 里没有）。此处剔除它们并留档 ——
+ * 套一个 0.18 未定义的类名不会生效，只会让断言误以为已对齐。
+ * @evidence live 0.66 detail page 编辑展开态，逐层 className 读数
+ */
+export const DETAIL_ACCOUNT_FORM_SLOT_CLASSES = [
+  "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-1qughib", "sand-167g77z", "sand-z9dl7a",
+  "sand-sag5q8",
+];
+
+/** 表单里的输入框自身（官方 input 的 class 列表，已剔除 0.18 缺失的 `sand-15kz4h8`）。 */
+export const DETAIL_ACCOUNT_FORM_INPUT_CLASSES = [
+  "sand-9f619", "sand-5f5z56", "sand-193iq5w", "sand-1717udv", "sand-c342km", "sand-ng3xce",
+  "sand-jbqb8w", "sand-1wd3ewq", "sand-jb2p0i", "sand-11wthnw", "sand-d4r4e8", "sand-12oo3zp",
+  "sand-1t137rt",
+];
+
+/** 「保存 <account> 账户」按钮。 */
+export const DETAIL_ACCOUNT_SAVE_CLASSES = [
+  "sand-9f619", "sand-3nfvp2", "sand-6s0dn4", "sand-1c4vz4f", "sand-2lah0s", "sand-dl72j9",
+  "sand-1717udv", "sand-c342km", "sand-ng3xce", "sand-jbqb8w", "sand-4b2ntj", "sand-7gh5u8",
+  "sand-1ypdohk",
+];
+
 /** The 添加账户 row — the official class list continues past the shared `__add-account` prefix. */
 export const DETAIL_ADD_ACCOUNT_FULL_CLASSES = [
   "sand-plugins-detail__add-account", "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-17d4w8g",

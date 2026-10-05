@@ -942,6 +942,24 @@ export const TEXT = {
    * @evidence live 0.66 detail page, `sand-plugins-detail__add-account` innerText
    */
   addAccount: "添加其他账户",
+  /**
+   * 账户编辑表单的三条文案，逐字取自官方 0.66 实机（Gmail 已安装详情页，点「编辑 default 账户」）。
+   *
+   * @evidence live 0.66, CDP 9224. 点「编辑 default 账户」后该表单**内联展开**（`role=dialog`
+   *   数恒为 0，不是弹层，所以按弹窗边界走查的前几轮都没看到它）：可见输入框 1→2，按钮由
+   *   「编辑 default 账户」换成「保存 default 账户」+「移除 default 账户」。其中
+   *   `新账户标签` 那个框**点之前就已常驻**，点开只多出重命名框。
+   *   同一处读数 `chip=0`、`select=0` —— 官方**没有**任何位置/分组选择器控件，分组语义
+   *   只由这个自由文本表达（placeholder 的示例恰是「工作」「个人」）。
+   */
+  accountLabelInput: "新账户标签",
+  accountLabelPlaceholder: "为此账户添加标签，例如“工作”或“个人”",
+  accountRenameInput: (account: string) => `重命名 ${account} 账户`,
+  saveAccount: (account: string) => `保存 ${account} 账户`,
+  removeAccount: (account: string) => `移除 ${account} 账户`,
+  /** 取消 —— 官方该按钮的文案在 `textContent` 上，`aria-label` 为空。
+   *  @evidence live 0.66, 编辑展开态按钮读数 `text="取消" aria=""`。 */
+  cancel: "取消",
   /** The label under each connector name in the 应用 list — measured as 连接器 under `ahrefs`. */
   connectorLabel: "连接器",
   infoFeatures: "功能",
@@ -1039,8 +1057,13 @@ export interface PluginDetail {
   readonly connectors: readonly DetailConnector[];
   /** 功能 — upstream counts connectors as 应用. */
   readonly appCountLabel: string;
-  /** Installed only: the account rows behind 账户. */
-  readonly accounts: readonly { readonly key: string; readonly status: string }[];
+  /** Installed only: the account rows behind 账户.
+   *
+   * `serverId` is carried on every row because the rename/remove bridge takes a serverId, not a
+   * plugin id. `detail.server` holds the same value, but the edit form lives inside the 账户 list
+   * and reads it per row — carrying it here keeps that code from reaching back into the parent.
+   */
+  readonly accounts: readonly { readonly key: string; readonly status: string; readonly serverId: string }[];
   /** Installed only: `已启用 <on>/<total> 个` behind 工具. */
   readonly toolsLabel: string | null;
   /** 功能 / 开发者 / 类别 / 网站 / 可用性 — only the fields the entry actually carries, in the
@@ -1088,7 +1111,7 @@ export function buildPluginDetail(row: BrowseRow, server: McpServer | null): Plu
 
   const isInstalled = server != null;
   const accounts = isInstalled
-    ? [{ key: str(server.accountKey) || TEXT.defaultAccount, status: str(server.status) }]
+    ? [{ key: str(server.accountKey) || TEXT.defaultAccount, status: str(server.status), serverId: str(server.id) }]
     : [];
 
   return {
