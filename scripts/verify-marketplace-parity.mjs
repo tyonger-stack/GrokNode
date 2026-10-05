@@ -601,14 +601,31 @@ for (const [label, port, hint] of [["官方", OFFICIAL_CDP, OFFICIAL_URL_HINT], 
 }
 
 if (officialSections && deployedSections) {
-  const shared = Object.keys(officialSections).filter((t) => t in deployedSections);
+  const officialTitles = Object.keys(officialSections);
+  const deployedTitles = Object.keys(deployedSections);
+  const shared = officialTitles.filter((t) => t in deployedSections);
   const exact = shared.filter((t) => officialSections[t].names.join("|") === deployedSections[t].names.join("|"));
-  console.log(`\n     共有区块 ${shared.length} 个，逐行完全一致 ${exact.length} 个`);
+  // ⚠️ 2026-10-05 21:2x 修正：这一段原先只报「共有区块 N 个，逐行完全一致 M 个」，
+  // 而 N 取的是**交集**。交集之外的区块 —— 包括 D11 的 `登录与凭据管理` —— 被**整个丢掉**，
+  // 既不出 ⚠️ 也不进汇总。那个读法等于宣称「其余区块都一致」，而实际上其中有整整一个区块
+  // 本地根本没有。要求 1 写的是「逐页复刻…完全一致」，少报一个区块就是少计。
+  // 修法：汇总行**带出分母**，交集之外逐个显式报出 —— 判词是可被证伪的断言，不是调参。
+  const officialOnly = officialTitles.filter((t) => !(t in deployedSections));
+  const deployedOnly = deployedTitles.filter((t) => !(t in officialSections));
+  console.log(`\n     官方 ${officialTitles.length} 个区块 / 本地 ${deployedTitles.length} 个 / 共有 ${shared.length} 个，逐行完全一致 ${exact.length} 个`);
   for (const title of shared) {
     const want = officialSections[title].names;
     const got = deployedSections[title].names;
     if (want.join("|") === got.join("|")) console.log(`       ✅ ${title}`);
     else console.log(`       ⚠️  ${title}\n            官方: ${want.join(" / ") || "—"}\n            本地: ${got.join(" / ") || "—"}`);
+  }
+  // 缺一个区块是真缺口（要求 3「直至无遗漏页面为止」）；多一个只作事实报出，不计为缺口 ——
+  // 可能是本机 catalog 数据更多，不构成「没复刻」。两者都印出来，避免读者默认没提到就没有。
+  for (const title of officialOnly) {
+    known(`仅官方有的区块：${title}`, true, "本地缺这一整块内容");
+  }
+  for (const title of deployedOnly) {
+    known(`仅本地有的区块：${title}`, false, "官方没有这一块（可能是本机 catalog 数据更多）");
   }
   // Icon comparison, keyed on `section|name` rather than row index: the two builds put different
   // numbers of rows in a section, so pairing by index would compare unrelated entries.
