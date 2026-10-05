@@ -838,13 +838,29 @@ const SECTION_EXPR = `(async () => {
     return null;
   };
   const decorated = seeAlls.map((b) => ({ b, section: labelOf(b) }));
-  const featured = decorated.find((x) => /精选/.test(x.section ?? ""));
-  const bucket = decorated.find((x) => /效率|Productivity/i.test(x.section ?? ""));
-
   const out = { seeAllTotal: seeAlls.length, sections: decorated.map((x) => x.section) };
-  for (const [key, target] of [["featured", featured], ["bucket", bucket]]) {
-    if (!target) { out[key] = null; continue; }
-    target.b.click();
+  // ⚠️ 2026-10-05 21:3x 修正：**每一轮都要重新解析按钮节点，不能复用第一轮的引用。**
+  // 原先 decorated 在任何导航之前算好，随后 featured 那轮点进去、读、再点返回；
+  // 官方是 React，返回后首页重渲染，captured 的节点变成**游离节点** ——
+  // 对游离节点 click() 不会冒泡到活着的 React root，于是第二轮点了个寂寞，
+  // 稳定报「类目页未打开」（官方侧连跑两次同样结果，不是抖动）。
+  // 后果：**L1b 类目页这一层从来没有被真正验过** —— 读数恒为 err，
+  // 而下面那条「精选与类目桶是两个不同页面」在 undefined !== 「精选插件」上**恒真空洞通过**。
+  const pick = (re) => {
+    const hit = decorated.find((x) => re.test(x.section ?? ""));
+    if (!hit) return null;
+    // 节点可能已脱离文档 —— live 判断用 isConnected，不靠引用还在手里就当成有效。
+    if (hit.b.isConnected !== false) return hit.b;
+    const again = visAll("button", d)
+      .filter((b) => (b.textContent || "").trim() === "查看全部")
+      .map((b) => ({ b, section: labelOf(b) }))
+      .find((x) => re.test(x.section ?? ""));
+    return again?.b ?? null;
+  };
+  for (const [key, re] of [["featured", /精选/], ["bucket", /效率|Productivity/i]]) {
+    const b = pick(re);
+    if (!b) { out[key] = null; continue; }
+    b.click();
     const page = await until(() => (visAll('button[aria-label="返回"]', d).length ? d : null), 20000);
     out[key] = page ? shape(page) : { err: "类目页未打开" };
     const back = visAll('button[aria-label="返回"]', d)[0];
@@ -926,8 +942,13 @@ if (secRuns["官方"] && secRuns["部署版"]) {
   // here would be an invented surface.
   ok("类目页 无分页控件", o.bucket?.hasLoadMore === false && d.bucket?.hasLoadMore === false,
     `官方 ${o.bucket?.hasLoadMore} / 本地 ${d.bucket?.hasLoadMore}`);
-  ok("精选与类目桶 是两个不同页面", (d.featured?.headingText ?? "") !== (d.bucket?.headingText ?? ""),
-    `精选「${d.featured?.headingText}」/ 桶「${d.bucket?.headingText}」`);
+  // ⚠️ 这条原先在 bucket 读不出来时**恒真空洞通过**：`"" !== "精选插件"` 恒为真。
+  // 判词是「两者是不同页面」，前提是**两边都读到了页面**。前提不满足时必须失败，
+  // 否则「什么都没验到」会被记成「验过了且一致」。
+  const twoDistinct = (x) => (x?.headingText ?? "") !== (d.bucket?.headingText ?? "")
+    && x?.headingText != null && d.bucket?.headingText != null;
+  ok("精选与类目桶 是两个不同页面（两侧都须读到页面）", twoDistinct(o.featured) && twoDistinct(d.featured),
+    `官方精选「${o.featured?.headingText}」/ 官方桶「${o.bucket?.headingText}」/ 本地精选「${d.featured?.headingText}」/ 本地桶「${d.bucket?.headingText}」`);
 
   // The manage page lists what THIS machine has installed, so its row count and first row are
   // expected to differ between the two apps (official has 16 installed, local 8) — comparing them
