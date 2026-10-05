@@ -185,15 +185,24 @@ export const YOURS_ROOT_CLASSES = [
 
 /* ------------------------------------------------------------------ *
  * Close button
+ *
+ * `sand-plugins-dialog__close` goes LAST, matching official. The class SET is the same either
+ * way and the computed style is byte-identical (28×28, padding 0, radius 9999px, same colors) —
+ * so this is not a visual fix. It is here because the project's rule is to transcribe in official's
+ * order so a later class-list diff is byte-comparable; having this one class first made the two
+ * lists look like a missing-class bug when it was only ordering.
+ *
+ * @evidence official 0.66 live, marketplace detail dialog close button:
+ *   `sand-kit-icon-button sand-3nfvp2 … sand-o2ifbc sand-zkaem6 sand-plugins-dialog__close`
  * ------------------------------------------------------------------ */
 export const CLOSE_BUTTON_CLASSES = [
-  "sand-plugins-dialog__close", "sand-kit-icon-button", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k",
+  "sand-kit-icon-button", "sand-3nfvp2", "sand-6s0dn4", "sand-l56j7k",
   "sand-2lah0s", "sand-9f619", "sand-exx8yu", "sand-yri2b", "sand-18d9i69", "sand-1c1uobl",
   "sand-c342km", "sand-ng3xce", "sand-1ypdohk", "sand-tgyt42", "sand-s2xxs2", "sand-1firant",
   "sand-9lcvmn", "sand-1k57tk5", "sand-784prv", "sand-1t137rt", "sand-9v5kkp", "sand-4sht9k",
   "sand-1y3gkto", "sand-gd8bvy", "sand-1fgtraw", "sand-149ho13", "sand-jbqb8w", "sand-1r8pydn",
   "sand-1o0liin", "sand-1fx2joi", "sand-7n8uir", "sand-10l6tqk", "sand-1eu8d0j", "sand-o2ifbc",
-  "sand-zkaem6",
+  "sand-zkaem6", "sand-plugins-dialog__close",
 ];
 
 export const ICON_SPAN_CLASSES = [
