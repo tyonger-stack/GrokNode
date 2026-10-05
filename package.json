@@ -29,7 +29,8 @@
     "verify": "node scripts/verify.mjs",
     "marketplace:parity": "node scripts/verify-marketplace-detail-parity.mjs",
     "marketplace:css": "node scripts/verify-marketplace-css-cascade.mjs",
-    "marketplace:affinity:audit": "node scripts/audit-deployed-affinity-key.mjs"
+    "marketplace:affinity:audit": "node scripts/audit-deployed-affinity-key.mjs",
+    "marketplace:classnames": "node scripts/verify-d17-classnames.mjs"
   },
   "devDependencies": {
     "@electron/asar": "4.2.1",
