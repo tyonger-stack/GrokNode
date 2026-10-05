@@ -1,6 +1,7 @@
 import { createMcpRuntime } from "../mcp/mcp-runtime.js";
 import { registerMcpDesktopIpc, type McpDesktopDeps } from "../mcp/mcp-desktop.js";
 import type { DesktopMcpManagerFacade } from "../mcp/desktop-mcp-manager.js";
+import { createPluginLogoDisplaySizer } from "./plugin-logos.js";
 import { createSandDesktopMcpManager } from "../mcp/desktop-mcp-manager.js";
 import { createSandMcpOAuthLoopback } from "../../shared/node/mcp/mcp-oauth-loopback.js";
 import { createLocalHttpMcpProxy, type LocalHttpRequest } from "../../shared/node/mcp/local-http-proxy.js";
@@ -131,6 +132,9 @@ export function createProductionMcpOAuthPorts(): ProductionMcpOAuthPorts {
       createManager: async (options) => await createSandDesktopMcpManager({
         ...options,
         localHttpRequest: createLocalHttpRequest(context),
+        // 官方 displaySizedLogo：把图标缩到最长边 112 并做磁盘缓存。electron 不可用时
+        // 适配器内部降级为透传，所以这里无条件传入。
+        displaySizedLogo: createPluginLogoDisplaySizer(),
         getAccessToken: async (request) => {
           const token = await options.getAccessToken(request);
           if (token == null) throw new Error("MCP manager requires an authenticated account.");

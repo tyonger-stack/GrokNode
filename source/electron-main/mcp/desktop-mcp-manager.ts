@@ -41,6 +41,12 @@ export interface DesktopMcpManagerOptions {
   readonly listBoxMcpServers: (serverIdentifiers: unknown) => Promise<readonly Record<string, unknown>[]>;
   readonly onConnectorAuth: (report: unknown) => void;
   readonly onMcpDiagnostic?: (failure: { readonly leg: string; readonly errorClass: string }) => void;
+  /**
+   * 官方 0.66 的 `displaySizedLogo`（见 `mcp/plugin-logo-cache.ts`）：把 `resolvePluginLogo`
+   * 取回的原始 data URI 缩到官方显示尺寸（最长边 112，保持长宽比）并做磁盘缓存。
+   * 缺省透传 —— 缩放是显示增强，缺了不该让市场不可用。
+   */
+  readonly displaySizedLogo?: (url: string, fetchDataUrl: () => Promise<string | null>) => Promise<string | null>;
 }
 
 /** Artifact anchor: electron-main/main.cjs:497780, `async function createSandDesktopMcpManager(options)`. */
@@ -78,7 +84,11 @@ export async function createSandDesktopMcpManager(options: DesktopMcpManagerOpti
     listServers: () => manager.listServers(),
     listEffectivePlugins: () => manager.listEffectivePlugins(),
     getCatalog: (getAccessToken) => manager.getCatalog(getAccessToken),
-    resolvePluginLogo: (url) => manager.resolvePluginLogo(url),
+    resolvePluginLogo: async (url) => {
+      const fetchLogo = async () => (await manager.resolvePluginLogo(url)) as string | null;
+      if (options.displaySizedLogo == null) return await fetchLogo();
+      return await options.displaySizedLogo(url, fetchLogo);
+    },
     installEntry: (request, getAccessToken) => manager.installEntry(request, getAccessToken),
     updatePluginInstall: (request, getAccessToken) => manager.updatePluginInstall(request, getAccessToken),
     removeServer: (serverId) => manager.removeServer(serverId),

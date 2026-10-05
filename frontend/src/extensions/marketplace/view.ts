@@ -16,6 +16,7 @@
  * upstream `Dialog` primitive mounts, so the backdrop, stacking context and z-order match.
  */
 
+import { attachLogoSource } from "./logo-source.js";
 import {
   ACTION_BUTTON_CLASSES,
   ADDED_PILL_CHECK_CLASSES,
@@ -396,7 +397,7 @@ function buildToolIcon(iconUrl: string, name: string, size: number): HTMLElement
     image.decoding = "async";
     image.width = size;
     image.height = size;
-    image.src = iconUrl;
+    attachLogoSource(image, iconUrl);
     applyClasses(image, TOOL_IMG_CLASSES);
     box.append(image);
   } else {
@@ -1304,7 +1305,7 @@ function buildDetailToolIcon(iconUrl: string, name: string): HTMLElement {
     // with a 1px border. Sizing the attributes to the rendered 55 instead would be off by one.
     image.width = 56;
     image.height = 56;
-    image.src = iconUrl;
+    attachLogoSource(image, iconUrl);
     applyClasses(image, TOOL_IMG_CLASSES);
     box.append(image);
   } else {

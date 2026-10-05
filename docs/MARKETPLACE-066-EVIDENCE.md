@@ -1237,3 +1237,114 @@ D17 账户编辑表单落地时，四组类名里有三组被我**主动删过�
 > 绝大多数是 `kLWn49` 这类**更长标识符里的子串**。换成带前后不锚点的
 > `(?<![A-Za-z0-9_$])Wn(?![A-Za-z0-9_$])` 后降到 59 次（其中 58 次是 ProseMirror 的
 > `class Wn extends $s`）——**压缩产物里回查符号必须带标识符边界，否则命中数没有意义。**
+
+---
+
+## 28. D18 图标：机制查实并落地（2026-10-05 20:0x–21:0x）
+
+§26 当时的结论是「**未改动** —— 对齐它要先知道官方那批 112×112 从哪来（同一 CDN 的尺寸参数？
+还是服务端预生成字段？），否则『怎么改』就是臆造」。本节把那个未知项解掉了，并且答案是
+**两个猜测都不对**。
+
+### 排除法：不是 CDN 参数，不是服务端字段
+
+| 检查 | 结果 |
+| --- | --- |
+| catalog 的 `iconUrl` 两侧是否同形 | **同形**：`https://cursor-cdn.com/plugin-logos/production/<hash>.png`，无任何查询参数 |
+| catalog 条目里有没有尺寸字段 | **没有**（`iconUrl` 之外只有 id/name/description/category/…） |
+| 直接 fetch 那条 URL 现在多大 | **400×400**，8,091 B（另 4 个 URL 同样 400×400） |
+| 官方 renderer 里有没有重采样机器 | `createImageBitmap`/`drawImage` 只在 avatar-editor / PDF / cytoscape 等无关 chunk |
+| 官方 renderer 里有没有拼 `plugin-logos` | **0 次**（URL 是宿主给的，renderer 只消费 `iconUrl`） |
+
+⇒ 同一个 URL、同一份 catalog，界面上的图却是 112×112 ⇒ **转换发生在别处**。
+
+### 真源：宿主侧的 `displaySizedLogo`
+
+从 `chunk-marketplace-browse-model-DoOY91TS.js` 那个导出的 `marketplaceHomepageLogoUrls`
+（把首页所有条目 `iconUrl` 收集成去重扁平数组 = 一份「交给宿主预取」的清单）顺藤摸到
+`main-app.cjs`：
+
+- `T7t()`：catalog 视图里 **`iconUrl: e.logoUrl`** —— 字段来源是宿主的 `logoUrl`
+- `getMcpPluginLogo({url})` → `displaySizedLogo(url, () => resolvePluginLogo(url))`
+- `resolvePluginLogo`（`M4e`）**只 fetch，不缩放**：仅 https、≤512 KB、6 并发、
+  deadline 策略名 `mcp-marketplace-logo-fetch`、内存缓存 7 天
+- 真正定尺寸的是 `displaySizedLogo`（`RJe` → `b8t` → `A8t`）：
+
+```js
+s8t = 56, c8t = 2, RG = s8t * c8t;                 // 目标最长边 = 112
+function A8t(u, createFromDataURL) {
+  const r = createFromDataURL(u);
+  if (r.isEmpty()) return u;
+  const { width: n, height: o } = r.getSize();
+  if (n <= RG && o <= RG) return u;               // 够小就原样
+  const i = RG / Math.max(n, o);                   // ← 保持长宽比，只约束最长边
+  return r.resize({ width: Math.max(1, Math.round(n * i)),
+                    height: Math.max(1, Math.round(o * i)),
+                    quality: "best" }).toDataURL();
+}
+l8t = 64*1024     仅结果 ≤64KB 才落盘
+d8t = 10080*60*1e3  TTL 7 天
+SJe = 1024        保留最新 1024 个
+h8t(u) = sha256(`${RG}:` + u).slice(0, 32)          // 键里含尺寸
+```
+
+**「保持长宽比、只约束最长边」正好解释**当初实测到的「少数 67×67 / 112×110」——
+非方形源不会被拉成方形。这条也说明早先那个观测是对的，只是当时归因错了。
+
+### 落地：宿主半段其实早就移植好了，只是没人调
+
+排查发现**桥已全链路接通、只是从未被调用**：
+
+| 环节 | 位置 | 状态 |
+| --- | --- | --- |
+| preload 暴露 | `source/electron-preload/preload.ts:170` `mcp.pluginLogo` | 已有 |
+| 类型声明 | `frontend/src/recovered/contracts/desktop-bridge.ts:284` | 已有 |
+| IPC handler | `source/electron-main/mcp/mcp-desktop.ts:9` `sand:mcp-plugin-logo` | 已有 |
+| manager 委托 | `desktop-mcp-manager.ts` / `mcp-manager.ts:325` | 已有 |
+| fetch 实现 | `source/shared/node/mcp/mcp-marketplace-logo.ts` | 已有（**并发 6 / 512KB / deadline 策略名与官方逐字一致**） |
+| 缩放 + 磁盘缓存 | — | **缺** |
+| 渲染层调用 | `view.ts` 原本 `image.src = iconUrl` 直传远端 | **从未调过桥** |
+
+⇒ D18 的真实缺口是两件事，不是一件。本次补上的是：
+
+1. **`source/electron-main/mcp/plugin-logo-cache.ts`（新）** —— `A8t`/`RJe`/`b8t`/`S8t`/
+   `EJe`/`TJe`/`_8t`/`wJe`/`y8t` 的移植，常量逐字取自官方（`RG=56*2`、64KB、7天、1024）。
+   端口按仓库既有 ports/adapters 约定注入（`source/` 整棵树不 import electron）。
+2. **`source/electron-main/adapters/plugin-logos.ts`（新）** —— 绑 `nativeImage` +
+   `app.getPath("userData")`，接进 `createSandDesktopMcpManager` 的 `displaySizedLogo` 口。
+   ABI 不完整时**降级为透传不抛错**：缩放是显示增强，缺了不该让市场不可用。
+3. **`frontend/src/extensions/marketplace/logo-source.ts`（新）** —— 渲染层
+   `attachLogoSource()`：**先同步赋远端 URL**，桥回来后若拿到 `data:image/` 才替换。
+
+### 三个刻意的设计选择（都是为了让「失败 == 没做」）
+
+- **先赋远端再异步替换**：渲染盒是固定尺寸，换不换字节都不回流；先赋值保证桥不可用/失败时
+  行为与改动前**逐像素一致**，且不引入空帧。官方也是先渲染行再填 data URI。
+- **只接受 `data:image/`**：桥返回 null / 空串 / 非 data 一律保持远端 URL。
+- **刻意不加「已脱离 DOM 就别改 src」的守卫**：`attachLogoSource` 早于 `append`，那一刻
+  `isConnected` 必然是 `false`，拿它当判据会误伤合法更新，变成「静默不换图标」这种
+  比不换更难查的故障；而改一个已脱离节点的 `src` 是无害的。
+
+### 门禁
+
+- `tests/marketplace-logo-downscale.test.mjs`（8 用例）—— **变异 12/12 全红**：
+  目标边 112→128 / 删「够小原样」早退 / `Math.max`→`Math.min` / `quality best→good` /
+  不等比 / 去掉落盘 `await` / 去掉记录自校验 / 缓存键不含尺寸 / TTL 改 1 分钟 /
+  64KB 门槛改 1MB / 去掉并发去重 / fetch null 也落盘。
+  判据只断言「**最长边 == 112**」不断言「宽度 == 112」——官方有 112×110 这类非方形，
+  断言宽度会把它误判成回归。
+- `tests/marketplace-logo-attach.test.mjs`（5 用例）—— 真跑（假 img + 假桥）断言
+  **实际赋值序列**，不是文本断言。变异：去掉同步赋值 / 去掉 data 校验 / 去掉 `.catch` /
+  把 null 也当 data 接受，全红。（另有 1 条「桥缺失时返回 no-op 函数」的变异**观测等价**，
+  不算缺口。）
+
+写这两个守卫时各踩了一次「断言名说了 A、实际测的是 B」：
+① 篡改缓存记录时只改了 `storedAtMs`（走 `Number()` 的 NaN 守卫），**没碰到校验和**，
+于是「删掉自校验」这个变异全绿 —— 后来把两种篡改分开测才抓住。
+② 顺带发现我加的 NaN 守卫其实是**冗余**的（官方没有、全串比对已覆盖），已删 ——
+**多一条测不到的分支比不写更糟**。
+
+### 交付态
+
+`npm test` **977/977**、两个 typecheck 干净。**尚未重打包部署**（改动涉及 `source/` 宿主与
+renderer 扩展两侧，需完整重打包）。实机验收仍卡在钥匙串弹窗。
