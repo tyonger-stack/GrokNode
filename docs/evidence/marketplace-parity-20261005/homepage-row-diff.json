@@ -1,0 +1,125 @@
+{
+  "_note": "2026-10-05 22:0x。要求 1「顺序/数量/名称/分类标签逐项一致」的逐行证据。官方侧取自 Accessibility 树（窗口 1414×1020，AX 读数），本地侧取自 parity 脚本自己的 SECTIONS_EXPR（CDP）—— 两侧**判据互相独立**，不是同一份数据抄两份。",
+  "officialSource": "kimi-cu get_app_state(mode=full, pid=75018) 的 AX 树",
+  "localSource": "verify-marketplace-parity.mjs 的 SECTIONS_EXPR，CDP 9232",
+  "counts": {
+    "officialSections": 13,
+    "localSections": 12,
+    "exact": 11,
+    "differ": 1,
+    "missing": 1
+  },
+  "sections": [
+    {
+      "section": "为你推荐",
+      "status": "行不同",
+      "official": "Aleph / Algolia Productivity / Allo / AMD",
+      "local": "Adobe Developer App Builder / Airtable / Asana / Atlassian",
+      "note": "affinity 归因见 D2"
+    },
+    {
+      "section": "精选插件",
+      "status": "逐行一致",
+      "official": "Gmail / Google Calendar / Google Drive / Granola",
+      "local": "Gmail / Google Calendar / Google Drive / Granola",
+      "note": ""
+    },
+    {
+      "section": "团队插件",
+      "status": "逐行一致",
+      "official": "oh-my-claudecode",
+      "local": "oh-my-claudecode",
+      "note": ""
+    },
+    {
+      "section": "登录与凭据管理",
+      "status": "缺整块",
+      "official": "1Password",
+      "local": "—",
+      "note": "D11"
+    },
+    {
+      "section": "效率",
+      "status": "逐行一致",
+      "official": "Adobe Developer App Builder / Airtable / Asana / Atlassian",
+      "local": "Adobe Developer App Builder / Airtable / Asana / Atlassian",
+      "note": ""
+    },
+    {
+      "section": "通信",
+      "status": "逐行一致",
+      "official": "ActiveCampaign / AgentMail / Ando / Bird",
+      "local": "ActiveCampaign / AgentMail / Ando / Bird",
+      "note": ""
+    },
+    {
+      "section": "设计",
+      "status": "逐行一致",
+      "official": "Canva / Docs Canvas / Figma / Google Slides",
+      "local": "Canva / Docs Canvas / Figma / Google Slides",
+      "note": ""
+    },
+    {
+      "section": "代码",
+      "status": "逐行一致",
+      "official": "Amazon Location Service / Appwrite / AWS Amplify / AWS Core",
+      "local": "Amazon Location Service / Appwrite / AWS Amplify / AWS Core",
+      "note": ""
+    },
+    {
+      "section": "数据",
+      "status": "逐行一致",
+      "official": "Amplitude / Antimetal / Apify / Astronomer",
+      "local": "Amplitude / Antimetal / Apify / Astronomer",
+      "note": ""
+    },
+    {
+      "section": "销售",
+      "status": "逐行一致",
+      "official": "Adspirer / Amplemarket / Apollo.io / Attio",
+      "local": "Adspirer / Amplemarket / Apollo.io / Attio",
+      "note": ""
+    },
+    {
+      "section": "财务",
+      "status": "逐行一致",
+      "official": "1inch / Aave / Airwallex AgentOS / Airwallex Developer",
+      "local": "1inch / Aave / Airwallex AgentOS / Airwallex Developer",
+      "note": ""
+    },
+    {
+      "section": "研究",
+      "status": "逐行一致",
+      "official": "Ahrefs / Context.dev / Context7 / Crustdata",
+      "local": "Ahrefs / Context.dev / Context7 / Crustdata",
+      "note": ""
+    },
+    {
+      "section": "支持",
+      "status": "逐行一致",
+      "official": "Intercom / MailerLite / Plain",
+      "local": "Intercom / MailerLite / Plain",
+      "note": ""
+    }
+  ],
+  "localOnlySections": [],
+  "officialTrailing": {
+    "为你推荐": "添加 ×4",
+    "精选插件": "已添加 ×4",
+    "团队插件": "已添加 ×1（带「团队」徽标）",
+    "登录与凭据管理": "连接 1Password",
+    "效率": "添加 ×4",
+    "通信": "添加 ×4",
+    "设计": "已添加 ×2 / 添加 ×2",
+    "代码": "添加 ×4",
+    "数据": "添加 ×4",
+    "销售": "添加 ×4",
+    "财务": "添加 ×4",
+    "研究": "添加 ×4",
+    "支持": "添加 ×3"
+  },
+  "consistency": {
+    "查看全部 出现规则": "官方：行数>4 才有（支持 3 行无、其余 4 行有）—— 12 个区块里 9 个有，见 parity「查看全部 数量 官方 9 / 本地 9」",
+    "行尾控件": "官方 AX 树逐行可读：未安装=添加 / 已安装=已添加 / 凭据类=连接 1Password；本地同形，见 docs/MARKETPLACE-066-PORT.md 2c"
+  }
+}
