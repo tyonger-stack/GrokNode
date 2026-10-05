@@ -465,21 +465,32 @@ for (const [name, variants] of Object.entries(OFFICIAL)) {
 const DEPLOYED_CHUNK = "dist/renderer/assets/index-UbX-y3il.js";
 const MARKER = "data-account-edit-form";
 
-/** 从 `(()=>{` 处按花括号深度切出 IIFE；`from` 为锚点偏移。 */
-function extractIife(source, from) {
-  let start = -1;
-  for (let i = from; i >= 0 && i > from - 200000; i--) {
-    if (source.startsWith("(()=>{", i)) { start = i; break; }
-  }
-  if (start < 0) return null;
-  const brace = source.indexOf("{", start);
-  let d = 0;
-  for (let j = brace; j < source.length; j++) {
-    const c = source[j];
-    if (c === "{") d++;
-    else if (c === "}") {
-      d--;
-      if (d === 0) return { start, end: j + 1, text: source.slice(start, j + 1) };
+/**
+ * 切出**包含** `markerAt` 的那个 IIFE。
+ * ⚠️ 踩过两次的坑：
+ * ① 向前找最近的 `(()=>{` 可能命中一个**在 marker 之前就闭合**的小 IIFE —— 那样切出来的
+ *    text 里根本没有 marker，后续 `lastIndexOf("function ")` 返回 -1，`slice(-1, …)` 取出
+ *    垃圾，于是报「形状变了」这种完全指错方向的错。
+ * ② 短名不是稳定锚点：加一个模块后 esbuild 重排命名，上类常量从 `St/Yn/et` 变成
+ *    `ma/Xn/ta`，按名字找必然失效。
+ * 所以这里**逐个候选向外试，直到切出的 IIFE 真的包含 marker**。
+ */
+function extractIifeContaining(source, markerAt) {
+  for (let i = markerAt; i >= 0 && i > markerAt - 400000; i--) {
+    if (!source.startsWith("(()=>{", i)) continue;
+    const brace = source.indexOf("{", i);
+    let d = 0;
+    for (let j = brace; j < source.length; j++) {
+      const c = source[j];
+      if (c === "{") d++;
+      else if (c === "}") {
+        d--;
+        if (d === 0) {
+          const text = source.slice(i, j + 1);
+          if (text.includes(source.slice(markerAt, markerAt + 32))) return { start: i, end: j + 1, text };
+          break;
+        }
+      }
     }
   }
   return null;
@@ -526,26 +537,30 @@ if (deployedSrc == null) {
   console.log(`⚠️ 读不到部署版 ${DEPLOYED_CHUNK}（尚未部署？）—— 跳过该层`);
 } else {
   const markerAt = deployedSrc.indexOf(MARKER);
-  const iife = markerAt < 0 ? null : extractIife(deployedSrc, markerAt);
+  const iife = markerAt < 0 ? null : extractIifeContaining(deployedSrc, markerAt);
   if (iife == null) {
-    console.log(`⚠️ 部署字节里找不到注入 IIFE（${MARKER} 命中 ${markerAt}）—— 跳过该层`);
+    console.log(`⚠️ 部署字节里找不到包含 ${MARKER} 的注入 IIFE（命中 @${markerAt}）—— 跳过该层`);
   } else {
-    // 注入代码里上类的形式是 B(el, LIST)。找出 Et/createAccountEditForm 那个函数体里用到的三个列表常量。
+    // 找出 createAccountEditForm 那个函数体（用注入的稳定特征串定位，不用函数名 ——
+    // 函数名同样会被 esbuild 重命名：实测 `Et` → `Ea`）。
     const fnAt = iife.text.indexOf(MARKER);
     const bodyStart = iife.text.lastIndexOf("function ", fnAt);
-    const body = iife.text.slice(bodyStart, bodyStart + 2000);
-    const used = [...new Set([...body.matchAll(/B\([A-Za-z_$][\w$]*,\s*([A-Za-z_$][\w$]*)\)/g)].map((m) => m[1]))];
-    console.log(`注入 IIFE ${iife.text.length} B（@${iife.start}–${iife.end}）；表单函数用到的类列表常量: ${used.join(", ") || "未识别"}`);
-
+    if (bodyStart < 0) throw new Error("IIFE 切对了却找不到包裹该 marker 的函数 —— 抽取器有问题");
+    const body = iife.text.slice(bodyStart, bodyStart + 3000);
+    // 收集函数体里出现的**所有**标识符，逐个试着解成「类名数组」，而不是去找某个
+    // 形如 `HELPER(el, LIST)` 的调用 —— 那个 HELPER 名字和 LIST 名字都会变。
+    const candidates = [...new Set([...body.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]{1,3})(?=\s*[,)])/g)].map((m) => m[1]))];
     const resolve = resolveConsts(iife.text);
-    const EXPECT = {
-      "表单槽位": "DETAIL_ACCOUNT_FORM_SLOT_CLASSES",
-      "重命名输入框": "DETAIL_ACCOUNT_FORM_INPUT_CLASSES",
-      "编辑/保存按钮": "DETAIL_ACCOUNT_SAVE_CLASSES",
-    };
+    const used = candidates.filter((id) => {
+      const v = resolve(id);
+      return Array.isArray(v) && v.some((c) => c.startsWith("sand-"));
+    });
+    console.log(`注入 IIFE ${iife.text.length} B（@${iife.start}–${iife.end}）`);
+    console.log(`表单函数 @IIFE${bodyStart} 内解析出的类列表常量: ${used.join(", ") || "未识别"}`);
+
     let deployProblems = 0;
     if (used.length === 0) {
-      console.log("❌ 未能从注入代码里识别出类列表常量（形状变了？）");
+      console.log("❌ 未能从注入代码里解析出任何类名数组（形状变了？）");
       deployProblems++;
     }
     for (const list of used) {
