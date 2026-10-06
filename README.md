@@ -11,6 +11,12 @@ API key，代码执行跑在由应用自管的本地 Docker 容器里，登录�
 <img width="3456" height="2048" alt="image" src="https://github.com/user-attachments/assets/f9578f3d-418d-4dbd-98f8-97aaf7b8c190" />
 <img width="3452" height="2048" alt="image" src="https://github.com/user-attachments/assets/f78c292e-5a97-49e4-b0a5-5121299868d7" />
 
+## Node Agent API 0.3.0
+
+仓库提供独立的本机 API 和网页工作台，可通过 GrokNode 现有接口连接 bot、整桌面及单应用窗口。Codex Harness 留在 Mac，代码执行进入已经运行的共享盒子；各 bot 使用不同桌面、共享容器与数据。API 不修改原 App 或替换其服务，不自动创建或重启盒子。
+
+安装仓库依赖后运行 `npm run node-agent-api`，打开 `http://127.0.0.1:18770/ui/`。配置和前置条件见 [API README](tools/node-agent-api/README.md)，完整接口见 [OpenAPI](tools/node-agent-api/openapi.json)。`npm run node-agent -- ...` 提供同一执行端的 CLI 包装，`npm run test:node-agent-api` 运行离线 API 回归。
+
 ## 本地化改造做了什么？
 
 - 推理路由（Inference Router）：Codex 与 OpenRouter 两档 provider，替代原有的

@@ -30,7 +30,10 @@
     "marketplace:parity": "node scripts/verify-marketplace-detail-parity.mjs",
     "marketplace:css": "node scripts/verify-marketplace-css-cascade.mjs",
     "marketplace:affinity:audit": "node scripts/audit-deployed-affinity-key.mjs",
-    "marketplace:classnames": "node scripts/verify-d17-classnames.mjs"
+    "marketplace:classnames": "node scripts/verify-d17-classnames.mjs",
+    "node-agent-api": "node tools/node-agent-api/cli.mjs",
+    "node-agent": "node tools/node-agent-api/client-cli.mjs",
+    "test:node-agent-api": "node --test tests/node-agent-*.test.mjs"
   },
   "devDependencies": {
     "@electron/asar": "4.2.1",
@@ -42,6 +45,7 @@
     "@vitejs/plugin-react": "6.0.5",
     "acorn": "8.18.0",
     "acorn-walk": "8.3.5",
+    "ajv": "8.20.0",
     "electron": "42.1.0",
     "esbuild": "0.28.2",
     "node-addon-api": "8.5.0",
