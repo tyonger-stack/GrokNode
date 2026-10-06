@@ -96,7 +96,7 @@ for (const canceledCaller of ["prewarm", "foreground"]) {
   });
 }
 
-test("sole prewarm cancellation after primary readiness rolls back its new assignment", async () => {
+test("sole prewarm cancellation lets the bring-up finish and the next ensure adopts its seat", async () => {
   const entered = deferred(), ready = deferred();
   const f = fixture({ ensureReady: async ctx => { entered.resolve(ctx); await ready.promise; return primary; } });
   const [ctx, cancel] = createContext().withCancel();
@@ -105,15 +105,18 @@ test("sole prewarm cancellation after primary readiness rolls back its new assig
   const reason = new Error("prewarm canceled");
   cancel(reason);
   ready.resolve();
+  // The requester's wait still ends with its own abort, but the bring-up it
+  // started is no longer killed with it: the seat finishes building and stays.
   assertCanceled(await pending, reason);
-  assert.equal(operationCtx.signal.aborted, true);
-  assert.equal(f.starts.length, 0);
-  assert.equal(f.shared.getAgentWindowIndex("a"), undefined);
-  assert.equal(f.host.vncUrls.has("a"), false);
-  assert.equal(f.statuses.length, 0);
+  assert.equal(operationCtx.signal.aborted, false, "the bring-up ctx outlives the requester");
+  assert.equal(f.starts.length, 1);
+  assert.equal(f.shared.getAgentWindowIndex("a"), 2);
+  assert.equal(f.host.vncUrls.get("a"), "window-2");
+  assert.equal(f.statuses.filter(status => status.state === "running").length, 1);
+  assert.equal((await f.host.ensureReady(createContext(), "a")).vncUrl, "window-2", "the next ensure adopts the established seat");
 });
 
-test("abort during fork startup releases with a detached context and persists rollback", async () => {
+test("abort during fork startup lets the bring-up finish and persists the seat", async () => {
   const started = deferred(), ready = deferred();
   const f = fixture({}, { persistAssignments: true });
   const start = f.inner.ensureWindow;
@@ -126,12 +129,11 @@ test("abort during fork startup releases with a detached context and persists ro
   ready.resolve();
   assertCanceled(await pending, reason);
   await f.shared.flushPersistence();
-  assert.equal(f.stops.length, 1);
-  assert.equal(f.stops[0].ctx.signal.aborted, false);
-  assert.equal(f.shared.getAgentWindowIndex("a"), undefined);
-  assert.deepEqual(f.writes.at(-1), { assignments: {}, tokens: {} });
-  assert.equal(f.host.vncUrls.has("a"), false);
-  assert.equal(f.statuses.length, 0);
+  assert.equal(f.stops.length, 0, "no rollback: the bring-up finished and owns its seat");
+  assert.equal(f.shared.getAgentWindowIndex("a"), 2);
+  assert.deepEqual(f.writes.at(-1).assignments, { a: 2 });
+  assert.equal(f.host.vncUrls.get("a"), "window-2");
+  assert.equal(f.statuses.filter(status => status.state === "running").length, 1);
 });
 
 test("deletion cancels an in-flight startup and cleans its late result before any new ensure", async () => {
@@ -171,7 +173,7 @@ test("deletion cancels an in-flight startup and cleans its late result before an
   assert.deepEqual(f.statuses.map(status => status.state), ["absent"]);
 });
 
-test("different agents start independently and canceling one preserves the other's seat", async () => {
+test("canceling one agent's sole waiter preserves the other agent's seat and its own bring-up", async () => {
   const first = deferred(), unblock = deferred();
   const f = fixture();
   const start = f.inner.ensureWindow;
@@ -190,8 +192,8 @@ test("different agents start independently and canceling one preserves the other
   assertCanceled(await canceled, reason);
   assert.equal(healthy.vncUrl, "window-3");
   assert.equal(f.shared.getAgentWindowIndex("b"), 3);
-  assert.equal(f.shared.getAgentWindowIndex("a"), undefined);
-  assert.deepEqual(f.stops.map(stop => stop.windowIndex), [2]);
+  assert.equal(f.shared.getAgentWindowIndex("a"), 2, "a's bring-up finished despite the canceled waiter");
+  assert.deepEqual(f.stops, [], "neither seat is torn down");
   assert.equal(f.host.vncUrls.get("b"), "window-3");
 });
 
@@ -214,16 +216,15 @@ test("cancellation during assignment loading cannot allocate a seat or start pri
   assert.equal(f.shared.getAgentWindowIndex("a"), undefined);
 });
 
-test("a fresh foreground waits for canceled raw work and rollback before starting", async () => {
-  const entered = deferred(), ready = deferred(), stopping = deferred(), stopped = deferred();
+test("a fresh foreground adopts the in-flight bring-up of a canceled prewarm", async () => {
+  const entered = deferred(), ready = deferred();
   const f = fixture();
-  const start = f.inner.ensureWindow, stop = f.inner.releaseWindow;
+  const start = f.inner.ensureWindow;
   f.inner.ensureWindow = async (...args) => {
     const window = await start(...args);
     if (f.starts.length === 1) { entered.resolve(); await ready.promise; }
     return window;
   };
-  f.inner.releaseWindow = async (...args) => { await stop(...args); stopping.resolve(); await stopped.promise; };
   const [ctx, cancel] = createContext().withCancel();
   const pending = observe(f.host.ensureReady(ctx, "a"));
   await entered.promise;
@@ -234,15 +235,12 @@ test("a fresh foreground waits for canceled raw work and rollback before startin
   void pending.then(() => { settled = true; });
   await nextTurn();
   assert.equal(settled, false, "raw ensure remains pending so scheduler capacity is retained");
-  assert.equal(f.starts.length, 1);
+  assert.equal(f.starts.length, 1, "the foreground coalesces onto the running bring-up instead of restarting it");
   ready.resolve();
-  await stopping.promise;
-  assert.equal(f.starts.length, 1);
-  stopped.resolve();
-  assertCanceled(await pending, reason);
   assert.equal((await foreground).value.vncUrl, "window-2");
-  assert.equal(f.starts.length, 2);
-  assert.equal(f.stops.length, 1);
+  assertCanceled(await pending, reason);
+  assert.equal(f.starts.length, 1, "one bring-up served both callers");
+  assert.equal(f.stops.length, 0, "no rollback: the seat the prewarm built serves the foreground");
   assert.equal(f.host.vncUrls.get("a"), "window-2");
 });
 
@@ -273,7 +271,7 @@ test("primary failure frees the provisional assignment and retry can reuse its i
   assert.equal((await f.host.ensureReady(createContext(), "b")).vncUrl, "window-2");
 });
 
-test("shared assignment loading isolates different agents' cancellation", async () => {
+test("shared assignment loading isolates different agents and a canceled loader's agent still gets its seat", async () => {
   const loading = deferred(), loaded = deferred();
   let loads = 0;
   const f = fixture({ downloadFile: async () => { loads += 1; loading.resolve(); await loaded.promise; return new TextEncoder().encode('{"assignments":{}}'); } }, { persistAssignments: true });
@@ -286,10 +284,32 @@ test("shared assignment loading isolates different agents' cancellation", async 
   cancel(reason);
   loaded.resolve();
   assertCanceled(await first, reason);
-  assert.equal((await second).value.vncUrl, "window-2");
+  assert.equal((await second).value.vncUrl, "window-3", "b queues behind a's loading and takes the next free seat");
   assert.equal(loads, 1);
-  assert.equal(f.shared.getAgentWindowIndex("a"), undefined);
-  assert.equal(f.shared.getAgentWindowIndex("b"), 2);
+  assert.equal(f.shared.getAgentWindowIndex("a"), 2, "a's bring-up finished despite the canceled waiter");
+  assert.equal(f.shared.getAgentWindowIndex("b"), 3);
+});
+
+test("a wedged bring-up hits its hard deadline, rolls back, and frees the queue", async () => {
+  const f = fixture({}, { bringupTimeoutMs: 50 });
+  const start = f.inner.ensureWindow;
+  let attempts = 0;
+  f.inner.ensureWindow = (ctx, agentId, windowIndex, opts) => {
+    attempts += 1;
+    if (attempts === 1) {
+      return new Promise((_resolve, reject) => {
+        ctx.signal.addEventListener("abort", () => reject(new Error("start-window canceled")), { once: true });
+      });
+    }
+    return start(ctx, agentId, windowIndex, opts);
+  };
+  const result = await observe(f.host.ensureReady(createContext(), "a"));
+  assert.match(String(result.error?.message), /did not finish within 50ms/);
+  assert.equal(f.shared.getAgentWindowIndex("a"), undefined, "the deadline rollback frees the provisional assignment");
+  assert.equal(f.stops.length, 1, "the half-built seat is released");
+  // The queue is usable again: a fresh ensure runs a new bring-up.
+  assert.equal((await f.host.ensureReady(createContext(), "a")).vncUrl, "window-2");
+  assert.equal(attempts, 2);
 });
 
 test("deletion while another agent loads assignments cannot restore the deleted seat", async () => {

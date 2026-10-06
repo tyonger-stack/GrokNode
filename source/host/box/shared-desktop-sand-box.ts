@@ -1,15 +1,22 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { setTimeout, clearTimeout } from "node:timers";
 import type { Context } from "../../packages/context/core.js";
 import { boxApplyEnvironment, boxDescription, boxIsAvailable, boxIsPreparing, boxLoadMcpServers, boxMaxWindows, boxMcpResourceAccessor, boxTerminalsFolder, type CapableBox } from "./box-capabilities.js";
 import { SAND_BOX_FIRST_FORK_WINDOW_INDEX, SAND_BOX_PRIMARY_WINDOW_INDEX, isPrimaryWindowIndex } from "../ports/box.js";
 import { BoxFileUnreadableError } from "./box-transfer.js";
-import { mintSandWindowOwnerToken } from "./box-windows.js";
+import { envInt, mintSandWindowOwnerToken } from "./box-windows.js";
 
 export class SandBoxCapabilityError extends Error { constructor(message: string, options?: ErrorOptions) { super(message, options); this.name = "SandBoxCapabilityError"; } }
 export const ASSIGNMENTS_LOAD_TIMEOUT_MS = 30_000;
 export const ASSIGNMENTS_LOAD_RETRY_INTERVAL_MS = 1_000;
 export const DEFAULT_SHARED_BOX_ID = "shared";
 export const SHARED_DESKTOP_ASSIGNMENTS_BOX_PATH = "/home/box/.sand-window-assignments.json";
+/** Hard bound on one bring-up execution. Bring-ups are not cancelable by their
+ * requesters anymore, so nothing else stops a hung start-window from holding
+ * the per-agent queue forever. Sized above the worst legitimate path - primary
+ * readiness (90s) + start-window's own display/daemon waits (~65s) + fork
+ * router readiness (90s) - so only a genuinely wedged bring-up hits it. */
+export const SHARED_DESKTOP_BRINGUP_TIMEOUT_MS = envInt("SAND_BOX_BRINGUP_TIMEOUT_MS", 300_000);
 export interface ParsedAssignments { assignments: Map<string, number>; tokens: Map<string, string>; isCorrupt: boolean }
 export function parseAssignments(bytes: Uint8Array, maxWindowCount: number): ParsedAssignments { const assignments = new Map<string, number>(), tokens = new Map<string, string>(); let parsed: unknown; try { parsed = JSON.parse(new TextDecoder().decode(bytes)); } catch { return { assignments, tokens, isCorrupt: true }; } if (typeof parsed !== "object" || parsed == null || Array.isArray(parsed)) return { assignments, tokens, isCorrupt: false }; const root = parsed as Record<string, unknown>, raw = root.assignments; if (typeof raw !== "object" || raw == null || Array.isArray(raw)) return { assignments, tokens, isCorrupt: false }; const rawTokens = typeof root.tokens === "object" && root.tokens != null && !Array.isArray(root.tokens) ? root.tokens as Record<string, unknown> : undefined, usedForks = new Set<number>(); for (const agentId of Object.keys(raw).sort()) { const index = (raw as Record<string, unknown>)[agentId]; if (typeof index !== "number" || !Number.isInteger(index) || index < 1 || index > maxWindowCount) continue; if (index >= SAND_BOX_FIRST_FORK_WINDOW_INDEX) { if (usedForks.has(index)) continue; usedForks.add(index); } assignments.set(agentId, index); const token = rawTokens?.[agentId]; if (typeof token === "string" && token.length > 0) tokens.set(agentId, token); } return { assignments, tokens, isCorrupt: false }; }
 export function resolveSharedBoxId(explicit?: string, env: Record<string, string | undefined> = process.env): string { if (explicit) return explicit; return env.SAND_SHARED_BOX_ID?.trim() || DEFAULT_SHARED_BOX_ID; }
@@ -18,16 +25,16 @@ export interface SharedInnerBox<Accessor = unknown> extends CapableBox { ensureR
 /** Whether a fork seat's executor still answers. "unknown" means the backend
  * cannot tell, and callers must then assume the seat is healthy. */
 export type WindowSeatProbe = "reachable" | "unreachable" | "unknown";
-export interface SharedDesktopOptions<Accessor> { sharedBoxId?: string; persistAssignments?: boolean; now?: () => number; sleep?: (ms: number, signal?: AbortSignal) => Promise<void>; gateComputerUse?: (primary: { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }) => { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }; reportPersistFailure?: (error: unknown) => void; onAssignmentConflict?: (detail: { agentId: string; windowIndex: number; heldBy: string }) => void; onStaleSeatCleanup?: (detail: { agentId: string; windowIndex: number; probe: WindowSeatProbe; released: boolean }) => void }
+export interface SharedDesktopOptions<Accessor> { sharedBoxId?: string; persistAssignments?: boolean; bringupTimeoutMs?: number; now?: () => number; sleep?: (ms: number, signal?: AbortSignal) => Promise<void>; gateComputerUse?: (primary: { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }) => { remoteAccessor: Accessor; vncUrl: string; terminalsFolder?: string }; reportPersistFailure?: (error: unknown) => void; onAssignmentConflict?: (detail: { agentId: string; windowIndex: number; heldBy: string }) => void; onStaleSeatCleanup?: (detail: { agentId: string; windowIndex: number; probe: WindowSeatProbe; released: boolean }) => void }
 interface AssignmentsLoad { ctx: Context; cancel(reason?: unknown): void; waiters: Set<symbol>; promise: Promise<void> }
 
 export class SharedDesktopSandBox<Accessor = unknown> {
-  readonly sharedBoxId: string; readonly maxWindowCount: number; readonly persistAssignments: boolean; private readonly agentWindows = new Map<string, number>(); private readonly agentWindowTokens = new Map<string, string>(); private readonly establishedForks = new Set<string>(); private readonly windowsTearingDown = new Set<number>(); private assignmentsLoad: AssignmentsLoad | undefined; private persistChain = Promise.resolve();
+  readonly sharedBoxId: string; readonly maxWindowCount: number; readonly persistAssignments: boolean; readonly bringupTimeoutMs: number; private readonly agentWindows = new Map<string, number>(); private readonly agentWindowTokens = new Map<string, string>(); private readonly establishedForks = new Set<string>(); private readonly windowsTearingDown = new Set<number>(); private assignmentsLoad: AssignmentsLoad | undefined; private persistChain = Promise.resolve();
   private readonly agentOperations = new Map<string, Promise<unknown>>();
   private readonly bringupCancels = new Map<string, Set<(reason?: unknown) => void>>();
   private readonly releasedAssignments = new Set<string>();
   private static readonly RELEASED_ASSIGNMENT_CAP = 4_096;
-  constructor(readonly inner: SharedInnerBox<Accessor>, readonly options: SharedDesktopOptions<Accessor> = {}) { this.sharedBoxId = resolveSharedBoxId(options.sharedBoxId); this.maxWindowCount = Math.max(1, boxMaxWindows(inner)); this.persistAssignments = options.persistAssignments ?? false; }
+  constructor(readonly inner: SharedInnerBox<Accessor>, readonly options: SharedDesktopOptions<Accessor> = {}) { this.sharedBoxId = resolveSharedBoxId(options.sharedBoxId); this.maxWindowCount = Math.max(1, boxMaxWindows(inner)); this.persistAssignments = options.persistAssignments ?? false; this.bringupTimeoutMs = options.bringupTimeoutMs ?? SHARED_DESKTOP_BRINGUP_TIMEOUT_MS; }
   private now(): number { return this.options.now?.() ?? Date.now(); }
   private async sleep(ms: number, signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
@@ -185,9 +192,19 @@ export class SharedDesktopSandBox<Accessor = unknown> {
     this.bringupCancels.set(agentId, cancels);
     try {
       return await this.serializeAgent(agentId, async () => {
-        const connection = await this.ensureAgentReady(operationCtx, agentId);
-        operationCtx.signal.throwIfAborted();
-        return connection;
+        // Bring-ups outlive their requesters (an aborted waiter must not kill
+        // the seat mid-flight), so no requester cancellation bounds them. This
+        // deadline is what stops a wedged bring-up from holding the per-agent
+        // queue forever instead. Armed here rather than at registration so the
+        // budget covers the bring-up itself, not time spent queued behind
+        // another operation for this agent.
+        const deadline = setTimeout(() => cancel(new Error(`shared desktop bring-up for agent ${agentId} did not finish within ${this.bringupTimeoutMs}ms`)), this.bringupTimeoutMs);
+        deadline.unref?.();
+        try {
+          const connection = await this.ensureAgentReady(operationCtx, agentId);
+          operationCtx.signal.throwIfAborted();
+          return connection;
+        } finally { clearTimeout(deadline); }
       });
     } finally {
       ctx.signal.removeEventListener("abort", onAbort);

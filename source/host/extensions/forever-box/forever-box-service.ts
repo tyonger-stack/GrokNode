@@ -124,6 +124,9 @@ export class ForeverBoxService {
     for (const callers of this.ensures.values()) {
       for (const cancel of callers) cancel(new DOMException("Forever box service stopped", "AbortError"));
     }
+    // Canceling the service-owned demand above only detaches waiters now; the
+    // raw startups it coalesced must be torn down explicitly.
+    this.box.abortStartups(new DOMException("Forever box service stopped", "AbortError"));
     this.abort.abort();
     this.imagePollingStartDelay?.dispose();
     this.imagePolling?.dispose();

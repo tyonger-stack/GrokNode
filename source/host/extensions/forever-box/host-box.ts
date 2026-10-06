@@ -133,12 +133,25 @@ export class HostBox {
           if (operations.get(key) === current) operations.delete(key);
           if (operations.size === 0 && this.startups.get(agentId) === operations) this.startups.delete(agentId);
         });
+        // A startup whose waiters all detached before it settled must not
+        // surface its failure as an unhandled rejection; waiters that did stay
+        // still observe the original promise above.
+        current.promise.catch(() => {});
       }
       const current = startup, waiter = Symbol();
       current.waiters.add(waiter);
       const onAbort = () => {
+        // Detach the waiter only. Canceling the coalesced startup when its last
+        // waiter leaves used to SIGTERM start-window mid-flight whenever the
+        // requester that happened to be last went away - a round the queue
+        // watchdog interrupted, a UI request timing out, a prewarm attempt
+        // hitting its deadline - and the seat had to be rebuilt from zero on
+        // the next ask, so repeated short-lived requesters could starve a
+        // bring-up forever. A bring-up outlives its requesters: it settles on
+        // its own and the next ensure coalesces onto or adopts the result.
+        // Explicit release (releaseWindow) is the only teardown that may
+        // cancel it.
         current.waiters.delete(waiter);
-        if (current.waiters.size === 0) current.cancel(ctx.signal.reason);
       };
       ctx.signal.addEventListener("abort", onAbort, { once: true });
       try {
@@ -176,6 +189,14 @@ export class HostBox {
       }
       this.notify(this.runningStatus(agentId, this.vncUrls.get(agentId) ?? window.vncUrl));
     });
+  }
+  /** Cancel every in-flight coalesced startup across all agents. Requester
+   * aborts no longer cancel startups (they detach instead), so an explicit
+   * teardown like service shutdown needs this to stop raw work it owns. */
+  abortStartups(reason: unknown): void {
+    for (const operations of this.startups.values()) {
+      for (const startup of operations.values()) startup.cancel(reason);
+    }
   }
   async releaseWindow(ctx: Context, agentId: string): Promise<void> {
     const releasing = this.releases.get(agentId);
