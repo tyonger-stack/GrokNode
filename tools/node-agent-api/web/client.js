@@ -19,6 +19,7 @@ export function capabilities(value = {}) {
 }
 
 export function createClient(key, origin, fetcher = fetch) {
+  key = key.trim().replace(/^Bearer\s+/i, '').trim();
   async function request(path, { method = 'GET', body, signal, headers = {} } = {}) {
     const url = new URL(path, origin);
     if (url.origin !== origin || !url.pathname.startsWith('/v1/')) throw new Error('拒绝向其他来源发送密钥');
@@ -29,14 +30,25 @@ export function createClient(key, origin, fetcher = fetch) {
     });
     if (!response.ok) {
       const value = await response.json().catch(() => ({}));
-      throw new Error(`HTTP ${response.status} · ${value.error?.type ?? 'request_failed'} · ${value.error?.message ?? '请求失败；操作结果未知'}`);
+      const error = new Error(`HTTP ${response.status} · ${value.error?.type ?? 'request_failed'} · ${value.error?.message ?? '请求失败；操作结果未知'}`);
+      error.code = value.error?.type; error.status = response.status;
+      throw error;
     }
     return response;
   }
   async function json(path, options) {
-    const response = await request(path, options);
-    if (response.status === 204) return {};
-    return response.json();
+    const { timeoutMs = options?.method && options.method !== 'GET' ? 0 : 30000, ...extra } = options ?? {};
+    const timeout = new AbortController();
+    const timer = timeoutMs ? setTimeout(() => timeout.abort(new Error('连接请求超时，请检查本机 API 与 GrokNode 状态后重试。')), timeoutMs) : undefined;
+    try {
+      const response = await request(path, timeoutMs ? { ...extra, signal: extra.signal ? AbortSignal.any([extra.signal, timeout.signal]) : timeout.signal } : extra);
+      if (response.status === 204) return {};
+      return await response.json();
+    } catch (error) {
+      if (timeout.signal.aborted && !extra.signal?.aborted) throw timeout.signal.reason;
+      if (error instanceof TypeError) throw new Error('无法连接本机 API；请检查服务是否运行，或刷新页面后重试。');
+      throw error;
+    } finally { clearTimeout(timer); }
   }
   async function list(path, signal) {
     const rows = [], seen = new Set();

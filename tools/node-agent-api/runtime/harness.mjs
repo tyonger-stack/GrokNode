@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { isAbsolute } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { prepareCodex } from './codex.mjs';
+import { modelId } from '../models.mjs';
 
 export const RPC_METHODS = new Set(['environment/info', 'thread/start', 'thread/list', 'thread/read', 'thread/resume', 'thread/unsubscribe', 'thread/backgroundTerminals/terminate', 'turn/start', 'turn/interrupt']);
 const environments = [{ environmentId: 'bot', cwd: '/workspace', runtimeWorkspaceRoots: ['/workspace'] }];
@@ -13,21 +14,36 @@ export function validateBotId(id) {
 export function rpcParams(method, params = {}, workspaceRoot = '/workspace') {
   if (!RPC_METHODS.has(method)) throw new Error('RPC method unavailable');
   const fields = {
-    'environment/info': [], 'thread/start': [], 'thread/list': ['cursor'],
-    'thread/read': ['threadId'], 'thread/resume': ['threadId'], 'thread/unsubscribe': ['threadId'],
+    'environment/info': [], 'thread/start': ['model', 'providerConnection', 'reasoningEffort'], 'thread/list': ['cursor'],
+    'thread/read': ['threadId'], 'thread/resume': ['threadId', 'model', 'providerConnection', 'reasoningEffort'], 'thread/unsubscribe': ['threadId'],
     'thread/backgroundTerminals/terminate': ['threadId', 'processId'],
-    'turn/start': ['threadId', 'input'], 'turn/interrupt': ['threadId', 'turnId'],
+    'turn/start': ['threadId', 'input', 'model', 'reasoningEffort'], 'turn/interrupt': ['threadId', 'turnId'],
   }[method];
   if (!params || Array.isArray(params) || typeof params !== 'object' || Object.keys(params).some(k => !fields.includes(k))) throw new Error('Invalid RPC parameters');
   for (const key of fields.filter(k => k.endsWith('Id'))) if (typeof params[key] !== 'string' || !/^[\w-]{1,128}$/.test(params[key])) throw new Error('Invalid RPC identifier');
   if (params.cursor != null && (typeof params.cursor !== 'string' || params.cursor.length > 2048)) throw new Error('Invalid cursor');
+  if (params.model !== undefined) modelId(params.model);
+  let safe = { ...params };
+  if (params.reasoningEffort !== undefined) {
+    if (!['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(params.reasoningEffort)) throw new Error('Invalid reasoning effort');
+    delete safe.reasoningEffort;
+    if (method === 'turn/start') safe.effort = params.reasoningEffort;
+    else safe.config = { model_reasoning_effort: params.reasoningEffort };
+  }
+  if (params.providerConnection !== undefined) {
+    const connection = params.providerConnection, url = new URL(connection.baseUrl);
+    if (Object.keys(connection).some(k => !['baseUrl', 'token'].includes(k)) || url.hostname !== '127.0.0.1' || url.protocol !== 'http:' || !/^\/th_[a-f0-9]{24}\/(default|none|minimal|low|medium|high|xhigh|max|ultra)\/v1$/.test(url.pathname) || !/^[A-Za-z0-9_-]{43}$/.test(connection.token)) throw new Error('Managed Mac TokenHub relay required');
+    delete safe.providerConnection;
+    safe.modelProvider = 'node_tokenhub';
+    safe.config = { ...safe.config, 'model_providers.node_tokenhub': { name: 'Node Agent TokenHub', base_url: connection.baseUrl, wire_api: 'responses', requires_openai_auth: false, supports_websockets: false, experimental_bearer_token: connection.token } };
+  }
   if (method === 'thread/backgroundTerminals/terminate' && !/^[0-9]{1,10}$/.test(params.processId)) throw new Error('Invalid process identifier');
   if (method === 'turn/start' && (!Array.isArray(params.input) || params.input.length !== 1 || params.input[0]?.type !== 'text' || typeof params.input[0].text !== 'string' || !params.input[0].text.trim() || params.input[0].text.length > 64000 || Object.keys(params.input[0]).some(k => !['type', 'text'].includes(k)))) throw new Error('Invalid text input');
   if (method === 'environment/info') return { environmentId: 'bot' };
-  if (method === 'thread/start' || method === 'turn/start') return { ...params, environments: workspaceRoot === '/workspace' ? environments : [{ environmentId: 'bot', cwd: workspaceRoot, runtimeWorkspaceRoots: [workspaceRoot] }], ...(method === 'thread/start' ? { experimentalRawEvents: false, dynamicTools: [approvedShellTool] } : {}) };
+  if (method === 'thread/start' || method === 'turn/start') return { ...safe, environments: workspaceRoot === '/workspace' ? environments : [{ environmentId: 'bot', cwd: workspaceRoot, runtimeWorkspaceRoots: [workspaceRoot] }], ...(method === 'thread/start' ? { experimentalRawEvents: false, dynamicTools: [approvedShellTool] } : {}) };
   if (method === 'thread/read') return { ...params, includeTurns: true };
   if (method === 'thread/list') return { ...params, limit: 50 };
-  return params;
+  return safe;
 }
 
 export function createHarness({ runtime, namespace, stateRoot, model, baseUrl, binary = 'codex', spawnProcess = spawn, timeoutMs = 60000 }) {
@@ -112,7 +128,7 @@ export function createHarness({ runtime, namespace, stateRoot, model, baseUrl, b
   return {
     redact,
     subscribe(listener) { events.on('event', listener); return () => events.off('event', listener); },
-    async request(botId, method, params) { const safe = rpcParams(method, params, runtime.workspaceRoot ?? '/workspace'); return (await connect(botId)).request(method, safe); },
+    async request(botId, method, params) { if (params?.providerConnection?.token) secrets.add(params.providerConnection.token); const safe = rpcParams(method, params, runtime.workspaceRoot ?? '/workspace'); return (await connect(botId)).request(method, safe); },
     async answer(botId, id, result) {
       const s = await connect(botId), approval = s.approvals.get(id);
       if (!approval) throw new Error('Approval no longer pending');

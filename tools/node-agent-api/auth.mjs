@@ -92,7 +92,7 @@ export async function createAuth(directory, clock = Date.now) {
     return { object: 'node.user', id: user.id, name: user.name, disabled: user.disabledAt !== undefined, ...(user.createdAt === undefined ? {} : { created_at: Math.floor(user.createdAt / 1000) }), ...(user.disabledAt === undefined ? {} : { disabled_at: Math.floor(user.disabledAt / 1000) }) };
   }
   return {
-    keyFile, usersFile, authenticate, requireScope,
+    keyFile, usersFile, authenticate, requireScope, requireOwner,
     async createUser(principal, input) {
       input = structuredClone(object(input, ['name']));
       return mutate('users', next => {

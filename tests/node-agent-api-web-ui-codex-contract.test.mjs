@@ -13,6 +13,33 @@ const web = new URL('../tools/node-agent-api/web/', import.meta.url);
 const archive = gzipSync(Buffer.alloc(1024));
 const exportedArtifact = { id: 'artifact_1', name: 'project.tar.gz', size: archive.length, sha256: createHash('sha256').update(archive).digest('hex'), download_url: '/v1/agents/sessions/session_1/artifacts/artifact_1/content' };
 
+test('connection accepts pasted Bearer prefix and never sends the prefix twice', async () => {
+  let authorization;
+  const client = createClient('  Bearer contract-test-key\n', 'http://localhost', async (url, options) => {
+    authorization = options.headers.Authorization;
+    return Response.json({ writes_enabled: false });
+  });
+  await client.json('/v1/capabilities');
+  assert.equal(authorization, 'Bearer contract-test-key');
+});
+
+test('connection read request times out visibly rather than waiting forever', async () => {
+  const client = createClient('test-key', 'http://localhost', async (url, options) => new Promise((resolve, reject) => {
+    options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+  }));
+  await assert.rejects(client.json('/v1/capabilities', { timeoutMs: 20 }), /超时/);
+});
+
+test('connection failures and cancellation remain explicit without automatic retries', async () => {
+  let calls = 0;
+  const offline = createClient('test-key', 'http://localhost', async () => { calls++; throw new TypeError('Failed to fetch'); });
+  await assert.rejects(offline.json('/v1/capabilities'), /无法连接本机 API/);
+  assert.equal(calls, 1);
+  const controller = new AbortController(); controller.abort();
+  const cancelled = createClient('test-key', 'http://localhost', async (url, options) => { throw options.signal.reason; });
+  await assert.rejects(cancelled.json('/v1/capabilities', { signal: controller.signal }), { name: 'AbortError' });
+});
+
 test('artifact binary download uses one authenticated GET without putting key in URL; legacy JSON stays local', async () => {
   const calls = [], signal = new AbortController().signal;
   const client = createClient('private-test-key', 'http://localhost', async (url, options) => {
@@ -245,8 +272,10 @@ if (process.env.NODE_AGENT_UI_BROWSER === '1') test('real Chromium UI contract: 
     observations.push({ scenario: 'legacy JSON and authenticated artifact tar.gz download bytes match; failed GET shows 502 without automatically repeating export', passed: true, archive: 'project.tar.gz', sha256: exportedArtifact.sha256 });
     await click('#view'); await waitFor("document.querySelector('#desktop iframe') !== null");
     assert.equal(requests.filter(row => row.path.endsWith('/desktop')).at(-1).body.mode, 'view');
+    assert.equal(requests.filter(row => row.path.endsWith('/desktop')).at(-1).body.replace_own_control, true);
     await click('#control'); await waitFor("document.getElementById('desktop-status').textContent.includes('接管授权')");
     assert.equal(requests.filter(row => row.path.endsWith('/desktop')).at(-1).body.mode, 'control');
+    assert.equal(requests.filter(row => row.path.endsWith('/desktop')).at(-1).body.replace_own_control, true);
     assert.equal(await evaluate("document.querySelector('#desktop iframe').src.startsWith(location.origin + '/desktop/')"), true);
     assert.equal(requests.some(row => row.path.endsWith('/clipboard')), false);
     await click('#clipboard-read'); await waitFor("document.getElementById('clipboard').value === '测试剪贴板内容'");
@@ -254,7 +283,11 @@ if (process.env.NODE_AGENT_UI_BROWSER === '1') test('real Chromium UI contract: 
     await waitFor("document.getElementById('status').textContent.includes('剪贴板写入响应')");
     assert.deepEqual(requests.filter(row => row.path.endsWith('/clipboard')).map(row => [row.method, row.body]), [['GET', undefined], ['POST', { text: '手动发送' }]]);
     await capture('desktop-project-clipboard');
-    await click('#handback'); await waitFor("document.querySelector('#desktop iframe') === null");
+    await click('#handback');
+    await waitFor("document.querySelector('#desktop iframe')?.title === '机器人桌面 · 观看' && !document.getElementById('handback').disabled");
+    assert.equal(requests.filter(row => row.path.endsWith('/desktop')).at(-1).body.mode, 'view');
+    assert.equal(requests.some(row => row.path.endsWith('/handback') && row.method === 'POST'), true);
+    assert.match(await evaluate("document.getElementById('desktop-status').textContent"), /控制已交还/);
     assert.equal(requests.find(row => row.path.endsWith('/handback')).method, 'POST');
     for (const stream of streams) stream.end();
     await waitFor("document.getElementById('stream-status').textContent.includes('已断开')");

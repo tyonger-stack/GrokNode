@@ -12,8 +12,10 @@ import { createGovernance } from './governance.mjs';
 import { createWebhookOutbox } from './webhooks.mjs';
 import { readFile, appendFile } from 'node:fs/promises';
 import path from 'node:path';
+import { createModelPolicy } from './models.mjs';
+import { createTokenHub } from './tokenhub.mjs';
 
-const publicSession = value => ({ object: value.object, id: value.id, agent_id: value.agent_id, status: value.status, created_at: value.created_at, context: value.context, metadata: value.metadata, ...(value.thread_id ? { thread_id: value.thread_id, task_status: value.task_status, active_turn_id: value.active_turn_id ?? null } : {}) });
+const publicSession = value => ({ object: value.object, id: value.id, agent_id: value.agent_id, status: value.status, created_at: value.created_at, context: value.context, metadata: value.metadata, ...(value.model ? { model: value.model, model_source: value.model_source } : {}), ...(value.endpoint_revision ? { endpoint_revision: value.endpoint_revision, reasoning_effort: value.reasoning_effort ?? null } : {}), ...(value.thread_id ? { thread_id: value.thread_id, task_status: value.task_status, active_turn_id: value.active_turn_id ?? null } : {}) });
 export async function startNodeAgentApi(options) {
   await privateDirectory(options.stateDirectory);
   const release = await acquireStateLock(options.stateDirectory);
@@ -24,8 +26,11 @@ export async function startNodeAgentApi(options) {
   } catch (error) { await release(); throw error; }
 }
 
-async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs = 2000, governanceOptions = {} }) {
+async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs = 2000, governanceOptions = {}, modelOptions, tokenhubOptions = {} }) {
   const auth = await createAuth(stateDirectory), store = await createStore(stateDirectory);
+  const tokenhub = modelOptions && adapter.independentSessions ? await createTokenHub(stateDirectory, tokenhubOptions) : null;
+  adapter.setTokenHub?.(tokenhub);
+  const models = modelOptions && adapter.independentSessions ? await createModelPolicy(stateDirectory, { ...modelOptions, tokenhub }) : null;
   const governance = await createGovernance(stateDirectory, governanceOptions);
   let webhooks; try { webhooks = await createWebhookOutbox(stateDirectory); } catch (error) { await governance.close(); throw error; }
   const desktop = createDesktop({ adapter, auth, store, governance, stateDirectory });
@@ -83,8 +88,36 @@ async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs
         security: { loopback_only: true, desktop_server_enforced: true, legacy_vnc_protected: adapter.rawDesktopProtected ?? !!adapter.independentSessions },
         desktop: { view: true, control: true, applications: !!adapter.applications }, project: { diff: !!adapter.project, import: !!adapter.project, export: !!adapter.exportProject }, clipboard: { read: !!adapter.clipboard, write: !!adapter.clipboard },
         service: { quotas: true, audit: true, webhooks: true },
+        models: { selection: !!models, management: !!models && principal.id === 'owner', immutable_session: !!models },
+        tokenhub: { configuration: !!tokenhub && principal.id === 'owner', actual_tests: !!tokenhub },
       });
       if (url.pathname === '/v1/usage' && req.method === 'GET') return respond(res, 200, await governance.usage(quotaPrincipal));
+      if (url.pathname === '/v1/settings/tokenhub' || url.pathname.startsWith('/v1/settings/tokenhub/')) {
+        auth.requireOwner(principal);
+        if (!tokenhub) throw new ApiError(409, 'unsupported', 'TokenHub is unavailable on this backend');
+        if (url.pathname === '/v1/settings/tokenhub' && req.method === 'GET') return respond(res, 200, await tokenhub.settings());
+        if (url.pathname === '/v1/settings/tokenhub' && req.method === 'PATCH') return respond(res, 200, await tokenhub.update(await body(req)));
+        if (url.pathname === '/v1/settings/tokenhub/models' && req.method === 'POST') return respond(res, 200, await tokenhub.refresh());
+        if (url.pathname === '/v1/settings/tokenhub/test' && req.method === 'POST') return respond(res, 200, await tokenhub.test(await body(req)));
+      }
+      if (url.pathname === '/v1/models' && req.method === 'GET') {
+        if (!models) throw new ApiError(409, 'unsupported', 'Model selection is unavailable on this backend');
+        const bot = url.searchParams.get('agent_id'); auth.requireScope(principal, 'agents.read', bot ? identifier(bot) : undefined);
+        if (bot) await adapter.requireAgent(bot);
+        return respond(res, 200, await models.list(bot));
+      }
+      if (url.pathname === '/v1/settings/models') {
+        auth.requireOwner(principal);
+        if (!models) throw new ApiError(409, 'unsupported', 'Model selection is unavailable on this backend');
+        if (req.method === 'GET') return respond(res, 200, await models.settings());
+        if (req.method === 'PATCH') return respond(res, 200, { object: 'node.model_settings', ...await models.update(await body(req)) });
+      }
+      if (parts[1] === 'agents' && parts.length === 4 && parts[3] === 'model') {
+        auth.requireOwner(principal); identifier(parts[2]); await adapter.requireAgent(parts[2]);
+        if (!models) throw new ApiError(409, 'unsupported', 'Model selection is unavailable on this backend');
+        if (req.method === 'GET') return respond(res, 200, await models.botSettings(parts[2]));
+        if (req.method === 'PATCH') return respond(res, 200, await models.updateBot(parts[2], await body(req)));
+      }
       if (parts[1] === 'webhooks') {
         if (principal.id !== 'owner') throw forbidden();
         if (parts.length === 2 && req.method === 'POST') { const configuration = await webhooks.configure(object(await body(req), ['destination'])); webhooksEnabled = true; return respond(res, 201, configuration); }
@@ -113,12 +146,14 @@ async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs
         if (parts.length === 3 && req.method === 'POST') {
           // Mirrors the Agents API request shape: a reusable agent_id, or an
           // inline agent override that selects an existing GrokNode bot.
-          const input = object(await body(req), ['agent_id', 'agent', 'metadata']);
+          const input = object(await body(req), ['agent_id', 'agent', 'metadata', 'model', 'reasoning_effort']);
           const inline = input.agent === undefined ? undefined : object(input.agent, ['id']);
           const agentId = typeof input.agent_id === 'string' ? input.agent_id : inline?.id;
           if (typeof agentId !== 'string') throw badRequest('agent_id or agent.id is required');
           identifier(agentId); auth.requireScope(principal, 'sessions.write', agentId); await adapter.requireAgent(agentId);
-          const result = await store.create(agentId, input.metadata === undefined ? {} : metadata(input.metadata), { reuse: !adapter.independentSessions, quota_user_id: quotaPrincipal.id });
+          if (input.model !== undefined && !models) throw new ApiError(409, 'unsupported', 'Model selection is unavailable on this backend');
+          const selected = models ? await models.resolve(agentId, input.model, input.reasoning_effort) : {};
+          const result = await store.create(agentId, input.metadata === undefined ? {} : metadata(input.metadata), { reuse: !adapter.independentSessions, quota_user_id: quotaPrincipal.id, ...selected });
           if (result.created) await adapter.bindSession?.(result.session);
           return respond(res, result.created ? 201 : 200, publicSession(result.session));
         }
@@ -181,13 +216,13 @@ async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs
           if (parts[4] === 'resume' && req.method === 'POST' && adapter.resume) { await adapter.resume(session); return respond(res, 200, publicSession(session)); }
           if (parts[4] === 'handoff' && req.method === 'POST' && adapter.handoff) return respond(res, 200, await adapter.handoff(session));
           if (parts[4] === 'turns' && req.method === 'GET') { await adapter.flush?.(); return respond(res, 200, page(session.turns ?? [], url.searchParams)); }
-          if (parts[4] === 'traces' && req.method === 'GET') { await adapter.flush?.(); return respond(res, 200, { object: 'list', data: (session.turns ?? []).map(turn => ({ turn_id: turn.id, started_at: turn.started_at, ended_at: turn.ended_at ?? null, status: turn.status, usage: turn.usage ?? null, spans: turn.items })), has_more: false }); }
+          if (parts[4] === 'traces' && req.method === 'GET') { await adapter.flush?.(); return respond(res, 200, { object: 'list', data: (session.turns ?? []).map(turn => ({ turn_id: turn.id, ...(turn.model ? { model: turn.model } : {}), started_at: turn.started_at, ended_at: turn.ended_at ?? null, status: turn.status, usage: turn.usage ?? null, spans: turn.items })), has_more: false }); }
           if (parts[4] === 'clipboard' && adapter.clipboard) {
             auth.requireScope(principal, req.method === 'GET' ? 'desktop.view' : 'desktop.control', session.agent_id);
             if (req.method === 'GET') return respond(res, 200, await adapter.clipboard(session));
             if (req.method === 'POST') { if (session.status === 'closed') throw new ApiError(409, 'session_closed', 'Session is closed'); if (!desktop.hasControl(principal, session)) throw forbidden(); const input = object(await body(req), ['text']); return respond(res, 200, await adapter.clipboard(session, input.text)); }
           }
-          if (parts[4] === 'desktop' && req.method === 'POST') { if (session.status === 'closed') throw new ApiError(409, 'session_closed', 'Session attachment is closed'); return respond(res, 201, await desktop.issue(principal, session, object(await body(req), ['mode','ttl_seconds','target']), origin)); }
+          if (parts[4] === 'desktop' && req.method === 'POST') { if (session.status === 'closed') throw new ApiError(409, 'session_closed', 'Session attachment is closed'); return respond(res, 201, await desktop.issue(principal, session, object(await body(req), ['mode','ttl_seconds','target','replace_own_control']), origin)); }
           if (parts[4] === 'handback' && req.method === 'POST') return respond(res, 200, desktop.handback(principal, session));
           if (parts[4] === 'events' && req.method === 'GET') {
             if (req.headers.accept?.includes('text/event-stream')) {
@@ -227,5 +262,5 @@ async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs
   try { await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); }); }
   catch (error) { clearInterval(webhookTimer); unsubscribeAll(); desktop.close(); await adapter.close?.(); await webhooks.close(); await governance.close(); throw error; }
   origin = `http://127.0.0.1:${server.address().port}`;
-  return { origin, keyFile: auth.keyFile, async close() { clearInterval(webhookTimer); unsubscribeAll(); desktop.close(); for (const res of streams) res.end(); await new Promise(resolve => server.close(resolve)); let failure; for (const cleanup of [() => adapter.close?.(), () => store.flush(), () => auth.flush(), () => webhooks.close(), () => governance.close()]) { try { await cleanup(); } catch (error) { failure ??= error; } } if (failure) throw failure; } };
+  return { origin, keyFile: auth.keyFile, async close() { clearInterval(webhookTimer); unsubscribeAll(); desktop.close(); for (const res of streams) res.end(); await new Promise(resolve => server.close(resolve)); let failure; for (const cleanup of [() => adapter.close?.(), () => tokenhub?.close(), () => store.flush(), () => auth.flush(), () => webhooks.close(), () => governance.close()]) { try { await cleanup(); } catch (error) { failure ??= error; } } if (failure) throw failure; } };
 }

@@ -536,7 +536,7 @@
         "x-required-scopes": [
           "sessions.read"
         ],
-        "description": "Requires sessions.read plus desktop.view for view mode or desktop.control for control mode. Issues a single-use capability; opening it establishes the viewer and any control lease. Application viewers use a separate cookie path per window and can coexist. One controller lease per bot; handing back closes that controller. Viewer connections expire after 15 minutes. Control does not pause the bot.",
+        "description": "Requires sessions.read plus desktop.view for view mode or desktop.control for control mode. Issues a single-use capability; opening it establishes the viewer and any control lease. Application viewers use a separate cookie path per window and can coexist. One controller lease per bot; handing back closes that controller. Viewer connections expire after 15 minutes. Control does not pause the bot. replace_own_control=true transfers only this credential control; no owner privilege to silently seize another credential lease. Transfer happens on ticket redemption, not issuance.",
         "requestBody": {
           "required": true,
           "content": {
@@ -955,73 +955,160 @@
       }
     },
     "/desktop/lane/{viewer_id}/mandatory.json": {
-      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ViewerId"
+        }
+      ],
       "get": {
         "operationId": "getApplicationViewerSettings",
         "summary": "Server-selected settings for one application viewer",
-        "security": [{ "viewerCookie": [] }],
+        "security": [
+          {
+            "viewerCookie": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Application viewer settings with its own socket path",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ViewerSettings" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSettings"
+                }
+              }
+            }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
     "/desktop/lane/{viewer_id}/defaults.json": {
-      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ViewerId"
+        }
+      ],
       "get": {
         "operationId": "getApplicationViewerDefaults",
         "summary": "Empty defaults for one application viewer",
-        "security": [{ "viewerCookie": [] }],
+        "security": [
+          {
+            "viewerCookie": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Empty settings",
-            "content": { "application/json": { "schema": { "type": "object", "maxProperties": 0 } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "maxProperties": 0
+                }
+              }
+            }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
     "/desktop/lane/{viewer_id}/vnc.html": {
-      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ViewerId"
+        }
+      ],
       "get": {
         "operationId": "getApplicationViewerPage",
         "summary": "noVNC page for one application, with the control bar hidden",
-        "security": [{ "viewerCookie": [] }],
+        "security": [
+          {
+            "viewerCookie": []
+          }
+        ],
         "responses": {
-          "200": { "description": "Authorized application viewer HTML" },
-          "default": { "$ref": "#/components/responses/Error" }
+          "200": {
+            "description": "Authorized application viewer HTML"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
     "/desktop/lane/{viewer_id}/{asset}": {
       "parameters": [
-        { "$ref": "#/components/parameters/ViewerId" },
-        { "name": "asset", "in": "path", "required": true, "schema": { "type": "string", "example": "core/rfb.js" } }
+        {
+          "$ref": "#/components/parameters/ViewerId"
+        },
+        {
+          "name": "asset",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "example": "core/rfb.js"
+          }
+        }
       ],
       "get": {
         "operationId": "getApplicationViewerAsset",
         "summary": "Allowlisted noVNC resources for one application viewer",
-        "security": [{ "viewerCookie": [] }],
+        "security": [
+          {
+            "viewerCookie": []
+          }
+        ],
         "responses": {
-          "200": { "description": "Resource with its native content type" },
-          "default": { "$ref": "#/components/responses/Error" }
+          "200": {
+            "description": "Resource with its native content type"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
     "/desktop/lane/{viewer_id}/socket": {
-      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ViewerId"
+        }
+      ],
       "get": {
         "operationId": "upgradeApplicationViewerSocket",
         "summary": "Cookie-authorized WebSocket upgrade for one application viewer",
-        "security": [{ "viewerCookie": [] }],
-        "parameters": [{ "name": "Origin", "in": "header", "required": true, "schema": { "type": "string", "example": "http://127.0.0.1:18770" } }],
+        "security": [
+          {
+            "viewerCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "http://127.0.0.1:18770"
+            }
+          }
+        ],
         "responses": {
-          "101": { "description": "Application RFB WebSocket established" },
-          "403": { "description": "WebSocket upgrade rejected; no JSON body" },
-          "default": { "description": "Rejected WebSocket upgrade; authentication, changed environment, quota or upstream error status, with no JSON body" }
+          "101": {
+            "description": "Application RFB WebSocket established"
+          },
+          "403": {
+            "description": "WebSocket upgrade rejected; no JSON body"
+          },
+          "default": {
+            "description": "Rejected WebSocket upgrade; authentication, changed environment, quota or upstream error status, with no JSON body"
+          }
         }
       }
     },
@@ -2229,6 +2316,339 @@
           }
         }
       }
+    },
+    "/v1/models": {
+      "get": {
+        "operationId": "listModels",
+        "summary": "Discover catalog models with verification and approval status",
+        "x-required-scopes": [
+          "agents.read"
+        ],
+        "responses": {
+          "200": {
+            "description": "Discover catalog models with verification and approval status",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelList"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_id",
+            "schema": {
+              "$ref": "#/components/schemas/Identifier"
+            }
+          }
+        ],
+        "description": "Requires the bot grant when agent_id is supplied. Only approved AND verified models may be selected. Catalog failure returns 503 model_catalog_unavailable; no fallback or task replay. Existing pinned sessions continue."
+      }
+    },
+    "/v1/settings/models": {
+      "get": {
+        "operationId": "getModelSettings",
+        "summary": "Read service model settings (owner only)",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "responses": {
+          "200": {
+            "description": "Read service model settings (owner only)",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateModelSettings",
+        "summary": "Update service default, approved list or verification records (owner only)",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "responses": {
+          "200": {
+            "description": "Update service default, approved list or verification records (owner only)",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelSettingsPatch"
+              }
+            }
+          }
+        },
+        "description": "Settings persist in API state only. Approvals require a catalog entry and recorded tool-workflow acceptance. Defaults must remain approved. Existing sessions are unchanged. Delegated keys, including keys.manage, cannot manage models."
+      }
+    },
+    "/v1/agents/{agent_id}/model": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/AgentId"
+        }
+      ],
+      "get": {
+        "operationId": "getBotModelDefault",
+        "summary": "Read API bot default (owner only)",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "responses": {
+          "200": {
+            "description": "Read API bot default (owner only)",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotModelSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateBotModelDefault",
+        "summary": "Set API bot default; null inherits service default (owner only)",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "responses": {
+          "200": {
+            "description": "Set API bot default; null inherits service default (owner only)",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotModelSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotModelPatch"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/tokenhub": {
+      "get": {
+        "operationId": "getTokenHub",
+        "summary": "Read TokenHub address, protocol and secret status",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "description": "Independent Node Agent API only; original GrokNode settings are not modified. Actual model test consumes a small number of upstream tokens. Tests attest API connection, not full tool workflow. Endpoint/key revisions invalidate connection tests for new sessions.",
+        "responses": {
+          "200": {
+            "description": "Read TokenHub address, protocol and secret status",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenHubSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateTokenHub",
+        "summary": "Save model API endpoint and encrypted key",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "description": "Independent Node Agent API only; original GrokNode settings are not modified. Actual model test consumes a small number of upstream tokens. Tests attest API connection, not full tool workflow. Endpoint/key revisions invalidate connection tests for new sessions.",
+        "responses": {
+          "200": {
+            "description": "Save model API endpoint and encrypted key",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenHubSettings"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenHubPatch"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/tokenhub/models": {
+      "post": {
+        "operationId": "refreshTokenHubModels",
+        "summary": "Fetch available models from configured API",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "description": "Independent Node Agent API only; original GrokNode settings are not modified. Actual model test consumes a small number of upstream tokens. Tests attest API connection, not full tool workflow. Endpoint/key revisions invalidate connection tests for new sessions.",
+        "responses": {
+          "200": {
+            "description": "Fetch available models from configured API",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenHubModelList"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/settings/tokenhub/test": {
+      "post": {
+        "operationId": "testTokenHubModel",
+        "summary": "Perform a real model connection and reasoning-effort test",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "description": "Independent Node Agent API only; original GrokNode settings are not modified. Actual model test consumes a small number of upstream tokens. Tests attest API connection, not full tool workflow. Endpoint/key revisions invalidate connection tests for new sessions.",
+        "responses": {
+          "200": {
+            "description": "Perform a real model connection and reasoning-effort test",
+            "headers": {
+              "X-Request-ID": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenHubTestResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenHubTestInput"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2251,7 +2671,10 @@
         "in": "path",
         "required": true,
         "description": "Opaque application viewer id returned in the ticket redirect; it is not a bot, desktop or X11 window id.",
-        "schema": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        }
       },
       "AgentId": {
         "name": "agent_id",
@@ -2516,6 +2939,30 @@
             "type": "string",
             "nullable": true,
             "description": "Running turn id, or null when idle"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+            "description": "Effective immutable model; present on model-enabled sessions. Older sessions are pinned from a native Harness response upon resume."
+          },
+          "model_source": {
+            "type": "string",
+            "enum": [
+              "session",
+              "bot_default",
+              "service_default",
+              "harness"
+            ]
+          },
+          "endpoint_revision": {
+            "type": "string",
+            "description": "Immutable endpoint and key revision pinned at creation."
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
@@ -2559,6 +3006,18 @@
             },
             "description": "String map; keys up to 64 UTF-16 code units, values up to 512. null clears metadata in requests.",
             "nullable": true
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+            "description": "Codex backend only: approved verified model. Omission resolves bot default then service default. Frozen for this session and sent to native thread/start, thread/resume and turn/start. Changing defaults affects new sessions only. When both defaults are unset, omission returns 400 model_required before creating a session or invoking Harness."
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "nullable": true,
+            "description": "Only catalog-advertised or successfully tested efforts; null omits reasoning on the endpoint wire."
           }
         }
       },
@@ -2768,20 +3227,30 @@
       },
       "SubmitResult": {
         "oneOf": [
-          { "$ref": "#/components/schemas/InputResult" },
-          { "$ref": "#/components/schemas/CancelResult" }
+          {
+            "$ref": "#/components/schemas/InputResult"
+          },
+          {
+            "$ref": "#/components/schemas/CancelResult"
+          }
         ]
       },
       "SubmitEvent": {
         "oneOf": [
-          { "$ref": "#/components/schemas/SubmitMessage" },
-          { "$ref": "#/components/schemas/CancelInput" }
+          {
+            "$ref": "#/components/schemas/SubmitMessage"
+          },
+          {
+            "$ref": "#/components/schemas/CancelInput"
+          }
         ]
       },
       "CancelInput": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["events"],
+        "required": [
+          "events"
+        ],
         "properties": {
           "events": {
             "type": "array",
@@ -2790,10 +3259,20 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["type", "turn_id"],
+              "required": [
+                "type",
+                "turn_id"
+              ],
               "properties": {
-                "type": { "type": "string", "enum": ["agent.session.input.cancel"] },
-                "turn_id": { "$ref": "#/components/schemas/Identifier" }
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "agent.session.input.cancel"
+                  ]
+                },
+                "turn_id": {
+                  "$ref": "#/components/schemas/Identifier"
+                }
               }
             }
           }
@@ -2802,11 +3281,27 @@
       "CancelResult": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["accepted", "turn_id", "completed"],
+        "required": [
+          "accepted",
+          "turn_id",
+          "completed"
+        ],
         "properties": {
-          "accepted": { "type": "boolean", "enum": [true] },
-          "turn_id": { "$ref": "#/components/schemas/Identifier" },
-          "completed": { "type": "boolean", "enum": [false] }
+          "accepted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "turn_id": {
+            "$ref": "#/components/schemas/Identifier"
+          },
+          "completed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
         }
       },
       "InputResult": {
@@ -2866,6 +3361,11 @@
           "target": {
             "$ref": "#/components/schemas/DesktopTarget",
             "description": "Defaults to the whole desktop. Applications must belong to the current bot desktop."
+          },
+          "replace_own_control": {
+            "type": "boolean",
+            "default": false,
+            "description": "Explicitly replace the active control lease held by this exact API credential. Other credentials retain 409 desktop_busy. In view mode release own lease when new viewer opens. Tickets bind the observed lease id; cannot replace a newer lease after a race. Default false preserves exclusive-lease behavior."
           }
         }
       },
@@ -3799,11 +4299,16 @@
       "AnswerAction": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["decision"],
+        "required": [
+          "decision"
+        ],
         "properties": {
           "decision": {
             "type": "string",
-            "enum": ["accept", "decline"]
+            "enum": [
+              "accept",
+              "decline"
+            ]
           }
         }
       },
@@ -4152,6 +4657,473 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "ModelId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+      },
+      "ModelVerification": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ModelId"
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "Administrator attestation of real native tool workflow acceptance; model catalog membership alone is not verification."
+          },
+          "endpoint_revision": {
+            "type": "string",
+            "description": "Tool-workflow attestation applies only to this endpoint revision."
+          }
+        }
+      },
+      "ModelSettingsPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "default_model": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 128,
+            "pattern": "^$|^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+            "description": "null or empty string clears the default; responses normalize to null."
+          },
+          "allowed_models": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/components/schemas/ModelId"
+            }
+          },
+          "verified_models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelVerification"
+            }
+          }
+        }
+      },
+      "ModelSettings": {
+        "type": "object",
+        "required": [
+          "object",
+          "default_model",
+          "bot_defaults",
+          "allowed_models",
+          "verified_models"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.model_settings"
+            ]
+          },
+          "default_model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+            "nullable": true,
+            "description": "null means no default model. New sessions must select model explicitly unless this bot has an approved default."
+          },
+          "allowed_models": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/components/schemas/ModelId"
+            }
+          },
+          "verified_models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelVerification"
+            }
+          },
+          "bot_defaults": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ModelId"
+            }
+          }
+        }
+      },
+      "ModelList": {
+        "type": "object",
+        "required": [
+          "object",
+          "data",
+          "has_more",
+          "default_model"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "has_more": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "default_model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+            "nullable": true,
+            "description": "null means no default model. New sessions must select model explicitly unless this bot has an approved default."
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "approved",
+                "verified",
+                "verification_evidence"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/ModelId"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "approved": {
+                  "type": "boolean"
+                },
+                "verified": {
+                  "type": "boolean"
+                },
+                "verification_evidence": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "verification_level": {
+                  "type": "string",
+                  "enum": [
+                    "unverified",
+                    "connection",
+                    "tool_workflow"
+                  ]
+                },
+                "reasoning_efforts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "endpoint_revision": {
+            "type": "string"
+          }
+        }
+      },
+      "BotModelPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "default_model"
+        ],
+        "properties": {
+          "default_model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+            "nullable": true,
+            "description": "null clears this override and inherits the service default."
+          }
+        }
+      },
+      "BotModelSettings": {
+        "type": "object",
+        "required": [
+          "object",
+          "agent_id",
+          "default_model",
+          "effective_model"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.bot_model_settings"
+            ]
+          },
+          "agent_id": {
+            "$ref": "#/components/schemas/Identifier"
+          },
+          "default_model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+            "nullable": true
+          },
+          "effective_model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
+            "nullable": true,
+            "description": "null means no default model. New sessions must select model explicitly unless this bot has an approved default."
+          }
+        }
+      },
+      "TokenHubModel": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "reasoning_efforts"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ModelId"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reasoning_efforts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "TokenHubTest": {
+        "type": "object",
+        "required": [
+          "model",
+          "reasoning_effort",
+          "status",
+          "verified_at",
+          "verification_level"
+        ],
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelId"
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed"
+            ]
+          },
+          "verified_at": {
+            "type": "string"
+          },
+          "verification_level": {
+            "type": "string",
+            "enum": [
+              "connection"
+            ]
+          }
+        }
+      },
+      "TokenHubSettings": {
+        "type": "object",
+        "required": [
+          "object",
+          "revision",
+          "base_url",
+          "wire_api",
+          "key_saved",
+          "models",
+          "tests"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.tokenhub"
+            ]
+          },
+          "revision": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "wire_api": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "responses"
+            ]
+          },
+          "key_saved": {
+            "type": "boolean"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TokenHubModel"
+            }
+          },
+          "tests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TokenHubTest"
+            }
+          }
+        }
+      },
+      "TokenHubPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "base_url": {
+            "type": "string",
+            "description": "HTTPS API base or literal loopback HTTP base. No credentials, query or fragment. Saving changes creates immutable endpoint revision; changing URL without api_key clears prior secret."
+          },
+          "wire_api": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "responses"
+            ]
+          },
+          "api_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "writeOnly": true,
+            "description": "Encrypted on Mac; never returned, exported to Linux or shown in logs."
+          }
+        }
+      },
+      "TokenHubTestInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelId"
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              null,
+              "none",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              "ultra"
+            ]
+          }
+        }
+      },
+      "TokenHubModelList": {
+        "type": "object",
+        "required": [
+          "object",
+          "data",
+          "has_more",
+          "revision"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TokenHubModel"
+            }
+          },
+          "has_more": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "revision": {
+            "type": "string"
+          }
+        }
+      },
+      "TokenHubTestResponse": {
+        "type": "object",
+        "required": [
+          "model",
+          "reasoning_effort",
+          "status",
+          "verified_at",
+          "verification_level",
+          "object",
+          "revision"
+        ],
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelId"
+          },
+          "reasoning_effort": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed"
+            ]
+          },
+          "verified_at": {
+            "type": "string"
+          },
+          "verification_level": {
+            "type": "string",
+            "enum": [
+              "connection"
+            ]
+          },
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.model_test"
+            ]
+          },
+          "revision": {
+            "type": "string"
           }
         }
       }

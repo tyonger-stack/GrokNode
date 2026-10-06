@@ -14,18 +14,38 @@
     <h1>GrokNode <small>会话工作台</small></h1>
     <form id="auth" autocomplete="off">
       <label for="key">API 访问密钥</label>
-      <input id="key" type="password" autocomplete="off" spellcheck="false" required placeholder="手动输入 Bearer 密钥">
+      <input id="key" type="password" autocomplete="off" spellcheck="false" required placeholder="粘贴 API 密钥（文件内容）">
       <p class="hint">仅存本页内存；刷新后重新输入。</p>
       <div class="toolbar"><button id="connect" type="submit">连接</button><button id="disconnect" type="button">断开并清除</button></div>
+      <p class="hint" id="auth-status" role="status" aria-live="polite">未连接。粘贴密钥后点击连接。</p>
     </form>
     <label for="bots">机器人</label>
     <select id="bots" disabled><option value="">请先连接</option></select>
     <button id="refresh" disabled>刷新机器人</button>
     <h2>会话</h2>
     <p class="hint" id="context">会话语义尚未查询。</p>
+    <label for="model">新会话模型</label>
+    <select id="model" disabled><option value="">使用默认模型</option></select>
+    <label for="reasoning-effort">推理强度</label><select id="reasoning-effort" disabled><option value="">端点默认</option></select>
+    <p class="hint" id="model-status">连接后查询获准模型；已有会话保留原模型。</p>
     <button id="attach" disabled>新建 / 打开会话</button>
     <button id="history" disabled>刷新会话</button>
     <div id="sessions">选择机器人后加载真实会话。</div>
+    <details id="model-admin" hidden>
+      <summary>管理员模型设置</summary>
+      <button id="tokenhub-open" type="button">TokenHub 账户与端点</button>
+      <label for="service-model">服务默认模型</label><select id="service-model"></select>
+      <button id="save-service-model">保存服务默认</button>
+      <label for="bot-model">当前 bot 默认模型</label><select id="bot-model"></select>
+      <button id="save-bot-model">保存 bot 默认</button>
+      <p class="hint">更改只影响以后创建的会话。</p>
+      <label for="allowed-models">模型授权清单</label><div id="allowed-models"></div>
+      <p class="hint">灰色表示尚未测试。进入 TokenHub 设置选择模型并测试连接，通过后可授权；连接测试不等于工具链验收。</p>
+      <button id="save-allowed-models">保存获准清单</button>
+      <label for="verify-model">登记工具链验收</label><select id="verify-model"></select>
+      <label for="model-evidence">验收记录（改文件、测试、审批、取消）</label><textarea id="model-evidence" rows="3" maxlength="1000"></textarea>
+      <button id="save-model-evidence">登记验证记录</button>
+    </details>
     <details><summary>服务能力</summary><pre id="capabilities">尚未查询</pre></details>
   </aside>
   <main>
@@ -54,7 +74,7 @@
       <select id="applications" disabled><option value="">点击刷新应用</option></select>
       <div class="toolbar"><button id="applications-refresh" disabled>刷新应用</button><button id="application-view" disabled>独立窗口观看</button><button id="application-control" disabled>独立窗口接管</button></div>
       <div class="toolbar"><button id="launch-terminal" disabled>打开 Linux 终端</button><button id="launch-browser" disabled>打开 Linux 浏览器</button></div>
-      <p class="hint">先交还已有控制，再接管应用；其他观看窗口可以保持打开。</p>
+      <p class="hint">交还控制后自动切回只读观看。再次接管会替换同一密钥的旧控制窗口，切换观看会交还自己的控制。不同使用者仍须先交还；独立观看窗口可保持打开。</p>
       <label for="clipboard">手动传递剪贴板文本</label>
       <textarea id="clipboard" rows="2" placeholder="在此粘贴文本，再点击发送" disabled></textarea>
       <div class="toolbar"><button id="clipboard-read" disabled>读取机器人剪贴板</button><button id="clipboard-write" disabled>发送到机器人</button></div>
@@ -75,5 +95,19 @@
       <details><summary>工具流与回合事件</summary><pre id="logs">尚未收到事件</pre></details>
     </section>
   </aside>
+  <dialog id="tokenhub-dialog" aria-labelledby="tokenhub-title">
+    <div class="toolbar"><h2 id="tokenhub-title">TokenHub 设置</h2><button id="tokenhub-close" type="button">关闭</button></div>
+    <p class="hint">与 GrokNode 相同的 API 地址、密钥、模型拉取与推理强度流程。模型凭据只保存在 Mac。</p>
+    <h3>TokenHub 账户</h3>
+    <div class="tokenhub-row"><div><label for="tokenhub-key">API 密钥</label><p id="tokenhub-key-status" class="hint">未读取</p></div><div class="tokenhub-input"><input id="tokenhub-key" type="password" autocomplete="off" placeholder="替换已保存的密钥"><button id="tokenhub-key-save" type="button">保存</button></div></div>
+    <h3>TokenHub 端点</h3>
+    <div class="tokenhub-row"><div><label for="tokenhub-url">API 地址</label><p class="hint">输入 API 根地址，例如 https://api.z.ai/api/coding/paas/v4</p></div><div class="tokenhub-input"><input id="tokenhub-url" type="url" spellcheck="false" placeholder="https://…/v1"><button id="tokenhub-url-save" type="button">保存</button></div></div>
+    <div class="tokenhub-row"><label for="tokenhub-protocol">接口协议</label><div class="tokenhub-input"><select id="tokenhub-protocol"><option value="chat">Chat Completions（TokenHub 常用）</option><option value="responses">Responses（opencodex 等）</option></select><button id="tokenhub-protocol-save" type="button">保存</button></div></div>
+    <h3>TokenHub 模型</h3>
+    <div class="tokenhub-row"><div><label for="tokenhub-model">模型</label><p class="hint">该端点提供的模型；所有已拉取模型都可测试。</p></div><div class="tokenhub-input"><select id="tokenhub-model"></select><button id="tokenhub-model-refresh" type="button">重新拉取</button></div></div>
+    <div class="tokenhub-row"><div><label for="tokenhub-effort">推理强度</label><p class="hint">已知或已测试支持的档位；未知档位可输入后验证。</p></div><div><select id="tokenhub-effort"><option value="">端点默认</option></select><input id="tokenhub-effort-probe" type="text" list="effort-values" placeholder="可选：测试其他档位"><datalist id="effort-values"><option value="none"><option value="low"><option value="medium"><option value="high"><option value="xhigh"><option value="max"><option value="ultra"></datalist></div></div>
+    <div class="toolbar"><button id="tokenhub-test" type="button">测试连接（会消耗少量 token）</button><button id="tokenhub-authorize" type="button" disabled>授权当前模型</button></div>
+    <p id="tokenhub-status" role="status" aria-live="polite">选择模型后测试，成功返回文本才标记“连接已验证”。</p>
+  </dialog>
 </body>
 </html>
