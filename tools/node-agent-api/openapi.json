@@ -1,0 +1,4160 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Node Agent API",
+    "version": "0.3.0",
+    "description": "Independent loopback Node Agent API using the original GrokNode interfaces without modifying its program. The default codex backend runs Codex Harness on Mac and attaches a low-privilege stdio executor to GrokNode's existing shared container/data. Bot desktops remain allocated by GrokNode. API authorization covers its viewer and REST paths; original GrokNode VNC ports keep their original access policy. Not OpenAI SDK compatible."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:18770",
+      "description": "Default loopback service; CLI port is configurable"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Service identity, not upstream readiness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Service identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents": {
+      "get": {
+        "operationId": "listAgents",
+        "summary": "List bots in the credential's scope",
+        "x-required-scopes": [
+          "agents.read"
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized bots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentList"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/After"
+          },
+          {
+            "$ref": "#/components/parameters/Order"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createAgent",
+        "summary": "Create a bot through the original GrokNode gateway",
+        "x-required-scopes": [
+          "agents.write"
+        ],
+        "description": "Requires agents.write and wildcard bot scope. The default codex backend calls the original GrokNode createAgent gateway without changing its program, model configuration or kickstart policy. The legacy grok backend defaults to read-only; enabling its write flag does not waive its additional backend ownership and mount checks.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Upstream bot creation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/AgentId"
+        }
+      ],
+      "get": {
+        "operationId": "getAgent",
+        "summary": "Read bot profile",
+        "x-required-scopes": [
+          "agents.read"
+        ],
+        "responses": {
+          "200": {
+            "description": "Bot profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "summary": "List authorized API attachments",
+        "x-required-scopes": [
+          "sessions.read"
+        ],
+        "responses": {
+          "200": {
+            "description": "Sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionList"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/After"
+          },
+          {
+            "$ref": "#/components/parameters/Order"
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Identifier"
+            },
+            "description": "Filter by bot ID before pagination"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createSession",
+        "summary": "Create an independent Harness thread or reuse a legacy transcript attachment",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "description": "The codex backend creates a new independent Harness thread (201); the legacy grok backend may reuse an open attachment to the bot's existing transcript (200). Neither starts a turn. agent_id takes precedence over agent.id when both are supplied. Independent threads do not isolate files in the shared container.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSession"
+              },
+              "example": {
+                "agent_id": "your_bot_id"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Session"
+          },
+          "201": {
+            "$ref": "#/components/responses/Session"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "get": {
+        "operationId": "getSession",
+        "summary": "Read attachment and input acceptance state",
+        "x-required-scopes": [
+          "sessions.read"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Session"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateSessionMetadata",
+        "summary": "Replace attachment metadata; null clears it",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "metadata"
+                ],
+                "properties": {
+                  "metadata": {
+                    "type": "object",
+                    "maxProperties": 16,
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 512
+                    },
+                    "description": "String map; keys up to 64 UTF-16 code units, values up to 512. null clears metadata in requests.",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Session"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/items": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "get": {
+        "operationId": "listItems",
+        "summary": "Read Harness turn items or the legacy GrokNode transcript",
+        "x-required-scopes": [
+          "sessions.read"
+        ],
+        "responses": {
+          "200": {
+            "description": "Unnormalized upstream transcript items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemList"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/After"
+          },
+          {
+            "$ref": "#/components/parameters/Order"
+          }
+        ],
+        "description": "Paged transcript; upstream fields are preserved. Missing IDs receive a synthetic ID derived from item index and contents. Changes to such items invalidate their cursors. Does not represent OpenAI canonical tool/turn items."
+      }
+    },
+    "/v1/agents/sessions/{session_id}/environment": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "get": {
+        "operationId": "getEnvironment",
+        "summary": "Read bot container and display mapping",
+        "x-required-scopes": [
+          "sessions.read"
+        ],
+        "responses": {
+          "200": {
+            "description": "Current desktop mapping without raw WebSocket URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Environment"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/events": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "get": {
+        "operationId": "listEvents",
+        "summary": "Read persistent events or subscribe using SSE",
+        "x-required-scopes": [
+          "sessions.read"
+        ],
+        "description": "Accept: text/event-stream selects SSE. Replays persisted events and streams new ones. after / Last-Event-ID resume from a persistent event ID; unknown IDs return JSON 400 before streaming. limit / order apply only to JSON mode. Transcript changes are observed by polling and emit durable node.session.items.changed notifications; retrieve items for content. Upstream-unavailable notices have no cursor. Stream closes under backpressure; reconnect from the last persisted ID.",
+        "parameters": [
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "description": "Last persisted nevt_* ID; takes precedence over after",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/After"
+          },
+          {
+            "$ref": "#/components/parameters/Order"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persistent event list or SSE stream",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventList"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "id: nevt_example\nevent: node.session.created\ndata: {\"id\":\"nevt_example\",\"type\":\"node.session.created\",\"session_id\":\"nsess_example\",\"created_at\":1790000000,\"data\":{\"agent_id\":\"your_bot_id\"}}\n\n"
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "submitMessage",
+        "summary": "Submit one message or cancel the active Harness turn",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "description": "Requires a write-enabled backend. 202 acknowledges input or interruption, not task completion; inspect turns for the outcome. Message retries with the same key and logical text return saved status without resubmission; changed text returns 409. Concurrent message submissions are serialized. Pending submissions recovered after restart become unknown and are not resent. Cancel input is supported only when capabilities.events.cancellation is true, has no idempotency_key field, interrupts the native turn and terminates only its recorded processes in its thread; it never stops the shared box.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitEvent"
+              },
+              "example": {
+                "events": [
+                  {
+                    "type": "message",
+                    "text": "Run project tests"
+                  }
+                ],
+                "idempotency_key": "nreq_example_1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Input acceptance or saved idempotent response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitResult"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "schema": {
+              "$ref": "#/components/schemas/Identifier"
+            },
+            "description": "Optional; must agree with body idempotency_key if both are supplied. Retries reuse key, session ID and logical text."
+          }
+        ]
+      }
+    },
+    "/v1/agents/sessions/{session_id}/desktop": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "post": {
+        "operationId": "authorizeDesktop",
+        "summary": "Issue a single-use, bot-bound desktop link",
+        "x-required-scopes": [
+          "sessions.read"
+        ],
+        "description": "Requires sessions.read plus desktop.view for view mode or desktop.control for control mode. Issues a single-use capability; opening it establishes the viewer and any control lease. Application viewers use a separate cookie path per window and can coexist. One controller lease per bot; handing back closes that controller. Viewer connections expire after 15 minutes. Control does not pause the bot.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizeDesktop"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Sensitive capability URL; open in a local browser",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesktopAuthorization"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/handback": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "post": {
+        "operationId": "handbackDesktop",
+        "summary": "Release a desktop control lease and disconnect its viewer",
+        "x-required-scopes": [
+          "sessions.read",
+          "desktop.control"
+        ],
+        "description": "Controller credential or owner only. Does not cancel or pause bot work. No request body is read.",
+        "responses": {
+          "200": {
+            "description": "Lease released or already absent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "released"
+                  ],
+                  "properties": {
+                    "released": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/keys": {
+      "post": {
+        "operationId": "issueKey",
+        "summary": "Issue a scoped, expiring API credential",
+        "x-required-scopes": [
+          "keys.manage"
+        ],
+        "description": "Scopes and bot IDs cannot exceed issuer permissions; expiry cannot exceed the parent's. Parent revocation invalidates descendants. Plaintext key appears only at issuance.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueKey"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "New credential, including one-time plaintext secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKey"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/keys/{key_id}": {
+      "delete": {
+        "operationId": "revokeKey",
+        "summary": "Revoke a derived API credential",
+        "x-required-scopes": [
+          "keys.manage"
+        ],
+        "description": "Owner may revoke any derived key. A delegated manager may revoke only its descendants. Owner key cannot be revoked here. Descendant authentication and desktop connections are invalidated.",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Identifier"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "revoked"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "revoked": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/desktop/open": {
+      "get": {
+        "operationId": "openDesktop",
+        "summary": "Consume a single-use desktop ticket",
+        "security": [],
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Redirects to the authorized viewer with an HttpOnly, SameSite=Strict cookie valid for 900 seconds. Whole desktops use Path=/desktop; application viewers use their own Path=/desktop/lane/{viewer_id}.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "/desktop/vnc.html"
+                  ]
+                }
+              },
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/desktop/mandatory.json": {
+      "get": {
+        "operationId": "getViewerSettings",
+        "summary": "Server-selected noVNC settings",
+        "security": [
+          {
+            "viewerCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mandatory viewer settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerSettings"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/desktop/defaults.json": {
+      "get": {
+        "operationId": "getViewerDefaults",
+        "summary": "Empty noVNC defaults",
+        "security": [
+          {
+            "viewerCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Empty settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "maxProperties": 0
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/desktop/vnc.html": {
+      "get": {
+        "operationId": "getViewerPage",
+        "summary": "noVNC page with control bar hidden",
+        "security": [
+          {
+            "viewerCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Viewer HTML",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/desktop/{asset}": {
+      "get": {
+        "operationId": "getViewerAsset",
+        "summary": "Allowlisted noVNC static resources",
+        "security": [
+          {
+            "viewerCookie": []
+          }
+        ],
+        "description": "asset may contain nested paths under app/, core/ or vendor/. Dot-dot segments are rejected. This parameter documents a nested asset path, not an arbitrary filesystem path.",
+        "parameters": [
+          {
+            "name": "asset",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "core/rfb.js"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resource with its native content type",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/desktop/socket": {
+      "get": {
+        "operationId": "connectDesktopSocket",
+        "summary": "WebSocket upgrade for a cookie-authorized RFB connection",
+        "security": [
+          {
+            "viewerCookie": []
+          }
+        ],
+        "description": "Upgrade requires Host and Origin matching this service. Binary RFB 3.8 / None-security client stream. Server drops keyboard, pointer, clipboard, power, resize and extended keyboard messages in view mode. Connection errors close the socket. Ordinary HTTP GET is not a REST operation.",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "http://127.0.0.1:18770"
+            }
+          }
+        ],
+        "x-websocket": true,
+        "responses": {
+          "101": {
+            "description": "WebSocket connection established"
+          },
+          "403": {
+            "description": "WebSocket upgrade rejected; no JSON body"
+          },
+          "default": {
+            "description": "Rejected WebSocket upgrade; authentication, changed environment, quota or upstream error status, with no JSON body"
+          }
+        }
+      }
+    },
+    "/desktop/lane/{viewer_id}/mandatory.json": {
+      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "get": {
+        "operationId": "getApplicationViewerSettings",
+        "summary": "Server-selected settings for one application viewer",
+        "security": [{ "viewerCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Application viewer settings with its own socket path",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ViewerSettings" } } }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/desktop/lane/{viewer_id}/defaults.json": {
+      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "get": {
+        "operationId": "getApplicationViewerDefaults",
+        "summary": "Empty defaults for one application viewer",
+        "security": [{ "viewerCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Empty settings",
+            "content": { "application/json": { "schema": { "type": "object", "maxProperties": 0 } } }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/desktop/lane/{viewer_id}/vnc.html": {
+      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "get": {
+        "operationId": "getApplicationViewerPage",
+        "summary": "noVNC page for one application, with the control bar hidden",
+        "security": [{ "viewerCookie": [] }],
+        "responses": {
+          "200": { "description": "Authorized application viewer HTML" },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/desktop/lane/{viewer_id}/{asset}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ViewerId" },
+        { "name": "asset", "in": "path", "required": true, "schema": { "type": "string", "example": "core/rfb.js" } }
+      ],
+      "get": {
+        "operationId": "getApplicationViewerAsset",
+        "summary": "Allowlisted noVNC resources for one application viewer",
+        "security": [{ "viewerCookie": [] }],
+        "responses": {
+          "200": { "description": "Resource with its native content type" },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/desktop/lane/{viewer_id}/socket": {
+      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "get": {
+        "operationId": "upgradeApplicationViewerSocket",
+        "summary": "Cookie-authorized WebSocket upgrade for one application viewer",
+        "security": [{ "viewerCookie": [] }],
+        "parameters": [{ "name": "Origin", "in": "header", "required": true, "schema": { "type": "string", "example": "http://127.0.0.1:18770" } }],
+        "responses": {
+          "101": { "description": "Application RFB WebSocket established" },
+          "403": { "description": "WebSocket upgrade rejected; no JSON body" },
+          "default": { "description": "Rejected WebSocket upgrade; authentication, changed environment, quota or upstream error status, with no JSON body" }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/close": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "post": {
+        "operationId": "closeSession",
+        "summary": "Close an API attachment while preserving its records",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "description": "Revokes this attachment's desktop tickets/viewers. Pending input prevents closing. Does not delete the bot, transcript, files, or cancel bot work. A later attachment to the same bot can be created.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Session"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/usage": {
+      "get": {
+        "operationId": "getUsage",
+        "summary": "Read the caller's governance counters and limits",
+        "description": "Counters are keyed by quota principal (derived key user_id, else owner). requests counts the current rate window; streams counts live SSE/desktop streams (limit 4); storageBytes counts logical reservations incl. session state and export artifacts (default cap 64 MiB).",
+        "responses": {
+          "200": {
+            "description": "Per-principal usage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Usage"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/webhooks": {
+      "post": {
+        "operationId": "configureWebhooks",
+        "summary": "Configure the loopback webhook destination and signing key",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "description": "Owner credential only (not a scope). Destination must be a literal loopback HTTP(S) URL (127.0.0.1 or [::1], no userinfo/query/fragment). First configure creates the signing key and enables the outbox; later calls change the destination and keep the key. Returns destination plus signingKey {id, secret}: provision the secret out of band.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "destination"
+                ],
+                "properties": {
+                  "destination": {
+                    "type": "string",
+                    "maxLength": 2048
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Webhook configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookConfiguration"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/webhooks/rotate": {
+      "post": {
+        "operationId": "rotateWebhookKey",
+        "summary": "Rotate the webhook signing key",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "description": "Owner credential only. Rotation affects the next attempt, including queued retries. Keep the previous key configured on receivers during overlap.",
+        "responses": {
+          "200": {
+            "description": "New signing key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookKey"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/webhooks/dispatch": {
+      "post": {
+        "operationId": "dispatchWebhooks",
+        "summary": "Deliver due webhook envelopes now",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "description": "Owner credential only. The service also dispatches on a 1s timer while webhooks stay enabled; a dispatch failure disables further attempts until reconfigured. Delivery is at-least-once: a crash after HTTP success can replay the same delivery id.",
+        "responses": {
+          "200": {
+            "description": "Attempted deliveries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WebhookDelivery"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/webhooks/{delivery_id}": {
+      "parameters": [
+        {
+          "name": "delivery_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Identifier"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getWebhookDelivery",
+        "summary": "Read one webhook delivery (owner, own principal only)",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "description": "Owner credential only; a delivery is visible only under the quota principal that enqueued it. Status is pending, delivering, retry, delivered or failed with attempts, nextAttemptAt, lastError (none/interrupted/timeout/transport/http_status) and lastStatus.",
+        "responses": {
+          "200": {
+            "description": "Delivery status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDelivery"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "Discover supported features and explicit backend limitations",
+        "responses": {
+          "200": {
+            "description": "Authenticated capability declaration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/keys/{key_id}/rotate": {
+      "parameters": [
+        {
+          "name": "key_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Identifier"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "rotateKey",
+        "summary": "Rotate a derived API credential",
+        "x-required-scopes": [
+          "keys.manage"
+        ],
+        "description": "Owner may rotate any derived key; a delegated manager only its descendants. Only active keys rotate (409 key_inactive). The old id is revoked and a new id with a fresh secret is issued; desktop viewers on the old key disconnect. The plaintext key appears only in this response.",
+        "responses": {
+          "201": {
+            "description": "Replacement credential, including one-time plaintext secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKey"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/users": {
+      "post": {
+        "operationId": "createUser",
+        "summary": "Create a private API user identity",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "description": "Owner credential only. Names are 1..128 chars with no control characters. Derived keys can be bound to a user via user_id so per-user quotas, revocation and disable cascade apply.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "New user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listUsers",
+        "summary": "List the owner identity and all users",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "description": "Owner credential only. First entry is always the owner identity; then created users with disabled flags and timestamps.",
+        "responses": {
+          "200": {
+            "description": "Users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserList"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/users/{user_id}/disable": {
+      "parameters": [
+        {
+          "name": "user_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Identifier"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "disableUser",
+        "summary": "Disable a user identity",
+        "x-required-scopes": [
+          "owner"
+        ],
+        "description": "Owner credential only. Disabled users derived keys stop authenticating and their desktop viewers disconnect. The owner identity cannot be disabled.",
+        "responses": {
+          "200": {
+            "description": "Disabled user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/turns": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "get": {
+        "operationId": "listTurns",
+        "summary": "List Harness turns (codex backend)",
+        "x-required-scopes": [
+          "sessions.read"
+        ],
+        "description": "Codex backend only. Each turn carries id, status (running/completed/failed/interrupted/cancelled/unknown), started/ended timestamps, items with turn ids, native usage (tokenUsage snapshot, cost always null) and the submitting request id. Unknown means the outcome was never observed, never success.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/After"
+          },
+          {
+            "$ref": "#/components/parameters/Order"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Turns",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnList"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/traces": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "get": {
+        "operationId": "listTraces",
+        "summary": "List turn traces with spans (codex backend)",
+        "x-required-scopes": [
+          "sessions.read"
+        ],
+        "description": "Codex backend only. One entry per turn: turn_id, started/ended timestamps, status, usage and spans (the turn items). Not OTLP; no model-cost attribution (usage.cost is always null). Unknown spans must not be read as success.",
+        "responses": {
+          "200": {
+            "description": "Traces",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnTraceList"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/actions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "get": {
+        "operationId": "listActions",
+        "summary": "List pending required actions (codex backend)",
+        "x-required-scopes": [
+          "sessions.read"
+        ],
+        "description": "Codex backend only. Pending approvals for item/commandExecution/requestApproval, item/fileChange/requestApproval and item/tool/call, each with request/thread/turn/item ids and native details. Survives disconnects; answer via POST actions/{action_id}.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/After"
+          },
+          {
+            "$ref": "#/components/parameters/Order"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending actions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequiredActionList"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/actions/{action_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        },
+        {
+          "name": "action_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Identifier"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "answerAction",
+        "summary": "Approve or decline a required action (codex backend)",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "description": "Codex backend only. Decision is accept or decline. item/tool/call only executes node_approved_shell (anything else is 409 tool_unavailable); command and file approvals forward the decision to the Harness. A declined shell reports denied without executing, and denial is what the backend records. 409 action_unavailable when not pending, 409 action_busy when already being answered.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Answer recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "answered"
+                  ],
+                  "properties": {
+                    "answered": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/resume": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "post": {
+        "operationId": "resumeSession",
+        "summary": "Resume a Harness thread after restart (codex backend)",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "description": "Codex backend only. Re-attaches a live thread (thread/resume) and restores the turn list from thread/read, preserving previously recorded usage and request ids. 409 thread_missing when the session has no Harness thread. No request body is read.",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Session"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/handoff": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "post": {
+        "operationId": "handoffSession",
+        "summary": "Hand a thread to codex_cli (codex backend)",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "description": "Codex backend only. Requires an idle bot (409 turn_active otherwise). Unsubscribes the thread and reports thread_id, bot_id, target codex_cli and replayed false. No request body is read.",
+        "responses": {
+          "200": {
+            "description": "Handoff receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionHandoff"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/clipboard": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "get": {
+        "operationId": "readClipboard",
+        "summary": "Read the bot clipboard (codex backend, manual)",
+        "x-required-scopes": [
+          "sessions.read",
+          "desktop.view"
+        ],
+        "description": "Codex backend only. There is no clipboard sync or watcher: this is one explicit read. Route scope is sessions.read (GET); the adapter additionally requires desktop.view on the bot.",
+        "responses": {
+          "200": {
+            "description": "Clipboard text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClipboardRead"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "writeClipboard",
+        "summary": "Write the bot clipboard (codex backend, lease holders only)",
+        "x-required-scopes": [
+          "sessions.write",
+          "desktop.control"
+        ],
+        "description": "Codex backend only. Route scope is sessions.write (non-GET, non-desktop/handback sub-route); the adapter additionally requires desktop.control on the bot AND the caller own active control lease (403 otherwise), and rejects closed sessions (409 session_closed).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Write receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClipboardWrite"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/project/diff": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "get": {
+        "operationId": "getProjectDiff",
+        "summary": "Read the working-tree diff (codex backend)",
+        "x-required-scopes": [
+          "sessions.read"
+        ],
+        "description": "Codex backend only. Returns the runtime project diff for review. Route scope is sessions.read (GET).",
+        "responses": {
+          "200": {
+            "description": "Project diff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/project/import": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "post": {
+        "operationId": "importProject",
+        "summary": "Import files into the project (codex backend)",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "description": "Codex backend only. Requires an open idle session (409 session_busy when closed or a turn is running). Body files array up to 16 MiB. Returns the runtime import result.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "files"
+                ],
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Import result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/project/export": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "post": {
+        "operationId": "exportProject",
+        "summary": "Export the project as a download artifact (codex backend)",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "description": "Codex backend only. Requires an open idle session (409 session_busy otherwise). Reserves storage quota (inventory bytes + 1 MiB, then the real size; 413 storage_quota when over cap), tars the project to artifacts/{id}.tgz and returns artifact with id, name, size, sha256 and download_url. Fetch the bytes via GET artifacts/{artifact_id}/content.",
+        "responses": {
+          "200": {
+            "description": "Export artifact descriptor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectExport"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/environment/backup": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "post": {
+        "operationId": "backupEnvironment",
+        "summary": "Back up source, edits, conversation and logs (codex backend)",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "description": "Codex backend only. Requires an idle bot across all its sessions (409 turn_active otherwise). Tars the Harness home dir to mac-session.tgz and snapshots the API session to session.json (0600). Returns backup_id with preserved source, uncommitted_changes, conversation and logs, and processes_restored false: running processes are NOT restored, ever. No request body is read.",
+        "responses": {
+          "201": {
+            "description": "Backup receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentBackup"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/environment/recreate": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "post": {
+        "operationId": "recreateEnvironment",
+        "summary": "Request environment recreation; the shared backend refuses lifecycle management",
+        "description": "The published shared GrokNode runtime returns 409 managed_by_grok_node. Container creation, replacement and restart remain owned by GrokNode; this API does not recreate the box.",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "responses": {
+          "200": {
+            "description": "Recreate receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentRecreate"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/environment/restore": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "post": {
+        "operationId": "restoreEnvironment",
+        "summary": "Restore the environment from a backup (codex backend)",
+        "x-required-scopes": [
+          "sessions.write"
+        ],
+        "description": "Codex backend only. Requires no API-managed active turn in the shared project. Body backup_id selects a namespaced private backup. Checks archive identity and SHA-256, backs up current files, then overlays project entries without deleting extra files. Does not recreate the container or automatically replace the API state or Mac Harness profile from backup. Returns restored true and processes_restored false; preserve Mac state/runtime-state and explicitly resume the thread.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "backup_id"
+                ],
+                "properties": {
+                  "backup_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restore receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentRestore"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/artifacts/{artifact_id}/content": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        },
+        {
+          "name": "artifact_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/Identifier"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "downloadArtifact",
+        "summary": "Download a project export tgz (codex backend)",
+        "x-required-scopes": [
+          "sessions.read"
+        ],
+        "description": "Codex backend only. Route scope is sessions.read (GET). Serves the stored tgz inside the service artifacts dir (path traversal rejected, 404 otherwise) as application/gzip with Content-Disposition attachment project.tgz. One authenticated GET; never put the key in the URL.",
+        "responses": {
+          "200": {
+            "description": "Gzip artifact bytes",
+            "content": {
+              "application/gzip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/agents/sessions/{session_id}/applications": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/SessionId"
+        }
+      ],
+      "get": {
+        "operationId": "listApplications",
+        "summary": "List current application windows on the selected bot desktop",
+        "x-required-scopes": [
+          "sessions.read",
+          "desktop.view"
+        ],
+        "description": "Requires sessions.read and desktop.view. Returns current windows only; no application or desktop is launched by enumeration.",
+        "responses": {
+          "200": {
+            "description": "Current application windows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationList"
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "Service-generated request correlation ID",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "launchApplication",
+        "summary": "Explicitly launch a terminal or browser on the bot's existing desktop",
+        "x-required-scopes": [
+          "sessions.read",
+          "desktop.control"
+        ],
+        "description": "Requires this caller's active control lease. Does not create a desktop/container or change GrokNode software. 202 is launch acceptance; GET applications observes the window.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "terminal",
+                      "browser"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Application launch accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "launched",
+                    "kind",
+                    "display"
+                  ],
+                  "properties": {
+                    "launched": {
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "terminal",
+                        "browser"
+                      ]
+                    },
+                    "display": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Owner or derived Node Agent API key; not a GrokNode gateway token"
+      },
+      "viewerCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "nodeviewer",
+        "description": "Issued by consuming a single-use desktop ticket"
+      }
+    },
+    "parameters": {
+      "ViewerId": {
+        "name": "viewer_id",
+        "in": "path",
+        "required": true,
+        "description": "Opaque application viewer id returned in the ticket redirect; it is not a bot, desktop or X11 window id.",
+        "schema": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+      },
+      "AgentId": {
+        "name": "agent_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Identifier"
+        }
+      },
+      "SessionId": {
+        "name": "session_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Identifier"
+        }
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        }
+      },
+      "After": {
+        "name": "after",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "description": "Exclusive resource cursor in the caller's filtered collection; unknown cursors return 400"
+      },
+      "Order": {
+        "name": "order",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "default": "asc"
+        }
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "JSON error: 400 invalid request; 401 invalid credentials/ticket/viewer; 403 permission, origin or writes disabled; 404 missing resource; 409 conflict/capacity; 413 body limit; 415 JSON required; 500 internal failure; 502 upstream failure",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "headers": {
+          "X-Request-ID": {
+            "description": "Service-generated request correlation ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Session": {
+        "description": "New Harness thread attachment or reused legacy bot transcript attachment",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Session"
+            }
+          }
+        },
+        "headers": {
+          "X-Request-ID": {
+            "description": "Service-generated request correlation ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Identifier": {
+        "type": "string",
+        "pattern": "^[\\p{L}\\p{N}][\\p{L}\\p{N}_-]{0,127}$"
+      },
+      "Scope": {
+        "type": "string",
+        "enum": [
+          "agents.read",
+          "agents.write",
+          "sessions.read",
+          "sessions.write",
+          "desktop.view",
+          "desktop.control",
+          "keys.manage"
+        ]
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "service",
+          "version",
+          "backend",
+          "compatible_with_openai_sdk"
+        ],
+        "properties": {
+          "service": {
+            "type": "string",
+            "enum": [
+              "node-agent-api"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "enum": [
+              "0.3.0"
+            ]
+          },
+          "backend": {
+            "type": "string",
+            "enum": [
+              "grok_node",
+              "codex_harness"
+            ]
+          },
+          "compatible_with_openai_sdk": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        }
+      },
+      "Agent": {
+        "type": "object",
+        "required": [
+          "object",
+          "id",
+          "name",
+          "description",
+          "backend"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.agent"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/Identifier"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "backend": {
+            "type": "string",
+            "enum": [
+              "grok_node",
+              "codex_harness"
+            ],
+            "description": "grok_node is the explicit legacy gateway backend; codex_harness is the default Mac Codex backend using bots discovered from the original GrokNode gateway."
+          }
+        }
+      },
+      "CreateAgent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "\\S"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4000
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "required": [
+          "object",
+          "id",
+          "agent_id",
+          "status",
+          "created_at",
+          "context",
+          "metadata"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.agent.session"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/Identifier"
+          },
+          "agent_id": {
+            "$ref": "#/components/schemas/Identifier"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "pending",
+              "accepted",
+              "rejected",
+              "unknown",
+              "closed"
+            ],
+            "description": "Input submission state, not task completion"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "context": {
+            "type": "string",
+            "enum": [
+              "grok_node_bot_transcript",
+              "codex_harness"
+            ],
+            "description": "grok_node_bot_transcript reuses the bot's existing transcript (legacy grok backend); codex_harness is a codex-backend Harness thread attachment"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/Metadata"
+          },
+          "thread_id": {
+            "type": "string",
+            "description": "Harness thread id; present on codex-backend sessions after bindSession"
+          },
+          "task_status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "running",
+              "completed",
+              "failed",
+              "interrupted",
+              "cancelled",
+              "unknown"
+            ],
+            "description": "Authoritative turn outcome on the codex backend; input acceptance state on the legacy backend"
+          },
+          "active_turn_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Running turn id, or null when idle"
+          }
+        }
+      },
+      "CreateSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "agent_id"
+            ]
+          },
+          {
+            "required": [
+              "agent"
+            ]
+          }
+        ],
+        "properties": {
+          "agent_id": {
+            "$ref": "#/components/schemas/Identifier"
+          },
+          "agent": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Identifier"
+              }
+            },
+            "additionalProperties": false
+          },
+          "metadata": {
+            "type": "object",
+            "maxProperties": 16,
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "description": "String map; keys up to 64 UTF-16 code units, values up to 512. null clears metadata in requests.",
+            "nullable": true
+          }
+        }
+      },
+      "Environment": {
+        "type": "object",
+        "required": [
+          "object",
+          "id",
+          "agent_id",
+          "type",
+          "isolation",
+          "container",
+          "display"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.environment"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "$ref": "#/components/schemas/Identifier"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "grok_node",
+              "grok_node_codex"
+            ],
+            "description": "grok_node_codex selects Mac Codex Harness with the original shared GrokNode box. grok_node is the explicit legacy gateway backend."
+          },
+          "isolation": {
+            "type": "string",
+            "enum": [
+              "shared_container_separate_display",
+              "per_bot_container"
+            ],
+            "description": "Different desktops with shared container/data. Display allocation and API bot grants do not isolate Linux files between bots."
+          },
+          "container": {
+            "type": "string"
+          },
+          "display": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 999
+          }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "session_id",
+          "created_at",
+          "data"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "node.session.created",
+              "node.session.input.accepted",
+              "node.session.input.rejected",
+              "node.session.input.unknown",
+              "node.desktop.authorization.created",
+              "node.session.items.changed",
+              "node.session.closed",
+              "node.harness.event",
+              "node.harness.disconnected",
+              "node.session.turn.unknown",
+              "node.thread.empty_recreated",
+              "node.turn.processes.stopped",
+              "node.action.resolved",
+              "node.environment.recreated",
+              "node.environment.restored"
+            ]
+          },
+          "session_id": {
+            "$ref": "#/components/schemas/Identifier"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "SubmitMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "type",
+                    "text"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "message"
+                      ]
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 16000,
+                      "pattern": "\\S",
+                      "description": "Upper bound is measured in JavaScript UTF-16 code units"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "type",
+                    "input"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "agent.session.input.message"
+                      ]
+                    },
+                    "input": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 1,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "role",
+                          "content"
+                        ],
+                        "properties": {
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "user"
+                            ]
+                          },
+                          "content": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 1,
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "type",
+                                "text"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "input_text"
+                                  ]
+                                },
+                                "text": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 16000,
+                                  "pattern": "\\S",
+                                  "description": "Upper bound is measured in JavaScript UTF-16 code units"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "idempotency_key": {
+            "$ref": "#/components/schemas/Identifier"
+          }
+        }
+      },
+      "SubmitResult": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/InputResult" },
+          { "$ref": "#/components/schemas/CancelResult" }
+        ]
+      },
+      "SubmitEvent": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/SubmitMessage" },
+          { "$ref": "#/components/schemas/CancelInput" }
+        ]
+      },
+      "CancelInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["events"],
+        "properties": {
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "turn_id"],
+              "properties": {
+                "type": { "type": "string", "enum": ["agent.session.input.cancel"] },
+                "turn_id": { "$ref": "#/components/schemas/Identifier" }
+              }
+            }
+          }
+        }
+      },
+      "CancelResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["accepted", "turn_id", "completed"],
+        "properties": {
+          "accepted": { "type": "boolean", "enum": [true] },
+          "turn_id": { "$ref": "#/components/schemas/Identifier" },
+          "completed": { "type": "boolean", "enum": [false] }
+        }
+      },
+      "InputResult": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "status",
+          "completed"
+        ],
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/Identifier"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected",
+              "unknown"
+            ]
+          },
+          "completed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Harness turn id when the backend starts one synchronously (codex backend only)"
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "Saved response returned; backend input was not reexecuted"
+          }
+        }
+      },
+      "AuthorizeDesktop": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "view",
+              "control"
+            ],
+            "default": "view"
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300,
+            "default": 60
+          },
+          "target": {
+            "$ref": "#/components/schemas/DesktopTarget",
+            "description": "Defaults to the whole desktop. Applications must belong to the current bot desktop."
+          }
+        }
+      },
+      "DesktopAuthorization": {
+        "type": "object",
+        "required": [
+          "object",
+          "agent_id",
+          "mode",
+          "display",
+          "url",
+          "expires_at",
+          "single_use",
+          "server_enforced",
+          "pauses_agent"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.desktop.authorization"
+            ]
+          },
+          "agent_id": {
+            "$ref": "#/components/schemas/Identifier"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "view",
+              "control"
+            ]
+          },
+          "display": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string",
+            "description": "Sensitive single-use capability URL"
+          },
+          "expires_at": {
+            "type": "integer",
+            "description": "Unix seconds; ticket opening deadline"
+          },
+          "single_use": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "server_enforced": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "pauses_agent": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        }
+      },
+      "ViewerSettings": {
+        "type": "object",
+        "required": [
+          "autoconnect",
+          "resize",
+          "reconnect",
+          "view_only",
+          "path"
+        ],
+        "properties": {
+          "autoconnect": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "resize": {
+            "type": "string",
+            "enum": [
+              "scale"
+            ]
+          },
+          "reconnect": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "view_only": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^desktop/(lane/[A-Za-z0-9_-]+/)?socket$",
+            "description": "Server-selected whole-desktop or application viewer WebSocket path. Clients must use the returned setting."
+          }
+        }
+      },
+      "IssueKey": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scopes",
+          "bot_ids"
+        ],
+        "properties": {
+          "user_id": {
+            "$ref": "#/components/schemas/Identifier",
+            "description": "Defaults to the caller's API user. Only the owner can issue keys for another active user."
+          },
+          "scopes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            }
+          },
+          "bot_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Identifier"
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "*"
+                  ]
+                }
+              ]
+            }
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400,
+            "default": 3600
+          }
+        }
+      },
+      "ApiKey": {
+        "type": "object",
+        "required": [
+          "object",
+          "id",
+          "key",
+          "scopes",
+          "bot_ids",
+          "expires_at"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.api_key"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/Identifier"
+          },
+          "key": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            }
+          },
+          "bot_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expires_at": {
+            "type": "integer"
+          }
+        }
+      },
+      "AgentList": {
+        "type": "object",
+        "required": [
+          "object",
+          "data",
+          "has_more",
+          "first_id",
+          "last_id"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "first_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "last_id": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "SessionList": {
+        "type": "object",
+        "required": [
+          "object",
+          "data",
+          "has_more",
+          "first_id",
+          "last_id"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Session"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "first_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "last_id": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "EventList": {
+        "type": "object",
+        "required": [
+          "object",
+          "data",
+          "has_more",
+          "first_id",
+          "last_id"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "first_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "last_id": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "ItemList": {
+        "type": "object",
+        "required": [
+          "object",
+          "data",
+          "has_more",
+          "context",
+          "first_id",
+          "last_id"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {}
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "context": {
+            "type": "string",
+            "enum": [
+              "grok_node_bot_transcript"
+            ]
+          },
+          "first_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "last_id": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "type",
+              "message"
+            ],
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "Metadata": {
+        "type": "object",
+        "maxProperties": 16,
+        "additionalProperties": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "description": "String map; keys up to 64 UTF-16 code units, values up to 512. null clears metadata in requests."
+      },
+      "Capabilities": {
+        "type": "object",
+        "required": [
+          "object",
+          "version",
+          "backend",
+          "writes_enabled",
+          "sessions",
+          "events",
+          "environment",
+          "security",
+          "desktop",
+          "project",
+          "clipboard",
+          "service"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.api.capabilities"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "enum": [
+              "0.3.0"
+            ],
+            "description": "API implementation version, consistent with health and the CLI banner."
+          },
+          "backend": {
+            "type": "string",
+            "enum": [
+              "grok_node",
+              "codex_harness"
+            ]
+          },
+          "writes_enabled": {
+            "type": "boolean"
+          },
+          "sessions": {
+            "type": "object",
+            "properties": {
+              "context": {
+                "type": "string"
+              },
+              "independent_conversations": {
+                "type": "boolean",
+                "description": "False on the legacy backend (one shared transcript per bot); true on the codex backend (independent Harness threads)"
+              },
+              "metadata": {
+                "type": "boolean"
+              },
+              "close": {
+                "type": "boolean"
+              }
+            }
+          },
+          "events": {
+            "type": "object",
+            "properties": {
+              "sse": {
+                "type": "boolean"
+              },
+              "resume": {
+                "type": "string"
+              },
+              "turn_outcomes": {
+                "type": "boolean",
+                "description": "True on the codex backend (running/completed/failed/interrupted/cancelled/unknown); input acceptance state only on the legacy backend"
+              },
+              "cancellation": {
+                "type": "boolean",
+                "description": "True on the codex backend (turn/interrupt); unavailable on the legacy backend"
+              },
+              "required_actions": {
+                "type": "boolean",
+                "description": "True on the codex backend (pending approvals readable and answerable); explicitly unsupported on the legacy backend"
+              },
+              "tool_results": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              }
+            }
+          },
+          "environment": {
+            "type": "object",
+            "properties": {
+              "provisioning": {
+                "type": "boolean",
+                "description": "False for the published shared GrokNode backend: creating a Harness thread does not provision a container. GrokNode owns box lifecycle management."
+              },
+              "isolation": {
+                "type": "string"
+              }
+            }
+          },
+          "security": {
+            "type": "object",
+            "properties": {
+              "loopback_only": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
+              "desktop_server_enforced": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              },
+              "legacy_vnc_protected": {
+                "type": "boolean",
+                "description": "False for both published shared-container backends. Authorization protects this API's viewer routes; original GrokNode VNC ports retain their existing access policy."
+              }
+            }
+          },
+          "desktop": {
+            "type": "object",
+            "description": "Viewer issuance; control additionally needs a per-bot lease and desktop.control scope",
+            "properties": {
+              "view": {
+                "type": "boolean"
+              },
+              "control": {
+                "type": "boolean"
+              },
+              "applications": {
+                "type": "boolean"
+              }
+            }
+          },
+          "project": {
+            "type": "object",
+            "description": "Codex-backend project operations; absent/false on the legacy backend",
+            "properties": {
+              "diff": {
+                "type": "boolean"
+              },
+              "import": {
+                "type": "boolean"
+              },
+              "export": {
+                "type": "boolean"
+              }
+            }
+          },
+          "clipboard": {
+            "type": "object",
+            "description": "Codex-backend manual clipboard; reads need desktop.view, writes need desktop.control plus the control lease",
+            "properties": {
+              "read": {
+                "type": "boolean"
+              },
+              "write": {
+                "type": "boolean"
+              }
+            }
+          },
+          "service": {
+            "type": "object",
+            "description": "Governance quotas, audit journal and webhook outbox are always on",
+            "properties": {
+              "quotas": {
+                "type": "boolean"
+              },
+              "audit": {
+                "type": "boolean"
+              },
+              "webhooks": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "requests": {
+            "type": "integer",
+            "description": "Requests counted in the current rate window"
+          },
+          "streams": {
+            "type": "integer",
+            "description": "Live SSE and desktop streams held by this principal (limit 4)"
+          },
+          "storageBytes": {
+            "type": "integer",
+            "description": "Logical storage reservation bytes, including session state and export artifacts"
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "requests": {
+                "type": "integer"
+              },
+              "windowMs": {
+                "type": "integer"
+              },
+              "streams": {
+                "type": "integer"
+              },
+              "storageBytes": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "required": [
+          "requests",
+          "streams",
+          "storageBytes",
+          "limits"
+        ]
+      },
+      "WebhookKey": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string",
+            "description": "Base64url signing secret; provision out of band"
+          }
+        },
+        "required": [
+          "id",
+          "secret"
+        ]
+      },
+      "WebhookConfiguration": {
+        "type": "object",
+        "properties": {
+          "destination": {
+            "type": "string"
+          },
+          "signingKey": {
+            "$ref": "#/components/schemas/WebhookKey"
+          }
+        },
+        "required": [
+          "destination",
+          "signingKey"
+        ]
+      },
+      "WebhookDelivery": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "delivering",
+              "retry",
+              "delivered",
+              "failed"
+            ]
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "nextAttemptAt": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "integer"
+          },
+          "lastError": {
+            "type": "string",
+            "enum": [
+              "none",
+              "interrupted",
+              "timeout",
+              "transport",
+              "http_status"
+            ]
+          },
+          "lastStatus": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "attempts",
+          "nextAttemptAt",
+          "createdAt",
+          "lastError",
+          "lastStatus"
+        ]
+      },
+      "Turn": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.turn"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "interrupted",
+              "cancelled",
+              "unknown"
+            ],
+            "description": "unknown means the outcome was never observed; never read it as success"
+          },
+          "started_at": {
+            "type": "integer"
+          },
+          "ended_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {}
+          },
+          "usage": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/Identifier"
+          }
+        },
+        "required": [
+          "object",
+          "id",
+          "status",
+          "started_at"
+        ]
+      },
+      "TurnList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "first_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more",
+          "first_id",
+          "last_id"
+        ]
+      },
+      "TurnTrace": {
+        "type": "object",
+        "properties": {
+          "turn_id": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": "integer"
+          },
+          "ended_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "interrupted",
+              "cancelled",
+              "unknown"
+            ]
+          },
+          "usage": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "spans": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "required": [
+          "turn_id",
+          "started_at",
+          "status"
+        ]
+      },
+      "TurnTraceList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TurnTrace"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more"
+        ]
+      },
+      "RequiredAction": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.required_action"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "JSON-RPC request id used to answer this approval"
+          },
+          "thread_id": {
+            "type": "string"
+          },
+          "turn_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "item/commandExecution/requestApproval",
+              "item/fileChange/requestApproval",
+              "item/tool/call"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending"
+            ]
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "created_at": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "object",
+          "id",
+          "type",
+          "status"
+        ]
+      },
+      "RequiredActionList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequiredAction"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "first_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more",
+          "first_id",
+          "last_id"
+        ]
+      },
+      "AnswerAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["decision"],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": ["accept", "decline"]
+          }
+        }
+      },
+      "SessionHandoff": {
+        "type": "object",
+        "properties": {
+          "thread_id": {
+            "type": "string"
+          },
+          "bot_id": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "codex_cli"
+            ]
+          },
+          "replayed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        },
+        "required": [
+          "thread_id",
+          "bot_id",
+          "target",
+          "replayed"
+        ]
+      },
+      "ClipboardRead": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "ClipboardWrite": {
+        "type": "object",
+        "properties": {
+          "written": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "written"
+        ]
+      },
+      "ProjectExport": {
+        "type": "object",
+        "properties": {
+          "artifact": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "size",
+              "sha256",
+              "download_url"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "enum": [
+                  "project.tgz"
+                ]
+              },
+              "size": {
+                "type": "integer"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "download_url": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "artifact"
+        ]
+      },
+      "EnvironmentBackup": {
+        "type": "object",
+        "properties": {
+          "backup_id": {
+            "type": "string"
+          },
+          "preserved": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "source",
+                "uncommitted_changes",
+                "conversation",
+                "logs"
+              ]
+            }
+          },
+          "processes_restored": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "Running processes are never restored"
+          }
+        },
+        "required": [
+          "backup_id",
+          "preserved",
+          "processes_restored"
+        ]
+      },
+      "EnvironmentRecreate": {
+        "type": "object",
+        "properties": {
+          "running": {
+            "type": "boolean"
+          },
+          "preserved_files": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "processes_restored": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        },
+        "required": [
+          "running",
+          "preserved_files",
+          "processes_restored"
+        ]
+      },
+      "EnvironmentRestore": {
+        "type": "object",
+        "properties": {
+          "restored": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "processes_restored": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        },
+        "required": [
+          "restored",
+          "processes_restored"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.user"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "owner or nuser_<24 hex>"
+          },
+          "name": {
+            "type": "string"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "disabled_at": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "object",
+          "id",
+          "name",
+          "disabled"
+        ]
+      },
+      "UserList": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "first_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more",
+          "first_id",
+          "last_id"
+        ]
+      },
+      "DesktopTarget": {
+        "description": "Select the whole assigned desktop or one current X11 application window.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "desktop"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "application_id"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "application"
+                ]
+              },
+              "application_id": {
+                "type": "string",
+                "pattern": "^0x[0-9a-fA-F]{1,16}$"
+              }
+            }
+          }
+        ]
+      },
+      "Application": {
+        "description": "A currently managed X11 window on the selected bot's GrokNode desktop. Its id can change when the application closes or the box restarts.",
+        "type": "object",
+        "required": [
+          "object",
+          "id",
+          "name",
+          "running"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "node.application"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{1,16}$",
+            "description": "Current X11 window id; not an authorization token."
+          },
+          "name": {
+            "type": "string"
+          },
+          "running": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApplicationList": {
+        "type": "object",
+        "required": [
+          "object",
+          "data",
+          "has_more"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "enum": [
+              "list"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Application"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "first_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

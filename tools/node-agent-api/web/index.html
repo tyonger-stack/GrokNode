@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="GrokNode 中文工作台：连接真实机器人、恢复会话、审阅工具与项目变更、手动接管桌面。">
+  <meta name="referrer" content="no-referrer">
+  <title>GrokNode · 会话工作台</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <aside aria-label="连接与会话">
+    <h1>GrokNode <small>会话工作台</small></h1>
+    <form id="auth" autocomplete="off">
+      <label for="key">API 访问密钥</label>
+      <input id="key" type="password" autocomplete="off" spellcheck="false" required placeholder="手动输入 Bearer 密钥">
+      <p class="hint">仅存本页内存；刷新后重新输入。</p>
+      <div class="toolbar"><button id="connect" type="submit">连接</button><button id="disconnect" type="button">断开并清除</button></div>
+    </form>
+    <label for="bots">机器人</label>
+    <select id="bots" disabled><option value="">请先连接</option></select>
+    <button id="refresh" disabled>刷新机器人</button>
+    <h2>会话</h2>
+    <p class="hint" id="context">会话语义尚未查询。</p>
+    <button id="attach" disabled>新建 / 打开会话</button>
+    <button id="history" disabled>刷新会话</button>
+    <div id="sessions">选择机器人后加载真实会话。</div>
+    <details><summary>服务能力</summary><pre id="capabilities">尚未查询</pre></details>
+  </aside>
+  <main>
+    <header>
+      <h2 id="title">选择机器人与会话</h2>
+      <p id="identity">未选择会话</p>
+      <p id="status" role="status" aria-live="polite">请输入当前服务的访问密钥。</p>
+      <p id="turn-status" role="status">回合结果未知</p>
+      <div class="toolbar"><button id="resume" disabled>恢复事件流 / 刷新记录</button><span id="stream-status">事件流未连接</span></div>
+    </header>
+    <section id="transcript" aria-label="对话记录"><p class="empty">连接后显示该机器人的真实对话与工具记录。</p></section>
+    <section id="approvals" aria-label="待审批操作"></section>
+    <form id="composer">
+      <label for="prompt">消息</label>
+      <textarea id="prompt" rows="3" maxlength="16000" placeholder="描述要执行的任务…" required disabled></textarea>
+      <div class="toolbar"><span id="thread">未选择会话</span><button id="send" type="submit" disabled>发送</button><button id="cancel" type="button" disabled>取消当前回合</button></div>
+    </form>
+  </main>
+  <aside class="details" aria-label="桌面与项目">
+    <section>
+      <h2>远程桌面</h2>
+      <p id="desktop-status">服务尚未声明桌面能力。</p>
+      <div class="toolbar"><button id="view" disabled>观看</button><button id="control" disabled>接管</button><button id="handback" disabled>交还控制</button></div>
+      <div id="desktop" aria-label="远程桌面容器"></div>
+      <label for="applications">此机器人桌面上的应用</label>
+      <select id="applications" disabled><option value="">点击刷新应用</option></select>
+      <div class="toolbar"><button id="applications-refresh" disabled>刷新应用</button><button id="application-view" disabled>独立窗口观看</button><button id="application-control" disabled>独立窗口接管</button></div>
+      <div class="toolbar"><button id="launch-terminal" disabled>打开 Linux 终端</button><button id="launch-browser" disabled>打开 Linux 浏览器</button></div>
+      <p class="hint">先交还已有控制，再接管应用；其他观看窗口可以保持打开。</p>
+      <label for="clipboard">手动传递剪贴板文本</label>
+      <textarea id="clipboard" rows="2" placeholder="在此粘贴文本，再点击发送" disabled></textarea>
+      <div class="toolbar"><button id="clipboard-read" disabled>读取机器人剪贴板</button><button id="clipboard-write" disabled>发送到机器人</button></div>
+      <p class="hint">仅点击按钮时传递，不自动同步系统剪贴板。</p>
+    </section>
+    <section>
+      <h2>项目与审批</h2>
+      <div class="toolbar"><button id="actions-refresh" disabled>刷新待审批</button><button id="diff-refresh" disabled>查看差异</button><button id="export" disabled>导出项目</button></div>
+      <label for="import-file">导入文本项目 JSON</label>
+      <input id="import-file" type="file" accept="application/json,.json" disabled>
+      <button id="import" disabled>导入所选文件</button>
+      <p id="workspace-status">能力未声明的操作保持禁用。</p>
+      <button id="backup" disabled>备份项目与会话</button>
+      <label for="backup-id">恢复备份编号</label><input id="backup-id" disabled placeholder="粘贴保存的备份编号">
+      <button id="restore-backup" disabled>从备份恢复项目</button>
+      <p class="hint">恢复前自动保存当前项目；共享数据会影响所有使用此项目的机器人，原盒子的运行进程不恢复。</p>
+      <details open><summary>项目差异</summary><pre id="diff">尚未读取</pre></details>
+      <details><summary>工具流与回合事件</summary><pre id="logs">尚未收到事件</pre></details>
+    </section>
+  </aside>
+</body>
+</html>

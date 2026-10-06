@@ -38,3 +38,4 @@ node_modules/
 
 # local tool state (omc)
 /.omc/
+/.lab/
