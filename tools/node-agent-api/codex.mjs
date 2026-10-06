@@ -14,6 +14,16 @@ export function createCodexAdapter({ runtime, harness, roster, namespace, stateR
   let store, unsubscribe, tail = Promise.resolve();
   const liveThreads = new Set();
   const busyActions = new Set();
+  let tokenhub;
+  async function threadModel(session) {
+    const selection = session.model ? { model: session.model } : {};
+    if (session.reasoning_effort) selection.reasoningEffort = session.reasoning_effort;
+    if (session.endpoint_revision && session.endpoint_revision !== 'opencodex') {
+      const connection = await tokenhub.connection(session.endpoint_revision, session.reasoning_effort);
+      selection.providerConnection = connection;
+    }
+    return selection;
+  }
   function requireIdleBot(session) { if (store.list().some(row => (runtime.shared || row.agent_id === session.agent_id) && row.task_status === 'running')) throw new ApiError(409, 'turn_active', 'Interrupt active work before changing the shared project or environment'); }
   function enqueue(action) { tail = tail.then(action); return tail; }
   async function syncRegistry() {
@@ -24,8 +34,9 @@ export function createCodexAdapter({ runtime, harness, roster, namespace, stateR
   }
   const adapter = {
     backend: 'codex_harness', writesEnabled: true, independentSessions: true,
+    setTokenHub(value) { tokenhub = value; },
     isolation: runtime.shared ? 'shared_container_separate_display' : 'per_bot_container', rawDesktopProtected: !runtime.shared, externalAdapter: !!runtime.shared,
-    diagnostic: error => harness.redact(error?.message ?? 'Unknown Harness failure'),
+    diagnostic: error => harness.redact(tokenhub?.redact(error) ?? error?.message ?? 'Unknown Harness failure'),
     agents: () => roster.agents(), requireAgent: id => roster.requireAgent(id), createAgent: input => roster.createAgent(input),
     attachStore(value) {
       store = value;
@@ -76,8 +87,10 @@ export function createCodexAdapter({ runtime, harness, roster, namespace, stateR
     async bindSession(session) {
       await roster.requireAgent(session.agent_id);
       await runtime.ensure(session.agent_id); await syncRegistry();
-      const result = await harness.request(session.agent_id, 'thread/start', {});
+      const result = await harness.request(session.agent_id, 'thread/start', await threadModel(session));
       if (!result.thread?.id) throw new ApiError(502, 'harness_schema', 'Harness did not return a thread');
+      if (session.model && result.model !== session.model) throw new ApiError(502, 'model_mismatch', 'Harness did not use the selected model');
+      if (!session.model && result.model) await store.update(session.id, { model: result.model, model_source: 'harness' });
       await store.update(session.id, { thread_id: result.thread.id, context: 'codex_harness', task_status: 'idle', turns: [], actions: [], ...(runtime.shared ? { executor_container_id: (await runtime.status(session.agent_id)).containerId } : {}) });
       liveThreads.add(result.thread.id);
     },
@@ -91,11 +104,17 @@ export function createCodexAdapter({ runtime, harness, roster, namespace, stateR
       }
       if (liveThreads.has(session.thread_id)) return;
       await runtime.ensure(session.agent_id);
-      try { await harness.request(session.agent_id, 'thread/resume', { threadId: session.thread_id }); }
+      try {
+        const resumed = await harness.request(session.agent_id, 'thread/resume', { threadId: session.thread_id, ...await threadModel(session) });
+        if (session.model && resumed.model !== session.model) throw new ApiError(502, 'model_mismatch', 'Harness did not resume the selected model');
+        if (!session.model && resumed.model) await store.update(session.id, { model: resumed.model, model_source: 'harness' });
+      }
       catch (error) {
         if (session.turns?.length || !error.message.includes('no rollout found')) throw error;
-        const empty = await harness.request(session.agent_id, 'thread/start', {});
+        const empty = await harness.request(session.agent_id, 'thread/start', await threadModel(session));
         if (!empty.thread?.id) throw new ApiError(502, 'harness_schema', 'Harness did not return an empty thread');
+        if (session.model && empty.model !== session.model) throw new ApiError(502, 'model_mismatch', 'Harness did not use the selected model');
+        if (!session.model && empty.model) await store.update(session.id, { model: empty.model, model_source: 'harness' });
         await store.update(session.id, { thread_id: empty.thread.id });
         liveThreads.add(empty.thread.id);
         await store.append(session.id, 'node.thread.empty_recreated', { replayed: false }); return;
@@ -103,7 +122,7 @@ export function createCodexAdapter({ runtime, harness, roster, namespace, stateR
       liveThreads.add(session.thread_id);
       const restored = await harness.request(session.agent_id, 'thread/read', { threadId: session.thread_id });
       if (Array.isArray(restored.thread?.turns)) {
-        const turns = restored.thread.turns.map(turn => ({ object: 'node.turn', id: turn.id, status: turn.status === 'interrupted' && session.cancel_requested === turn.id ? 'cancelled' : outcomes[turn.status] ?? 'unknown', items: (turn.items ?? []).map(item => ({ ...item, turn_id: turn.id })), usage: session.turns?.find(old => old.id === turn.id)?.usage ?? null, request_id: session.turns?.find(old => old.id === turn.id)?.request_id ?? null }));
+        const turns = restored.thread.turns.map(turn => ({ object: 'node.turn', id: turn.id, ...(session.model ? { model: session.model } : {}), status: turn.status === 'interrupted' && session.cancel_requested === turn.id ? 'cancelled' : outcomes[turn.status] ?? 'unknown', items: (turn.items ?? []).map(item => ({ ...item, turn_id: turn.id })), usage: session.turns?.find(old => old.id === turn.id)?.usage ?? null, request_id: session.turns?.find(old => old.id === turn.id)?.request_id ?? null }));
         await store.update(session.id, { turns, task_status: turns.at(-1)?.status ?? 'idle' });
       }
     },
@@ -111,13 +130,14 @@ export function createCodexAdapter({ runtime, harness, roster, namespace, stateR
       await tail;
       if (session.task_status === 'running') throw new ApiError(409, 'turn_active', 'Wait for or cancel the active turn before submitting another');
       await this.resume(session);
-      const result = await harness.request(session.agent_id, 'turn/start', { threadId: session.thread_id, input: [{ type: 'text', text }] });
+      const result = await harness.request(session.agent_id, 'turn/start', { threadId: session.thread_id, input: [{ type: 'text', text }], ...(session.model ? { model: session.model } : {}), ...(session.reasoning_effort ? { reasoningEffort: session.reasoning_effort } : {}) });
       if (!result.turn?.id) throw new ApiError(502, 'harness_schema', 'Harness did not return a turn');
       await enqueue(async () => {
         const turns = structuredClone(session.turns);
         let turn = turns.find(turn => turn.id === result.turn.id);
         if (!turn) { turn = { object: 'node.turn', id: result.turn.id, status: outcomes[result.turn.status] ?? 'unknown', started_at: Date.now(), items: [], usage: null }; turns.push(turn); }
         turn.request_id = requestId;
+        if (session.model) turn.model = session.model;
         await store.update(session.id, { turns, active_turn_id: turn.status === 'running' ? turn.id : null, task_status: turn.status });
       });
       return { accepted: true, turn_id: result.turn.id };
@@ -183,12 +203,13 @@ export function createCodexAdapter({ runtime, harness, roster, namespace, stateR
     },
     async viewerAsset(asset, botId) {
       if (!/^(vnc\.html|package\.json|(?:app|core|vendor)\/[A-Za-z0-9_./-]+)$/.test(asset) || asset.split('/').includes('..')) throw new ApiError(404, 'not_found', 'Asset unavailable');
+      if (runtime.shared) return runtime.viewerAsset(asset);
       const status = await runtime.status(botId);
       if (!status.running) throw new ApiError(409, 'desktop_unavailable', 'Bot environment unavailable');
       return (await execute('docker', ['exec', status.containerName, 'cat', '/usr/share/novnc/' + asset], { encoding: null, maxBuffer: 4 * 1024 * 1024 })).stdout;
     },
     async clipboard(session, text) { if (text === undefined) return { text: await runtime.clipboard.read(session.agent_id) }; await runtime.clipboard.write(session.agent_id, text); return { written: true }; },
-    async project(session, action, input) { if (action === 'import') requireIdleBot(session); return runtime.project(session.agent_id, action, input); },
+    async project(session, action, input) { if (action === 'import') requireIdleBot(session); const result = await runtime.project(session.agent_id, action, input); if (action === 'import' && Array.isArray(result?.conflicts) && result.conflicts.length) throw new ApiError(409, 'import_conflict', 'Import refuses to overwrite: ' + result.conflicts.slice(0, 8).join(', ')); return result; },
     async exportProject(session, reserve = async () => {}) {
       requireIdleBot(session);
       await mkdir(artifactRoot, { recursive: true, mode: 0o700 });

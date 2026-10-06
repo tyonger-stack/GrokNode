@@ -15,10 +15,10 @@ export function parseClientList(output) {
   return [...source.matchAll(/0x[0-9a-f]+/gi)].map(match => match[0].toLowerCase());
 }
 
-function unquoteXprop(value) {
+function unquoteXprop(value, encoding) {
   if (!(value.startsWith('"') && value.endsWith('"'))) return value.trim();
-  return value.slice(1, -1).replace(/\\([^0-7]|[0-7]{3})/g, (_, escape) => {
-    if (/[0-7]{3}/.test(escape)) return String.fromCodePoint(Number.parseInt(escape, 8));
+  return value.slice(1, -1).replace(/((?:\\[0-7]{3})+)|\\([^0-7])/g, (_, octal, escape) => {
+    if (octal) return Buffer.from([...octal.matchAll(/\\([0-7]{3})/g)].map(match => Number.parseInt(match[1], 8))).toString(encoding);
     return { n: '\n', r: '\r', t: '\t', '\\': '\\', '"': '"', "'": "'", a: '\x07', b: '\b', s: ' ' }[escape] ?? '';
   });
 }
@@ -27,10 +27,11 @@ export function parseWindowName(output) {
   const lines = output.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!/^(?:_NET_WM_NAME|WM_NAME)\([^)]*\)\s*=/.test(line)) continue;
+    const property = /^(?:_NET_WM_NAME|WM_NAME)\(([^)]*)\)\s*=/.exec(line);
+    if (!property) continue;
     let value = line.split('=').slice(1).join('=').trim();
     while (value.startsWith('"') && !value.endsWith('"') && i + 1 < lines.length) value += lines[++i].trim();
-    return unquoteXprop(value);
+    return unquoteXprop(value, property[1] === 'UTF8_STRING' ? 'utf8' : 'latin1');
   }
   return '';
 }
@@ -73,7 +74,7 @@ export async function listApplications({
   execFileImpl = defaultExecFile,
   sanitize = false,
 } = {}) {
-  const env = { ...process.env, DISPLAY: display };
+  const env = { ...process.env, DISPLAY: display, LC_ALL: 'C.UTF-8' };
   let ids = [];
   try {
     const root = await exec(execFileImpl, 'xprop', ['-root', '_NET_CLIENT_LIST'], { env });

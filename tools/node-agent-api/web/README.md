@@ -1,8 +1,14 @@
 # 中文薄客户端接入契约
 
+桌面重复接管：整桌面观看/接管与独立应用接管发送 replace_own_control:true，显式替换同密钥旧控制租约；独立应用观看不替换。控制权只在新票据成功兑换后移交，另一个 credential 保持 409。旧票据遇到更新的控制权不得覆盖；无静默抢占或自动回落。
+
+模型选择见[接口说明](../../../docs/NODE_AGENT_API_MODELS.md)。页面通过 capabilities.models.selection 查询是否支持，获准且通过当前端点连接测试或工具链验收的模型才可选。owner 通过 capabilities.models.management 展开默认值和清单管理；普通用户隐藏管理区。默认为空时需显式选择模型。模型目录失败时禁用新建模型会话，已有会话可读、可继续。TokenHub 的地址、密钥、模型刷新和测试见[专题](../../../docs/NODE_AGENT_API_TOKENHUB.md)。
+
 入口为 `index.html`，相邻静态资源为 `app.js`、`client.js`、`style.css`。主任务需在同源服务中提供这些静态文件（无需 Bearer，页面本身不含数据）；支持根路径或带结尾斜杠的子路径。API 固定为同源 `/v1/`。建议 CSP：`default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'`，桌面查看器另按既有规则提供资源。没有内联脚本、第三方资源或新增依赖。
 
 密钥只能手动输入，存于客户端闭包内存，输入框随即清空。刷新、离开页面或“断开并清除”都会清除；不会从 URL、文件或持久存储读取。所有 API 请求用 `Authorization: Bearer …`，禁止跨来源及重定向。服务器仍须执行 scope、bot 归属和租约检查。
+
+连接按钮下方显示验证、加载、成功和错误提示；连接期间按钮显示“连接中…”并禁用。密钥可以是文件原内容，也兼容粘贴 Bearer 前缀（客户端只发送一个前缀）；认证失败会明确提示粘贴文件内容而非路径或命令。只读 JSON 请求在 30 秒后明确超时，取消保持 AbortError；写操作和 SSE 不应用此超时策略，所有请求均不自动重试。
 
 ## 能力响应
 
@@ -40,7 +46,7 @@
 | 导入 | `POST …/project/import {files:[{path,content}]}` | JSON 结果原样显示；服务端负责路径/覆盖/权限策略 |
 | 导出 | `POST …/project/export {}` | `{files:[{path,content}],…}`，下载完整 JSON |
 | 桌面 | `POST …/desktop {mode:"view"或"control"}` | `{url,pauses_agent?}`，URL 必须同源 `/desktop/…`，装入 iframe |
-| 交还 | `POST …/handback {}` | JSON 或 204，成功后移除查看器 |
+| 交还 | `POST …/handback {}`，成功后 `POST …/desktop {mode:"view",replace_own_control:true}` | 自动切回只读观看，保留桌面画面；观看重连失败明确提示，不能恢复控制 |
 | 手动剪贴板 | `GET …/clipboard` / `POST …/clipboard {text}` | 读取 `{text:string}`；写入 JSON 或 204。仅按钮触发，无系统剪贴板 API |
 
 列表消费 `limit=100` 和 `after=last_id` 直到 `has_more=false`，不会静默截断。JSON 错误格式沿用 `{error:{type,message}}`。

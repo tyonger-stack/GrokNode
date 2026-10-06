@@ -26,6 +26,11 @@ jobs:
           cache: npm
       - name: Install the locked dependency graph
         run: npm ci --no-audit --no-fund
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Prepare Node Agent TokenHub protocol test dependencies
+        run: npm install --global --prefix "$HOME/.npm-global" --ignore-scripts --no-audit --no-fund @bitkyc08/opencodex@2.78.0
       - name: Run source and publication checks
         # Same gate as `npm run check`, except the suite list. The real-network
         # web tools tests are excluded here: they turned this required job red

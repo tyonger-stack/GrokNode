@@ -54,7 +54,9 @@ export async function createStore(directory) {
       const existing = [...sessions.values()].find(s => s.agent_id === agentId && s.status !== 'closed');
       if (existing && options.reuse !== false) return { session: existing, created: false };
       const session = { object: 'node.agent.session', id: 'nsess_' + randomUUID(), agent_id: agentId, status: 'idle', created_at: Math.floor(Date.now() / 1000), context: 'grok_node_bot_transcript', quota_user_id: options.quota_user_id ?? 'owner', metadata, events: [], requests: {} };
-      const event = { id: 'nevt_' + randomUUID(), type: 'node.session.created', session_id: session.id, created_at: session.created_at, data: { agent_id: agentId } };
+      if (options.model) Object.assign(session, { model: options.model, model_source: options.model_source });
+      if (options.endpoint_revision) Object.assign(session, { endpoint_revision: options.endpoint_revision, reasoning_effort: options.reasoning_effort ?? null });
+      const event = { id: 'nevt_' + randomUUID(), type: 'node.session.created', session_id: session.id, created_at: session.created_at, data: { agent_id: agentId, ...(session.model ? { model: session.model, model_source: session.model_source } : {}) } };
       session.events.push(event); await persist([...sessions.values(), session]); sessions.set(session.id, session); emitter.emit('*', event); return { session, created: true };
       });
     },

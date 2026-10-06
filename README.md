@@ -38,6 +38,7 @@ coordinator、本地执行、协议与渲染层各边界的可读 TypeScript 实
 | 能力 | 0.3.0 提供的接口 |
 | --- | --- |
 | 对话与任务 | bot 查询、独立 Harness 会话、消息、SSE 事件、回合结果、审批、定向取消 |
+| 模型与端点 | 新会话选模型，管理员服务/bot 默认，TokenHub 地址、密钥、模型拉取与实际测试 |
 | 桌面与单应用 | 整桌面及终端/浏览器窗口的独立观看、接管与交还；手动复制粘贴 |
 | 项目与恢复 | 文件导入、Git 差异、归档导出、项目与会话备份、网页/CLI 续接同一 thread |
 | 本机授权 | Bearer 密钥、用户与 bot 权限、短期桌面链接、控制租约、配额、审计、签名 webhook |
@@ -55,10 +56,16 @@ npm run node-agent-api -- --backend codex --port 18770 --recover true
 
 - [Node Agent API 0.3.0 详细文档](docs/NODE_AGENT_API_0_3.md)：前置配置、完整接口索引、请求示例、单应用 VNC、CLI、恢复与排障。
 - [安装与运行说明](tools/node-agent-api/README.md)：执行包、代理、启动选项及运行边界。
+- [模型选择与默认设置](docs/NODE_AGENT_API_MODELS.md)：默认可为空，普通用户只选获准模型。
+- [TokenHub 账户与端点](docs/NODE_AGENT_API_TOKENHUB.md)：配置模型 API 地址和密钥，实际测试后授权。
+- [后台运行与排障](docs/NODE_AGENT_API_OPERATIONS.md)：macOS 保活、日志及网页/桌面连接问题。
 - [OpenAPI 3.0 契约](tools/node-agent-api/openapi.json)：机器可读的路径、参数、请求和响应 schema。
 - [验证记录](tools/node-agent-api/VERIFICATION.md)：离线回归与真实共享盒子验证。
 
 这是 GrokNode 的外部适配 API；版本号为 0.3.0，不表示兼容 OpenAI Agents SDK。运行中的进程按中断处理，恢复保留的文件与会话后，由用户决定重跑任务。
+
+2026-10-07 更新包含模型与 TokenHub 扩展、桌面控制和中文标题修复；本分支的实现、测试与文档同步发布。
+
 ## 仓库里有什么？
 
 检入的版本树包含经过审阅的重建代码、测试、清单、构建脚本，以及用 Git LFS 保存的、

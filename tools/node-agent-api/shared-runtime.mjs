@@ -23,6 +23,8 @@ export async function createSharedRuntime({ container = 'grok-node-local-vm', st
   const codePath = '/home/box/sand-data/codex-vm/bin/codex', executorHome = '/home/box/sand-data/node-agent-api/executor-home';
   const viewerToken = randomBytes(32).toString('hex'), children = new Set(), sockets = new Set(), clipboardOwners = new Map();
   let closed = false;
+  let assetGeneration;
+  const viewerAssets = new Map();
   async function info() {
     try { const row = JSON.parse((await execute(docker, ['inspect', container], { timeout: 10000, encoding: 'utf8' })).stdout)[0]; if (row.Name !== '/' + container || !row.State?.Running) throw new Error('Container unavailable'); return row; }
     catch { throw new ApiError(503, 'execution_unavailable', 'Open GrokNode and its existing box; the API will not start or replace it'); }
@@ -40,7 +42,7 @@ export async function createSharedRuntime({ container = 'grok-node-local-vm', st
   async function applications(botId) {
     const environment = await seat(botId);
     const row = await info();
-    return listApplications({ display: ':' + environment.display, sanitize: true, execFileImpl: (file, args, _options, callback) => { execFile(docker, lowPrivilege(row.Id, ['env', 'DISPLAY=:' + environment.display, file, ...args]), { encoding: 'utf8', timeout: 10000 }, callback); } });
+    return listApplications({ display: ':' + environment.display, sanitize: true, execFileImpl: (file, args, options, callback) => { execFile(docker, lowPrivilege(row.Id, ['env', 'DISPLAY=:' + environment.display, 'LC_ALL=' + options.env.LC_ALL, file, ...args]), { encoding: 'utf8', timeout: 10000 }, callback); } });
   }
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
   const server = createServer((_req, res) => { res.writeHead(401); res.end(); });
@@ -67,6 +69,17 @@ export async function createSharedRuntime({ container = 'grok-node-local-vm', st
   const origin = 'ws://127.0.0.1:' + server.address().port;
   const runtime = {
     shared: true, workspaceRoot, roster: bridge, applications,
+    async viewerAsset(asset) {
+      if (!/^(vnc\.html|package\.json|(?:app|core|vendor)\/[A-Za-z0-9_./-]+)$/.test(asset) || asset.split('/').includes('..')) throw new ApiError(404, 'not_found', 'Asset unavailable');
+      const row = await info();
+      if (assetGeneration !== row.Id) { viewerAssets.clear(); assetGeneration = row.Id; }
+      if (!viewerAssets.has(asset)) {
+        const pending = execute(docker, ['exec', row.Id, 'cat', '/usr/share/novnc/' + asset], { encoding: null, timeout: 10000, maxBuffer: 4 * 1024 * 1024 }).then(result => result.stdout);
+        viewerAssets.set(asset, pending);
+        pending.catch(() => { if (viewerAssets.get(asset) === pending) viewerAssets.delete(asset); });
+      }
+      return viewerAssets.get(asset);
+    },
     async launchApplication(botId, kind) {
       if (!['terminal', 'browser'].includes(kind)) throw new ApiError(400, 'application_kind', 'Choose terminal or browser');
       const environment = await seat(botId);
@@ -118,9 +131,9 @@ export async function createSharedRuntime({ container = 'grok-node-local-vm', st
       return { path: destination, consistency: 'shared project live files; GrokNode processes are not paused' };
     },
     async restore(botId, backupPath) {
-      const n = resourceNames(namespace, botId), directory = await realpath(backupPath), prefix = path.resolve(stateRoot, namespace, n.key, 'backups') + path.sep;
+      const n = resourceNames(namespace, botId); let directory; try { directory = await realpath(backupPath); } catch { throw new ApiError(404, 'backup_not_found', 'Backup not found'); } const prefix = path.resolve(stateRoot, namespace, n.key, 'backups') + path.sep;
       if (!directory.startsWith(prefix)) throw new ApiError(403, 'backup_owner', 'Backup is outside this session runtime');
-      const manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8')), archive = path.join(directory, 'workspace.tgz');
+      let manifest, archive; try { manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8')); archive = path.join(directory, 'workspace.tgz'); await lstat(archive); } catch (error) { if (error instanceof ApiError) throw error; throw new ApiError(404, 'backup_not_found', 'Backup not found'); }
       if (manifest.container !== container || manifest.workspaceRoot !== workspaceRoot || createHash('sha256').update(await readFile(archive)).digest('hex') !== manifest.sha256) throw new ApiError(409, 'backup_invalid', 'Backup identity or integrity mismatch');
       await this.backup(botId); const row = await info(), remote = '/tmp/node-agent-restore-' + randomBytes(12).toString('hex') + '.tgz';
       await execute(docker, ['cp', archive, row.Id + ':' + remote]);

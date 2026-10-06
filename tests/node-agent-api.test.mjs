@@ -276,6 +276,43 @@ test('control viewers can deliver input and hold a single exclusive lease', asyn
   assert.equal(released.data.released, true);
 });
 
+test('explicit own-control replacement recovers a viewer without stealing another credential lease', async () => {
+  const route = '/v1/agents/sessions/' + sessions.a.id + '/desktop';
+  async function open(input, auth = authorization) {
+    const result = await call('POST', route, { headers: { authorization: auth }, body: input });
+    assert.equal(result.status, 201);
+    const opened = await call('GET', new URL(result.data.url).pathname + new URL(result.data.url).search, { raw: true });
+    assert.equal(opened.status, 303);
+    return /nodeviewer=([A-Za-z0-9_-]+)/.exec(opened.headers.get('set-cookie'))[1];
+  }
+  try {
+    const old = await open({ mode: 'control' });
+    const peer = await call('POST', '/v1/keys', { headers: { authorization }, body: { scopes: ['sessions.read', 'desktop.view', 'desktop.control'], bot_ids: ['bot-a'], ttl_seconds: 300 } });
+    const refused = await call('POST', route, { headers: { authorization: 'Bearer ' + peer.data.key }, body: { mode: 'control', replace_own_control: true } });
+    assert.equal(refused.status, 409);
+    const current = await open({ mode: 'control', replace_own_control: true });
+    assert.equal((await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + old } })).status, 401);
+    const settings = await (await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + current } })).json();
+    assert.equal(settings.view_only, false);
+    const view = await open({ mode: 'view', replace_own_control: true });
+    assert.equal((await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + current } })).status, 401);
+    assert.equal((await (await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + view } })).json()).view_only, true);
+    await open({ mode: 'control' });
+  } finally { await call('POST', '/v1/agents/sessions/' + sessions.a.id + '/handback', { headers: { authorization }, body: {} }); }
+});
+
+test('pending replacement tickets cannot evict a newer controller after a race', async () => {
+  const route = '/v1/agents/sessions/' + sessions.a.id + '/desktop';
+  async function issue() { const r = await call('POST', route, { headers: { authorization }, body: { mode: 'control', replace_own_control: true } }); assert.equal(r.status, 201); return new URL(r.data.url); }
+  async function open(url) { return call('GET', url.pathname + url.search, { raw: true }); }
+  try {
+    const initial = await issue(); assert.equal((await open(initial)).status, 303);
+    const a = await issue(), b = await issue();
+    assert.equal((await open(a)).status, 303);
+    assert.equal((await open(b)).status, 409);
+  } finally { await call('POST', '/v1/agents/sessions/' + sessions.a.id + '/handback', { headers: { authorization }, body: {} }); }
+});
+
 test('revoking a credential closes its access and live desktop lease', async () => {
   // Authorize a viewer with the scoped credential, then revoke that same key.
   const scoped = issued[0];

@@ -1,15 +1,20 @@
 # Node Agent API 0.3.0
 
+更新：2026-10-07。本文与本分支的 0.3.0 实现、回归用例和 OpenAPI 一同发布，涵盖模型选择、TokenHub 端点配置与实际测试、桌面控制与后台运行；OpenAPI 共 64 个方法/路径。
+
+专题：[模型选择与空默认](NODE_AGENT_API_MODELS.md) · [TokenHub 地址、密钥与测试](NODE_AGENT_API_TOKENHUB.md) · [后台运行与排障](NODE_AGENT_API_OPERATIONS.md)
+
 [返回仓库首页](../README.md) · [安装与运行说明](../tools/node-agent-api/README.md) · [OpenAPI 3.0 契约](../tools/node-agent-api/openapi.json) · [验证记录](../tools/node-agent-api/VERIFICATION.md)
 
 Node Agent API 是运行在 Mac 上的独立适配服务。网页、CLI 和自己的客户端可以查询原 GrokNode bot、创建 Codex 会话、提交任务、查看或接管 Linux 桌面，并审查和导出项目成果。模型循环与工具路由交给 Codex Harness，执行端进入现有 GrokNode 容器。
 
-本文对应仓库发布的 **0.3.0 共享盒子实现**。字段类型与机器可读契约见 OpenAPI；后端是否支持某项操作，启动后以 `GET /v1/capabilities` 为准。
+本文对应 **0.3.0 共享盒子及扩展实现**。字段类型与机器可读契约见 OpenAPI；后端是否支持某项操作，启动后以 `GET /v1/capabilities` 为准。模型和端点管理要求 capabilities 明确声明支持，旧服务需更新实现才能使用这些功能。
 
 ## 目录
 
 - [概要与架构](#概要与架构)
 - [快速开始](#快速开始)
+- [模型与端点](#模型与端点)
 - [通用约定](#通用约定)
 - [完整接口索引](#完整接口索引)
 - [对话与项目示例](#对话与项目示例)
@@ -17,6 +22,7 @@ Node Agent API 是运行在 Mac 上的独立适配服务。网页、CLI 和自�
 - [CLI 与恢复](#cli-与恢复)
 - [多用户与 webhook](#多用户与-webhook)
 - [错误与排障](#错误与排障)
+- [后台运行](NODE_AGENT_API_OPERATIONS.md)
 
 ## 概要与架构
 
@@ -81,11 +87,22 @@ npm run node-agent-api -- --backend codex --port 18770 --recover true
 | `--state` | `.lab/node-agent-shared`：API 密钥、会话、事件、治理与 artifact 状态 |
 | `--runtime-state` | `.lab/shared-runtime`：Mac Codex profile、会话与备份 |
 | `--namespace` | `grok-node-lab-shared`，区分 API 自己的运行资料，不用于创建额外容器 |
-| `--model` / `--base-url` | 选择 Mac Harness 的模型与代理入口 |
+| `--model` / `--base-url` | 服务默认模型初始为 null；`--model` 仅初始化尚未保存的默认，已有设置优先。`--base-url` 初始化代理入口 |
+| `--codex-bin` | Mac 侧固定版本 Codex 可执行文件的绝对路径，避免全局更新改变此服务版本 |
 | `--recover true` | 启动前检查并回收已死亡进程留下的服务锁；不抢占正在运行的服务 |
 | `--allow-writes true` | legacy `grok` 后端的显式写策略；默认关闭，仍须满足后端安全检查 |
 
 服务固定监听 `127.0.0.1`。`codex` 是本文示例使用的后端；legacy 后端不提供独立对话、原生取消、审批、项目和剪贴板能力，调用前应查询 capabilities。停止 API 只关闭它自己的连接与辅助进程，不停止原 GrokNode 或共享容器。
+
+上述命令在前台运行。日常使用应按[后台运行说明](NODE_AGENT_API_OPERATIONS.md)配置 macOS LaunchAgent；临时终端或工具会话退出后，前台服务可能随之退出。后台服务保留相同 `--state` 与 `--runtime-state`，并独立记录 stdout/stderr。
+
+## 模型与端点
+
+新会话的模型优先级为显式 `model` → bot 默认 → 服务默认。服务默认初始为空；三级均未提供模型时返回 `400 model_required`，不创建会话。管理员可保存服务/bot 默认和获准清单，普通用户只为自己的新会话选择获准模型。模型、端点版本和推理强度在创建时固定，修改默认不切换已有会话。
+
+网页管理员区的 TokenHub 提供模型 API 地址、密钥保存、模型拉取和真实连接测试。所有已拉取模型都可测试；测试通过后由管理员授权，普通用户才能选择。`verification_level` 区分 `unverified`、`connection`、`tool_workflow`：文本连接成功不等于完整工具链验收。API 访问密钥与模型供应商密钥分别用于本机 API 和上游模型服务，不能互换。
+
+请求字段、计费归属、密钥存储与端点切换流程见[模型选择](NODE_AGENT_API_MODELS.md)和[TokenHub](NODE_AGENT_API_TOKENHUB.md)。模型请求由 Mac 服务端发出，使用它保存的上游账户额度；调用方的 Node Agent API key 不会自动成为模型账户。
 
 ## 通用约定
 
@@ -150,12 +167,26 @@ session/event 的 `created_at`、密钥和 ticket 的 `expires_at` 为 Unix 秒�
 | POST | `/v1/agents` | 201 | `agents.write`、所有 bot 范围、可写后端；`{name, description?}` |
 | GET | `/v1/agents/{agent_id}` | 200 | `agents.read`；原 bot 资料 |
 
+### 模型与 TokenHub
+
+| 方法 | 路径 | 成功状态 | 权限 / 说明 |
+| --- | --- | --- | --- |
+| GET | `/v1/models` | 200 | `agents.read`；可带 `agent_id`，查询模型目录、获准/验证状态与有效默认 |
+| GET | `/v1/settings/models` | 200 | owner；服务默认、bot 覆盖、获准清单、工具链证据 |
+| PATCH | `/v1/settings/models` | 200 | owner；保存默认与授权，`default_model: null` 清空服务默认 |
+| GET | `/v1/agents/{agent_id}/model` | 200 | owner；该 bot 的默认与有效默认 |
+| PATCH | `/v1/agents/{agent_id}/model` | 200 | owner；`default_model: null` 清除 bot 覆盖 |
+| GET | `/v1/settings/tokenhub` | 200 | owner；端点版本、协议、`key_saved`、模型与测试记录，不回显密钥 |
+| PATCH | `/v1/settings/tokenhub` | 200 | owner；保存 `base_url`、`wire_api` 或只写 `api_key`，建立新端点版本 |
+| POST | `/v1/settings/tokenhub/models` | 200 | owner；从当前模型端点拉取目录 |
+| POST | `/v1/settings/tokenhub/test` | 200 | owner；`{model, reasoning_effort?}`，发起会消耗上游额度的真实文本测试 |
+
 ### 会话与任务
 
 | 方法 | 路径 | 成功状态 | 权限 / 说明 |
 | --- | --- | --- | --- |
 | GET | `/v1/agents/sessions` | 200 | `sessions.read`；可按 `agent_id` 过滤并分页 |
-| POST | `/v1/agents/sessions` | 201 / 200 | `sessions.write`；Codex 新建独立 thread；legacy 可复用已有附件 |
+| POST | `/v1/agents/sessions` | 201 / 200 | `sessions.write`；`{agent_id, model?, reasoning_effort?, metadata?}`；Codex 新建独立 thread，legacy 可复用已有附件 |
 | GET | `/v1/agents/sessions/{session_id}` | 200 | `sessions.read`；thread、输入和任务状态 |
 | PATCH | `/v1/agents/sessions/{session_id}` | 200 | `sessions.write`；替换 metadata |
 | POST | `/v1/agents/sessions/{session_id}/close` | 200 | `sessions.write`；保全式关闭，活动任务须先结束或取消 |
@@ -252,11 +283,13 @@ node_api "$NODE_AGENT_BASE/v1/agents?limit=20"
 
 ```sh
 NODE_AGENT_BOT='BOT_ID_FROM_AGENTS'
+node_api "$NODE_AGENT_BASE/v1/models?agent_id=$NODE_AGENT_BOT"
+NODE_AGENT_MODEL='APPROVED_MODEL_FROM_MODELS'
 node_api -X POST "$NODE_AGENT_BASE/v1/agents/sessions" \
-  --data "{\"agent_id\":\"$NODE_AGENT_BOT\",\"metadata\":{\"project\":\"demo\"}}"
+  --data "{\"agent_id\":\"$NODE_AGENT_BOT\",\"model\":\"$NODE_AGENT_MODEL\",\"metadata\":{\"project\":\"demo\"}}"
 ```
 
-Codex 后端返回 `201`，包含 `id`、`agent_id`、`context: "codex_harness"`、`thread_id`、`task_status`。同一 bot 可有多个独立 Harness 会话；每次 POST 创建新 thread。legacy 后端可返回 `200`，复用 bot 的现有 transcript 附件。
+从目录中选择 `approved: true` 且 `verified: true` 的实际模型，替换示例变量。已有有效默认时可省略 `model`；没有默认且未显式选择时返回 `400 model_required`。Codex 后端返回 `201`，包含 `id`、`agent_id`、`context: "codex_harness"`、`thread_id`、`task_status`、`model` 和 `model_source`，以及启用 TokenHub 后固定的 `endpoint_revision`、`reasoning_effort`。同一 bot 可有多个独立 Harness 会话；每次 POST 创建新 thread。legacy 后端可返回 `200`，复用 bot 的现有 transcript 附件，不支持此模型选择流程。
 
 ```sh
 NODE_AGENT_SESSION='SESSION_ID_FROM_RESPONSE'
@@ -341,7 +374,7 @@ shasum -a 256 project.tgz
 
 ```sh
 node_api -X POST "$NODE_AGENT_BASE/v1/agents/sessions/$NODE_AGENT_SESSION/desktop" \
-  --data '{"mode":"view","ttl_seconds":60,"target":{"type":"desktop"}}'
+  --data '{"mode":"view","replace_own_control":true,"ttl_seconds":60,"target":{"type":"desktop"}}'
 ```
 
 响应含 `url`、`display`、`expires_at`、`single_use: true`、`server_enforced: true`、`pauses_agent: false`。在本机浏览器打开 `url` 即兑换授权。`mode` 默认 `view`；接管显式指定 `control`。
@@ -349,6 +382,8 @@ node_api -X POST "$NODE_AGENT_BASE/v1/agents/sessions/$NODE_AGENT_SESSION/deskto
 ticket 默认 60 秒、最多 300 秒，且只能兑换一次。兑换后 viewer cookie 为 HttpOnly、SameSite=Strict，有效期 15 分钟。服务端过滤观看模式的键鼠输入；修改 URL 中的 `view_only` 无法获得接管权限。链接失效、服务重启或桌面映射变化后重新签发。
 
 每 bot 同时只有一个有效控制租约。申请 ticket 尚未建立租约，必须打开链接兑换后才能启动应用或写剪贴板。接管不会暂停原 bot；用户操作和机器人动作需要自己协调。
+
+`replace_own_control: true` 允许显式替换同一 API 密钥已经持有的控制 viewer，新 ticket 兑换成功后才移交；`mode: view` 配合此字段会交还自己的控制并转为观看。不同密钥的控制不会被抢占，仍返回 `409 desktop_busy`。网页整桌面观看/接管和独立应用接管采用此选项，独立应用观看保留既有控制。
 
 ### 终端和浏览器独立窗口
 
@@ -364,7 +399,7 @@ node_api -X POST "$NODE_AGENT_BASE/v1/agents/sessions/$NODE_AGENT_SESSION/deskto
   --data "{\"mode\":\"view\",\"target\":{\"type\":\"application\",\"application_id\":\"$NODE_AGENT_APPLICATION\"}}"
 ```
 
-每个单应用 viewer 使用 `/desktop/lane/{viewer_id}/…` 和独立 cookie 路径，因此可以同时打开终端与浏览器的观看窗口。要操作其中一个窗口，先交还旧控制租约，再签发该窗口的 `control` 链接。窗口 ID 会变化，不能固定旧的 `token=3` 或 `codexvm-app-3-terminal`。
+每个单应用 viewer 使用 `/desktop/lane/{viewer_id}/…` 和独立 cookie 路径，因此可以同时打开终端与浏览器的观看窗口。同一密钥切到应用接管可发送 `mode: control, replace_own_control: true`；不替换时须先交还已有控制。窗口 ID 会变化，不能固定旧的 `token=3` 或 `codexvm-app-3-terminal`。应用标题按 X11 属性编码解码，中文正常；旧列表显示乱码时点击“刷新应用”。
 
 没有所需应用时，先兑换该 bot 的控制链接，再明确启动：
 
@@ -386,7 +421,7 @@ node_api -X POST "$NODE_AGENT_BASE/v1/agents/sessions/$NODE_AGENT_SESSION/clipbo
 node_api -X POST "$NODE_AGENT_BASE/v1/agents/sessions/$NODE_AGENT_SESSION/handback"
 ```
 
-写剪贴板要求有效控制租约，文本最多 64 KiB。网页只在用户点击按钮时传递文本，默认关闭自动同步。交还返回 `{released: true}` 并断开对应控制 viewer；关闭会话会撤销该 bot 当前的 API 桌面 ticket/viewer，撤销密钥则使相应授权链失效。
+写剪贴板要求有效控制租约，文本最多 64 KiB。网页只在用户点击按钮时传递文本，默认关闭自动同步。交还 API 返回 `{released: true}` 并断开对应控制 viewer；网页随后自动签发并打开 `view` 观看链接，保留画面，不能发送控制输入。观看重连失败显示明确错误且不重新接管。关闭会话会撤销该 bot 当前的 API 桌面 ticket/viewer，撤销密钥则使相应授权链失效。
 
 API 仅保护自身 `/v1` 和 `/desktop` 入口。原 GrokNode 的 `6080/6081` 端口保留原访问策略；访问原始 VNC 链接不会自动受到本 API 的 Bearer 权限约束。
 
@@ -491,17 +526,21 @@ REST 错误结构为：
 | 状态 / 常见类型 | 检查方式 |
 | --- | --- |
 | 400 `invalid_request` / `invalid_cursor` | 核对字段、标识、分页或 SSE 游标；不要用另一会话的游标 |
+| 400 `model_required` | 服务和 bot 默认均为空，为新会话指定获准模型 |
 | 401 `unauthorized` | Bearer 缺失、过期、已撤销或用户已停用 |
 | 401 `ticket_invalid` / `viewer_expired` | 重新申请桌面链接；ticket 已使用不能再次兑换 |
 | 403 `origin_rejected` / `permission_denied` | 使用启动输出的精确 origin；检查 scope、bot grants 和控制租约 |
 | 404 `not_found` / `application_not_found` | 检查 session/artifact ID，刷新实际窗口列表 |
 | 409 `turn_active` / `session_busy` / `input_pending` | 等活动回合结束，或显式取消后再写项目、关闭/转交会话 |
 | 409 `idempotency_conflict` | 同一请求键必须对应相同逻辑文本 |
-| 409 `desktop_busy` / `desktop_changed` | 交还已有租约；重新查询桌面并签发链接 |
+| 409 `desktop_busy` / `desktop_changed` | 同一密钥可显式 `replace_own_control: true`；不同密钥先交还已有租约。映射变化须重新签发链接 |
 | 409 `managed_by_grok_node` | 原 GrokNode 管理盒子生命周期，API 不执行 recreate |
 | 409 `codex_version` | 核对 Mac/Linux Codex 0.160.0，不自动升级 |
 | 413 / 415 | 核对请求大小与 `application/json` |
 | 429 | 查看 `/v1/usage`，关闭多余 SSE/viewer，检查配额或 outbox/ticket 容量 |
 | 5xx 或后端不可用 | 检查原盒子、Mac 代理、state 权限与服务诊断；查询状态后再决定恢复或重试 |
+| 503 `model_catalog_unavailable` | opencodex 目录不可读，或自定义端点还未拉取模型；已有会话保留原模型 |
+| 浏览器连接失败 / 端口无监听 | 按[后台排障](NODE_AGENT_API_OPERATIONS.md#服务打不开)检查 API 进程、LaunchAgent 和日志 |
+| 查看器超时 / 页面仍显示旧提示 | Chrome 按 ⌘⇧R 强制刷新，重新登录、选择已有会话，再签发桌面授权；刷新不会删除会话 |
 
 `/health` 成功只证明 API 进程在响应，不保证模型、容器或桌面就绪。验证与边界记录见 [VERIFICATION.md](../tools/node-agent-api/VERIFICATION.md)；离线 API 回归命令为 `npm run test:node-agent-api`。

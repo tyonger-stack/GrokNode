@@ -3,7 +3,31 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import net from 'node:net';
 import WebSocket from 'ws';
-import { createApplicationPool, parseWindowTree } from '../tools/node-agent-api/runtime/applications.mjs';
+import { createApplicationPool, listApplications, parseWindowName, parseWindowTree } from '../tools/node-agent-api/runtime/applications.mjs';
+
+test('UTF8_STRING window titles decode octal bytes as UTF-8', () => {
+  const output = String.raw`_NET_WM_NAME(UTF8_STRING) = "\347\231\276\345\272\246\344\270\200\344\270\213\357\274\214\344\275\240\345\260\261\347\237\245\351\201\223 - Google Chrome"`;
+  assert.equal(parseWindowName(output), '百度一下，你就知道 - Google Chrome');
+  assert.equal(parseWindowName(String.raw`WM_NAME(UTF8_STRING) = "Test \360\237\232\200"`), 'Test 🚀');
+});
+
+test('window title decoding preserves Unicode, escaped literals and legacy STRING bytes', () => {
+  assert.equal(parseWindowName(String.raw`_NET_WM_NAME(UTF8_STRING) = "中文 \"title\" \\347"`), '中文 "title" \\347');
+  assert.equal(parseWindowName(String.raw`WM_NAME(STRING) = "Caf\351"`), 'Café');
+});
+
+test('application discovery uses a UTF-8 locale and returns decoded Chinese titles', async () => {
+  const applications = await listApplications({ display: ':5', sanitize: true, execFileImpl: (file, args, options, callback) => {
+    assert.equal(options.env.DISPLAY, ':5');
+    assert.equal(options.env.LC_ALL, 'C.UTF-8');
+    assert.equal(file, 'xprop');
+    const stdout = args[0] === '-root'
+      ? '_NET_CLIENT_LIST(WINDOW): window id # 0x200004'
+      : String.raw`_NET_WM_NAME(UTF8_STRING) = "\344\270\255\346\226\207 - Google Chrome"`;
+    queueMicrotask(() => callback(null, stdout, ''));
+  } });
+  assert.deepEqual(applications, [{ object: 'desktop.application', application_id: '0x200004', name: '中文 - Google Chrome' }]);
+});
 
 test('window discovery handles native displays without a window-manager list', () => {
   const tree = '     0x1a00004 "about:blank - Google Chrome": ("google-chrome" "box-chrome")  1050x780+10+10  +10+10\n     0x200003 "Node Agent Linux project": ("xfce4-terminal" "Xfce4-terminal")  817x485+0+0  +0+0\n     0xe00003 "plank": ("plank" "Plank")  1280x137+0+663  +0+663\n     0x200001 "Xfce Terminal": ("xfce4-terminal" "Xfce4-terminal")  10x10+10+10  +10+10\n        0x200004 "child": ()  817x485+0+0';

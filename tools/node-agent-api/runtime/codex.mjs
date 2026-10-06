@@ -23,7 +23,7 @@ export async function prepareCodex({ namespace, botId, stateRoot, runtime, codex
   } catch (error) { if (error.code !== 'ENOENT') throw error; await symlink(auth, link); }
   const inferenceUrl = new URL(baseUrl ?? 'http://127.0.0.1:10100/v1').href;
   const config = ['approval_policy = "on-request"', 'sandbox_mode = "danger-full-access"', 'suppress_unstable_features_warning = true',
-    `model = ${JSON.stringify(model ?? 'gpt-6.1-sol')}`, 'model_provider = "opencodex"', 'model_reasoning_effort = "medium"',
+    ...(model ? [`model = ${JSON.stringify(model)}`] : []), 'model_provider = "opencodex"', 'model_reasoning_effort = "medium"',
     `openai_base_url = ${JSON.stringify(inferenceUrl)}`, `model_catalog_json = ${JSON.stringify(join(homedir(), '.codex/opencodex-catalog.json'))}`,
     '[model_providers.opencodex]', 'name = "Existing local opencodex proxy"', `base_url = ${JSON.stringify(inferenceUrl)}`, 'wire_api = "responses"', 'requires_openai_auth = false', 'supports_websockets = false',
     '[features]', 'apps = false', 'plugins = false', 'remote_plugin = false', 'shell_snapshot = false', 'enable_request_compression = false', 'respect_system_proxy = false', 'system_proxy_fallback = false',

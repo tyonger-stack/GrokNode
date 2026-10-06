@@ -98,11 +98,13 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
     async issue(principal, session, input, origin) {
       const mode = input.mode ?? 'view', ttl = input.ttl_seconds ?? 60;
       if (!['view', 'control'].includes(mode) || !Number.isInteger(ttl) || ttl < 1 || ttl > 300) throw badRequest('Invalid desktop mode or ticket lifetime');
+      if (input.replace_own_control !== undefined && typeof input.replace_own_control !== 'boolean') throw badRequest('replace_own_control must be boolean');
       auth.requireScope(principal, mode === 'control' ? 'desktop.control' : 'desktop.view', session.agent_id);
       const target = normalizeTarget(input.target);
+      const held = leases.get(session.agent_id);
+      const replaces = input.replace_own_control === true && held && controls(held) && held.principal.id === principal.id ? held.id : null;
       if (mode === 'control') {
-        const held = leases.get(session.agent_id);
-        if (held && controls(held)) throw new ApiError(409, 'desktop_busy', 'A controller already holds this desktop');
+        if (held && controls(held) && !replaces) throw new ApiError(409, 'desktop_busy', 'A controller already holds this desktop');
       }
       const environment = await adapter.desktop(session.agent_id, {
         type: target.type,
@@ -112,7 +114,7 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
       for (const [key, ticket] of tickets) if (ticket.expiresAt <= clock()) tickets.delete(key);
       if (tickets.size >= 1000) throw new ApiError(429, 'desktop_capacity', 'Desktop ticket capacity reached');
       const expiresAt = clock() + ttl * 1000, ticket = nonce();
-      tickets.set(ticket, { principal, botId: session.agent_id, sessionId: session.id, target, environment, mode, expiresAt });
+      tickets.set(ticket, { principal, botId: session.agent_id, sessionId: session.id, target, environment, mode, expiresAt, replaces });
       await store.append(session.id, 'node.desktop.authorization.created', { mode, target_type: target.type, expires_at: Math.floor(expiresAt / 1000) });
       return { object: 'node.desktop.authorization', agent_id: session.agent_id, mode, display: environment.display, url: `${origin}/desktop/open?ticket=${ticket}`, expires_at: Math.floor(expiresAt / 1000), single_use: true, server_enforced: true, pauses_agent: false };
     },
@@ -128,7 +130,9 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
         }, ticket.mode);
         if (!sameEnvironment(ticket.environment, current)) throw new ApiError(409, 'desktop_changed', 'Bot desktop was reassigned; request a new authorization');
         const lease = leases.get(ticket.botId);
-        if (ticket.mode === 'control' && lease && controls(lease)) throw new ApiError(409, 'desktop_busy', 'A controller already holds this desktop');
+        const replacing = lease && controls(lease) && ticket.replaces === lease.id && ticket.principal.id === lease.principal.id;
+        if (lease && controls(lease) && ((ticket.mode === 'control' && !replacing) || (ticket.replaces && !replacing))) throw new ApiError(409, 'desktop_busy', 'Desktop control changed; request a new authorization');
+        if (replacing) { disconnect(lease); viewers.delete(lease.id); }
         const viewer = { ...ticket, environment: current, id: nonce(), expiresAt: clock() + 15 * 60 * 1000 };
         viewers.set(viewer.id, viewer);
         if (viewer.mode === 'control') leases.set(viewer.botId, viewer);
