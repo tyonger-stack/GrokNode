@@ -188,7 +188,7 @@ export function createCodexAdapter({ runtime, harness, roster, namespace, stateR
       return (await execute('docker', ['exec', status.containerName, 'cat', '/usr/share/novnc/' + asset], { encoding: null, maxBuffer: 4 * 1024 * 1024 })).stdout;
     },
     async clipboard(session, text) { if (text === undefined) return { text: await runtime.clipboard.read(session.agent_id) }; await runtime.clipboard.write(session.agent_id, text); return { written: true }; },
-    async project(session, action, input) { if (action === 'import') requireIdleBot(session); return runtime.project(session.agent_id, action, input); },
+    async project(session, action, input) { if (action === 'import') requireIdleBot(session); const result = await runtime.project(session.agent_id, action, input); if (action === 'import' && Array.isArray(result?.conflicts) && result.conflicts.length) throw new ApiError(409, 'import_conflict', 'Import refuses to overwrite: ' + result.conflicts.slice(0, 8).join(', ')); return result; },
     async exportProject(session, reserve = async () => {}) {
       requireIdleBot(session);
       await mkdir(artifactRoot, { recursive: true, mode: 0o700 });

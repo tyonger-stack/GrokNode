@@ -118,9 +118,9 @@ export async function createSharedRuntime({ container = 'grok-node-local-vm', st
       return { path: destination, consistency: 'shared project live files; GrokNode processes are not paused' };
     },
     async restore(botId, backupPath) {
-      const n = resourceNames(namespace, botId), directory = await realpath(backupPath), prefix = path.resolve(stateRoot, namespace, n.key, 'backups') + path.sep;
+      const n = resourceNames(namespace, botId); let directory; try { directory = await realpath(backupPath); } catch { throw new ApiError(404, 'backup_not_found', 'Backup not found'); } const prefix = path.resolve(stateRoot, namespace, n.key, 'backups') + path.sep;
       if (!directory.startsWith(prefix)) throw new ApiError(403, 'backup_owner', 'Backup is outside this session runtime');
-      const manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8')), archive = path.join(directory, 'workspace.tgz');
+      let manifest, archive; try { manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8')); archive = path.join(directory, 'workspace.tgz'); await lstat(archive); } catch (error) { if (error instanceof ApiError) throw error; throw new ApiError(404, 'backup_not_found', 'Backup not found'); }
       if (manifest.container !== container || manifest.workspaceRoot !== workspaceRoot || createHash('sha256').update(await readFile(archive)).digest('hex') !== manifest.sha256) throw new ApiError(409, 'backup_invalid', 'Backup identity or integrity mismatch');
       await this.backup(botId); const row = await info(), remote = '/tmp/node-agent-restore-' + randomBytes(12).toString('hex') + '.tgz';
       await execute(docker, ['cp', archive, row.Id + ':' + remote]);

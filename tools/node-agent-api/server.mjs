@@ -131,7 +131,7 @@ async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs
             if (!adapter.project) throw new ApiError(409, 'unsupported', 'Project operations unavailable');
             if (req.method === 'GET' && parts[5] === 'diff') return respond(res, 200, await adapter.project(session, 'diff'));
             if (session.status === 'closed' || session.task_status === 'running') throw new ApiError(409, 'session_busy', 'Project writes require an open idle session');
-            if (req.method === 'POST' && parts[5] === 'import') return respond(res, 200, await adapter.project(session, 'import', object(await body(req, 16 * 1024 * 1024), ['files'])));
+            if (req.method === 'POST' && parts[5] === 'import') { const importInput = object(await body(req, 16 * 1024 * 1024), ['files']); if (!Array.isArray(importInput.files)) throw badRequest('files array is required'); return respond(res, 200, await adapter.project(session, 'import', importInput)); }
             if (req.method === 'POST' && parts[5] === 'export') return respond(res, 200, await adapter.exportProject(session, (id, bytes) => governance.reserveStorage(quotaPrincipal, id, bytes)));
           }
           if (parts[4] === 'environment' && parts.length === 6 && req.method === 'POST') {
