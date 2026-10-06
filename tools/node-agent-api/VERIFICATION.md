@@ -22,3 +22,14 @@
 - 详细子页面与 OpenAPI 的 55 个方法/路径逐项对应，无漏项或重复。
 - 首页、运行说明与详细子页面的相对链接和目录锚点通过；API 文档的 26 个 shell 示例完成语法检查，4 个 JSON 示例完成解析检查。
 - 修正 OpenAPI 的旧实验环境说明、请求关联头名称和单应用 viewer 路径；原 GrokNode 和 API 执行代码没有修改。
+
+## 本机 0.3.0 扩展验证（2026-10-07）
+
+以下记录对应本分支的扩展实现及本机部署，不改写上面的历史基线结果。
+
+- 最近完整 Node Agent API 回归：105 通过，0 失败。模型选择、TokenHub、控制租约替换、交还后观看、资源缓存与中文标题有直接回归或真实浏览器证据。
+- [模型选择与空默认](../../docs/node-agent-api-0-3-verify/08-model-selection.md)、[连接反馈](../../docs/node-agent-api-0-3-verify/09-connection-feedback.md)、[TokenHub](../../docs/node-agent-api-0-3-verify/10-tokenhub.md)、[桌面控制](../../docs/node-agent-api-0-3-verify/11-desktop-control.md)、[交还后观看](../../docs/node-agent-api-0-3-verify/12-handback-view.md)、[中文标题](../../docs/node-agent-api-0-3-verify/13-application-title-utf8.md)分别说明验收范围，不能用连接测试代替完整工具验收。
+- macOS 用户 LaunchAgent 已实际启动；网页、健康接口、原密钥及已有会话检查成功。登录自动启动来自配置，尚未通过重启 Mac 验收，详见[后台运行](../../docs/NODE_AGENT_API_OPERATIONS.md)。
+- 机器私有 plist、密钥、模型账户、原始会话、日志和截图不随文档发布。示例路径与参数需要按实际部署替换。
+- 发布前重跑完整 API 回归，105 通过、0 失败；64 个 OpenAPI 方法/路径与详细手册逐项一致。54 个相对链接/锚点、31 个 shell 示例、7 个 JSON 示例和 1 个 Python 配置示例通过检查；OpenAPI 本地引用及 CI YAML 可解析。JS 使用 Node 语法检查，未声称缺失的 YAML LSP 诊断通过。
+- CI 增加 Bun 1.4.2 和 opencodex 2.78.0 的 runner 安装步骤，为协议回归提供明确依赖，不跳过实际流式工具测试。本机已有安装版本没有改变。

@@ -1,5 +1,11 @@
 # Node Agent API 0.3.0
 
+更新：2026-10-07。本分支同步发布 0.3.0 的模型/TokenHub、桌面修复、回归用例、文档与 OpenAPI 契约，运行能力以服务的 `/v1/capabilities` 为准。
+
+新增[模型选择与管理员设置](../../docs/NODE_AGENT_API_MODELS.md)：新会话指定模型优先于 bot 默认与服务默认；owner 管理获准清单，普通用户只能选择已验证且获准的模型。
+
+[TokenHub 账户与端点](../../docs/NODE_AGENT_API_TOKENHUB.md)提供 URL、模型 API 密钥加密保存、拉取模型、推理强度和实际连接测试。连接测试通过后可授权，不再只能手工登记 gpt-6.1-sol。默认模型仍可为空。
+
 Node Agent API 是独立的本机服务。原始 GrokNode 管理 bot 和桌面，所有 bot 共用它已经运行的容器与数据。Codex Harness、模型调用和对话保存在 Mac；shell、改文件和测试通过 Docker stdio 执行端进入 Linux。API 不修改或替换 GrokNode 源码、App、host、daemon、登录和启动流程，也不自动启动、重启或新建盒子。
 
 这是借鉴 agents / sessions / events 概念的外部适配服务，不是 OpenAI SDK 兼容实现。完整的接口索引、请求示例和接入流程见 [Node Agent API 0.3.0 详细文档](../../docs/NODE_AGENT_API_0_3.md)。当前需求见 [requirements.md](./requirements.md)，机器可读接口见 [openapi.json](./openapi.json)。
@@ -33,12 +39,14 @@ codex 是共享盒子后端。grok 是显式 legacy gateway 后端，默认只�
 
 Ctrl+C 只关闭 API 与它自己的连接、执行端和 VNC 辅助进程，不关闭 GrokNode 或共享容器。Linux 中用户启动的应用按正常应用管理。
 
+上述命令在前台运行。日常使用的 macOS 后台保活、日志、停止/重启和“服务打不开”检查见[后台运行与排障](../../docs/NODE_AGENT_API_OPERATIONS.md)。保留原 `--state` 与 `--runtime-state` 才能沿用密钥和会话。
+
 ## 日常流程
 
 1. 选择原 GrokNode 中的 bot，打开或新建 Mac Codex 会话。
 2. 导入项目或使用配置的共享项目；发送任务，观察原生工具记录和回合结果。
 3. 查看差异、审批待处理动作、取消当前回合、导出项目。
-4. 点击观看或接管。刷新应用列表可选择实际窗口，分别打开终端、浏览器的观看或接管窗口。打开应用须先持有该 bot 的控制租约。
+4. 点击观看或接管。交还控制后自动切回只读观看；同密钥可显式替换自己的旧控制窗口，不同密钥不能抢占。刷新应用列表可选择实际窗口，中文标题按 UTF-8 正常显示；终端、浏览器可分别观看或接管。打开应用须先持有该 bot 的控制租约。
 5. 剪贴板仅通过文本框和按钮手动传递。没有自动同步 Mac 系统剪贴板。
 6. 用备份按钮保存项目与会话。恢复前会自动备份当前项目；进程内存不恢复。
 
@@ -84,6 +92,9 @@ API 的授权保护 API 入口。原 GrokNode 的 6080/6081 VNC 端口保持原�
 | GET /v1/capabilities、/health | 当前后端能力与版本 |
 | GET/POST /v1/agents | 原 bot 查询、原接口创建 |
 | GET/POST /v1/agents/sessions | 查询、新建独立 Codex thread |
+| GET /v1/models | 获准模型、验证等级、推理强度和有效默认 |
+| GET/PATCH /v1/settings/models、/v1/agents/{agent_id}/model | owner 管理服务/bot 默认与获准清单；默认可为空 |
+| GET/PATCH /v1/settings/tokenhub、POST models/test | owner 管理模型端点、密钥、目录与真实测试 |
 | GET/PATCH session、POST close | 会话资料、metadata、保全式关闭 |
 | GET items、turns、traces | 原生记录、权威回合状态、工具及 token 用量；未知成本为 null |
 | GET/POST events | 持久游标 SSE、消息和取消 |
