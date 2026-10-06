@@ -1,4 +1,4 @@
-# Grok node（Grok bot 本地版）
+# Grok node（Grok bot 本地版）& Agent API
 
 
 本仓库是对公开发布的 Grok Bot 0.18.0 macOS 应用所做的非官方本地化改造：先对桌面
@@ -11,9 +11,29 @@ API key，代码执行跑在由应用自管的本地 Docker 容器里，登录�
 <img width="3456" height="2048" alt="image" src="https://github.com/user-attachments/assets/f9578f3d-418d-4dbd-98f8-97aaf7b8c190" />
 <img width="3452" height="2048" alt="image" src="https://github.com/user-attachments/assets/f78c292e-5a97-49e4-b0a5-5121299868d7" />
 
-## Node Agent API 0.3.0
+## Grok node 本地化改造做了什么？
 
-**Node Agent API 0.3.0** 将现有 GrokNode 的 bot、Linux 桌面和项目操作开放为本机 HTTP API，并提供网页工作台与 Codex CLI 入口。它适合连接自己的网页或薄桌面客户端：模型调用、对话和工具路由由 Mac 上的 Codex Harness 负责，shell、改文件、编译和测试进入 GrokNode 已经运行的 Linux 盒子。
+- 推理路由（Inference Router）：Codex 与 OpenRouter 两档 provider，替代原有的
+  云端推理入口；
+- 在两档路由 provider 上保留 Grok Bot 插件/MCP 工具执行；
+- 路由推理的本地用量统计，数据不出本机；
+- 由应用自管的本地 Docker 沙箱，是当前唯一的 box 运行时，不再连接任何远端沙箱；
+- 融入精修版出厂 UI 的重建设置界面；
+- 在打包边界禁用 upstream 更新器，默认关闭 Sentry 与遥测上报。
+- 设置增加默认模型的自定义推理强度，各bot也可选择模型和强度。
+- 支持设置主bot。
+- agent api。
+
+改造建立在一次完整的源码级重建之上：`source/` 下是 Electron、host、
+coordinator、本地执行、协议与渲染层各边界的可读 TypeScript 实现，`scripts/`
+下是一条把这些源码重新构建为可用 macOS 应用的确定性工具链。
+
+这是一个折腾与研究性质的项目，不是 Anysphere 的原始 monorepo，也不是官方 Grok Bot
+发布版本。从编译产物推断出的命名与模块边界可能与原始源码不同。
+
+## Agent API 0.3.0
+
+**GrokNode Agent API 0.3.0** 将现有 GrokNode 的 bot、Linux 桌面和项目操作开放为本机 HTTP API，并提供网页工作台与 Codex CLI 入口。它适合连接自己的网页或薄桌面客户端：模型调用、对话和工具路由由 Mac 上的 Codex Harness 负责，shell、改文件、编译和测试进入 GrokNode 已经运行的 Linux 盒子。
 
 | 能力 | 0.3.0 提供的接口 |
 | --- | --- |
@@ -39,26 +59,6 @@ npm run node-agent-api -- --backend codex --port 18770 --recover true
 - [验证记录](tools/node-agent-api/VERIFICATION.md)：离线回归与真实共享盒子验证。
 
 这是 GrokNode 的外部适配 API；版本号为 0.3.0，不表示兼容 OpenAI Agents SDK。运行中的进程按中断处理，恢复保留的文件与会话后，由用户决定重跑任务。
-
-## 本地化改造做了什么？
-
-- 推理路由（Inference Router）：Codex 与 OpenRouter 两档 provider，替代原有的
-  云端推理入口；
-- 在两档路由 provider 上保留 Grok Bot 插件/MCP 工具执行；
-- 路由推理的本地用量统计，数据不出本机；
-- 由应用自管的本地 Docker 沙箱，是当前唯一的 box 运行时，不再连接任何远端沙箱；
-- 融入精修版出厂 UI 的重建设置界面；
-- 在打包边界禁用 upstream 更新器，默认关闭 Sentry 与遥测上报。
-- 设置增加默认模型的自定义推理强度，各bot也可选择模型和强度。
-- 支持设置主bot。
-
-改造建立在一次完整的源码级重建之上：`source/` 下是 Electron、host、
-coordinator、本地执行、协议与渲染层各边界的可读 TypeScript 实现，`scripts/`
-下是一条把这些源码重新构建为可用 macOS 应用的确定性工具链。
-
-这是一个折腾与研究性质的项目，不是 Anysphere 的原始 monorepo，也不是官方 Grok Bot
-发布版本。从编译产物推断出的命名与模块边界可能与原始源码不同。
-
 ## 仓库里有什么？
 
 检入的版本树包含经过审阅的重建代码、测试、清单、构建脚本，以及用 Git LFS 保存的、
