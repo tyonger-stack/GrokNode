@@ -13,9 +13,32 @@ API key，代码执行跑在由应用自管的本地 Docker 容器里，登录�
 
 ## Node Agent API 0.3.0
 
-仓库提供独立的本机 API 和网页工作台，可通过 GrokNode 现有接口连接 bot、整桌面及单应用窗口。Codex Harness 留在 Mac，代码执行进入已经运行的共享盒子；各 bot 使用不同桌面、共享容器与数据。API 不修改原 App 或替换其服务，不自动创建或重启盒子。
+**Node Agent API 0.3.0** 将现有 GrokNode 的 bot、Linux 桌面和项目操作开放为本机 HTTP API，并提供网页工作台与 Codex CLI 入口。它适合连接自己的网页或薄桌面客户端：模型调用、对话和工具路由由 Mac 上的 Codex Harness 负责，shell、改文件、编译和测试进入 GrokNode 已经运行的 Linux 盒子。
 
-安装仓库依赖后运行 `npm run node-agent-api`，打开 `http://127.0.0.1:18770/ui/`。配置和前置条件见 [API README](tools/node-agent-api/README.md)，完整接口见 [OpenAPI](tools/node-agent-api/openapi.json)。`npm run node-agent -- ...` 提供同一执行端的 CLI 包装，`npm run test:node-agent-api` 运行离线 API 回归。
+| 能力 | 0.3.0 提供的接口 |
+| --- | --- |
+| 对话与任务 | bot 查询、独立 Harness 会话、消息、SSE 事件、回合结果、审批、定向取消 |
+| 桌面与单应用 | 整桌面及终端/浏览器窗口的独立观看、接管与交还；手动复制粘贴 |
+| 项目与恢复 | 文件导入、Git 差异、归档导出、项目与会话备份、网页/CLI 续接同一 thread |
+| 本机授权 | Bearer 密钥、用户与 bot 权限、短期桌面链接、控制租约、配额、审计、签名 webhook |
+
+保持原 GrokNode 的定义：**各 bot 使用不同桌面，容器和数据共用**。API 是独立服务，不改原 App 的登录、启动或盒子管理逻辑，不自动创建、替换或重启容器；权限范围也不构成共享文件系统的 bot 间隔离。
+
+已有运行中的 GrokNode 盒子，并准备好 Node 26.5.x 与 Mac/Linux 两端 Codex 0.160.0 后，在仓库根目录启动：
+
+```sh
+npm ci
+npm run node-agent-api -- --backend codex --port 18770 --recover true
+```
+
+打开 [网页工作台](http://127.0.0.1:18770/ui/)，手动输入启动输出中 `owner_key_file` 指向的密钥。服务默认只监听 `127.0.0.1`；桌面链接须先通过 API 签发，观看与接管由服务端授权。
+
+- [Node Agent API 0.3.0 详细文档](docs/NODE_AGENT_API_0_3.md)：前置配置、完整接口索引、请求示例、单应用 VNC、CLI、恢复与排障。
+- [安装与运行说明](tools/node-agent-api/README.md)：执行包、代理、启动选项及运行边界。
+- [OpenAPI 3.0 契约](tools/node-agent-api/openapi.json)：机器可读的路径、参数、请求和响应 schema。
+- [验证记录](tools/node-agent-api/VERIFICATION.md)：离线回归与真实共享盒子验证。
+
+这是 GrokNode 的外部适配 API；版本号为 0.3.0，不表示兼容 OpenAI Agents SDK。运行中的进程按中断处理，恢复保留的文件与会话后，由用户决定重跑任务。
 
 ## 本地化改造做了什么？
 
@@ -220,7 +243,8 @@ dist/Grok Node.app
 - `source/node-agent-coordinator/` —— 转录路由、流式活动、表情回应与路由 MCP 桥；
 - `source/shared/` —— 共享契约、设置、协议与 provider 辅助；
 - `frontend/` —— 可读的 React/TypeScript 渲染器重建与设计工作区；
-- `scripts/` —— bootstrap、编译、渲染器补丁、打包、签名与校验；以及
+- `scripts/` —— bootstrap、编译、渲染器补丁、打包、签名与校验；
+- `tools/node-agent-api/` —— 独立的 Node Agent API、网页工作台、CLI 与 OpenAPI 契约；以及
 - `tests/` —— 发布与路由回归测试。
 
 更多细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
@@ -236,6 +260,8 @@ npm run package           # 构建、签名并校验 macOS 应用
 npm run verify            # 校验已打包的应用
 npm run smoke             # 有界的原生冒烟检查
 npm run publication:check # 证明干净历史导出无损
+npm run node-agent-api    # 启动独立 Node Agent API 和网页工作台
+npm run test:node-agent-api # API 离线回归
 ```
 
 生成目录包括 `.cache`、`.build`、`dist`、`src/app/dist`、`recovered`、`recovery` 与

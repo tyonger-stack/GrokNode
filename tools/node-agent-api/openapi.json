@@ -91,11 +91,11 @@
       },
       "post": {
         "operationId": "createAgent",
-        "summary": "Create a bot on an enabled experimental backend",
+        "summary": "Create a bot through the original GrokNode gateway",
         "x-required-scopes": [
           "agents.write"
         ],
-        "description": "Requires wildcard bot scope and --allow-writes true. Returns the GrokNode createAgent result without normalization. No model configuration or kickstart is supplied. Experimental backend writes additionally require an ownership namespace label, matching container name, no host bind mounts, no /root/.codex mount, and compatible bot ownership label when present.",
+        "description": "Requires agents.write and wildcard bot scope. The default codex backend calls the original GrokNode createAgent gateway without changing its program, model configuration or kickstart policy. The legacy grok backend defaults to read-only; enabling its write flag does not waive its additional backend ownership and mount checks.",
         "requestBody": {
           "required": true,
           "content": {
@@ -221,11 +221,11 @@
       },
       "post": {
         "operationId": "createSession",
-        "summary": "Attach to or reuse a bot's existing transcript",
+        "summary": "Create an independent Harness thread or reuse a legacy transcript attachment",
         "x-required-scopes": [
           "sessions.write"
         ],
-        "description": "Does not create a new isolated conversation or start a bot turn. agent_id takes precedence over agent.id when both are supplied.",
+        "description": "The codex backend creates a new independent Harness thread (201); the legacy grok backend may reuse an open attachment to the bot's existing transcript (200). Neither starts a turn. agent_id takes precedence over agent.id when both are supplied. Independent threads do not isolate files in the shared container.",
         "requestBody": {
           "required": true,
           "content": {
@@ -323,7 +323,7 @@
       ],
       "get": {
         "operationId": "listItems",
-        "summary": "Read the bot's existing GrokNode transcript",
+        "summary": "Read Harness turn items or the legacy GrokNode transcript",
         "x-required-scopes": [
           "sessions.read"
         ],
@@ -465,17 +465,17 @@
       },
       "post": {
         "operationId": "submitMessage",
-        "summary": "Submit exactly one message event",
+        "summary": "Submit one message or cancel the active Harness turn",
         "x-required-scopes": [
           "sessions.write"
         ],
-        "description": "Requires enabled experimental backend. 202 is gateway acceptance, not task completion. Same key and payload return saved status without resubmission; changed payload returns 409. Failure can leave unknown state. No automatic replay or cancellation support. Concurrent submissions for a session are serialized. Equivalent text in either supported input shape shares a fingerprint. A pending submission recovered after restart is marked unknown and is not resent. Cancel input interrupts the native turn and terminates only that turn's recorded processes in its thread; it never stops the shared box.",
+        "description": "Requires a write-enabled backend. 202 acknowledges input or interruption, not task completion; inspect turns for the outcome. Message retries with the same key and logical text return saved status without resubmission; changed text returns 409. Concurrent message submissions are serialized. Pending submissions recovered after restart become unknown and are not resent. Cancel input is supported only when capabilities.events.cancellation is true, has no idempotency_key field, interrupts the native turn and terminates only its recorded processes in its thread; it never stops the shared box.",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SubmitMessage"
+                "$ref": "#/components/schemas/SubmitEvent"
               },
               "example": {
                 "events": [
@@ -495,7 +495,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InputResult"
+                  "$ref": "#/components/schemas/SubmitResult"
                 }
               }
             },
@@ -536,7 +536,7 @@
         "x-required-scopes": [
           "sessions.read"
         ],
-        "description": "Issues a single-use view/control capability. Application viewers use a separate cookie path per window and can coexist. One controller lease per bot; handing back closes that controller. Viewer connections expire after 15 minutes. Control does not pause the bot.",
+        "description": "Requires sessions.read plus desktop.view for view mode or desktop.control for control mode. Issues a single-use capability; opening it establishes the viewer and any control lease. Application viewers use a separate cookie path per window and can coexist. One controller lease per bot; handing back closes that controller. Viewer connections expire after 15 minutes. Control does not pause the bot.",
         "requestBody": {
           "required": true,
           "content": {
@@ -740,7 +740,7 @@
         ],
         "responses": {
           "303": {
-            "description": "Redirects to viewer; cookie is HttpOnly, SameSite=Strict, Path=/desktop, Max-Age=900",
+            "description": "Redirects to the authorized viewer with an HttpOnly, SameSite=Strict cookie valid for 900 seconds. Whole desktops use Path=/desktop; application viewers use their own Path=/desktop/lane/{viewer_id}.",
             "headers": {
               "Location": {
                 "schema": {
@@ -947,7 +947,81 @@
           },
           "403": {
             "description": "WebSocket upgrade rejected; no JSON body"
+          },
+          "default": {
+            "description": "Rejected WebSocket upgrade; authentication, changed environment, quota or upstream error status, with no JSON body"
           }
+        }
+      }
+    },
+    "/desktop/lane/{viewer_id}/mandatory.json": {
+      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "get": {
+        "operationId": "getApplicationViewerSettings",
+        "summary": "Server-selected settings for one application viewer",
+        "security": [{ "viewerCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Application viewer settings with its own socket path",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ViewerSettings" } } }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/desktop/lane/{viewer_id}/defaults.json": {
+      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "get": {
+        "operationId": "getApplicationViewerDefaults",
+        "summary": "Empty defaults for one application viewer",
+        "security": [{ "viewerCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Empty settings",
+            "content": { "application/json": { "schema": { "type": "object", "maxProperties": 0 } } }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/desktop/lane/{viewer_id}/vnc.html": {
+      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "get": {
+        "operationId": "getApplicationViewerPage",
+        "summary": "noVNC page for one application, with the control bar hidden",
+        "security": [{ "viewerCookie": [] }],
+        "responses": {
+          "200": { "description": "Authorized application viewer HTML" },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/desktop/lane/{viewer_id}/{asset}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ViewerId" },
+        { "name": "asset", "in": "path", "required": true, "schema": { "type": "string", "example": "core/rfb.js" } }
+      ],
+      "get": {
+        "operationId": "getApplicationViewerAsset",
+        "summary": "Allowlisted noVNC resources for one application viewer",
+        "security": [{ "viewerCookie": [] }],
+        "responses": {
+          "200": { "description": "Resource with its native content type" },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/desktop/lane/{viewer_id}/socket": {
+      "parameters": [{ "$ref": "#/components/parameters/ViewerId" }],
+      "get": {
+        "operationId": "upgradeApplicationViewerSocket",
+        "summary": "Cookie-authorized WebSocket upgrade for one application viewer",
+        "security": [{ "viewerCookie": [] }],
+        "parameters": [{ "name": "Origin", "in": "header", "required": true, "schema": { "type": "string", "example": "http://127.0.0.1:18770" } }],
+        "responses": {
+          "101": { "description": "Application RFB WebSocket established" },
+          "403": { "description": "WebSocket upgrade rejected; no JSON body" },
+          "default": { "description": "Rejected WebSocket upgrade; authentication, changed environment, quota or upstream error status, with no JSON body" }
         }
       }
     },
@@ -1235,7 +1309,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1289,7 +1363,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1320,7 +1394,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1363,7 +1437,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1412,7 +1486,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1450,7 +1524,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1499,7 +1573,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1566,7 +1640,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1627,7 +1701,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1666,7 +1740,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1717,7 +1791,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1756,7 +1830,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1818,7 +1892,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1856,7 +1930,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1894,7 +1968,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1916,11 +1990,11 @@
       ],
       "post": {
         "operationId": "recreateEnvironment",
-        "summary": "Recreate the bot container (codex backend)",
+        "summary": "Request environment recreation; the shared backend refuses lifecycle management",
+        "description": "The published shared GrokNode runtime returns 409 managed_by_grok_node. Container creation, replacement and restart remain owned by GrokNode; this API does not recreate the box.",
         "x-required-scopes": [
           "sessions.write"
         ],
-        "description": "Unavailable on the shared external backend: returns 409 managed_by_grok_node. Original box lifecycle is owned by GrokNode and is never replaced by API startup.",
         "responses": {
           "200": {
             "description": "Recreate receipt",
@@ -1932,7 +2006,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -1958,7 +2032,7 @@
         "x-required-scopes": [
           "sessions.write"
         ],
-        "description": "Codex backend only. Requires an idle bot. Body backup_id names a directory under the bot namespaced backups. Disconnects the thread, ensures and restores the container. Returns restored true and processes_restored false.",
+        "description": "Codex backend only. Requires no API-managed active turn in the shared project. Body backup_id selects a namespaced private backup. Checks archive identity and SHA-256, backs up current files, then overlays project entries without deleting extra files. Does not recreate the container or automatically replace the API state or Mac Harness profile from backup. Returns restored true and processes_restored false; preserve Mac state/runtime-state and explicitly resume the thread.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1989,7 +2063,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -2036,7 +2110,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -2075,7 +2149,7 @@
               }
             },
             "headers": {
-              "X_Request_ID": {
+              "X-Request-ID": {
                 "description": "Service-generated request correlation ID",
                 "schema": {
                   "type": "string"
@@ -2172,6 +2246,13 @@
       }
     },
     "parameters": {
+      "ViewerId": {
+        "name": "viewer_id",
+        "in": "path",
+        "required": true,
+        "description": "Opaque application viewer id returned in the ticket redirect; it is not a bot, desktop or X11 window id.",
+        "schema": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" }
+      },
       "AgentId": {
         "name": "agent_id",
         "in": "path",
@@ -2239,7 +2320,7 @@
         }
       },
       "Session": {
-        "description": "New or reused bot transcript attachment",
+        "description": "New Harness thread attachment or reused legacy bot transcript attachment",
         "content": {
           "application/json": {
             "schema": {
@@ -2553,7 +2634,15 @@
               "node.session.input.unknown",
               "node.desktop.authorization.created",
               "node.session.items.changed",
-              "node.session.closed"
+              "node.session.closed",
+              "node.harness.event",
+              "node.harness.disconnected",
+              "node.session.turn.unknown",
+              "node.thread.empty_recreated",
+              "node.turn.processes.stopped",
+              "node.action.resolved",
+              "node.environment.recreated",
+              "node.environment.restored"
             ]
           },
           "session_id": {
@@ -2675,6 +2764,49 @@
           "idempotency_key": {
             "$ref": "#/components/schemas/Identifier"
           }
+        }
+      },
+      "SubmitResult": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/InputResult" },
+          { "$ref": "#/components/schemas/CancelResult" }
+        ]
+      },
+      "SubmitEvent": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/SubmitMessage" },
+          { "$ref": "#/components/schemas/CancelInput" }
+        ]
+      },
+      "CancelInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["events"],
+        "properties": {
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "turn_id"],
+              "properties": {
+                "type": { "type": "string", "enum": ["agent.session.input.cancel"] },
+                "turn_id": { "$ref": "#/components/schemas/Identifier" }
+              }
+            }
+          }
+        }
+      },
+      "CancelResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["accepted", "turn_id", "completed"],
+        "properties": {
+          "accepted": { "type": "boolean", "enum": [true] },
+          "turn_id": { "$ref": "#/components/schemas/Identifier" },
+          "completed": { "type": "boolean", "enum": [false] }
         }
       },
       "InputResult": {
@@ -2831,9 +2963,8 @@
           },
           "path": {
             "type": "string",
-            "enum": [
-              "desktop/socket"
-            ]
+            "pattern": "^desktop/(lane/[A-Za-z0-9_-]+/)?socket$",
+            "description": "Server-selected whole-desktop or application viewer WebSocket path. Clients must use the returned setting."
           }
         }
       },
@@ -2845,6 +2976,10 @@
           "bot_ids"
         ],
         "properties": {
+          "user_id": {
+            "$ref": "#/components/schemas/Identifier",
+            "description": "Defaults to the caller's API user. Only the owner can issue keys for another active user."
+          },
           "scopes": {
             "type": "array",
             "minItems": 1,
@@ -3187,7 +3322,7 @@
             "properties": {
               "provisioning": {
                 "type": "boolean",
-                "description": "True on the codex backend (bindSession provisions a Harness thread; backup/recreate/restore manage the environment)"
+                "description": "False for the published shared GrokNode backend: creating a Harness thread does not provision a container. GrokNode owns box lifecycle management."
               },
               "isolation": {
                 "type": "string"
@@ -3211,7 +3346,7 @@
               },
               "legacy_vnc_protected": {
                 "type": "boolean",
-                "description": "False on the legacy backend (raw 6081 entry stays reachable); true on the codex backend"
+                "description": "False for both published shared-container backends. Authorization protects this API's viewer routes; original GrokNode VNC ports retain their existing access policy."
               }
             }
           },
@@ -3663,28 +3798,14 @@
       },
       "AnswerAction": {
         "type": "object",
+        "additionalProperties": false,
+        "required": ["decision"],
         "properties": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "decision"
-          ],
-          "properties": {
-            "decision": {
-              "type": "string",
-              "enum": [
-                "accept",
-                "decline"
-              ]
-            }
+          "decision": {
+            "type": "string",
+            "enum": ["accept", "decline"]
           }
-        },
-        "required": [
-          "type",
-          "additionalProperties",
-          "required",
-          "properties"
-        ]
+        }
       },
       "SessionHandoff": {
         "type": "object",

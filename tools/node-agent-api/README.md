@@ -2,7 +2,7 @@
 
 Node Agent API 是独立的本机服务。原始 GrokNode 管理 bot 和桌面，所有 bot 共用它已经运行的容器与数据。Codex Harness、模型调用和对话保存在 Mac；shell、改文件和测试通过 Docker stdio 执行端进入 Linux。API 不修改或替换 GrokNode 源码、App、host、daemon、登录和启动流程，也不自动启动、重启或新建盒子。
 
-这是借鉴 agents / sessions / events 概念的外部适配服务，不是 OpenAI SDK 兼容实现。当前需求见 [requirements.md](./requirements.md)，机器可读接口见 [openapi.json](./openapi.json)。
+这是借鉴 agents / sessions / events 概念的外部适配服务，不是 OpenAI SDK 兼容实现。完整的接口索引、请求示例和接入流程见 [Node Agent API 0.3.0 详细文档](../../docs/NODE_AGENT_API_0_3.md)。当前需求见 [requirements.md](./requirements.md)，机器可读接口见 [openapi.json](./openapi.json)。
 
 ## 启动和网页
 

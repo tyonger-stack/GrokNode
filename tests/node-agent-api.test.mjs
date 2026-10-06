@@ -528,6 +528,38 @@ test('write-enabled GrokNode backends require ownership and safe mounts', async 
   await assert.rejects(guarded.createAgent({ name: 'blocked' }), /isolation check/);
 });
 
+test('OpenAPI request schemas accept documented approval, cancel and user-key payloads', () => {
+  const approval = ajv.compile({ $ref: schemaId + '#/components/schemas/AnswerAction' });
+  assert.equal(approval({ decision: 'accept' }), true);
+  assert.equal(approval({ decision: 'decline' }), true);
+  assert.equal(approval({ decision: 'approve' }), false);
+  assert.equal(approval({}), false);
+  assert.equal(approval({ decision: 'accept', command: 'untrusted' }), false);
+
+  const eventInput = api.paths['/v1/agents/sessions/{session_id}/events'].post.requestBody.content['application/json'].schema;
+  const submit = ajv.compile({ $ref: schemaId + eventInput.$ref });
+  assert.equal(submit({ events: [{ type: 'message', text: 'Run project tests' }], idempotency_key: 'tests-001' }), true);
+  assert.equal(submit({ events: [{ type: 'agent.session.input.cancel', turn_id: 'turn_example' }] }), true);
+  assert.equal(submit({ events: [{ type: 'agent.session.input.cancel' }] }), false);
+  assert.equal(submit({ events: [{ type: 'agent.session.input.cancel', turn_id: 'turn_example' }], idempotency_key: 'cancel-001' }), false);
+
+  const result = ajv.compile({ $ref: schemaId + '#/components/schemas/SubmitResult' });
+  assert.equal(result({ request_id: 'tests-001', status: 'accepted', completed: false, turn_id: 'turn_example' }), true);
+  assert.equal(result({ accepted: true, turn_id: 'turn_example', completed: false }), true);
+  assert.equal(result({ accepted: true, completed: false }), false);
+  assert.equal(result({ accepted: true, turn_id: 'turn_example', completed: true }), false);
+
+  const issueKey = ajv.compile({ $ref: schemaId + '#/components/schemas/IssueKey' });
+  assert.equal(issueKey({ scopes: ['agents.read', 'sessions.read', 'desktop.view'], bot_ids: ['bot-example'], user_id: 'nuser_example', ttl_seconds: 3600 }), true);
+  assert.equal(issueKey({ scopes: ['agents.read'], bot_ids: ['bot-example'], user_id: 42 }), false);
+
+  const settings = ajv.compile({ $ref: schemaId + '#/components/schemas/ViewerSettings' });
+  const base = { autoconnect: true, resize: 'scale', reconnect: false, view_only: true };
+  assert.equal(settings({ ...base, path: 'desktop/socket' }), true);
+  assert.equal(settings({ ...base, path: 'desktop/lane/example_viewer/socket' }), true);
+  assert.equal(settings({ ...base, path: 'unrelated/socket' }), false);
+});
+
 test('OpenAPI references, operations and response schemas are well formed', () => {
   assert.equal(api.openapi, '3.0.3');
   const operationIds = new Set();
