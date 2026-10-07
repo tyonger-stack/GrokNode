@@ -309,7 +309,7 @@ if (process.env.NODE_AGENT_UI_BROWSER === '1') test('real Chromium UI contract: 
     capabilityMode = 'unknown'; await fill('#key', 'contract-test-key'); await click('#connect');
     await waitFor("document.getElementById('bots').options.length === 3");
     await page.locator('#bots').selectOption('bot_1'); await click('#attach');
-    await waitFor("document.getElementById('thread').textContent === 'session_1'");
+    await waitFor("document.getElementById('thread').textContent === '当前会话' && document.querySelector('#sessions button[aria-current=\"true\"]')?.title === 'session_1'");
     assert.equal(await evaluate("['send','cancel','view','control','clipboard-read','clipboard-write','actions-refresh','diff-refresh','import','export'].every(id=>document.getElementById(id).disabled)"), true);
     await capture('unsupported-capabilities');
     assert.equal(await evaluate('localStorage.length === 0 && sessionStorage.length === 0'), true);

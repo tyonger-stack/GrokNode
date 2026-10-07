@@ -6,15 +6,15 @@ import { homedir } from 'node:os';
 import { privateDirectory, resourceNames } from './common.mjs';
 
 const execute = promisify(execFile);
-export async function prepareCodex({ namespace, botId, stateRoot, runtime, codexBinary = 'codex', authFile = join(homedir(), '.codex/auth.json'), model, baseUrl }) {
+export async function prepareCodex({ namespace, botId, stateRoot, runtime, codexBinary = 'codex', authFile = join(homedir(), '.codex/auth.json'), model, baseUrl, status, registry }) {
   const n = resourceNames(namespace, botId);
   const home = await privateDirectory(join(stateRoot, namespace, n.key, 'mac-codex'));
   const env = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: home, CODEX_HOME: home, TMPDIR: process.env.TMPDIR ?? '/tmp', TERM: process.env.TERM ?? 'xterm-256color', OCX_SHIM_BYPASS: '1', NO_PROXY: '127.0.0.1,localhost,::1', no_proxy: '127.0.0.1,localhost,::1' };
   const version = await execute(codexBinary, ['--version'], { env, encoding: 'utf8' });
   if (version.stdout.trim() !== 'codex-cli 0.160.0') throw new Error('Local Codex must be exactly 0.160.0');
-  const status = await runtime.status(botId);
+  status ??= await runtime.status(botId);
   if (!status.running) throw new Error('Bot environment unavailable');
-  const registry = await runtime.descriptor(botId);
+  registry ??= await runtime.descriptor(botId);
   const auth = resolve(authFile);
   if (!(await lstat(auth)).isFile()) throw new Error('Mac auth file is missing');
   const link = join(home, 'auth.json');

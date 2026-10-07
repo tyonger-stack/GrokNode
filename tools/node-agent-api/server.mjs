@@ -26,14 +26,14 @@ export async function startNodeAgentApi(options) {
   } catch (error) { await release(); throw error; }
 }
 
-async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs = 2000, governanceOptions = {}, modelOptions, tokenhubOptions = {} }) {
+async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs = 2000, governanceOptions = {}, modelOptions, tokenhubOptions = {}, embeddedViewer = null }) {
   const auth = await createAuth(stateDirectory), store = await createStore(stateDirectory);
   const tokenhub = modelOptions && adapter.independentSessions ? await createTokenHub(stateDirectory, tokenhubOptions) : null;
   adapter.setTokenHub?.(tokenhub);
   const models = modelOptions && adapter.independentSessions ? await createModelPolicy(stateDirectory, { ...modelOptions, tokenhub }) : null;
   const governance = await createGovernance(stateDirectory, governanceOptions);
   let webhooks; try { webhooks = await createWebhookOutbox(stateDirectory); } catch (error) { await governance.close(); throw error; }
-  const desktop = createDesktop({ adapter, auth, store, governance, stateDirectory });
+  const desktop = createDesktop({ adapter, auth, store, governance, stateDirectory, embeddedViewer });
   store.setWriteGuard(async values => {
     const groups = new Map();
     for (const value of values) { const subject = value.quota_user_id ?? 'owner'; groups.set(subject, (groups.get(subject) ?? 0) + Buffer.byteLength(JSON.stringify(value))); }
@@ -222,7 +222,7 @@ async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs
             if (req.method === 'GET') return respond(res, 200, await adapter.clipboard(session));
             if (req.method === 'POST') { if (session.status === 'closed') throw new ApiError(409, 'session_closed', 'Session is closed'); if (!desktop.hasControl(principal, session)) throw forbidden(); const input = object(await body(req), ['text']); return respond(res, 200, await adapter.clipboard(session, input.text)); }
           }
-          if (parts[4] === 'desktop' && req.method === 'POST') { if (session.status === 'closed') throw new ApiError(409, 'session_closed', 'Session attachment is closed'); return respond(res, 201, await desktop.issue(principal, session, object(await body(req), ['mode','ttl_seconds','target','replace_own_control']), origin)); }
+          if (parts[4] === 'desktop' && req.method === 'POST') { if (session.status === 'closed') throw new ApiError(409, 'session_closed', 'Session attachment is closed'); return respond(res, 201, await desktop.issue(principal, session, object(await body(req), ['mode','ttl_seconds','target','replace_own_control','existing_only']), origin)); }
           if (parts[4] === 'handback' && req.method === 'POST') return respond(res, 200, desktop.handback(principal, session));
           if (parts[4] === 'events' && req.method === 'GET') {
             if (req.headers.accept?.includes('text/event-stream')) {

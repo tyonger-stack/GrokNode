@@ -1,5 +1,48 @@
 export const sessionPath = id => `/v1/agents/sessions/${encodeURIComponent(id)}`;
 
+export function createPaintQueue(paint, {
+  requestFrame = requestAnimationFrame, cancelFrame = cancelAnimationFrame,
+  setTimer = setTimeout, clearTimer = clearTimeout, isHidden = () => document.hidden,
+} = {}) {
+  let pending;
+  const reset = () => {
+    if (!pending) return;
+    cancelFrame(pending.frame); clearTimer(pending.timer); pending = undefined;
+  };
+  const flush = () => { reset(); paint(); };
+  return {
+    schedule() {
+      if (pending) return;
+      const ticket = {}; pending = ticket;
+      const run = () => { if (pending === ticket) flush(); };
+      ticket.frame = requestFrame(run);
+      // rAF can stop in background tabs. State ingestion never waits for paint.
+      ticket.timer = setTimer(() => { if (isHidden()) run(); }, 100);
+    },
+    flush, reset,
+  };
+}
+
+export function createRefresh(load) {
+  let active;
+  const refresh = () => {
+    if (active) { active.dirty = true; return active.promise; }
+    const flight = { dirty: false }; active = flight;
+    flight.promise = (async () => {
+      try {
+        do {
+          flight.dirty = false;
+          try { await load(() => active === flight && !flight.dirty); }
+          catch (error) { if (active === flight && !flight.dirty) throw error; }
+        } while (active === flight && flight.dirty);
+      } finally { if (active === flight) active = undefined; }
+    })();
+    return flight.promise;
+  };
+  refresh.reset = () => { active = undefined; };
+  return refresh;
+}
+
 export function capabilities(value = {}) {
   return {
     send: value.writes_enabled === true,

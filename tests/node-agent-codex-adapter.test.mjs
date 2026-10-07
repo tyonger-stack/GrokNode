@@ -1,12 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, realpath } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, readlink, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
+import { PassThrough, Writable } from 'node:stream';
 import { startNodeAgentApi } from '../tools/node-agent-api/server.mjs';
 import { createCodexAdapter } from '../tools/node-agent-api/codex.mjs';
-import { rpcParams } from '../tools/node-agent-api/runtime/harness.mjs';
+import { createHarness, rpcParams } from '../tools/node-agent-api/runtime/harness.mjs';
+import { createStore } from '../tools/node-agent-api/store.mjs';
+import { createInputHandler } from '../tools/node-agent-api/input.mjs';
+import fsPromises from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+
+const realTimeout = globalThis.setTimeout, realClearTimeout = globalThis.clearTimeout;
+const nextTick = () => new Promise(resolve => setImmediate(resolve));
+
+async function bounded(promise) {
+  let timer;
+  try { return await Promise.race([promise, new Promise((_, reject) => { timer = realTimeout(() => reject(new Error('Fixture boundary did not complete')), 5000); })]); }
+  finally { realClearTimeout(timer); }
+}
 
 // Fake harness speaking the real RPC seam: requests are validated by rpcParams,
 // the same gate the production harness applies. Scripted replies stand in for
@@ -390,4 +405,624 @@ test('handoff unsubscribes the thread and reports it without replay', async () =
   } finally {
     await f.service.close();
   }
+});
+
+async function validatedFixture({ legacy = false, realHarness = false } = {}) {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'codex-validated-')));
+  const store = await createStore(join(dir, 'api'));
+  const counts = { ensure: 0, validate: 0, status: 0, containerSave: 0, disconnect: 0 };
+  const identity = { containerId: 'fixture-container', containerStartedAt: 'start-1', assignmentRevision: 'seat-1', display: 5 };
+  const runtime = {
+    ...createFakeRuntime(), shared: true,
+    async ensure() { counts.ensure++; return { running: true, ...identity }; },
+    async status() { counts.status++; return { running: true, ...identity }; },
+    async validateExecutor() { counts.validate++; return { ...identity }; },
+    async restore() { return { restored: true }; },
+  };
+  const wire = [], children = [];
+  const authFile = join(dir, 'dummy-auth.json'), binary = join(dir, 'fake-codex');
+  let harness;
+  if (realHarness) {
+    await writeFile(authFile, '{}', { mode: 0o600 });
+    await writeFile(binary, '#!/bin/sh\nprintf "codex-cli 0.160.0\\n"\n', { mode: 0o700 });
+    runtime.descriptor = async () => ({ environments: [{ ...identity, transport: 'stdio', program: '/fixture/docker', args: ['exec', identity.containerId, '--no-new-privs', 'exec-server', '--listen', 'stdio'] }] });
+    harness = createHarness({ runtime, namespace: 'grok-node-lab-fixture', stateRoot: dir, authFile, binary,
+      spawnProcess(_binary, _args, options) {
+        const child = new EventEmitter();
+        child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.options = options;
+        child.stdin = new Writable({ write(chunk, _encoding, done) {
+          const request = JSON.parse(chunk.toString()); wire.push(request);
+          const result = request.method === 'thread/start' ? { thread: { id: 'thr_native' }, model: 'fixture-model' }
+            : request.method === 'thread/resume' ? { model: 'fixture-model' }
+              : request.method === 'thread/read' ? { thread: { turns: [] } }
+                : request.method === 'turn/start' ? { turn: { id: 'turn_native', status: 'inProgress' } } : {};
+          if (request.id != null) queueMicrotask(() => child.stdout.write(JSON.stringify({ id: request.id, result }) + '\n'));
+          done();
+        } });
+        child.kill = () => { child.killed = true; child.emit('exit', 0); };
+        children.push(child);
+        return child;
+      },
+    });
+    harness.calls = [];
+  } else harness = createFakeHarness();
+  let connection = null, connectionSeq = 0;
+  const originalRequest = harness.request;
+  if (realHarness) {
+    const disconnect = harness.disconnect;
+    harness.disconnect = async botId => { counts.disconnect++; await disconnect(botId); };
+  } else {
+    harness.connectionIdentity = () => connection;
+    harness.disconnect = async () => { counts.disconnect++; connection = null; };
+  }
+  harness.request = async (botId, method, params) => {
+    if (realHarness) harness.calls.push({ botId, method, params });
+    else connection ??= ++connectionSeq;
+    if (method === 'turn/start') {
+      const disk = JSON.parse(await readFile(join(dir, 'api/sessions.json'), 'utf8'));
+      assert.ok(Object.values(disk[0].requests).some(request => request.status === 'pending'), 'pending input must be durable before turn/start');
+    }
+    const result = await originalRequest(botId, method, params);
+    if (!realHarness && (method === 'thread/start' || method === 'thread/resume')) result.model = 'fixture-model';
+    return result;
+  };
+  const update = store.update;
+  store.update = async (id, changes) => {
+    if (Object.hasOwn(changes, 'executor_container_id')) counts.containerSave++;
+    return update.call(store, id, changes);
+  };
+  if (legacy) { delete runtime.validateExecutor; delete harness.connectionIdentity; }
+  const adapter = createCodexAdapter({ runtime, harness, roster, namespace: 'grok-node-lab-fixture', stateRoot: dir });
+  adapter.attachStore(store);
+  const { session } = await store.create('bot-a', {}, { model: 'fixture-model' });
+  const input = createInputHandler({ adapter, store });
+  return {
+    adapter, runtime, harness, store, session, identity, counts, wire, children, authFile,
+    resetCounts() { for (const key of Object.keys(counts)) counts[key] = 0; harness.calls.length = 0; },
+    submit: key => input(session, { events: [{ type: 'message', text: 'synthetic input' }], idempotency_key: key }),
+    async close() { await adapter.close(); await store.flush(); await rm(dir, { recursive: true, force: true }); },
+  };
+}
+
+test('validated warm submit preserves the thread, model and durable dedupe without preparation or container saves', async t => {
+  const f = await validatedFixture();
+  try {
+    await f.adapter.bindSession(f.session);
+    const threadId = f.session.thread_id;
+    f.resetCounts();
+    const replies = await Promise.all(Array.from({ length: 4 }, () => f.submit('nreq_validated_warm')));
+    assert.equal(replies.filter(reply => reply.replayed).length, 3);
+    assert.equal(f.session.thread_id, threadId);
+    assert.equal(f.session.turns[0].model, 'fixture-model');
+    assert.equal(f.session.requests.nreq_validated_warm.status, 'accepted');
+    assert.deepEqual(f.harness.calls.map(call => call.method), ['turn/start']);
+    assert.equal(f.harness.calls[0].params.threadId, threadId);
+    assert.equal(f.harness.calls[0].params.model, 'fixture-model');
+    t.diagnostic(JSON.stringify({ scenario: 'warm', ...f.counts, turnStart: f.harness.calls.length }));
+    assert.equal(f.counts.validate, 1);
+    assert.equal(f.counts.ensure, 0);
+    assert.equal(f.counts.status, 0);
+    assert.equal(f.counts.containerSave, 0);
+  } finally { await f.close(); }
+});
+
+for (const [field, value] of [['containerId', 'replacement'], ['containerStartedAt', 'start-2'], ['assignmentRevision', 'seat-2'], ['display', 6]]) {
+  test(`validated submit recovers changed ${field} before sending exactly one new turn`, async t => {
+    const f = await validatedFixture();
+    try {
+      await f.adapter.bindSession(f.session);
+      const threadId = f.session.thread_id;
+      f.resetCounts();
+      f.identity[field] = value;
+      const result = await f.submit('nreq_validated_changed');
+      assert.equal(result.status, 'accepted');
+      assert.equal(f.session.thread_id, threadId);
+      assert.deepEqual(f.harness.calls.map(call => call.method), ['thread/resume', 'thread/read', 'turn/start']);
+      assert.equal(f.harness.calls[0].params.model, 'fixture-model');
+      assert.equal(f.harness.calls[2].params.threadId, threadId);
+      assert.equal(f.counts.disconnect, 1);
+      assert.equal(f.counts.ensure, 1);
+      assert.equal(f.session.executor_container_id, f.identity.containerId);
+      assert.equal(f.counts.containerSave, field === 'containerId' ? 1 : 0);
+      t.diagnostic(JSON.stringify({ scenario: field, ...f.counts, turnStart: 1 }));
+    } finally { await f.close(); }
+  });
+}
+
+test('validated cold resume ensures once and restores history before sending the new input', async t => {
+  const f = await validatedFixture();
+  try {
+    await f.store.update(f.session.id, { thread_id: 'thr_existing', executor_container_id: f.identity.containerId, turns: [], actions: [], task_status: 'idle' });
+    f.resetCounts();
+    const request = f.harness.request;
+    f.harness.request = async (...args) => {
+      const result = await request(...args);
+      return args[1] === 'thread/read' ? { thread: { turns: [{ id: 'turn_old', status: 'completed', items: [{ id: 'item_old', type: 'agentMessage', text: 'saved' }] }] } } : result;
+    };
+    await f.submit('nreq_validated_cold');
+    assert.deepEqual(f.harness.calls.map(call => call.method), ['thread/resume', 'thread/read', 'turn/start']);
+    assert.equal(f.session.turns[0].items[0].text, 'saved');
+    assert.equal(f.session.turns[1].request_id, 'nreq_validated_cold');
+    t.diagnostic(JSON.stringify({ scenario: 'cold', ...f.counts, turnStart: 1 }));
+    assert.equal(f.counts.ensure, 1);
+    assert.equal(f.counts.containerSave, 0);
+  } finally { await f.close(); }
+});
+
+test('fresh validation failure refuses a live thread and keeps unknown input non-replayable', async () => {
+  const f = await validatedFixture();
+  try {
+    await f.adapter.bindSession(f.session);
+    f.resetCounts();
+    f.runtime.validateExecutor = async () => { throw Object.assign(new Error('Executor removed'), { code: 'execution_unavailable' }); };
+    await assert.rejects(f.submit('nreq_validated_missing'), /Executor removed/);
+    assert.equal(f.session.requests.nreq_validated_missing.status, 'unknown');
+    const replay = await f.submit('nreq_validated_missing');
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.status, 'unknown');
+    assert.equal(f.harness.calls.length, 0);
+    assert.equal(f.runtime.shells.length, 0);
+    assert.equal(f.counts.ensure, 0);
+  } finally { await f.close(); }
+});
+
+for (const failure of ['model mismatch', 'resume timeout']) {
+  test(`changed assignment ${failure} blocks turn/start and does not replay input`, async () => {
+    const f = await validatedFixture();
+    try {
+      await f.adapter.bindSession(f.session);
+      f.identity.assignmentRevision = 'new-seat';
+      f.resetCounts();
+      const request = f.harness.request;
+      f.harness.request = async (...args) => {
+        const result = await request(...args);
+        if (args[1] === 'thread/resume') {
+          if (failure === 'resume timeout') throw new Error('RPC timeout; outcome unknown; no replay');
+          return { model: 'wrong-model' };
+        }
+        return result;
+      };
+      await assert.rejects(f.submit('nreq_validated_failed'), failure === 'resume timeout' ? /RPC timeout/ : { code: 'model_mismatch' });
+      assert.equal(f.harness.calls.some(call => call.method === 'turn/start'), false);
+      assert.equal(f.session.requests.nreq_validated_failed.status, 'unknown');
+      assert.equal((await f.submit('nreq_validated_failed')).replayed, true);
+      assert.equal(f.harness.calls.filter(call => call.method === 'thread/resume').length, 1);
+    } finally { await f.close(); }
+  });
+}
+
+for (const invalidation of ['connection lost', 'handoff', 'restore']) {
+  test(`validated preparation is invalid after ${invalidation}`, async () => {
+    const f = await validatedFixture();
+    try {
+      await f.adapter.bindSession(f.session);
+      if (invalidation === 'connection lost') await f.harness.disconnect('bot-a');
+      if (invalidation === 'handoff') await f.adapter.handoff(f.session);
+      if (invalidation === 'restore') await f.adapter.restore(f.session, { backup_id: 'fixture-backup' });
+      f.resetCounts();
+      await f.submit('nreq_validated_invalidated');
+      assert.deepEqual(f.harness.calls.map(call => call.method), ['thread/resume', 'thread/read', 'turn/start']);
+      assert.equal(f.counts.ensure, 1);
+      assert.equal(f.session.turns.at(-1).request_id, 'nreq_validated_invalidated');
+    } finally { await f.close(); }
+  });
+}
+
+test('shared desktop forwards preparation policy and fresh assignment identity unchanged', async () => {
+  const runtime = createFakeRuntime();
+  runtime.shared = true;
+  const environment = { containerStartedAt: 'start-1', assignmentRevision: 'seat-1', display: 5 };
+  const options = { prepare: true }, target = { type: 'desktop' };
+  runtime.desktop = async (...args) => { assert.deepEqual(args, ['bot-a', target, 'view', options]); return environment; };
+  const adapter = createCodexAdapter({ runtime, harness: createFakeHarness(), roster });
+  assert.equal(await adapter.desktop('bot-a', target, 'view', options), environment);
+});
+
+test('validated disconnect marks running work unknown and never resubmits its input', async () => {
+  const f = await validatedFixture();
+  try {
+    await f.adapter.bindSession(f.session);
+    await f.submit('nreq_validated_disconnect');
+    await f.harness.disconnect('bot-a');
+    f.harness.emit('bot-a', { method: 'lab/status', params: { status: 'unknown', replayed: false } });
+    await f.adapter.flush();
+    assert.equal(f.session.task_status, 'unknown');
+    assert.equal(f.session.turns[0].status, 'unknown');
+    assert.equal(f.session.events.at(-1).data.replayed, false);
+    const calls = f.harness.calls.length;
+    assert.equal((await f.submit('nreq_validated_disconnect')).replayed, true);
+    assert.equal(f.harness.calls.length, calls);
+  } finally { await f.close(); }
+});
+
+test('legacy shared runtime without executor validation retains ensure before live-thread reuse', async () => {
+  const f = await validatedFixture({ legacy: true });
+  try {
+    await f.adapter.bindSession(f.session);
+    f.resetCounts();
+    assert.equal((await f.submit('nreq_legacy_shared')).status, 'accepted');
+    assert.equal(f.counts.ensure, 1);
+    assert.deepEqual(f.harness.calls.map(call => call.method), ['turn/start']);
+  } finally { await f.close(); }
+});
+
+test('cold recovery prepares an explicitly unavailable bot desktop before resuming its thread', async t => {
+  const f = await validatedFixture();
+  try {
+    await f.store.update(f.session.id, { thread_id: 'thr_existing', executor_container_id: f.identity.containerId, turns: [], actions: [], task_status: 'idle' });
+    const validate = f.runtime.validateExecutor;
+    let attempts = 0;
+    f.runtime.validateExecutor = async botId => {
+      attempts += 1;
+      if (attempts === 1) throw Object.assign(new Error('Bot desktop is not running'), { code: 'desktop_unavailable' });
+      return validate(botId);
+    };
+    f.resetCounts();
+    assert.equal((await f.submit('nreq_cold_desktop_unavailable')).status, 'accepted');
+    assert.deepEqual(f.harness.calls.map(call => call.method), ['thread/resume', 'thread/read', 'turn/start']);
+    assert.equal(f.session.turns.at(-1).request_id, 'nreq_cold_desktop_unavailable');
+    assert.equal(f.session.executor_container_id, f.identity.containerId);
+    t.diagnostic(JSON.stringify({ scenario: 'cold-desktop-unavailable', attempts, ...f.counts }));
+    assert.equal(attempts, 2);
+    assert.equal(f.counts.ensure, 1);
+  } finally { await f.close(); }
+});
+
+for (const [label, code] of [['stale executor token', 401], ['ownership denial', 403], ['transport fault', 502]]) {
+  test(`cold recovery fails closed on ${label} without preparing`, async () => {
+    const f = await validatedFixture();
+    try {
+      await f.store.update(f.session.id, { thread_id: 'thr_existing', executor_container_id: f.identity.containerId, turns: [], actions: [], task_status: 'idle' });
+      f.runtime.validateExecutor = async () => { throw Object.assign(new Error('Executor identity refused'), { code: code === 403 ? 'permission_denied' : 'execution_failed', status: code }); };
+      f.resetCounts();
+      await assert.rejects(f.submit('nreq_cold_refused'), /Executor identity refused/);
+      assert.equal(f.session.requests.nreq_cold_refused.status, 'unknown');
+      assert.equal(f.harness.calls.length, 0);
+      assert.equal(f.runtime.shells.length, 0);
+      assert.equal(f.counts.ensure, 0);
+      assert.equal((await f.submit('nreq_cold_refused')).replayed, true);
+      assert.equal(f.harness.calls.length, 0);
+    } finally { await f.close(); }
+  });
+}
+
+test('a prepared generation going unavailable fails closed instead of preparing', async () => {
+  const f = await validatedFixture();
+  try {
+    await f.adapter.bindSession(f.session);
+    f.runtime.validateExecutor = async () => { throw Object.assign(new Error('Bot desktop is not running'), { code: 'desktop_unavailable' }); };
+    f.resetCounts();
+    await assert.rejects(f.submit('nreq_prepared_desktop_unavailable'), /Bot desktop is not running/);
+    assert.equal(f.counts.ensure, 0);
+    assert.equal(f.harness.calls.length, 0);
+    assert.equal(f.runtime.shells.length, 0);
+    assert.equal(f.session.requests.nreq_prepared_desktop_unavailable.status, 'unknown');
+  } finally { await f.close(); }
+});
+
+test('real Harness uses explicit fixture auth, prepares once, reuses warm connection and recovers replacement', async t => {
+  const f = await validatedFixture({ realHarness: true });
+  try {
+    await f.adapter.bindSession(f.session);
+    assert.equal(f.counts.ensure, 1);
+    assert.equal(f.children.length, 1);
+    const home = f.children[0].options.cwd;
+    assert.equal(await readlink(join(home, 'auth.json')), f.authFile);
+    assert.match(await readFile(join(home, 'environments.toml'), 'utf8'), /include_local = false/);
+    const initialConnection = f.harness.connectionIdentity('bot-a');
+    f.resetCounts();
+    assert.equal((await f.submit('nreq_real_warm')).status, 'accepted');
+    assert.equal(f.counts.ensure, 0);
+    assert.equal(f.counts.status, 0);
+    assert.equal(f.counts.validate, 1);
+    assert.equal(f.counts.containerSave, 0);
+    assert.equal(f.children.length, 1);
+    assert.equal(f.harness.connectionIdentity('bot-a'), initialConnection);
+    assert.equal(f.wire.filter(call => call.method === 'turn/start').length, 1);
+    f.children[0].stdout.write(JSON.stringify({ method: 'turn/completed', params: { threadId: f.session.thread_id, turn: { id: 'turn_native', status: 'completed' } } }) + '\n');
+    await f.adapter.flush();
+    f.identity.containerId = 'native-replacement';
+    f.resetCounts();
+    assert.equal((await f.submit('nreq_real_replacement')).status, 'accepted');
+    assert.equal(f.counts.ensure, 1);
+    assert.equal(f.counts.disconnect, 1);
+    assert.equal(f.children.length, 2);
+    assert.equal(f.children[0].killed, true);
+    assert.notEqual(f.harness.connectionIdentity('bot-a'), initialConnection);
+    assert.match(await readFile(join(home, 'environments.toml'), 'utf8'), /native-replacement/);
+    assert.deepEqual(f.harness.calls.map(call => call.method), ['thread/resume', 'thread/read', 'turn/start']);
+    assert.equal(f.wire.filter(call => call.method === 'turn/start').length, 2);
+    t.diagnostic(JSON.stringify({ scenario: 'real-harness-replacement', ...f.counts, spawned: f.children.length, turnStart: 2 }));
+  } finally { await f.close(); }
+  assert.ok(f.children.every(child => child.killed));
+});
+
+async function batchFixture(t, { http = false, botCount = 1 } = {}) {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'codex-batch-')));
+  const file = join(dir, 'api/sessions.json');
+  const harness = createFakeHarness(), runtime = createFakeRuntime();
+  const adapter = createCodexAdapter({ runtime, harness, roster, namespace: 'grok-node-lab-fixture', stateRoot: dir });
+  let store, service, key;
+  if (http) {
+    const attachStore = adapter.attachStore;
+    adapter.attachStore = value => { store = value; attachStore(value); };
+    service = await startNodeAgentApi({ adapter, stateDirectory: join(dir, 'api') });
+    key = (await readFile(service.keyFile, 'utf8')).trim();
+  } else {
+    store = await createStore(join(dir, 'api'));
+    adapter.attachStore(store);
+  }
+  const sessions = [];
+  for (const bot of bots.slice(0, botCount)) {
+    const { session } = await store.create(bot.id, {}, { reuse: false });
+    await adapter.bindSession(session);
+    await store.update(session.id, { turns: [{ object: 'node.turn', id: 'turn_' + bot.id, status: 'running', items: [{ id: 'item_' + bot.id, type: 'agentMessage', text: '' }], usage: null }], active_turn_id: 'turn_' + bot.id, task_status: 'running' });
+    sessions.push(session);
+  }
+  const commits = [], published = [];
+  let renameFault;
+  const rename = fsPromises.rename;
+  t.mock.method(fsPromises, 'rename', async (from, to) => {
+    if (to === file && renameFault) throw renameFault;
+    const result = await rename(from, to);
+    if (to === file) commits.push(JSON.parse(readFileSync(file, 'utf8')));
+    return result;
+  });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  const unsubscribe = store.subscribeAll(event => {
+    const disk = JSON.parse(readFileSync(file, 'utf8')).find(session => session.id === event.session_id);
+    assert.deepEqual(disk.events.find(row => row.id === event.id), event, 'the full envelope must be durable before publication');
+    published.push(event);
+  });
+  const delta = (index, session = sessions[0], method = 'item/agentMessage/delta') => ({ method, params: { threadId: session.thread_id, turnId: session.active_turn_id, itemId: 'item_' + session.agent_id, delta: '片段-' + index } });
+  const emit = (message, session = sessions[0]) => harness.emit(session.agent_id, message);
+  const notifications = session => session.events.filter(event => event.type === 'node.harness.event');
+  const controllers = new Set();
+  return {
+    dir, file, adapter, harness, runtime, store, service, sessions, commits, published, delta, emit, notifications,
+    failRename(error) { renameFault = error; },
+    disk: () => JSON.parse(readFileSync(file, 'utf8')),
+    async call(route) {
+      const response = await fetch(service.origin + route, { headers: { authorization: 'Bearer ' + key } });
+      assert.equal(response.status, 200);
+      return response.json();
+    },
+    async stream(route, after) {
+      const controller = new AbortController(); controllers.add(controller);
+      const response = await fetch(service.origin + route, { signal: controller.signal, headers: { authorization: 'Bearer ' + key, accept: 'text/event-stream', ...(after ? { 'Last-Event-ID': after } : {}) } });
+      assert.equal(response.status, 200);
+      const reader = response.body.getReader(), decoder = new TextDecoder();
+      let text = '';
+      return {
+        async until(count) {
+          while ((text.match(/\ndata: /g) ?? []).length < count) {
+            const part = await bounded(reader.read());
+            if (part.done) throw new Error('SSE ended before its committed events');
+            text += decoder.decode(part.value, { stream: true });
+          }
+          return text.split('\n\n').filter(frame => frame.includes('\ndata: ')).map(frame => JSON.parse(frame.split('\ndata: ')[1]));
+        },
+        close() { controller.abort(); controllers.delete(controller); },
+      };
+    },
+    async close({ fault = false } = {}) {
+      for (const controller of controllers) controller.abort();
+      unsubscribe();
+      try {
+        await (service ? service.close() : adapter.close());
+        await store.flush();
+      } catch (error) { if (!fault) throw error; }
+      finally { await rm(dir, { recursive: true, force: true }); }
+    },
+  };
+}
+
+test('batch: a low-frequency ordinary delta commits at 25ms, never at 24ms', async t => {
+  const f = await batchFixture(t);
+  try {
+    let attempts = 0; f.store.setWriteGuard(async () => { attempts++; });
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const message = f.delta(0); f.emit(message);
+    await nextTick();
+    assert.equal(attempts, 0);
+    t.mock.timers.tick(24); await nextTick();
+    assert.equal(attempts, 0);
+    assert.equal(f.notifications(f.sessions[0]).length, 0);
+    t.mock.timers.tick(1); await nextTick(); await f.store.flush();
+    assert.equal(attempts, 1);
+    assert.equal(f.commits.length, 1);
+    assert.deepEqual(f.notifications(f.sessions[0]).map(event => event.data), [message]);
+  } finally { t.mock.timers.reset(); await f.close(); }
+});
+
+test('batch: the 64th delta flushes immediately and the 65th stays buffered until its own deadline', async t => {
+  const f = await batchFixture(t);
+  try {
+    let attempts = 0; f.store.setWriteGuard(async () => { attempts++; });
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const expected = Array.from({ length: 65 }, (_, index) => f.delta(index));
+    for (const message of expected.slice(0, 63)) f.emit(message);
+    await nextTick(); assert.equal(attempts, 0);
+    f.emit(expected[63]); await nextTick(); await f.store.flush();
+    assert.equal(f.commits.length, 1);
+    assert.deepEqual(f.notifications(f.sessions[0]).map(event => event.data), expected.slice(0, 64));
+    f.emit(expected[64]); await nextTick(); assert.equal(attempts, 1);
+    t.mock.timers.tick(25); await nextTick(); await f.store.flush();
+    assert.equal(f.commits.length, 2);
+    assert.deepEqual(f.notifications(f.sessions[0]).map(event => event.data), expected);
+  } finally { t.mock.timers.reset(); await f.close(); }
+});
+
+test('batch: a 256-delta cross-bot burst reduces actual disk commits by at least 80% without losing envelopes or cursor order', async t => {
+  const f = await batchFixture(t, { botCount: 2 });
+  try {
+    const expected = [];
+    for (let index = 0; index < 256; index++) {
+      const session = f.sessions[index % 2], message = f.delta(index, session);
+      expected.push({ session_id: session.id, ...message }); f.emit(message, session);
+    }
+    await f.adapter.flush();
+    assert.equal(f.published.length, expected.length);
+    assert.deepEqual(f.published.map(event => ({ session_id: event.session_id, ...event.data })), expected);
+    for (const session of f.sessions) {
+      const events = f.notifications(session);
+      assert.deepEqual(events.map(event => event.data), expected.filter(row => row.session_id === session.id).map(({ session_id, ...message }) => message));
+      assert.equal(new Set(events.map(event => event.id)).size, events.length);
+      assert.equal(f.disk().find(row => row.id === session.id).events.length, session.events.length);
+    }
+    const reduction = 1 - f.commits.length / expected.length;
+    t.diagnostic(JSON.stringify({ scenario: 'delta-burst', deltas: expected.length, diskCommits: f.commits.length, reduction, published: f.published.length }));
+    assert.ok(reduction >= 0.8, 'a burst must remove at least 80% of actual atomic disk writes');
+  } finally { await f.close(); }
+});
+
+for (const boundary of ['terminal', 'approval', 'item completed', 'disconnect']) {
+  test(`batch: ${boundary} flushes preceding deltas without waiting for 25ms and commits its state with its event`, async t => {
+    const f = await batchFixture(t);
+    try {
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      const session = f.sessions[0], first = f.delta(0), second = f.delta(1);
+      f.emit(first); f.emit(second);
+      const critical = boundary === 'terminal' ? { method: 'turn/completed', params: { threadId: session.thread_id, turn: { id: session.active_turn_id, status: 'completed' } } }
+        : boundary === 'approval' ? { id: 'rpc_batch_approval', method: 'item/tool/call', params: { threadId: session.thread_id, turnId: session.active_turn_id, itemId: 'tool_item', tool: 'node_approved_shell', arguments: { command: 'synthetic-only' } } }
+          : boundary === 'item completed' ? { method: 'item/completed', params: { threadId: session.thread_id, turnId: session.active_turn_id, item: { id: 'item_bot-a', type: 'agentMessage', text: '片段-0片段-1' } } }
+            : { method: 'lab/status', params: { status: 'unknown', replayed: false } };
+      let observed;
+      const delivery = new Promise(resolve => { const off = f.store.subscribe(session.id, event => {
+        if (event.data?.method === critical.method || (boundary === 'disconnect' && event.type === 'node.session.turn.unknown')) {
+          observed = f.disk()[0]; off(); resolve(event);
+        }
+      }); });
+      f.emit(critical); await bounded(delivery);
+      assert.deepEqual(f.published.slice(0, 2).map(event => event.data), [first, second]);
+      if (boundary === 'terminal') { assert.equal(observed.task_status, 'completed'); assert.equal(observed.active_turn_id, null); }
+      if (boundary === 'approval') assert.equal(observed.actions[0].status, 'pending');
+      if (boundary === 'item completed') assert.equal(observed.turns[0].items[0].text, '片段-0片段-1');
+      if (boundary === 'disconnect') { assert.equal(observed.turns[0].status, 'unknown'); assert.equal(f.published.at(-1).data.replayed, false); }
+      t.diagnostic(JSON.stringify({ scenario: boundary, diskCommits: f.commits.length, published: f.published.length }));
+      assert.equal(f.commits.length, 2, 'one delta batch and one atomic critical notification');
+    } finally { t.mock.timers.reset(); await f.close(); }
+  });
+}
+
+for (const boundary of ['items', 'actions', 'cancel', 'flush', 'close']) {
+  test(`batch: adapter ${boundary} drains already-received deltas before returning or issuing a side effect`, async t => {
+    const f = await batchFixture(t);
+    try {
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      const session = f.sessions[0], message = f.delta(0);
+      const request = f.harness.request;
+      f.harness.request = async (...args) => {
+        if (args[1] === 'turn/interrupt') assert.deepEqual(f.notifications(session).map(event => event.data), [message]);
+        return request(...args);
+      };
+      const close = f.harness.close;
+      f.harness.close = async () => { assert.deepEqual(f.disk()[0].events.filter(event => event.type === 'node.harness.event').map(event => event.data), [message]); await close(); };
+      f.emit(message);
+      if (boundary === 'items') await bounded(f.adapter.itemsSession(session));
+      if (boundary === 'actions') await bounded(f.adapter.actions(session));
+      if (boundary === 'cancel') await bounded(f.adapter.cancel(session, session.active_turn_id));
+      if (boundary === 'flush') await bounded(f.adapter.flush());
+      if (boundary === 'close') await bounded(f.adapter.close());
+      assert.deepEqual(f.notifications(session).map(event => event.data), [message]);
+      assert.equal(f.published.length, 1);
+    } finally { t.mock.timers.reset(); await f.close(); }
+  });
+}
+
+test('batch: input drains preceding deltas before rejecting an already-running turn and never replays it', async t => {
+  const f = await batchFixture(t);
+  try {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const session = f.sessions[0], message = f.delta(0);
+    f.emit(message);
+    await assert.rejects(bounded(f.adapter.inputSession(session, 'synthetic next input', 'nreq_batch_input')), { code: 'turn_active' });
+    assert.deepEqual(f.notifications(session).map(event => event.data), [message]);
+    assert.equal(f.harness.calls.filter(call => call.method === 'turn/start').length, 0);
+  } finally { t.mock.timers.reset(); await f.close(); }
+});
+
+test('batch: a rename fault publishes no pending delta and poisons subsequent adapter operations without replay', async t => {
+  const f = await batchFixture(t);
+  try {
+    const before = f.store.snapshot(), onDisk = readFileSync(f.file, 'utf8');
+    f.failRename(new Error('Synthetic atomic rename fault'));
+    f.emit(f.delta(0)); f.emit(f.delta(1));
+    await assert.rejects(f.adapter.flush(), /Synthetic atomic rename fault/);
+    assert.equal(f.store.snapshot(), before);
+    assert.equal(readFileSync(f.file, 'utf8'), onDisk);
+    assert.equal(f.published.length, 0);
+    assert.equal(f.commits.length, 0);
+    f.failRename(null);
+    await assert.rejects(f.adapter.itemsSession(f.sessions[0]), /Synthetic atomic rename fault/);
+    assert.equal(f.harness.calls.some(call => call.method === 'turn/start'), false);
+  } finally { f.failRename(null); await f.close({ fault: true }); }
+});
+
+test('batch: answering an approval drains prior deltas and keeps the responding marker durable before exactly one tool execution', async t => {
+  const f = await batchFixture(t);
+  try {
+    const session = f.sessions[0];
+    f.emit({ id: 'rpc_batch_tool', method: 'item/tool/call', params: { threadId: session.thread_id, turnId: session.active_turn_id, itemId: 'tool_batch', tool: 'node_approved_shell', arguments: { command: 'synthetic-only' } } });
+    await f.adapter.flush();
+    const action = session.actions[0];
+    f.commits.length = 0; f.published.length = 0;
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const message = f.delta(0); f.emit(message);
+    const shell = f.runtime.approvedShell;
+    f.runtime.approvedShell = async (...args) => {
+      const disk = f.disk()[0];
+      assert.equal(disk.actions[0].status, 'responding');
+      assert.deepEqual(disk.events.filter(event => event.data?.method === message.method).map(event => event.data), [message]);
+      return shell(...args);
+    };
+    const answers = await Promise.allSettled([f.adapter.answer(session, action.id, 'accept'), f.adapter.answer(session, action.id, 'accept')]);
+    assert.equal(answers.filter(row => row.status === 'fulfilled').length, 1);
+    assert.equal(f.runtime.shells.length, 1);
+    assert.equal(f.harness.answers.length, 1);
+    assert.equal(session.actions[0].status, 'accept');
+    const responding = f.commits.find(snapshot => snapshot[0].actions[0].status === 'responding');
+    assert.ok(responding);
+    assert.equal(responding[0].events.some(event => event.type === 'node.action.resolved'), false);
+    assert.equal(f.published.at(-1).type, 'node.action.resolved');
+  } finally { t.mock.timers.reset(); await f.close(); }
+});
+
+test('batch: ordinary reasoning and command-output deltas retain their native envelopes in one commit', async t => {
+  const f = await batchFixture(t);
+  try {
+    const methods = ['item/agentMessage/delta', 'item/reasoning/textDelta', 'item/commandExecution/outputDelta'];
+    const messages = methods.map((method, index) => f.delta(index, f.sessions[0], method));
+    for (const message of messages) f.emit(message);
+    await f.adapter.flush();
+    assert.deepEqual(f.notifications(f.sessions[0]).map(event => event.data), messages);
+    assert.equal(f.commits.length, 1);
+  } finally { await f.close(); }
+});
+
+test('batch: JSON history and initial SSE show committed events only, then live flush and cursor reconnect deliver every delta once', async t => {
+  const f = await batchFixture(t, { http: true });
+  try {
+    const session = f.sessions[0], route = '/v1/agents/sessions/' + session.id + '/events';
+    const committed = session.events.slice(), first = f.delta(0), second = f.delta(1);
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    f.emit(first); f.emit(second);
+    const history = await bounded(f.call(route));
+    assert.deepEqual(history.data, committed);
+    assert.equal(f.published.length, 0);
+    const stream = await bounded(f.stream(route));
+    assert.deepEqual(await stream.until(committed.length), committed);
+    assert.equal(f.commits.length, 0);
+    await f.adapter.flush();
+    const all = await stream.until(committed.length + 2);
+    assert.deepEqual(all.slice(committed.length).map(event => event.data), [first, second]);
+    assert.equal(new Set(all.map(event => event.id)).size, all.length);
+    stream.close();
+    const cursor = all.at(-2).id;
+    const resumed = await bounded(f.stream(route, cursor));
+    assert.deepEqual(await resumed.until(1), [all.at(-1)]);
+    resumed.close();
+    assert.deepEqual((await f.call(route)).data, all);
+  } finally { t.mock.timers.reset(); await f.close(); }
 });

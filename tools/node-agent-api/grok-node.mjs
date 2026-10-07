@@ -12,7 +12,50 @@ const token=g.token??g.authToken;
 if(!token)throw new Error('Gateway authentication unavailable');
 (async()=>{const method=process.argv[1],body=process.argv[2];const response=await fetch('http://127.0.0.1:1340/api/'+method,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body,signal:AbortSignal.timeout(20000)});if(!response.ok){console.log(JSON.stringify({node_api_upstream_error:response.status}));process.exitCode=1;return}console.log(JSON.stringify(await response.json()))})().catch(()=>{console.error('Gateway unavailable');process.exitCode=1});`;
 
-export function createGrokNodeAdapter({ container = 'grok-node-local-vm', allowWrites = false, execute = run } = {}) {
+export const snapshotFunctionProgram = String.raw`
+const fs=require('node:fs'),http=require('node:http'),{createHash}=require('node:crypto');
+function snapshotFile(file){
+  const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NONBLOCK);
+  try{
+    if(!fs.fstatSync(fd).isFile())throw Error('Invalid snapshot file');
+    const buffer=Buffer.alloc(1048577);let size=0,count;
+    while(size<buffer.length&&(count=fs.readSync(fd,buffer,size,buffer.length-size,null))>0)size+=count;
+    if(size>1048576)throw Error('Snapshot file too large');
+    return buffer.subarray(0,size).toString('utf8');
+  }finally{fs.closeSync(fd)}
+}
+async function readSnapshot(id){
+  const g=JSON.parse(snapshotFile('/home/box/sand-data/gateway.json')),token=g.token??g.authToken;
+  if(!token)throw Error('Gateway unavailable');
+  const call=(method,body)=>new Promise((resolve,reject)=>{
+    const payload=JSON.stringify(body);
+    const req=http.request({host:'127.0.0.1',port:1340,path:'/api/'+method,method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json','content-length':Buffer.byteLength(payload)},signal:AbortSignal.timeout(20000)},res=>{
+      const chunks=[];let size=0;
+      res.on('data',c=>{size+=c.length;if(size>8*1024*1024){req.destroy();reject(Error('Response too large'))}else chunks.push(c)});
+      res.on('end',()=>{try{if(res.statusCode<200||res.statusCode>=300)throw Error('Gateway error '+res.statusCode);resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')))}catch(e){reject(e)}});
+    });
+    req.on('error',reject);
+    req.end(payload);
+  });
+  const agents=await call('listAgents',{});
+  if(!Array.isArray(agents))throw Error('Invalid roster');
+  if(!agents.some(a=>a.id===id))return {error:'not_found'}
+  const status=await call('getForeverBoxStatus',{id});
+  if(!status||typeof status.state!=='string')throw Error('Invalid status');
+  if(status.state!=='running'||!status.vncUrl)return {error:'desktop_unavailable'}
+  const url=new URL(status.vncUrl),embedded=url.searchParams.get('path')??'',query=embedded.indexOf('?'),display=query<0?'1':new URLSearchParams(embedded.slice(query+1)).get('token');
+  if(!['127.0.0.1','localhost'].includes(url.hostname)||url.protocol!=='http:'||!['6080','6081'].includes(url.port)||!display||!/^[1-9][0-9]{0,2}$/.test(display))throw Error('Invalid endpoint');
+  const s=JSON.parse(snapshotFile('/home/box/.sand-window-assignments.json'));
+  if(s.assignments?.[id]!==Number(display))throw Error('Stale assignment');
+  const assigned=s.tokens?.[id];
+  if(assigned!=null){if(typeof assigned!=='string'||!assigned||snapshotFile('/tmp/sand-window-tokens.d/'+display).trim()!==assigned)throw Error('Stale token')}
+  const assignmentRevision=createHash('sha256').update(JSON.stringify([id,Number(display),assigned??null])).digest('hex');
+  return {status:{state:status.state,vncUrl:status.vncUrl},assignmentRevision};
+}`;
+export const snapshotProgram = snapshotFunctionProgram + String.raw`
+readSnapshot(process.argv[1]).then(result=>console.log(JSON.stringify(result))).catch(()=>{console.error('Desktop validation unavailable');process.exitCode=1});`;
+
+export function createGrokNodeAdapter({ container = 'grok-node-local-vm', allowWrites = false, execute = run, docker = 'docker', readSnapshot } = {}) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(container)) throw new Error('Invalid container name');
   if (allowWrites && !container.startsWith('grok-node-lab-')) throw new Error('Writes require an experimental GrokNode container');
   async function writeGuard(botId) {
@@ -24,10 +67,10 @@ export function createGrokNodeAdapter({ container = 'grok-node-local-vm', allowW
     try { resourceNames(namespace, 'validate'); } catch { throw new ApiError(403, 'unsafe_backend', 'Experimental namespace label required'); }
     if (info.Name !== '/' + container || !container.startsWith(namespace + '-') || !Array.isArray(info.Mounts) || info.Mounts.some(mount => mount.Type === 'bind' || mount.Destination === '/root/.codex') || (botId && labels[BOT] && labels[BOT] !== botId)) throw new ApiError(403, 'unsafe_backend', 'Container ownership or mount isolation check failed');
   }
-  async function call(method, args = {}) {
+  async function call(method, args = {}, containerId = container) {
     if (!METHODS.has(method)) throw new Error('Unsupported gateway method');
     try {
-      const result = await execute('docker', ['exec', container, 'node', '-e', gatewayProgram, '--', method, JSON.stringify(args)], { timeout: 25000, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+      const result = await execute(docker, ['exec', containerId, 'node', '-e', gatewayProgram, '--', method, JSON.stringify(args)], { timeout: 25000, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
       return JSON.parse(result.stdout);
     } catch { throw new ApiError(502, 'upstream_unavailable', 'GrokNode gateway unavailable; outcome may be unknown'); }
   }
@@ -40,6 +83,9 @@ export function createGrokNodeAdapter({ container = 'grok-node-local-vm', allowW
   async function desktop(id) {
     await requireAgent(id);
     const status = await call('getForeverBoxStatus', { id });
+    return desktopEnvironment(id, status);
+  }
+  function desktopEnvironment(id, status) {
     if (status.state !== 'running' || !status.vncUrl) throw new ApiError(409, 'desktop_unavailable', 'Bot desktop is not running');
     const url = new URL(status.vncUrl);
     if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.protocol !== 'http:' || !['6080','6081'].includes(url.port)) throw new ApiError(502, 'upstream_schema', 'Unsupported desktop endpoint');
@@ -51,6 +97,16 @@ export function createGrokNodeAdapter({ container = 'grok-node-local-vm', allowW
   }
   return {
     agents, requireAgent, desktop, writesEnabled: allowWrites,
+    async snapshot(id, containerId, generation) {
+      identifier(id);
+      let result;
+      try { result = readSnapshot ? await readSnapshot(id, generation) : JSON.parse((await execute(docker, ['exec', containerId, 'setpriv', '--reuid=box', '--regid=box', '--init-groups', '--bounding-set=-all', '--no-new-privs', '/usr/bin/env', '-i', 'PATH=/usr/local/bin:/usr/bin:/bin', 'node', '-e', snapshotProgram, '--', id], { timeout: 45000, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 })).stdout); }
+      catch { throw new ApiError(502, 'upstream_unavailable', 'Desktop validation unavailable'); }
+      if (result.error === 'not_found') throw new ApiError(404, 'not_found', 'Bot not found');
+      if (result.error === 'desktop_unavailable') throw new ApiError(409, 'desktop_unavailable', 'Bot desktop is not running');
+      if (!/^[a-f0-9]{64}$/.test(result.assignmentRevision)) throw new ApiError(502, 'upstream_schema', 'Invalid desktop revision');
+      return { ...desktopEnvironment(id, result.status), assignmentRevision: result.assignmentRevision };
+    },
     // Internal bridge to existing authenticated GrokNode APIs. REST routes
     // remain explicit; callers cannot select arbitrary gateway methods.
     gateway: call,

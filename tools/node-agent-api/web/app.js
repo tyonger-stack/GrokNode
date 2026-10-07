@@ -1,7 +1,7 @@
-import { capabilities, createClient, desktopURL, eventView, projectDownload, readSSE, sessionPath } from './client.js';
+import { capabilities, createClient, createPaintQueue, createRefresh, desktopURL, eventView, projectDownload, readSSE, sessionPath } from './client.js';
 
 const $ = id => document.getElementById(id);
-const text = (id, value) => { $(id).textContent = value; };
+const text = (id, value) => { if ($(id).textContent !== value) $(id).textContent = value; };
 const pretty = value => JSON.stringify(value, null, 2);
 const stateName = value => ({ idle: '待开始', pending: '提交中', accepted: '已接收', running: '正在执行', completed: '已完成', failed: '未完成', cancelled: '已取消', interrupted: '已中断', unknown: '状态待确认', closed: '已归档' }[value] ?? '状态待确认');
 let client, flags = capabilities(), botId = '', session, turnId = '', epoch = 0;
@@ -11,9 +11,28 @@ let modelSettings;
 let defaultModel = null;
 let authPending = false;
 let desktopChanging = false;
+let currentViewer, prewarmTimer, prewarmTask, desktopRequest;
 let modelRows = [], tokenhubSettings;
 const cursors = new Map(), liveItems = new Map(), busy = new Map();
 const status = value => text('status', value);
+const dirtyItems = new Set(), logs = [];
+let logsDirty = false, logsTruncated = false;
+const logDetails = $('logs').closest('details');
+const paints = createPaintQueue(() => {
+  for (const item of dirtyItems) {
+    item.text += item.chunks.join(''); item.chunks.length = 0;
+    if (!item.node) item.node = message($('transcript'), item.label, item.text);
+    else item.node.textContent = item.text;
+  }
+  dirtyItems.clear();
+  if (logsDirty && logDetails.open) {
+    const output = logs.map(row => row.formatted ??= pretty(row.envelope)).join('\n');
+    text('logs', (logsTruncated || output.length > 90000 ? '较早事件已从显示区截断。\n' : '') + output.slice(-90000));
+    logsDirty = false;
+  }
+});
+logDetails.addEventListener('toggle', () => { if (logDetails.open && logsDirty) paints.schedule(); });
+document.addEventListener('visibilitychange', () => paints.flush());
 
 function controls() {
   const attached = Boolean(client && session), writable = attached && session.status !== 'closed';
@@ -38,9 +57,12 @@ function controls() {
     'launch-terminal': writable && flags.applications && flags.control, 'launch-browser': writable && flags.applications && flags.control,
     backup: writable && flags.export, 'backup-id': writable && flags.import, 'restore-backup': writable && flags.import && Boolean($('backup-id').value),
   };
-  for (const [id, allowed] of Object.entries(enabled)) $(id).disabled = !allowed || busy.has(id);
-  $('connect').disabled = authPending;
-  $('connect').textContent = authPending ? '连接中…' : '连接';
+  for (const [id, allowed] of Object.entries(enabled)) {
+    const disabled = !allowed || busy.has(id);
+    if ($(id).disabled !== disabled) $(id).disabled = disabled;
+  }
+  if ($('connect').disabled !== authPending) $('connect').disabled = authPending;
+  text('connect', authPending ? '连接中…' : '连接');
 }
 
 async function run(id, action) {
@@ -53,7 +75,10 @@ async function run(id, action) {
 }
 function bind(id, action) { $(id).addEventListener('click', () => run(id, action)); }
 function resetSession() {
+  disposeDesktop();
   ++epoch; controller.abort(); controller = new AbortController(); streamController?.abort();
+  paints.reset(); dirtyItems.clear(); logs.length = 0; logsDirty = false; logsTruncated = false;
+  loadItems.reset(); loadActions.reset();
   busy.clear();
   session = undefined; turnId = ''; sending = false; liveItems.clear();
   desktopChanging = false;
@@ -187,25 +212,37 @@ function message(parent, label, value) {
   const body = document.createElement('pre'); body.textContent = value;
   article.append(heading, body); parent.append(article); return body;
 }
-async function loadItems() {
+const loadItems = createRefresh(async current => {
   const generation = epoch;
   const rows = await client.list(`${sessionPath(session.id)}/items`, controller.signal);
-  if (generation !== epoch) return;
+  if (generation !== epoch || !current()) return;
   const fragment = document.createDocumentFragment();
+  const retained = new Set();
   const roles = { user: '用户', assistant: '助手', tool: '工具', system: '系统' };
-  for (const item of rows) {
+  for (const row of rows) {
+    const live = liveItems.get(row.id);
+    if (live && !live.completed && row.status !== 'completed') {
+      if (live.node) fragment.append(live.node.parentElement);
+      retained.add(live);
+      continue;
+    }
+    const item = live?.completed ?? row;
     const label = roles[item.role] ?? ({ userMessage: '你', agentMessage: '助手', commandExecution: '终端', fileChange: '文件修改', reasoning: '进度', dynamicToolCall: '审批操作' }[item.type]) ?? '记录';
     const value = item.text ?? (item.type === 'userMessage' ? (item.content ?? []).map(part => part.text ?? '').join('\n') : item.type === 'commandExecution' ? [item.command, item.aggregatedOutput, item.exitCode === null || item.exitCode === undefined ? '' : '退出码：' + item.exitCode].filter(Boolean).join('\n') : pretty(item));
     message(fragment, label, value);
+    if (live) { liveItems.delete(row.id); dirtyItems.delete(live); }
+  }
+  for (const live of liveItems.values()) {
+    if (live.node && !retained.has(live)) fragment.append(live.node.parentElement);
   }
   $('transcript').replaceChildren(fragment);
-  if (!rows.length) text('transcript', '当前会话没有返回对话记录。');
-}
-async function loadActions() {
+  if (!rows.length && !liveItems.size) text('transcript', '当前会话没有返回对话记录。');
+});
+const loadActions = createRefresh(async current => {
   if (!flags.actions) { text('approvals', '服务未声明审批能力。'); return; }
   const generation = epoch, path = `${sessionPath(session.id)}/actions`;
   const rows = await client.list(path, controller.signal);
-  if (generation !== epoch) return;
+  if (generation !== epoch || !current()) return;
   $('approvals').replaceChildren();
   for (const action of rows) {
     const box = document.createElement('div'); box.className = 'approval';
@@ -225,7 +262,7 @@ async function loadActions() {
     $('approvals').append(box);
   }
   if (!rows.length) text('approvals', '没有待审批操作。');
-}
+});
 
 async function selectSession(id) {
   resetSession();
@@ -240,6 +277,7 @@ async function selectSession(id) {
     status(`会话已恢复 · ${stateName(value.task_status ?? value.status)}`);
     text('turn-status', turnId ? `活动回合：${turnId} · 结果未知` : '尚未观察到权威回合结果');
     controls();
+    scheduleDesktopPrewarm();
     await Promise.all([loadItems(), loadActions(), loadSessions()]);
     if (generation === epoch) startStream();
   } catch (error) { if (generation === epoch && error.name !== 'AbortError') status(error.message); }
@@ -251,8 +289,10 @@ function receive(event) {
   if (envelope.session_id && envelope.session_id !== session.id) return;
   if (event.id) cursors.set(session.id, event.id);
   const view = eventView(event);
-  text('logs', ($('logs').textContent === '尚未收到事件' ? '' : $('logs').textContent + '\n') + pretty(envelope));
-  if ($('logs').textContent.length > 100000) text('logs', '较早事件已从显示区截断。\n' + $('logs').textContent.slice(-90000));
+  logs.push({ envelope });
+  if (logs.length > 100) { logs.shift(); logsTruncated = true; }
+  logsDirty = true;
+  const previousTurnId = turnId;
   if (view.turnStatus) {
     const labels = { running: '运行中', completed: '已完成', failed: '失败', cancelled: '已取消', interrupted: '已中断', unknown: '结果未知' };
     text('turn-status', `${view.turnId ?? '未提供回合 ID'} · ${labels[view.turnStatus] ?? view.turnStatus}`);
@@ -260,20 +300,31 @@ function receive(event) {
     else if (!view.turnId || view.turnId === turnId) turnId = '';
   }
   if (view.delta !== undefined && view.itemId) {
-    let node = liveItems.get(view.itemId);
-    if (!node) {
-      node = message($('transcript'), `流式输出 · ${view.method || view.type} · ${view.itemId}`, '');
-      liveItems.set(view.itemId, node);
+    let item = liveItems.get(view.itemId);
+    if (!item) {
+      item = { label: `流式输出 · ${view.method || view.type} · ${view.itemId}`, text: '', chunks: [], node: undefined };
+      liveItems.set(view.itemId, item);
     }
-    node.textContent += view.delta;
+    item.chunks.push(view.delta); dirtyItems.add(item);
+  }
+  if (view.method === 'item/completed' && view.params.item?.id) {
+    const item = liveItems.get(view.params.item.id);
+    if (item) item.completed = view.params.item;
   }
   if (/input\.(accepted|rejected|unknown)$/.test(view.type)) status(`输入状态：${view.type.split('.').at(-1)}；请以回合事件判断结果。`);
   if (view.type === 'node.upstream.unavailable') status('上游不可用，任务结果未知；不会自动重发输入。');
-  if (view.type === 'node.session.closed') { session.status = 'closed'; $('desktop').replaceChildren(); }
-  if (view.type.endsWith('items.changed')) void run('items-update', async () => { await loadItems(); liveItems.clear(); });
+  if (view.type === 'node.session.closed') { session.status = 'closed'; disposeDesktop(); }
+  if (view.type.endsWith('items.changed')) refreshFromEvent(loadItems);
   if (view.method === 'turn/diff/updated' && typeof view.params.diff === 'string') text('diff', view.params.diff || '服务返回空差异。');
-  if (/action|approval/i.test(view.type + view.method) && flags.actions) void run('actions-update', loadActions);
-  controls();
+  if (/action|approval/i.test(view.type + view.method) && flags.actions) refreshFromEvent(loadActions);
+  if (previousTurnId !== turnId || view.type === 'node.session.closed') controls();
+  if ((view.turnStatus && view.turnStatus !== 'running') || view.type === 'node.session.closed') paints.flush();
+  else if (dirtyItems.size || logDetails.open) paints.schedule();
+}
+
+function refreshFromEvent(refresh) {
+  const generation = epoch;
+  void refresh().catch(error => { if (generation === epoch && error.name !== 'AbortError') status(error.message); });
 }
 
 function startStream() {
@@ -294,6 +345,8 @@ function startStream() {
       if (generation === epoch && !stream.signal.aborted) text('stream-status', '事件流已断开；点击恢复。回合结果可能未知。');
     } catch (error) {
       if (generation === epoch && !stream.signal.aborted) text('stream-status', `事件流不可用：${error.message}。可点击恢复；不会重发消息。`);
+    } finally {
+      if (generation === epoch && !stream.signal.aborted) paints.flush();
     }
   })();
 }
@@ -339,7 +392,7 @@ bind('attach', async () => {
   const value = await post('/v1/agents/sessions', { agent_id: botId, ...(modelSelection && $('model').value ? { model: $('model').value, reasoning_effort: $('reasoning-effort').value || null } : {}) });
   await selectSession(value.id);
 });
-bind('resume', async () => { await Promise.all([loadItems(), loadActions()]); liveItems.clear(); startStream(); });
+bind('resume', async () => { await Promise.all([loadItems(), loadActions()]); startStream(); });
 bind('actions-refresh', loadActions);
 $('composer').addEventListener('submit', event => {
   event.preventDefault();
@@ -365,51 +418,176 @@ bind('cancel', async () => {
   const value = await post(`${sessionPath(session.id)}/events`, { events: [{ type: 'agent.session.input.cancel', turn_id: turnId }] });
   status(`取消请求响应：${pretty(value)}；等待权威回合结果。`);
 });
-async function desktop(mode, handback = false) {
-  if (desktopChanging) return;
-  desktopChanging = true; controls();
-  let released = false;
-  const generation = epoch, selectedSession = session.id;
-  text('desktop-status', handback ? '正在交还控制并切回观看…' : mode === 'control' ? '正在打开接管窗口…' : '正在切换到观看…');
+function disposeDesktop() {
+  clearTimeout(prewarmTimer); prewarmTimer = undefined;
+  prewarmTask = undefined;
+  desktopRequest?.abort(); desktopRequest = undefined;
+  disposeCurrentViewer();
+}
+
+function disposeCurrentViewer() {
+  const viewer = currentViewer;
+  currentViewer = undefined;
+  if (!viewer) return;
+  clearTimeout(viewer.expiryTimer);
+  viewer.cancelLoad?.();
+  viewer.iframe.contentWindow?.postMessage({ source: 'node-agent-parent', type: 'dispose' }, location.origin);
+  // Removal can destroy the child before its queued dispose handler runs.
+  // Close its cookie-scoped lane here too; iframe removal disconnects its RFB.
   try {
-  if (handback) {
-    await post(`${sessionPath(selectedSession)}/handback`, {});
-    released = true;
+    const url = new URL(viewer.iframe.contentWindow.location.href);
+    if (url.origin === location.origin && /^\/desktop\/lane\/[^/]+\/vnc\.html$/.test(url.pathname)) {
+      void fetch(new URL('close', url), { method: 'POST', credentials: 'same-origin', keepalive: true }).catch(() => {});
+    }
+  } catch { /* A navigating document may not yet expose its lane. */ }
+  viewer.iframe.remove();
+}
+
+function scheduleDesktopPrewarm({ enabled = true, delay = 400 } = {}) {
+  if (!enabled || !client || !session || session.status === 'closed' || !flags.view) return;
+  clearTimeout(prewarmTimer);
+  const generation = epoch;
+  prewarmTimer = setTimeout(() => {
+    prewarmTimer = undefined;
+    if (generation !== epoch || desktopChanging) return;
+    const task = desktop('view', false, true);
+    prewarmTask = task;
+    void task.finally(() => { if (prewarmTask === task) prewarmTask = undefined; });
+  }, delay);
+}
+
+function reusableViewer() {
+  return currentViewer?.sessionId === session?.id && currentViewer.epoch === epoch
+    && currentViewer.mode === 'view' && currentViewer.connected && currentViewer.firstFrame
+    && currentViewer.expiresAt > Date.now();
+}
+
+window.addEventListener('message', event => {
+  const viewer = currentViewer, data = event.data;
+  if (!viewer || event.origin !== location.origin || event.source !== viewer.iframe.contentWindow
+    || viewer.epoch !== epoch || viewer.sessionId !== session?.id
+    || data?.source !== 'node-agent-viewer' || data.mode !== viewer.mode) return;
+  if (data.type === 'disconnected') {
+    const visible = !viewer.prewarm;
+    disposeCurrentViewer();
+    if (visible) text('desktop-status', '桌面连接已断开，请重新点击观看或接管。');
+    return;
   }
-  let value;
-  try { value = await post(`${sessionPath(selectedSession)}/desktop`, { mode, replace_own_control: true }); }
-  catch (error) {
-    if (error.code === 'desktop_busy') { const message = '桌面已有控制窗口，或控制权刚刚发生变化。同一密钥可重新点击接管；其他使用者需要先交还控制。'; text('desktop-status', message); throw new Error(message); }
-    throw error;
+  if (data.type === 'ready') {
+    if (!Number.isFinite(data.expiresAt)) return;
+    viewer.expiresAt = data.expiresAt;
+    viewer.checkedAt = Date.now();
+    viewer.connected = false; viewer.firstFrame = false;
+    clearTimeout(viewer.expiryTimer);
+    viewer.expiryTimer = setTimeout(() => {
+      if (currentViewer !== viewer) return;
+      const visible = !viewer.prewarm;
+      disposeCurrentViewer();
+      if (visible) text('desktop-status', '桌面授权已过期，请重新点击观看或接管。');
+    }, Math.max(0, Math.min(2147483647, viewer.expiresAt - Date.now())));
+  } else if (data.type === 'connected' && viewer.expiresAt > Date.now()) viewer.connected = true;
+  else if (data.type === 'first-frame' && viewer.connected && viewer.expiresAt > Date.now()) {
+    viewer.firstFrame = true;
+    if (!viewer.prewarm) text('desktop-status', viewer.mode === 'view' ? '只读画面已就绪。' : '接管画面已就绪。');
   }
-  const iframe = document.createElement('iframe');
-  iframe.title = mode === 'control' ? '机器人桌面 · 接管' : '机器人桌面 · 观看';
-  iframe.referrerPolicy = 'no-referrer'; iframe.src = desktopURL(value.url, location.origin);
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('桌面查看器加载超时，请重新点击观看或接管。')), 30000);
-    iframe.addEventListener('load', () => {
-      clearTimeout(timer);
-      try {
-        const body = iframe.contentDocument?.body?.textContent ?? '';
-        if (body.trim().startsWith('{')) {
-          const response = JSON.parse(body);
-          if (response.error) { reject(new Error('桌面授权已变化，请重新点击接管；其他使用者持有控制时需要先交还。')); return; }
-        }
-        resolve();
-      } catch (error) { reject(error); }
-    }, { once: true });
-    $('desktop').replaceChildren(iframe);
-  });
-  if (generation === epoch) {
-    text('desktop-status', handback ? '控制已交还，当前为只读观看；画面连接由查看器显示。' : `${mode === 'control' ? '已签发接管授权' : '已签发观看授权'}；画面连接由查看器显示。${value.pauses_agent === false ? '接管不会暂停机器人。' : '机器人暂停状态未确认。'}`);
-    if (handback) status('控制已交还，已切回观看。');
+});
+
+async function desktop(mode, handback = false, prewarm = false) {
+  if (!session || session.status === 'closed' || desktopChanging) return;
+  clearTimeout(prewarmTimer); prewarmTimer = undefined;
+  if (!handback && !prewarm && mode === 'view' && prewarmTask) {
+    const generation = epoch, task = prewarmTask;
+    desktopChanging = true; controls();
+    await task;
+    if (generation !== epoch) return;
+    if (prewarmTask === task) prewarmTask = undefined;
+    desktopChanging = false; controls();
   }
+  if (!handback && !prewarm && mode === 'view' && reusableViewer() && Date.now() - currentViewer.checkedAt >= 30000) {
+    const viewer = currentViewer, generation = epoch;
+    viewer.iframe.hidden = true;
+    desktopChanging = true; controls();
+    try {
+      const url = new URL(viewer.iframe.contentWindow.location.href);
+      if (url.origin !== location.origin || !/^\/desktop\/lane\/[^/]+\/vnc\.html$/.test(url.pathname)) throw new Error('Viewer lane unavailable');
+      // The backend watchdog removes lanes whose desktop generation changes.
+      const response = await fetch(new URL('mandatory.json', url), {
+        credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
+      });
+      if (!response.ok || (await response.json()).view_only !== true) throw new Error('Viewer lane expired');
+      viewer.checkedAt = Date.now();
+    } catch {
+      if (currentViewer === viewer) disposeCurrentViewer();
+    } finally {
+      if (generation === epoch) { desktopChanging = false; controls(); }
+    }
+    if (generation !== epoch) return;
+  }
+  if (!handback && !prewarm && mode === 'view' && reusableViewer()) {
+    currentViewer.prewarm = false; currentViewer.iframe.hidden = false;
+    text('desktop-status', '只读画面已就绪。');
+    return;
+  }
+  const generation = epoch, selectedSession = session.id;
+  const request = new AbortController();
+  // A failed Handback must leave the current control viewer intact.
+  desktopRequest?.abort(); desktopRequest = request;
+  if (!prewarm) { desktopChanging = true; controls(); }
+  let released = false, viewer;
+  const requestJSON = async (path, body) => {
+    const value = await client.json(path, { method: 'POST', body, signal: request.signal });
+    if (request.signal.aborted || generation !== epoch || session?.id !== selectedSession) throw new DOMException('Aborted', 'AbortError');
+    return value;
+  };
+  if (!prewarm) text('desktop-status', handback ? '正在交还控制并切回观看…' : mode === 'control' ? '正在打开接管窗口…' : '正在切换到观看…');
+  try {
+    if (handback) {
+      await requestJSON(`${sessionPath(selectedSession)}/handback`, {});
+      released = true;
+    }
+    disposeCurrentViewer();
+    const value = await requestJSON(`${sessionPath(selectedSession)}/desktop`, {
+      mode, replace_own_control: !prewarm, ...(prewarm ? { existing_only: true } : {}),
+    });
+    const iframe = document.createElement('iframe');
+    iframe.title = mode === 'control' ? '机器人桌面 · 接管' : '机器人桌面 · 观看';
+    iframe.referrerPolicy = 'no-referrer'; iframe.src = desktopURL(value.url, location.origin);
+    iframe.hidden = prewarm;
+    viewer = { iframe, sessionId: selectedSession, epoch: generation, mode, prewarm, connected: false, firstFrame: false, expiresAt: 0 };
+    currentViewer = viewer;
+    await new Promise((resolve, reject) => {
+      const finish = error => {
+        clearTimeout(timer); iframe.removeEventListener('load', loaded);
+        viewer.cancelLoad = undefined;
+        if (error) reject(error); else resolve();
+      };
+      const loaded = () => {
+        try {
+          const body = iframe.contentDocument?.body?.textContent ?? '';
+          if (body.trim().startsWith('{') && JSON.parse(body).error) throw new Error('桌面授权已变化，请重新点击接管；其他使用者持有控制时需要先交还。');
+          finish();
+        } catch (error) { finish(error); }
+      };
+      const timer = setTimeout(() => finish(new Error('桌面查看器加载超时，请重新点击观看或接管。')), 30000);
+      viewer.cancelLoad = () => finish(new DOMException('Aborted', 'AbortError'));
+      iframe.addEventListener('load', loaded);
+      $('desktop').replaceChildren(iframe);
+    });
+    if (!prewarm && generation === epoch && currentViewer === viewer) {
+      text('desktop-status', viewer.firstFrame ? (mode === 'view' ? '只读画面已就绪。' : '接管画面已就绪。') : handback ? '控制已交还，当前为只读观看；画面连接由查看器显示。' : `${mode === 'control' ? '已签发接管授权' : '已签发观看授权'}；画面连接由查看器显示。${value.pauses_agent === false ? '接管不会暂停机器人。' : '机器人暂停状态未确认。'}`);
+      if (handback) status('控制已交还，已切回观看。');
+    }
   } catch (error) {
+    if (viewer && currentViewer === viewer) disposeCurrentViewer();
+    if (prewarm) return;
     if (generation !== epoch || error.name === 'AbortError') throw error;
-    const message = released ? '控制已交还，但观看重连失败。请点击“观看”重试。' + error.message : error.message;
+    const detail = error.code === 'desktop_busy' ? '桌面已有控制窗口，或控制权刚刚发生变化。同一密钥可重新点击接管；其他使用者需要先交还控制。' : error.message;
+    const message = released ? '控制已交还，但观看重连失败。请点击“观看”重试。' + detail : detail;
     text('desktop-status', message); throw new Error(message);
+  } finally {
+    if (desktopRequest === request) desktopRequest = undefined;
+    if (!prewarm && generation === epoch) { desktopChanging = false; controls(); }
   }
-  finally { if (generation === epoch) { desktopChanging = false; controls(); } }
 }
 bind('view', () => desktop('view')); bind('control', () => desktop('control'));
 bind('applications-refresh', async () => {
@@ -430,7 +608,7 @@ for (const [id, mode] of [['application-view', 'view'], ['application-control', 
     popup.opener = null;
     desktopChanging = true; controls();
     void run(id, async () => {
-      try { const value = await post(`${sessionPath(session.id)}/desktop`, { mode, ...(mode === 'control' ? { replace_own_control: true } : {}), target: { type: 'application', application_id: selected } }); popup.location.href = desktopURL(value.url, location.origin); if (mode === 'control') $('desktop').replaceChildren(); status(mode === 'control' ? '应用接管窗口已打开，已替换当前密钥的旧控制窗口。' : '应用观看窗口已打开。'); }
+      try { const value = await post(`${sessionPath(session.id)}/desktop`, { mode, ...(mode === 'control' ? { replace_own_control: true } : {}), target: { type: 'application', application_id: selected } }); popup.location.href = desktopURL(value.url, location.origin); if (mode === 'control') disposeDesktop(); status(mode === 'control' ? '应用接管窗口已打开，已替换当前密钥的旧控制窗口。' : '应用观看窗口已打开。'); }
       catch (error) { popup.close(); throw error; }
       finally { desktopChanging = false; controls(); }
     });

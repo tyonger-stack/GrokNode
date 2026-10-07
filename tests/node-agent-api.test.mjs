@@ -211,13 +211,13 @@ test('desktop authorization is single-use, bot-bound and server enforced', async
   assert.equal(opened.status, 303);
   const cookie = /nodeviewer=([A-Za-z0-9_-]+)/.exec(opened.headers.get('set-cookie'))[1];
   assert.equal((await call('GET', '/desktop/open?ticket=' + ticket, { raw: true, headers: { authorization } })).status, 401);
-  const mandatory = await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + cookie } });
+  const mandatory = await call('GET', '/desktop/lane/' + cookie + '/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + cookie } });
   const settings = await mandatory.json();
   const validateSettings = ajv.compile({ $ref: schemaId + '#/components/schemas/ViewerSettings' });
   assert.ok(validateSettings(settings), JSON.stringify(validateSettings.errors));
   assert.equal(settings.view_only, true);
-  assert.equal(settings.path, 'desktop/socket');
-  const html = await call('GET', '/desktop/vnc.html', { raw: true, headers: { cookie: 'nodeviewer=' + cookie } });
+  assert.equal(settings.path, 'desktop/lane/' + cookie + '/socket');
+  const html = await call('GET', '/desktop/lane/' + cookie + '/vnc.html', { raw: true, headers: { cookie: 'nodeviewer=' + cookie } });
   assert.match(await html.text(), /#noVNC_control_bar/);
   const scoped = issued[0];
   const crossBot = await call('POST', '/v1/agents/sessions/' + sessions.b.id + '/desktop', { headers: { authorization: 'Bearer ' + scoped.key }, body: { mode: 'view' } });
@@ -226,7 +226,7 @@ test('desktop authorization is single-use, bot-bound and server enforced', async
 });
 
 async function driveViewer(cookie, messages) {
-  const socket = new WebSocket(service.origin.replace('http:', 'ws:') + '/desktop/socket', { headers: { cookie: 'nodeviewer=' + cookie, origin: service.origin } });
+  const socket = new WebSocket(service.origin.replace('http:', 'ws:') + '/desktop/lane/' + cookie + '/socket', { headers: { cookie: 'nodeviewer=' + cookie, origin: service.origin } });
   const closed = new Promise(resolve => { socket.once('close', resolve); socket.once('error', resolve); });
   await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
   try {
@@ -264,7 +264,7 @@ test('control viewers can deliver input and hold a single exclusive lease', asyn
   const ticket = new URL(control.data.url).searchParams.get('ticket');
   const opened = await call('GET', '/desktop/open?ticket=' + ticket, { raw: true, headers: { authorization } });
   const cookie = /nodeviewer=([A-Za-z0-9_-]+)/.exec(opened.headers.get('set-cookie'))[1];
-  const settings = await (await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + cookie } })).json();
+  const settings = await (await call('GET', '/desktop/lane/' + cookie + '/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + cookie } })).json();
   assert.equal(settings.view_only, false);
   const busy = await call('POST', '/v1/agents/sessions/' + sessions.a.id + '/desktop', { headers: { authorization }, body: { mode: 'control' } });
   assert.equal(busy.status, 409);
@@ -291,12 +291,12 @@ test('explicit own-control replacement recovers a viewer without stealing anothe
     const refused = await call('POST', route, { headers: { authorization: 'Bearer ' + peer.data.key }, body: { mode: 'control', replace_own_control: true } });
     assert.equal(refused.status, 409);
     const current = await open({ mode: 'control', replace_own_control: true });
-    assert.equal((await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + old } })).status, 401);
-    const settings = await (await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + current } })).json();
+    assert.equal((await call('GET', '/desktop/lane/' + old + '/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + old } })).status, 401);
+    const settings = await (await call('GET', '/desktop/lane/' + current + '/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + current } })).json();
     assert.equal(settings.view_only, false);
     const view = await open({ mode: 'view', replace_own_control: true });
-    assert.equal((await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + current } })).status, 401);
-    assert.equal((await (await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + view } })).json()).view_only, true);
+    assert.equal((await call('GET', '/desktop/lane/' + current + '/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + current } })).status, 401);
+    assert.equal((await (await call('GET', '/desktop/lane/' + view + '/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + view } })).json()).view_only, true);
     await open({ mode: 'control' });
   } finally { await call('POST', '/v1/agents/sessions/' + sessions.a.id + '/handback', { headers: { authorization }, body: {} }); }
 });
@@ -322,8 +322,8 @@ test('revoking a credential closes its access and live desktop lease', async () 
   const scopedTicket = new URL(scopedView.data.url).searchParams.get('ticket');
   const scopedOpened = await call('GET', '/desktop/open?ticket=' + scopedTicket, { raw: true, headers: { authorization: 'Bearer ' + scoped.key } });
   const scopedCookie = /nodeviewer=([A-Za-z0-9_-]+)/.exec(scopedOpened.headers.get('set-cookie'))[1];
-  assert.equal((await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + scopedCookie } })).status, 200);
-  const live = new WebSocket(service.origin.replace('http:', 'ws:') + '/desktop/socket', { headers: { cookie: 'nodeviewer=' + scopedCookie, origin: service.origin } });
+  assert.equal((await call('GET', '/desktop/lane/' + scopedCookie + '/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + scopedCookie } })).status, 200);
+  const live = new WebSocket(service.origin.replace('http:', 'ws:') + '/desktop/lane/' + scopedCookie + '/socket', { headers: { cookie: 'nodeviewer=' + scopedCookie, origin: service.origin } });
   const liveClosed = new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('Revoked viewer stayed connected')), 4000);
     live.once('close', () => { clearTimeout(timeout); resolve(); });
@@ -333,8 +333,8 @@ test('revoking a credential closes its access and live desktop lease', async () 
   assert.equal(revoked.data.revoked, true);
   await liveClosed;
   assert.equal((await call('GET', '/v1/agents', { headers: { authorization: 'Bearer ' + scoped.key } })).status, 401);
-  assert.equal((await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + scopedCookie } })).status, 401);
-  assert.equal((await call('GET', '/desktop/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + sessions.viewCookie } })).status, 200, 'an owner viewer stays valid');
+  assert.equal((await call('GET', '/desktop/lane/' + scopedCookie + '/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + scopedCookie } })).status, 401);
+  assert.equal((await call('GET', '/desktop/lane/' + sessions.viewCookie + '/mandatory.json', { raw: true, headers: { cookie: 'nodeviewer=' + sessions.viewCookie } })).status, 200, 'an owner viewer stays valid');
 });
 
 test('credential store and owner key stay private', async () => {
