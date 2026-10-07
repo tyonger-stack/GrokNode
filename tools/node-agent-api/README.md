@@ -77,7 +77,18 @@ desktop 返回短期授权链接；默认观看。--mode control 明确申请接
 | desktop.control | 接管、交还、手动写剪贴板和打开应用 |
 | keys.manage | 管理授权范围内的派生 key |
 
-桌面 ticket 默认 60 秒、最多 300 秒，单次兑换为 HttpOnly、SameSite=Strict cookie，viewer 有效期 15 分钟。应用窗口各自使用 cookie 路径，可以同时观看多个应用；每 bot 只有一个控制租约。观看输入在服务端过滤，交还、会话关闭或撤销 key 断开对应授权。
+桌面 ticket 默认 60 秒、最多 300 秒，单次兑换为 HttpOnly、SameSite=Strict cookie，viewer 有效期 15 分钟。完整桌面和应用窗口均使用各自的 `/desktop/lane/<id>/` 路径及 cookie；每 bot 只有一个控制租约。观看输入在服务端过滤，交还、会话关闭或撤销 key 断开对应授权。
+
+网页只保留当前会话的一个查看器。会话环境已可用时，后台请求 `mode=view, existing_only=true, replace_own_control=false`，只连接已有桌面；点击观看可复用已完成真实首帧且未过期的连接。接管和交还仍重新取得或释放服务器租约，切换会话会销毁旧查看器。共享容器的只读状态通道每次重新读取桌面分配和 gateway 状态，并检查容器 ID/StartedAt；保留连接周期校验归属，异常时关闭。
+
+内嵌查看器使用构建时打包的 noVNC 核心，画质和压缩等级沿用原值。构建使用已安装的 esbuild；运行 API 不加载 esbuild。将当前容器的 `/usr/share/novnc` 只读复制到本机临时目录后运行：
+
+```sh
+export PATH="/Users/Apple/Documents/grokbot/.tools/node-26/bin:$PATH"
+node tools/node-agent-api/build-viewer.mjs --novnc-root /absolute/path/to/novnc
+```
+
+产物位于本仓库 `.lab/node-agent-viewer/`，包含带内容哈希的 JS 和 manifest。CLI 启动时验证哈希；缺少产物时沿用原 noVNC 查看器。JS 可在已授权 lane 内缓存，HTML、授权和连接检查保持动态。容器镜像中的 noVNC 更新后重新构建产物，再重载 API。详细测试和第一期限制见 [VNC 第一阶段](../../docs/NODE_AGENT_VNC_PHASE_ONE.md)。
 
 API 的授权保护 API 入口。原 GrokNode 的 6080/6081 VNC 端口保持原有访问策略，API 没有关闭或改写它们。API bot grants 也不构成共享 Linux 文件系统的 bot 间隔离。
 
