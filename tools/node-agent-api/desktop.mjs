@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -27,10 +27,12 @@ function sameEnvironment(left, right) {
   return left?.display === right?.display
     && left?.websocketUrl === right?.websocketUrl
     && left?.containerGenerationImmutableId === right?.containerGenerationImmutableId
+    && left?.assignmentRevision === right?.assignmentRevision
+    && left?.containerStartedAt === right?.containerStartedAt
     && (left?.applicationId ?? null) === (right?.applicationId ?? null);
 }
 
-export function createDesktop({ adapter, auth, store, governance, stateDirectory, clock = Date.now }) {
+export function createDesktop({ adapter, auth, store, governance, stateDirectory, embeddedViewer = null, clock = Date.now }) {
   const tickets = new Map(), viewers = new Map(), leases = new Map(), connections = new Set();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
 
@@ -48,9 +50,7 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
   function disconnect(viewer) {
     if (leases.get(viewer.botId)?.id === viewer.id) leases.delete(viewer.botId);
     for (const pair of [...connections]) if (pair.viewer === viewer) {
-      connections.delete(pair);
-      pair.client.terminate();
-      pair.upstream.terminate();
+      pair.close();
     }
   }
 
@@ -68,16 +68,12 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
   function selectViewer(req, pathname) {
     const lane = /^\/desktop\/lane\/([A-Za-z0-9_-]+)(?:\/|$)/.exec(pathname);
     const ids = viewerCookies(req);
-    let id;
-    if (lane) id = ids.find(value => value === lane[1]);
-    else id = ids.find(value => viewers.get(value)?.target.type === 'desktop');
+    const id = lane && ids.find(value => value === lane[1]);
     const viewer = viewers.get(id);
     if (!viewer || viewer.expiresAt <= clock() || !auth.active(viewer.principal)) {
       if (viewer) { disconnect(viewer); viewers.delete(viewer.id); }
       throw new ApiError(401, 'viewer_expired', 'Desktop authorization expired');
     }
-    if (lane && (viewer.target.type !== 'application' || viewer.id !== lane[1])) throw forbidden();
-    if (!lane && viewer.target.type !== 'desktop') throw forbidden();
     return viewer;
   }
 
@@ -89,9 +85,7 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
   }
 
   function socketPath(viewer) {
-    return viewer.target.type === 'application'
-      ? `desktop/lane/${viewer.id}/socket`
-      : 'desktop/socket';
+    return `desktop/lane/${viewer.id}/socket`;
   }
 
   return {
@@ -99,6 +93,8 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
       const mode = input.mode ?? 'view', ttl = input.ttl_seconds ?? 60;
       if (!['view', 'control'].includes(mode) || !Number.isInteger(ttl) || ttl < 1 || ttl > 300) throw badRequest('Invalid desktop mode or ticket lifetime');
       if (input.replace_own_control !== undefined && typeof input.replace_own_control !== 'boolean') throw badRequest('replace_own_control must be boolean');
+      if (input.existing_only !== undefined && typeof input.existing_only !== 'boolean') throw badRequest('existing_only must be boolean');
+      if (input.existing_only === true && mode !== 'view') throw badRequest('existing_only requires view mode');
       auth.requireScope(principal, mode === 'control' ? 'desktop.control' : 'desktop.view', session.agent_id);
       const target = normalizeTarget(input.target);
       const held = leases.get(session.agent_id);
@@ -109,7 +105,7 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
       const environment = await adapter.desktop(session.agent_id, {
         type: target.type,
         ...(target.applicationId ? { application_id: target.applicationId } : {}),
-      }, mode);
+      }, mode, { prepare: input.existing_only !== true });
       if (!environment?.websocketUrl || (environment.applicationId ?? null) !== target.applicationId) throw new ApiError(502, 'desktop_upstream', 'Desktop upstream returned an invalid lane');
       for (const [key, ticket] of tickets) if (ticket.expiresAt <= clock()) tickets.delete(key);
       if (tickets.size >= 1000) throw new ApiError(429, 'desktop_capacity', 'Desktop ticket capacity reached');
@@ -127,8 +123,9 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
         const current = await adapter.desktop(ticket.botId, {
           type: ticket.target.type,
           ...(ticket.target.applicationId ? { application_id: ticket.target.applicationId } : {}),
-        }, ticket.mode);
+        }, ticket.mode, { prepare: false });
         if (!sameEnvironment(ticket.environment, current)) throw new ApiError(409, 'desktop_changed', 'Bot desktop was reassigned; request a new authorization');
+        if (ticket.expiresAt <= clock() || !auth.active(ticket.principal) || store.get(ticket.sessionId)?.status === 'closed') throw new ApiError(401, 'ticket_invalid', 'Desktop authorization expired');
         const lease = leases.get(ticket.botId);
         const replacing = lease && controls(lease) && ticket.replaces === lease.id && ticket.principal.id === lease.principal.id;
         if (lease && controls(lease) && ((ticket.mode === 'control' && !replacing) || (ticket.replaces && !replacing))) throw new ApiError(409, 'desktop_busy', 'Desktop control changed; request a new authorization');
@@ -136,22 +133,22 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
         const viewer = { ...ticket, environment: current, id: nonce(), expiresAt: clock() + 15 * 60 * 1000 };
         viewers.set(viewer.id, viewer);
         if (viewer.mode === 'control') leases.set(viewer.botId, viewer);
-        if (viewer.target.type === 'application') {
-          const location = `/desktop/lane/${viewer.id}/vnc.html`;
-          res.writeHead(303, {
-            'Set-Cookie': `nodeviewer=${viewer.id}; HttpOnly; SameSite=Strict; Path=/desktop/lane/${viewer.id}; Max-Age=900`,
-            Location: location,
-          });
-        } else {
-          res.writeHead(303, {
-            'Set-Cookie': `nodeviewer=${viewer.id}; HttpOnly; SameSite=Strict; Path=/desktop; Max-Age=900`,
-            Location: '/desktop/vnc.html',
-          });
-        }
+        const location = `/desktop/lane/${viewer.id}/vnc.html`;
+        res.writeHead(303, {
+          'Set-Cookie': `nodeviewer=${viewer.id}; HttpOnly; SameSite=Strict; Path=/desktop/lane/${viewer.id}; Max-Age=900`,
+          Location: location,
+        });
         res.end(); return;
       }
 
       const viewer = selectViewer(req, url.pathname);
+      if (url.pathname === `/desktop/lane/${viewer.id}/close` && req.method === 'POST') {
+        if (req.headers.origin !== url.origin) throw forbidden();
+        disconnect(viewer); viewers.delete(viewer.id);
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': `nodeviewer=; HttpOnly; SameSite=Strict; Path=/desktop/lane/${viewer.id}; Max-Age=0` });
+        res.end(JSON.stringify({ closed: true }));
+        return;
+      }
       if (req.method !== 'GET') throw forbidden();
 
       const lane = /^\/desktop\/lane\/[A-Za-z0-9_-]+(?:\/(.*))?$/.exec(url.pathname);
@@ -167,12 +164,21 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
       }
       if (asset === 'defaults.json') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{}'); return; }
 
-      const content = await adapter.viewerAsset(asset, viewer.botId);
+      const embedded = embeddedViewer && (asset === 'vnc.html'
+        ? { body: embeddedViewer.html({ mode: controls(viewer) ? 'control' : 'view', expiresAt: viewer.expiresAt, socketPath: '/' + socketPath(viewer) }), contentType: 'text/html; charset=utf-8', cacheControl: 'no-store' }
+        : await embeddedViewer.asset(asset));
+      if (embeddedViewer && !embedded) throw new ApiError(404, 'not_found', 'Viewer asset unavailable');
+      const content = embedded ? embedded.body : await adapter.viewerAsset(asset, viewer.botId);
+      selectViewer(req, url.pathname);
       const extension = asset.split('.').at(-1);
-      const type = { html: 'text/html; charset=utf-8', js: 'text/javascript', css: 'text/css', png: 'image/png', svg: 'image/svg+xml', ico: 'image/x-icon', json: 'application/json' }[extension];
+      const type = embedded?.contentType ?? { html: 'text/html; charset=utf-8', js: 'text/javascript', css: 'text/css', png: 'image/png', svg: 'image/svg+xml', ico: 'image/x-icon', json: 'application/json' }[extension];
       if (!type) throw new ApiError(404, 'not_found', 'Asset type unavailable');
-      res.writeHead(200, { 'Content-Type': type });
-      res.end(asset === 'vnc.html' ? Buffer.from(content).toString().replace('</head>', STYLE + '</head>') : content);
+      const body = !embedded && asset === 'vnc.html' ? Buffer.from(content).toString().replace('</head>', STYLE + '</head>') : content;
+      const etag = '"' + createHash('sha256').update(body).digest('hex') + '"';
+      const headers = { 'Content-Type': type, 'Cache-Control': embedded?.cacheControl ?? 'private, no-cache', ETag: etag };
+      const matches = headers['Cache-Control'] !== 'no-store' && String(req.headers['if-none-match'] ?? '').split(',').some(value => value.trim() === '*' || value.trim().replace(/^W\//, '') === etag);
+      res.writeHead(matches ? 304 : 200, headers);
+      res.end(matches ? undefined : body);
     },
 
     async upgrade(req, socket, head, origin) {
@@ -181,24 +187,26 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
         const requestUrl = new URL(req.url, origin);
         if (req.headers.host !== new URL(origin).host || req.headers.origin !== origin) throw forbidden();
         const laneSocket = /^\/desktop\/lane\/[A-Za-z0-9_-]+\/socket$/;
-        if (requestUrl.pathname !== '/desktop/socket' && !laneSocket.test(requestUrl.pathname)) throw forbidden();
+        if (!laneSocket.test(requestUrl.pathname)) throw forbidden();
         viewer = selectViewer(req, requestUrl.pathname);
         const current = await adapter.desktop(viewer.botId, {
           type: viewer.target.type,
           ...(viewer.target.applicationId ? { application_id: viewer.target.applicationId } : {}),
-        }, viewer.mode);
+        }, viewer.mode, { prepare: false });
         if (!sameEnvironment(viewer.environment, current)) throw new ApiError(409, 'desktop_changed', 'Desktop reassigned');
         viewer.environment = current;
         if (governance) release = await governance.acquireStream({ id: viewer.principal.user_id ?? viewer.principal.id });
+        selectViewer(req, requestUrl.pathname);
         wss.handleUpgrade(req, socket, head, client => {
           const upstream = new WebSocket(current.websocketUrl, ['binary'], { maxPayload: 4 * 1024 * 1024, headers: current.websocketHeaders ?? {} });
           const pair = { client, upstream, viewer };
           connections.add(pair);
           const filter = createRfbFilter(() => controls(viewer));
-          let waiting = [], waitingBytes = 0, closed = false;
+          let waiting = [], waitingBytes = 0, closed = false, validationTimer, validationDeadline;
           const close = reason => {
             if (closed) return;
             closed = true;
+            clearTimeout(timer); clearTimeout(validationTimer); clearTimeout(validationDeadline);
             release();
             connections.delete(pair);
             if (leases.get(viewer.botId)?.id === viewer.id) leases.delete(viewer.botId);
@@ -208,6 +216,28 @@ export function createDesktop({ adapter, auth, store, governance, stateDirectory
           };
           const ttlMs = Math.max(1, Math.min(viewer.expiresAt, viewer.principal.expiresAt) - clock());
           const timer = setTimeout(() => close(new ApiError(408, 'viewer_expired', 'Viewer expired')), ttlMs); timer.unref();
+          pair.close = close;
+          if (adapter.validateDesktop) {
+            const validate = async () => {
+              if (closed) return;
+              validationDeadline = setTimeout(() => {
+                disconnect(viewer); viewers.delete(viewer.id);
+                close(new ApiError(408, 'desktop_validation_timeout', 'Desktop validation timed out'));
+              }, 5000);
+              validationDeadline.unref();
+              try {
+                const valid = await adapter.validateDesktop(viewer.botId, viewer.environment);
+                if (valid === false) throw new ApiError(409, 'desktop_changed', 'Desktop reassigned');
+                if (!closed) selectViewer(req, requestUrl.pathname);
+              } catch (error) {
+                disconnect(viewer); viewers.delete(viewer.id); close(error);
+              } finally {
+                clearTimeout(validationDeadline);
+                if (!closed) { validationTimer = setTimeout(validate, 1000); validationTimer.unref(); }
+              }
+            };
+            validationTimer = setTimeout(validate, 1000); validationTimer.unref();
+          }
           upstream.on('open', () => { for (const message of waiting) upstream.send(message); waiting = []; waitingBytes = 0; });
           client.on('message', bytes => {
             try {

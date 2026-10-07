@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { privateDirectory } from './runtime/common.mjs';
-import { ApiError } from './errors.mjs';
+import { ApiError, badRequest, identifier } from './errors.mjs';
 import { atomicJson, readPrivateJson } from './persistence.mjs';
 
 export async function createStore(directory) {
@@ -35,19 +35,44 @@ export async function createStore(directory) {
     try { await atomicJson(file, snapshot); } catch (error) { fault = error; throw error; }
   }
   function get(id) { const value = sessions.get(id); if (!value) throw new ApiError(404, 'not_found', 'Session not found'); return value; }
-  async function append(id, type, payload) {
+  async function commitBatch(operations) {
+    if (!Array.isArray(operations)) throw badRequest('Commit operations must be an array');
+    const copy = structuredClone(operations);
+    for (const operation of copy) {
+      if (!operation || typeof operation !== 'object' || Array.isArray(operation)) throw badRequest('Invalid commit operation');
+      identifier(operation.id);
+      const { changes = {}, events = [] } = operation;
+      if (!changes || typeof changes !== 'object' || Array.isArray(changes) || Object.hasOwn(changes, 'id') || Object.hasOwn(changes, 'events')) throw badRequest('Invalid session changes');
+      if (!Array.isArray(events)) throw badRequest('Commit events must be an array');
+      for (const event of events) {
+        if (!event || typeof event !== 'object' || Array.isArray(event) || typeof event.type !== 'string' || !event.type) throw badRequest('Invalid commit event');
+      }
+    }
     return transaction(async () => {
-      const value = get(id), event = { id: 'nevt_' + randomUUID(), type, session_id: id, created_at: Math.floor(Date.now() / 1000), data: payload };
-      if (value.events.length >= 10000) throw new ApiError(409, 'event_limit', 'Session event limit reached');
-      const next = { ...value, events: [...value.events, event] };
-      await persist([...sessions.values()].map(row => row.id === id ? next : row));
-      value.events = next.events; emitter.emit(id, event); emitter.emit('*', event); return event;
+      if (!copy.length) return [];
+      const candidates = new Map(), committed = [];
+      for (const { id, changes = {}, events = [] } of copy) {
+        const value = candidates.get(id) ?? get(id);
+        if (value.events.length + events.length > 10000) throw new ApiError(409, 'event_limit', 'Session event limit reached');
+        const added = events.map(({ type, data }) => ({ id: 'nevt_' + randomUUID(), type, session_id: id, created_at: Math.floor(Date.now() / 1000), data }));
+        candidates.set(id, { ...value, ...changes, events: [...value.events, ...added] });
+        committed.push(...added);
+      }
+      await persist([...sessions.values()].map(row => candidates.get(row.id) ?? row));
+      for (const [id, next] of candidates) Object.assign(get(id), next);
+      for (const event of committed) { emitter.emit(event.session_id, event); emitter.emit('*', event); }
+      return committed;
     });
   }
+  async function commit(id, patch) {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw badRequest('Invalid session commit');
+    return commitBatch([{ id, changes: patch.changes, events: patch.events }]);
+  }
+  async function append(id, type, payload) { return (await commit(id, { events: [{ type, data: payload }] }))[0]; }
   if (recovered) await persist([...sessions.values()]);
   const refreshes = new Map();
   return {
-    get, list: () => [...sessions.values()], append,
+    get, list: () => [...sessions.values()], append, commit, commitBatch,
     async create(agentId, metadata = {}, options = {}) {
       return transaction(async () => {
       // GrokNode has one transcript per bot. API sessions are explicit attachments.
@@ -76,7 +101,7 @@ export async function createStore(directory) {
     },
     subscribe(id, listener) { get(id); emitter.on(id, listener); return () => emitter.off(id, listener); },
     subscribeAll(listener) { emitter.on('*', listener); return () => emitter.off('*', listener); },
-    async update(id, changes) { const copy = structuredClone(changes); return transaction(async () => { const value = get(id), next = { ...value, ...copy }; await persist([...sessions.values()].map(row => row.id === id ? next : row)); Object.assign(value, copy); return value; }); },
+    async update(id, changes) { await commit(id, { changes }); return get(id); },
     async flush() { await Promise.allSettled([...refreshes.values()]); await saving; if (fault) throw fault; },
     snapshot() { return JSON.stringify([...sessions.values()]); },
     setWriteGuard(guard) { writeGuard = guard; },

@@ -6,6 +6,7 @@ import { createCodexAdapter } from './codex.mjs';
 import { createHarness } from './runtime/harness.mjs';
 import { recoverServiceLocks } from './persistence.mjs';
 import { createSharedRuntime } from './shared-runtime.mjs';
+import { loadEmbeddedViewer } from './viewer.mjs';
 
 const flags = process.argv.slice(2), options = {};
 for (let i = 0; i < flags.length; i += 2) {
@@ -31,7 +32,7 @@ else if (backend === 'codex') {
   const harness = createHarness({ runtime, namespace, stateRoot, model: options['--model'], baseUrl: options['--base-url'], binary: options['--codex-bin'] });
   adapter = createCodexAdapter({ runtime, harness, roster, namespace, stateRoot, artifactRoot: path.join(stateDirectory, 'artifacts') });
 } else throw new Error('Unknown backend');
-const service = await startNodeAgentApi({ adapter, stateDirectory, port, ...(backend === 'codex' ? { modelOptions: { defaultModel: options['--model'] }, tokenhubOptions: { baseUrl: options['--base-url'] } } : {}) });
+const service = await startNodeAgentApi({ adapter, stateDirectory, port, embeddedViewer: loadEmbeddedViewer(), ...(backend === 'codex' ? { modelOptions: { defaultModel: options['--model'] }, tokenhubOptions: { baseUrl: options['--base-url'] } } : {}) });
 console.log(JSON.stringify({ service: 'Node Agent API', version: '0.3.0', backend, origin: service.origin, ui: service.origin + '/ui/', owner_key_file: service.keyFile, writes_enabled: adapter.writesEnabled }));
 async function stop() { await service.close(); process.exit(0); }
 process.once('SIGTERM', () => { void stop(); }); process.once('SIGINT', () => { void stop(); });

@@ -46,7 +46,11 @@ export function rpcParams(method, params = {}, workspaceRoot = '/workspace') {
   return safe;
 }
 
-export function createHarness({ runtime, namespace, stateRoot, model, baseUrl, binary = 'codex', spawnProcess = spawn, timeoutMs = 60000 }) {
+export function sameExecutor(left, right) {
+  return !!left && !!right && ['containerId', 'containerStartedAt', 'assignmentRevision', 'display'].every(key => left[key] != null && left[key] === right[key]);
+}
+
+export function createHarness({ runtime, namespace, stateRoot, model, baseUrl, authFile, binary = 'codex', spawnProcess = spawn, timeoutMs = 60000 }) {
   const events = new EventEmitter();
   const sessions = new Map();
   const secrets = new Set();
@@ -59,17 +63,23 @@ export function createHarness({ runtime, namespace, stateRoot, model, baseUrl, b
     if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k,v]) => [k, /^(?:authorization|authToken|accessToken|apiKey|secret|bearerToken)$/i.test(k) ? '[redacted]' : redact(v)]));
     return value;
   }
-  async function connect(botId) {
+  async function connect(botId, { prepared = false, executorIdentity } = {}) {
     validateBotId(botId);
     if (sessions.has(botId)) return sessions.get(botId);
-    const pending = start(botId);
+    const pending = start(botId, prepared, executorIdentity);
     sessions.set(botId, pending);
     try { return await pending; } catch (error) { sessions.delete(botId); throw error; }
   }
-  async function start(botId) {
-    await runtime.ensure(botId);
+  async function start(botId, prepared, executorIdentity) {
+    if (!prepared) await runtime.ensure(botId);
+    if (runtime.validateExecutor) {
+      const current = await runtime.validateExecutor(botId);
+      if (executorIdentity && !sameExecutor(executorIdentity, current)) throw new Error('Executor changed during Harness preparation');
+      executorIdentity = current;
+    }
     const registry = await runtime.descriptor(botId), status = await runtime.status(botId);
     const entry = registry.environments[0];
+    if (executorIdentity && (entry.containerId !== executorIdentity.containerId || entry.display !== executorIdentity.display || !sameExecutor(status, executorIdentity))) throw new Error('Executor changed during Harness preparation');
     if (entry.transport === 'stdio') {
       if (!isAbsolute(entry.program) || !Array.isArray(entry.args) || !entry.args.includes('exec-server') || !entry.args.includes('stdio') || !entry.args.includes('--no-new-privs')) throw new Error('Managed container stdio executor required');
     } else {
@@ -77,7 +87,8 @@ export function createHarness({ runtime, namespace, stateRoot, model, baseUrl, b
       if (url.protocol !== 'ws:' || url.hostname !== '127.0.0.1' || url.username || url.password) throw new Error('Owned loopback executor required');
       secrets.add(entry.authToken);
     }
-    const command = await prepareCodex({ runtime, namespace, stateRoot, botId, codexBinary: binary, model, baseUrl });
+    const command = await prepareCodex({ runtime, namespace, stateRoot, botId, codexBinary: binary, model, baseUrl, authFile, registry, status });
+    if (executorIdentity && !sameExecutor(executorIdentity, await runtime.validateExecutor(botId))) throw new Error('Executor changed during Harness preparation');
     if (!isAbsolute(command.cwd)) throw new Error('Private Harness home unavailable');
     const child = spawnProcess(binary, ['app-server', '--strict-config', '-c', 'mcp_servers={}', '-c', 'features.apps=false', '-c', 'features.plugins=false'], { cwd: command.cwd, env: command.env, stdio: ['pipe','pipe','pipe'] });
     const calls = new Map(), approvals = new Map();
@@ -126,7 +137,8 @@ export function createHarness({ runtime, namespace, stateRoot, model, baseUrl, b
     return { request, approvals, send, child, codexHome: command.cwd };
   }
   return {
-    redact,
+    redact, connect,
+    connectionIdentity(botId) { return sessions.get(botId) ?? null; },
     subscribe(listener) { events.on('event', listener); return () => events.off('event', listener); },
     async request(botId, method, params) { if (params?.providerConnection?.token) secrets.add(params.providerConnection.token); const safe = rpcParams(method, params, runtime.workspaceRoot ?? '/workspace'); return (await connect(botId)).request(method, safe); },
     async answer(botId, id, result) {
