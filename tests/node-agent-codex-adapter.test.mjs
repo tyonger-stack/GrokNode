@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
+import { request as httpRequest } from 'node:http';
 import { startNodeAgentApi } from '../tools/node-agent-api/server.mjs';
 import { createCodexAdapter } from '../tools/node-agent-api/codex.mjs';
 import { createHarness, rpcParams } from '../tools/node-agent-api/runtime/harness.mjs';
@@ -779,31 +780,46 @@ async function batchFixture(t, { http = false, botCount = 1 } = {}) {
   const emit = (message, session = sessions[0]) => harness.emit(session.agent_id, message);
   const notifications = session => session.events.filter(event => event.type === 'node.harness.event');
   const controllers = new Set();
+  // Keep real HTTP transport independent of the mocked batching timer.
+  async function responseFor(route, after, stream = false) {
+    const controller = new AbortController(); controllers.add(controller);
+    try {
+      const response = await new Promise((resolve, reject) => {
+        const request = httpRequest(service.origin + route, {
+          agent: false, signal: controller.signal,
+          headers: { authorization: 'Bearer ' + key, ...(stream ? { accept: 'text/event-stream' } : {}), ...(after ? { 'Last-Event-ID': after } : {}) },
+        }, resolve);
+        request.once('error', reject); request.end();
+      });
+      response.once('close', () => controllers.delete(controller));
+      assert.equal(response.statusCode, 200);
+      return { response, close() { controller.abort(); controllers.delete(controller); } };
+    } catch (error) { controller.abort(); controllers.delete(controller); throw error; }
+  }
   return {
     dir, file, adapter, harness, runtime, store, service, sessions, commits, published, delta, emit, notifications,
     failRename(error) { renameFault = error; },
     disk: () => JSON.parse(readFileSync(file, 'utf8')),
     async call(route) {
-      const response = await fetch(service.origin + route, { headers: { authorization: 'Bearer ' + key } });
-      assert.equal(response.status, 200);
-      return response.json();
+      const { response } = await responseFor(route);
+      const chunks = [];
+      for await (const chunk of response) chunks.push(chunk);
+      return JSON.parse(Buffer.concat(chunks).toString('utf8'));
     },
     async stream(route, after) {
-      const controller = new AbortController(); controllers.add(controller);
-      const response = await fetch(service.origin + route, { signal: controller.signal, headers: { authorization: 'Bearer ' + key, accept: 'text/event-stream', ...(after ? { 'Last-Event-ID': after } : {}) } });
-      assert.equal(response.status, 200);
-      const reader = response.body.getReader(), decoder = new TextDecoder();
+      const { response, close } = await responseFor(route, after, true);
+      const reader = response[Symbol.asyncIterator](), decoder = new TextDecoder();
       let text = '';
       return {
         async until(count) {
           while ((text.match(/\ndata: /g) ?? []).length < count) {
-            const part = await bounded(reader.read());
+            const part = await bounded(reader.next());
             if (part.done) throw new Error('SSE ended before its committed events');
             text += decoder.decode(part.value, { stream: true });
           }
           return text.split('\n\n').filter(frame => frame.includes('\ndata: ')).map(frame => JSON.parse(frame.split('\ndata: ')[1]));
         },
-        close() { controller.abort(); controllers.delete(controller); },
+        close,
       };
     },
     async close({ fault = false } = {}) {
