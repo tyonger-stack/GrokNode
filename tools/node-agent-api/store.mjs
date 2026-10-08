@@ -76,9 +76,10 @@ export async function createStore(directory) {
     async create(agentId, metadata = {}, options = {}) {
       return transaction(async () => {
       // GrokNode has one transcript per bot. API sessions are explicit attachments.
-      const existing = [...sessions.values()].find(s => s.agent_id === agentId && s.status !== 'closed');
+      const existing = [...sessions.values()].find(s => s.agent_id === agentId && s.status !== 'closed' && (options.backend === undefined || (s.backend ?? (s.context === 'codex_harness' ? 'codex' : 'grok')) === options.backend));
       if (existing && options.reuse !== false) return { session: existing, created: false };
       const session = { object: 'node.agent.session', id: 'nsess_' + randomUUID(), agent_id: agentId, status: 'idle', created_at: Math.floor(Date.now() / 1000), context: 'grok_node_bot_transcript', quota_user_id: options.quota_user_id ?? 'owner', metadata, events: [], requests: {} };
+      if (options.backend) Object.assign(session, { backend: options.backend, context: options.context });
       if (options.model) Object.assign(session, { model: options.model, model_source: options.model_source });
       if (options.endpoint_revision) Object.assign(session, { endpoint_revision: options.endpoint_revision, reasoning_effort: options.reasoning_effort ?? null });
       const event = { id: 'nevt_' + randomUUID(), type: 'node.session.created', session_id: session.id, created_at: session.created_at, data: { agent_id: agentId, ...(session.model ? { model: session.model, model_source: session.model_source } : {}) } };

@@ -23,3 +23,6 @@ Named dialog and controls. Tabs support arrows/Home/End and roving focus, linked
 
 ## 8. Data fidelity and QA
 The HTML share page is only a summary. The authenticated GetGrokBotTemplateImportDetails endpoint supplies a download URL for the complete recipe. Until that recipe is fetched, show details as not loaded and disable import; absence from HTML does not mean an empty category. Keep instructions separate from the share description. Test dialog, cancellation, authorization failure, tabs and desktop/narrow viewports. Keep renderer inventory and checksum verification intact; append the extension only to the audited registry chunk.
+
+## 9. Agent API native controls
+The Agent API workbench uses its existing vanilla HTML forms and `web/style.css` tokens. Execution mode uses the same labelled native select, hint paragraph, disabled state and focus ring as the model selector. Codex is the default. Native chat disables API model overrides and explains that Grok Node owns those settings. Existing sessions retain their execution mode. This extension adds no layout, colors, animations or dependencies.

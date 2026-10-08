@@ -24,6 +24,9 @@
     <button id="refresh" disabled>刷新机器人</button>
     <h2>会话</h2>
     <p class="hint" id="context">会话语义尚未查询。</p>
+    <label for="backend">新会话执行方式</label>
+    <select id="backend" disabled><option value="codex">方案 1 · Codex Harness</option></select>
+    <p class="hint" id="backend-status">连接后查询可用执行方式。</p>
     <label for="model">新会话模型</label>
     <select id="model" disabled><option value="">使用默认模型</option></select>
     <label for="reasoning-effort">推理强度</label><select id="reasoning-effort" disabled><option value="">端点默认</option></select>

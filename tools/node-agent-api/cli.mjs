@@ -20,8 +20,8 @@ if (options['--allow-writes'] !== undefined && !['true','false'].includes(option
 const root = path.resolve(import.meta.dirname, '../..'), stateDirectory = path.resolve(options['--state'] ?? path.join(root, '.lab/node-agent-shared'));
 if (options['--recover'] === 'true') await recoverServiceLocks(stateDirectory);
 const backend = options['--backend'] ?? 'codex';
-let adapter;
-if (backend === 'grok') adapter = createGrokNodeAdapter({ container: options['--container'] ?? 'grok-node-local-vm', allowWrites: options['--allow-writes'] === 'true' });
+let adapter, nativeAdapter;
+if (backend === 'grok') adapter = createGrokNodeAdapter({ container: options['--container'] ?? 'grok-node-local-vm', allowNativeChat: options['--allow-writes'] === 'true' });
 else if (backend === 'codex') {
   const namespace = options['--namespace'] ?? 'grok-node-lab-shared', stateRoot = path.resolve(options['--runtime-state'] ?? path.join(root, '.lab/shared-runtime'));
   const runtime = await createSharedRuntime({ container: options['--container'] ?? 'grok-node-local-vm', stateRoot, namespace, workspaceRoot: options['--workspace'] });
@@ -31,8 +31,9 @@ else if (backend === 'codex') {
   };
   const harness = createHarness({ runtime, namespace, stateRoot, model: options['--model'], baseUrl: options['--base-url'], binary: options['--codex-bin'] });
   adapter = createCodexAdapter({ runtime, harness, roster, namespace, stateRoot, artifactRoot: path.join(stateDirectory, 'artifacts') });
+  nativeAdapter = createGrokNodeAdapter({ container: options['--container'] ?? 'grok-node-local-vm', allowNativeChat: true, docker: '/usr/local/bin/docker' });
 } else throw new Error('Unknown backend');
-const service = await startNodeAgentApi({ adapter, stateDirectory, port, embeddedViewer: loadEmbeddedViewer(), ...(backend === 'codex' ? { modelOptions: { defaultModel: options['--model'] }, tokenhubOptions: { baseUrl: options['--base-url'] } } : {}) });
+const service = await startNodeAgentApi({ adapter, nativeAdapter, stateDirectory, port, embeddedViewer: loadEmbeddedViewer(), ...(backend === 'codex' ? { modelOptions: { defaultModel: options['--model'] }, tokenhubOptions: { baseUrl: options['--base-url'] } } : {}) });
 console.log(JSON.stringify({ service: 'Node Agent API', version: '0.3.0', backend, origin: service.origin, ui: service.origin + '/ui/', owner_key_file: service.keyFile, writes_enabled: adapter.writesEnabled }));
 async function stop() { await service.close(); process.exit(0); }
 process.once('SIGTERM', () => { void stop(); }); process.once('SIGINT', () => { void stop(); });

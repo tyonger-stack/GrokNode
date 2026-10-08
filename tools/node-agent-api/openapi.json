@@ -2913,7 +2913,14 @@
               "grok_node_bot_transcript",
               "codex_harness"
             ],
-            "description": "grok_node_bot_transcript reuses the bot's existing transcript (legacy grok backend); codex_harness is a codex-backend Harness thread attachment"
+            "description": "grok_node_bot_transcript shares the Bot native chat through sendPrompt/getAgentTranscript; codex_harness is an independent Harness thread"
+          },
+          "backend": {
+            "$ref": "#/components/schemas/SessionBackend"
+          },
+          "capabilities": {
+            "type": "object",
+            "description": "Capabilities of this session backend; override service defaults for input, cancellation, approvals, project and clipboard controls."
           },
           "metadata": {
             "$ref": "#/components/schemas/Metadata"
@@ -2966,6 +2973,11 @@
           }
         }
       },
+      "SessionBackend": {
+        "type": "string",
+        "enum": ["codex", "grok"],
+        "description": "codex keeps an independent Codex Harness thread; grok uses the selected Bot native sendPrompt/getAgentTranscript chat. Fixed for the attachment lifetime."
+      },
       "CreateSession": {
         "type": "object",
         "additionalProperties": false,
@@ -3013,6 +3025,10 @@
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$",
             "description": "Codex backend only: approved verified model. Omission resolves bot default then service default. Frozen for this session and sent to native thread/start, thread/resume and turn/start. Changing defaults affects new sessions only. When both defaults are unset, omission returns 400 model_required before creating a session or invoking Harness."
+          },
+          "backend": {
+            "$ref": "#/components/schemas/SessionBackend",
+            "description": "Omit to use capabilities.default_backend (codex on the normal service). grok reuses an open native attachment for this Bot, never a codex session. Native model/reasoning overrides return 409 unsupported."
           },
           "reasoning_effort": {
             "type": "string",
@@ -3769,6 +3785,14 @@
           },
           "writes_enabled": {
             "type": "boolean"
+          },
+          "default_backend": {
+            "$ref": "#/components/schemas/SessionBackend"
+          },
+          "backends": {
+            "type": "object",
+            "description": "Available per-session choices. Each entry advertises the selected backend capabilities.",
+            "additionalProperties": { "type": "object" }
           },
           "sessions": {
             "type": "object",

@@ -2,6 +2,8 @@
 
 更新时间：2026-10-06。用户已明确修订：所有 bot，包括实验 A、B，沿用原始 GrokNode 的定义，桌面不同，容器和数据共用。本文件替代早期“每 bot 独立容器、数据卷与网络”的需求。
 
+2026-10-08 修订：用户明确要求每个 API 会话可选择两种路径。`backend:codex`（默认）继续保留 Mac Harness；`backend:grok` 使用已有 `sendPrompt/getAgentTranscript`，直接共享对应 Bot 原生聊天和原生模型配置。原生输入允许发送到用户已运行的 Grok Node 容器，不再要求该输入路径是实验容器；此授权不扩展至 Bot 创建、容器管理或原程序修改。会话 backend 不可切换，既有 Harness 会话不迁移、不重放。
+
 ## 原程序不变
 
 Node Agent API 是独立的外部服务，通过 GrokNode 已存在的接口读取 bot、桌面和运行时映射，再封装 API。不得修改原始 GrokNode 源码、Electron 包、登录与启动流程、bot 管理、桌面分配或盒子管理逻辑；不得注入补丁、替换 host/coordinator/daemon，或把 API 打进原 App。

@@ -33,7 +33,21 @@ npm run node-agent-api -- --backend codex --port 18770 --recover true
 
 常用选项：--state、--runtime-state、--container、--workspace、--model、--base-url、--port。默认容器 grok-node-local-vm，共享项目 /workspace/codex-projects/node-agent-api，Mac 会话目录 .lab/shared-runtime。--workspace 可选择 /workspace 下的现有项目；对应 CLI 应使用同一设置。
 
-codex 是共享盒子后端。grok 是显式 legacy gateway 后端，默认只读、共享原始 bot transcript。仓库发布版本不包含旧的每 bot 容器管理或实验 host。
+codex 服务同时提供两种会话执行方式。创建会话时省略 `backend` 或传 `"codex"`，继续使用独立 Codex Harness；传 `"grok"`，消息经 `sendPrompt` 直接进入指定 Bot 原生聊天，记录经 `getAgentTranscript` 读取。原生会话使用 Grok Node 的模型设置，不接受 API `model`/`reasoning_effort`，不提供 Harness 取消、审批或项目操作。每个会话的 backend 固定，响应自带对应 capabilities。
+
+网页在“新会话执行方式”中选择方案 1 或方案 2。方案 2 为该 Bot 原生对话的附件；同 Bot 再次选择方案 2 会复用未关闭的原生附件，不会复用 Codex thread。已有 API Harness 历史保留，不会复制到原生聊天，也不会重跑。
+
+单独 `--backend grok` 启动的服务仍默认只读；明确加 `--allow-writes true` 可通过既有 gateway 发送原生消息。这个开关不开放 Bot 创建或容器管理。默认 codex 服务中的原生输入仍须通过 `sessions.write` 和 Bot 归属授权。仓库发布版本不包含旧的每 Bot 容器管理或实验 host。
+
+```json
+{"agent_id":"BOT_ID","backend":"codex"}
+```
+
+```json
+{"agent_id":"BOT_ID","backend":"grok"}
+```
+
+两种模式随后都向 `/v1/agents/sessions/{id}/events` 提交同样的消息请求。`accepted` 仅表示接收成功；原生模式不根据新增消息或轮询次数推断回合完成状态。
 
 此版本默认使用已有 opencodex 代理 http://127.0.0.1:10100/v1 和 Mac 的 ~/.codex/opencodex-catalog.json；Mac 需要已有 Codex 登录。可用 --base-url 和 --model 指定对应代理端点与模型。API 不替用户安装或修改代理、登录及原 GrokNode 软件。Node 版本遵循仓库 .node-version（26.5.x）。
 
