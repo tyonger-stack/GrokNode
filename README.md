@@ -81,7 +81,12 @@ https://github.com/user-attachments/assets/3ad72f1d-1377-416f-95ce-2ff2b92166b2
 
 ### 调用 Agent API 实例录像：codex cli连接远程开发与调试环境
 
+下面以 Codex CLI 为客户端，演示完成本地代码修改与自检后，通过 GrokNode Agent API 将应用发布到 Grok Node 管理的 Linux 环境，并查看远程浏览器中的实际结果。这段录像展示了开发与调试的基础链路：提交任务 → 修改与自检 → 发布远程预览 → 查看结果。
+在 Codex CLI 中提交“把抽奖从「幸运三人组」改成「幸运六人组」，改动越少越好”的任务，并要求完成自检和预览发布。Codex CLI 只修改默认人数一行，确认本地自检及远端健康检查通过。随后在 Grok Node app 中查看“全栈工程师”的电脑，刷新浏览器并再抽一轮，确认远程页面已变为“幸运六人组”，实际抽出六名参与者。
+
 https://github.com/user-attachments/assets/5c794fb2-0429-45d6-95c8-a1ca0b97bca7
+
+*约 28 秒 · 中文字幕 · 无音轨；等待片段已剪短，并在画面中标注。*
 
 ## 仓库里有什么？
 
