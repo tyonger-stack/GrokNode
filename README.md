@@ -66,6 +66,9 @@ npm run node-agent-api -- --backend codex --port 18770 --recover true
 
 2026-10-07 更新包含模型与 TokenHub 扩展、桌面控制和中文标题修复；本分支的实现、测试与文档同步发布。
 
+<img width="3456" height="1866" alt="image" src="https://github.com/user-attachments/assets/e7c16836-5f84-4ee3-9547-821491e89132" />
+
+
 ### 调用 Agent API 实例录像：Zcode 连接远程开发与调试环境
 
 下面以 **Zcode Preview** 为客户端，演示通过 **GrokNode Agent API** 接入 Grok Node 管理的 Linux 环境，提交任务并查看远程浏览器的实时画面。这段录像展示了远程开发与调试客户端的基础交互链路：**发送指令 → 环境内执行 → 查看结果**。
