@@ -76,6 +76,11 @@ https://github.com/user-attachments/assets/3ad72f1d-1377-416f-95ce-2ff2b92166b2
 
 *约 42 秒 · 中文字幕 · 无配音；等待片段以 4 倍速播放，并在画面中标注。*
 
+### 调用 Agent API 实例：codex cli连接远程开发与调试环境
+
+<img width="3182" height="1900" alt="image" src="https://github.com/user-attachments/assets/7742199a-587b-4206-94b1-ac338cecdb4f" />
+<img width="3182" height="1882" alt="image" src="https://github.com/user-attachments/assets/c8d3c49a-d675-4cd4-8438-8eeca1e0a773" />
+
 ## 仓库里有什么？
 
 检入的版本树包含经过审阅的重建代码、测试、清单、构建脚本，以及用 Git LFS 保存的、
