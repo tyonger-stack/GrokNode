@@ -12,6 +12,8 @@
 
 ## 能力响应
 
+服务的 `backends` 和 `default_backend` 驱动“新会话执行方式”选择器。创建会话传 `backend:codex|grok`，GET 会话返回固定的 backend 和 capabilities；控制按钮必须使用会话能力，而不是继续沿用服务默认的 Harness 能力。原生模式不发 API 模型覆盖，禁用模型和推理选择，使用 Bot 原生模型。原生 `message`/`send-message` 的 text 内容按用户/助手显示；其他内容保留为 JSON。SSE 轮询只刷新记录，不推断完成。
+
 `GET /v1/capabilities` 的以下字段必须显式为 `true` 才启用；缺失、false、未知值均禁用。能力不是授权，HTTP 错误原样展示。
 
 ```json

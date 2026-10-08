@@ -54,7 +54,7 @@ function fixture() {
   vm.createContext(Object.assign(sandbox, { api }));
   vm.runInContext(source.replace(/^import[^\n]+\n/, '') + `\n globalThis.probe = {
     desktop, resetSession, disconnect, selectSession, receive, scheduleDesktopPrewarm,
-    seed(id = 's1') { client = api; botId = 'bot'; session = {id, status:'idle'}; flags = {view:true, control:true}; },
+    seed(id = 's1') { client = api; botId = 'bot'; session = {id, status:'idle'}; flags = {view:true, control:true}; serviceFlags = flags; },
     clear() { session = undefined; }, closed() { session.status = 'closed'; },
     viewer: () => currentViewer, changing: () => desktopChanging,
   };`, sandbox);

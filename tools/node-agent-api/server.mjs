@@ -14,6 +14,7 @@ import { readFile, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createModelPolicy } from './models.mjs';
 import { createTokenHub } from './tokenhub.mjs';
+import { createBackends } from './backends.mjs';
 
 const publicSession = value => ({ object: value.object, id: value.id, agent_id: value.agent_id, status: value.status, created_at: value.created_at, context: value.context, metadata: value.metadata, ...(value.model ? { model: value.model, model_source: value.model_source } : {}), ...(value.endpoint_revision ? { endpoint_revision: value.endpoint_revision, reasoning_effort: value.reasoning_effort ?? null } : {}), ...(value.thread_id ? { thread_id: value.thread_id, task_status: value.task_status, active_turn_id: value.active_turn_id ?? null } : {}) });
 export async function startNodeAgentApi(options) {
@@ -26,8 +27,10 @@ export async function startNodeAgentApi(options) {
   } catch (error) { await release(); throw error; }
 }
 
-async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs = 2000, governanceOptions = {}, modelOptions, tokenhubOptions = {}, embeddedViewer = null }) {
+async function startUnlocked({ adapter, nativeAdapter, stateDirectory, port = 0, pollIntervalMs = 2000, governanceOptions = {}, modelOptions, tokenhubOptions = {}, embeddedViewer = null }) {
   const auth = await createAuth(stateDirectory), store = await createStore(stateDirectory);
+  const backends = createBackends(adapter, nativeAdapter);
+  const sessionResponse = session => ({ ...publicSession(session), backend: backends.backendOf(session), capabilities: backends.capabilities(session) });
   const tokenhub = modelOptions && adapter.independentSessions ? await createTokenHub(stateDirectory, tokenhubOptions) : null;
   adapter.setTokenHub?.(tokenhub);
   const models = modelOptions && adapter.independentSessions ? await createModelPolicy(stateDirectory, { ...modelOptions, tokenhub }) : null;
@@ -48,7 +51,12 @@ async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs
     void webhooks.enqueue({ id: session.quota_user_id ?? 'owner' }, { idempotencyKey: event.id, event: { id: event.id, type: event.type, session_id: event.session_id, created_at: event.created_at } }).catch(() => { webhooksEnabled = false; });
   });
   const webhookTimer = setInterval(() => { if (webhooksEnabled) void webhooks.dispatchDue().catch(() => { webhooksEnabled = false; }); }, 1000); webhookTimer.unref();
-  const submit = createInputHandler({ adapter, store });
+  const submitters = new Map();
+  function submit(session, input, key) {
+    const selected = backends.forSession(session);
+    if (!submitters.has(selected)) submitters.set(selected, createInputHandler({ adapter: selected, store }));
+    return submitters.get(selected)(session, input, key);
+  }
   const streams = new Set();
   let origin;
   const respond = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -82,6 +90,7 @@ async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs
       if (parts[0] !== 'v1') throw new ApiError(404, 'not_found', 'Route not found');
       if (url.pathname === '/v1/capabilities' && req.method === 'GET') return respond(res, 200, {
         object: 'node.api.capabilities', version: '0.3.0', backend: adapter.backend ?? 'grok_node', writes_enabled: adapter.writesEnabled,
+        default_backend: backends.defaultBackend, backends: backends.choices(),
         sessions: { context: adapter.independentSessions ? 'codex_harness' : 'grok_node_bot_transcript', independent_conversations: !!adapter.independentSessions, metadata: true, close: true },
         events: { sse: true, resume: 'persisted_event_id', turn_outcomes: !!adapter.cancel, cancellation: !!adapter.cancel, required_actions: !!adapter.answer, tool_results: false },
         environment: { provisioning: !!adapter.bindSession && !adapter.externalAdapter, isolation: adapter.isolation ?? (adapter.independentSessions ? 'per_bot_container' : 'shared_container_separate_display') },
@@ -142,24 +151,27 @@ async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs
       }
       if (parts[1] === 'agents' && parts[2] !== 'sessions' && parts.length === 3 && req.method === 'GET') { auth.requireScope(principal, 'agents.read', identifier(parts[2])); return respond(res, 200, await adapter.requireAgent(parts[2])); }
       if (parts[1] === 'agents' && parts[2] === 'sessions') {
-        if (parts.length === 3 && req.method === 'GET') { auth.requireScope(principal, 'sessions.read'); return respond(res, 200, page(store.list().filter(s => (principal.botIds.includes('*') || principal.botIds.includes(s.agent_id)) && (!url.searchParams.has('agent_id') || s.agent_id === url.searchParams.get('agent_id'))).map(publicSession), url.searchParams)); }
+        if (parts.length === 3 && req.method === 'GET') { auth.requireScope(principal, 'sessions.read'); return respond(res, 200, page(store.list().filter(s => (principal.botIds.includes('*') || principal.botIds.includes(s.agent_id)) && (!url.searchParams.has('agent_id') || s.agent_id === url.searchParams.get('agent_id'))).map(sessionResponse), url.searchParams)); }
         if (parts.length === 3 && req.method === 'POST') {
           // Mirrors the Agents API request shape: a reusable agent_id, or an
           // inline agent override that selects an existing GrokNode bot.
-          const input = object(await body(req), ['agent_id', 'agent', 'metadata', 'model', 'reasoning_effort']);
+          const input = object(await body(req), ['agent_id', 'agent', 'metadata', 'model', 'reasoning_effort', 'backend']);
+          const selectedAdapter = backends.select(input.backend);
+          const backend = input.backend ?? backends.defaultBackend;
           const inline = input.agent === undefined ? undefined : object(input.agent, ['id']);
           const agentId = typeof input.agent_id === 'string' ? input.agent_id : inline?.id;
           if (typeof agentId !== 'string') throw badRequest('agent_id or agent.id is required');
           identifier(agentId); auth.requireScope(principal, 'sessions.write', agentId); await adapter.requireAgent(agentId);
-          if (input.model !== undefined && !models) throw new ApiError(409, 'unsupported', 'Model selection is unavailable on this backend');
-          const selected = models ? await models.resolve(agentId, input.model, input.reasoning_effort) : {};
-          const result = await store.create(agentId, input.metadata === undefined ? {} : metadata(input.metadata), { reuse: !adapter.independentSessions, quota_user_id: quotaPrincipal.id, ...selected });
-          if (result.created) await adapter.bindSession?.(result.session);
-          return respond(res, result.created ? 201 : 200, publicSession(result.session));
+          if ((input.model !== undefined || input.reasoning_effort !== undefined) && (!selectedAdapter.independentSessions || !models)) throw new ApiError(409, 'unsupported', 'Native chat uses the model configured in Grok Node; API model overrides are unavailable');
+          const selected = models && selectedAdapter.independentSessions ? await models.resolve(agentId, input.model, input.reasoning_effort) : {};
+          const result = await store.create(agentId, input.metadata === undefined ? {} : metadata(input.metadata), { backend, context: selectedAdapter.independentSessions ? 'codex_harness' : 'grok_node_bot_transcript', reuse: !selectedAdapter.independentSessions, quota_user_id: quotaPrincipal.id, ...selected });
+          if (result.created) await selectedAdapter.bindSession?.(result.session);
+          return respond(res, result.created ? 201 : 200, sessionResponse(result.session));
         }
         if (parts.length >= 4) {
           const scope = req.method === 'GET' || ['desktop','handback','applications'].includes(parts[4]) ? 'sessions.read' : 'sessions.write';
           const session = authorizeSession(principal, parts[3], scope);
+          const adapter = backends.forSession(session);
           if (parts[4] === 'artifacts' && parts.length === 7 && parts[6] === 'content' && req.method === 'GET' && adapter.artifact) { const result = await adapter.artifact(session, identifier(parts[5])); res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Disposition': 'attachment; filename="project.tgz"' }); res.end(result.bytes); return; }
           if (parts[4] === 'actions' && parts.length === 6 && req.method === 'POST' && adapter.answer) { const input = object(await body(req), ['decision']); return respond(res, 200, await adapter.answer(session, identifier(parts[5]), input.decision)); }
           if (parts[4] === 'project' && parts.length === 6) {
@@ -174,13 +186,13 @@ async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs
             if (parts[5] === 'recreate' && adapter.recreate) return respond(res, 200, await adapter.recreate(session));
             if (parts[5] === 'restore' && adapter.restore) return respond(res, 200, await adapter.restore(session, object(await body(req), ['backup_id'])));
           }
-          if (parts.length === 4 && req.method === 'GET') return respond(res, 200, publicSession(session));
-          if (parts.length === 4 && req.method === 'PATCH') { const input = object(await body(req), ['metadata']); if (!Object.hasOwn(input, 'metadata')) throw badRequest('metadata is required'); await store.update(session.id, { metadata: metadata(input.metadata) }); return respond(res, 200, publicSession(session)); }
+          if (parts.length === 4 && req.method === 'GET') return respond(res, 200, sessionResponse(session));
+          if (parts.length === 4 && req.method === 'PATCH') { const input = object(await body(req), ['metadata']); if (!Object.hasOwn(input, 'metadata')) throw badRequest('metadata is required'); await store.update(session.id, { metadata: metadata(input.metadata) }); return respond(res, 200, sessionResponse(session)); }
           if (parts.length !== 5) throw new ApiError(404, 'not_found', 'Route not found');
           if (parts[4] === 'close' && req.method === 'POST') {
             if (session.status === 'pending' || session.task_status === 'running') throw new ApiError(409, 'input_pending', 'Wait for or interrupt active work before closing');
             if (session.status !== 'closed') { await store.update(session.id, { status: 'closed' }); await store.append(session.id, 'node.session.closed', { cancels_agent: false }); desktop.closeSession(session.id); }
-            return respond(res, 200, publicSession(session));
+            return respond(res, 200, sessionResponse(session));
           }
           if (parts[4] === 'environment' && req.method === 'GET') { const { websocketUrl, websocketHeaders, ...environment } = await adapter.desktop(session.agent_id); return respond(res, 200, environment); }
           if (parts[4] === 'applications' && req.method === 'GET') {
@@ -213,7 +225,7 @@ async function startUnlocked({ adapter, stateDirectory, port = 0, pollIntervalMs
             return respond(res, 200, { ...page(rows, url.searchParams), context: session.context });
           }
           if (parts[4] === 'actions' && req.method === 'GET') return respond(res, 200, page(adapter.actions ? await adapter.actions(session) : [], url.searchParams));
-          if (parts[4] === 'resume' && req.method === 'POST' && adapter.resume) { await adapter.resume(session); return respond(res, 200, publicSession(session)); }
+          if (parts[4] === 'resume' && req.method === 'POST' && adapter.resume) { await adapter.resume(session); return respond(res, 200, sessionResponse(session)); }
           if (parts[4] === 'handoff' && req.method === 'POST' && adapter.handoff) return respond(res, 200, await adapter.handoff(session));
           if (parts[4] === 'turns' && req.method === 'GET') { await adapter.flush?.(); return respond(res, 200, page(session.turns ?? [], url.searchParams)); }
           if (parts[4] === 'traces' && req.method === 'GET') { await adapter.flush?.(); return respond(res, 200, { object: 'list', data: (session.turns ?? []).map(turn => ({ turn_id: turn.id, ...(turn.model ? { model: turn.model } : {}), started_at: turn.started_at, ended_at: turn.ended_at ?? null, status: turn.status, usage: turn.usage ?? null, spans: turn.items })), has_more: false }); }

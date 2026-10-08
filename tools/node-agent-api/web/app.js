@@ -5,6 +5,8 @@ const text = (id, value) => { if ($(id).textContent !== value) $(id).textContent
 const pretty = value => JSON.stringify(value, null, 2);
 const stateName = value => ({ idle: '待开始', pending: '提交中', accepted: '已接收', running: '正在执行', completed: '已完成', failed: '未完成', cancelled: '已取消', interrupted: '已中断', unknown: '状态待确认', closed: '已归档' }[value] ?? '状态待确认');
 let client, flags = capabilities(), botId = '', session, turnId = '', epoch = 0;
+let serviceFlags = capabilities(), backendChoices = {};
+const nativeSelected = () => $('backend').value === 'grok';
 let controller = new AbortController(), streamController, sending = false;
 let modelSelection = false, modelManager = false, modelsReady = false;
 let modelSettings;
@@ -38,9 +40,9 @@ function controls() {
   const attached = Boolean(client && session), writable = attached && session.status !== 'closed';
   const enabled = {
     bots: Boolean(client), refresh: Boolean(client), disconnect: Boolean(client),
-    history: Boolean(client && botId), attach: Boolean(client && botId && (!modelSelection || (modelsReady && (defaultModel || $('model').value)))),
-    model: Boolean(client && botId && modelsReady), 'service-model': modelManager && modelsReady, 'bot-model': modelManager && Boolean(botId) && modelsReady,
-    'reasoning-effort': Boolean(client && botId && modelsReady && $('model').value), 'tokenhub-open': Boolean(client && modelManager),
+    backend: Boolean(client), history: Boolean(client && botId), attach: Boolean(client && botId && (nativeSelected() || !modelSelection || (modelsReady && (defaultModel || $('model').value)))),
+    model: Boolean(client && botId && modelsReady && !nativeSelected()), 'service-model': modelManager && modelsReady, 'bot-model': modelManager && Boolean(botId) && modelsReady,
+    'reasoning-effort': Boolean(client && botId && modelsReady && !nativeSelected() && $('model').value), 'tokenhub-open': Boolean(client && modelManager),
     'save-service-model': modelManager && modelsReady, 'save-bot-model': modelManager && Boolean(botId) && modelsReady,
     'save-allowed-models': modelManager && modelsReady, 'verify-model': modelManager && modelsReady, 'model-evidence': modelManager && modelsReady, 'save-model-evidence': modelManager && modelsReady,
     'tokenhub-key-save': modelManager, 'tokenhub-url-save': modelManager, 'tokenhub-protocol-save': modelManager, 'tokenhub-model-refresh': modelManager,
@@ -81,6 +83,7 @@ function resetSession() {
   loadItems.reset(); loadActions.reset();
   busy.clear();
   session = undefined; turnId = ''; sending = false; liveItems.clear();
+  flags = serviceFlags;
   desktopChanging = false;
   $('transcript').replaceChildren(); $('approvals').replaceChildren(); $('desktop').replaceChildren();
   $('clipboard').value = ''; $('prompt').value = ''; $('import-file').value = '';
@@ -93,6 +96,8 @@ function resetSession() {
 function disconnect() {
   authPending = false;
   resetSession(); client = undefined; flags = capabilities(); botId = ''; cursors.clear();
+  serviceFlags = capabilities(); backendChoices = {};
+  $('backend').replaceChildren(new Option('方案 1 · Codex Harness', 'codex')); text('backend-status', '连接后查询可用执行方式。');
   $('key').value = ''; $('bots').replaceChildren(new Option('请先连接', ''));
   $('sessions').replaceChildren(); text('capabilities', '尚未查询'); text('context', '会话语义尚未查询。');
   modelSelection = false; modelManager = false; modelsReady = false; modelSettings = undefined; defaultModel = null; $('model-admin').hidden = true;
@@ -113,6 +118,8 @@ const post = (path, body) => scopedJSON(path, { method: 'POST', body });
 
 async function loadModels() {
   modelsReady = false; controls();
+  text('backend-status', nativeSelected() ? '消息直接进入此 Bot 的原生聊天，使用 Grok Node 中的模型设置。' : '独立 Harness 会话；对话保存在 Agent API 中。');
+  if (nativeSelected()) { text('model-status', '原生聊天的模型与推理设置由 Grok Node 管理。'); return; }
   if (!modelSelection) { text('model-status', '服务未声明模型选择能力。'); return; }
   const selectedBot = botId, generation = epoch;
   try {
@@ -197,7 +204,7 @@ async function loadSessions() {
   $('sessions').replaceChildren();
   for (const row of rows) {
     const button = document.createElement('button');
-    button.textContent = `${row.metadata?.title || '会话 ' + (rows.indexOf(row) + 1)} · ${stateName(row.task_status ?? row.status)}`;
+    button.textContent = `${row.metadata?.title || '会话 ' + (rows.indexOf(row) + 1)} · ${stateName(row.task_status ?? row.status)}${row.backend ? ' · ' + (row.backend === 'grok' ? '原生聊天' : 'Codex') : ''}`;
     button.title = row.id;
     button.setAttribute('aria-current', String(row.id === session?.id));
     button.addEventListener('click', () => run('select-session', () => selectSession(row.id)));
@@ -227,8 +234,8 @@ const loadItems = createRefresh(async current => {
       continue;
     }
     const item = live?.completed ?? row;
-    const label = roles[item.role] ?? ({ userMessage: '你', agentMessage: '助手', commandExecution: '终端', fileChange: '文件修改', reasoning: '进度', dynamicToolCall: '审批操作' }[item.type]) ?? '记录';
-    const value = item.text ?? (item.type === 'userMessage' ? (item.content ?? []).map(part => part.text ?? '').join('\n') : item.type === 'commandExecution' ? [item.command, item.aggregatedOutput, item.exitCode === null || item.exitCode === undefined ? '' : '退出码：' + item.exitCode].filter(Boolean).join('\n') : pretty(item));
+    const label = roles[item.role] ?? ({ userMessage: '你', agentMessage: '助手', commandExecution: '终端', fileChange: '文件修改', reasoning: '进度', dynamicToolCall: '审批操作' }[item.type]) ?? ({ message: '你', 'send-message': '助手' }[item.kind]) ?? '记录';
+    const value = item.text ?? (item.message?.type === 'text' ? item.message.content : item.type === 'userMessage' ? (item.content ?? []).map(part => part.text ?? '').join('\n') : item.type === 'commandExecution' ? [item.command, item.aggregatedOutput, item.exitCode === null || item.exitCode === undefined ? '' : '退出码：' + item.exitCode].filter(Boolean).join('\n') : pretty(item));
     message(fragment, label, value);
     if (live) { liveItems.delete(row.id); dirtyItems.delete(live); }
   }
@@ -272,10 +279,11 @@ async function selectSession(id) {
     if (generation !== epoch) return;
     if (value.agent_id !== botId) throw new Error('会话所属机器人不匹配');
     session = value;
+    flags = value.capabilities ? capabilities(value.capabilities) : serviceFlags;
     turnId = value.active_turn_id ?? '';
-    text('identity', flags.shared ? '机器人共用 Linux 项目与数据，桌面按机器人区分' : '当前机器人使用 Linux 项目环境'); text('thread', '当前会话' + (value.model ? ' · 模型：' + value.model : ''));
+    text('identity', serviceFlags.shared ? '机器人共用 Linux 项目与数据，桌面按机器人区分' : '当前机器人使用 Linux 项目环境'); text('thread', '当前会话' + (value.backend === 'grok' ? ' · Grok Node 原生聊天' : '') + (value.model ? ' · 模型：' + value.model : ''));
     status(`会话已恢复 · ${stateName(value.task_status ?? value.status)}`);
-    text('turn-status', turnId ? `活动回合：${turnId} · 结果未知` : '尚未观察到权威回合结果');
+    text('turn-status', value.backend === 'grok' ? '原生聊天记录与 Bot 共用；输入接收不代表任务完成。' : turnId ? `活动回合：${turnId} · 结果未知` : '尚未观察到权威回合结果');
     controls();
     scheduleDesktopPrewarm();
     await Promise.all([loadItems(), loadActions(), loadSessions()]);
@@ -364,7 +372,10 @@ $('auth').addEventListener('submit', event => {
     try {
       const value = await client.json('/v1/capabilities', options());
       text('auth-status', '密钥验证通过，正在加载机器人…');
-      flags = capabilities(value); text('capabilities', pretty(value));
+      flags = capabilities(value); serviceFlags = flags; text('capabilities', pretty(value));
+      backendChoices = value.backends ?? {};
+      const choices = Object.keys(backendChoices);
+      if (choices.length) { $('backend').replaceChildren(...choices.map(name => new Option(name === 'grok' ? '方案 2 · Grok Node 原生聊天' : '方案 1 · Codex Harness', name))); $('backend').value = value.default_backend ?? choices[0]; }
       modelSelection = value.models?.selection === true; modelManager = value.models?.management === true; $('model-admin').hidden = !modelManager;
       text('context', value.sessions?.independent_conversations === false ? '同一机器人共享既有对话；关联会话不会创建独立上下文。' : '恢复已有会话不会自动重跑任务。');
       text('workspace-status', `差异：${flags.diff ? '支持' : '未声明支持'} · 导入：${flags.import ? '支持' : '未声明支持'} · 导出：${flags.export ? '支持' : '未声明支持'}`);
@@ -388,8 +399,9 @@ $('bots').addEventListener('change', () => {
   if (botId) void run('history', loadSessions);
 });
 bind('history', loadSessions);
+$('backend').addEventListener('change', () => { void run('models', loadModels); });
 bind('attach', async () => {
-  const value = await post('/v1/agents/sessions', { agent_id: botId, ...(modelSelection && $('model').value ? { model: $('model').value, reasoning_effort: $('reasoning-effort').value || null } : {}) });
+  const value = await post('/v1/agents/sessions', { agent_id: botId, ...(Object.keys(backendChoices).length ? { backend: $('backend').value } : {}), ...(!nativeSelected() && modelSelection && $('model').value ? { model: $('model').value, reasoning_effort: $('reasoning-effort').value || null } : {}) });
   await selectSession(value.id);
 });
 bind('resume', async () => { await Promise.all([loadItems(), loadActions()]); startStream(); });

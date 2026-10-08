@@ -55,7 +55,7 @@ async function readSnapshot(id){
 export const snapshotProgram = snapshotFunctionProgram + String.raw`
 readSnapshot(process.argv[1]).then(result=>console.log(JSON.stringify(result))).catch(()=>{console.error('Desktop validation unavailable');process.exitCode=1});`;
 
-export function createGrokNodeAdapter({ container = 'grok-node-local-vm', allowWrites = false, execute = run, docker = 'docker', readSnapshot } = {}) {
+export function createGrokNodeAdapter({ container = 'grok-node-local-vm', allowWrites = false, allowNativeChat = false, execute = run, docker = 'docker', readSnapshot } = {}) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(container)) throw new Error('Invalid container name');
   if (allowWrites && !container.startsWith('grok-node-lab-')) throw new Error('Writes require an experimental GrokNode container');
   async function writeGuard(botId) {
@@ -96,7 +96,7 @@ export function createGrokNodeAdapter({ container = 'grok-node-local-vm', allowW
     return { object: 'node.environment', id: 'nenv_' + id, agent_id: id, type: 'grok_node', isolation: 'shared_container_separate_display', container, display: Number(display), websocketUrl: `ws://127.0.0.1:${url.port}/websockify${url.port === '6081' ? '?token=' + display : ''}` };
   }
   return {
-    agents, requireAgent, desktop, writesEnabled: allowWrites,
+    backend: 'grok_node', agents, requireAgent, desktop, writesEnabled: allowWrites || allowNativeChat,
     async snapshot(id, containerId, generation) {
       identifier(id);
       let result;
@@ -111,7 +111,7 @@ export function createGrokNodeAdapter({ container = 'grok-node-local-vm', allowW
     // remain explicit; callers cannot select arbitrary gateway methods.
     gateway: call,
     async items(id) { await requireAgent(id); const rows = await call('getAgentTranscript', { id }); return Array.isArray(rows) ? rows : rows.entries ?? []; },
-    async input(id, text, requestId) { await writeGuard(id); await requireAgent(id); return call('sendPrompt', { agentId: id, prompt: text, clientNonce: requestId }); },
+    async input(id, text, requestId) { if (!allowNativeChat) await writeGuard(id); await requireAgent(id); return call('sendPrompt', { agentId: id, prompt: text, clientNonce: requestId }); },
     async createAgent(input) { await writeGuard(); return call('createAgent', { name: input.name, description: input.description ?? '', origin: 'user', isKickstartRequested: false, isIntroductionSuppressed: true }); },
     async viewerAsset(asset) {
       if (!/^(vnc\.html|(?:app|core|vendor)\/[A-Za-z0-9_./-]+|(?:defaults|mandatory)\.json)$/.test(asset) || asset.split('/').includes('..')) throw new ApiError(404, 'not_found', 'Asset not found');

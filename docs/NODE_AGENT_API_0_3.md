@@ -80,7 +80,7 @@ npm run node-agent-api -- --backend codex --port 18770 --recover true
 
 | 选项 | 默认值 / 含义 |
 | --- | --- |
-| `--backend` | `codex`：独立 Mac Harness；`grok`：原 gateway/transcript 的 legacy 后端 |
+| `--backend` | `codex`：默认 Harness，同时允许每个会话选择原生聊天；`grok`：只提供原 gateway/transcript，默认只读 |
 | `--port` | `18770`；`0` 使用系统分配端口，以启动输出为准 |
 | `--container` | `grok-node-local-vm`，必须是已有 GrokNode 盒子 |
 | `--workspace` | `/workspace/codex-projects/node-agent-api`，可选择 `/workspace` 下的项目路径 |
@@ -280,6 +280,16 @@ node_api "$NODE_AGENT_BASE/v1/agents?limit=20"
 使用自定义 `--state` 时，从启动输出的 `owner_key_file` 读取密钥。不要把它提交到仓库、放进 URL 或复制进执行容器。
 
 ### 创建会话与提交任务
+
+每个会话可传 `backend: "codex"`（方案 1，省略时使用服务默认）或 `backend: "grok"`（方案 2）。GET capabilities 的 backends 列出可用选择；GET 会话返回 backend 和该会话的 capabilities。选择固定在会话创建时，PATCH 不能改变执行方式。
+
+方案 2 通过已有 sendPrompt 直接送入对应 Bot 的原生聊天，通过 getAgentTranscript 读取同一份记录。同 Bot 的未关闭原生附件会复用，不会复用 Harness 会话。模型使用 Grok Node 内的设置，传 API model 或 reasoning_effort 返回 409 unsupported；取消和审批等按钮按原生会话能力禁用。已有 Harness 历史保留在 API，不迁移、不重跑。
+
+```json
+{"agent_id":"BOT_ID_FROM_AGENTS","backend":"grok"}
+```
+
+创建原生附件后仍使用下面的 events 消息格式。accepted 只表示输入接收，新增 transcript 或轮询响应不能用来推断回合完成。
 
 ```sh
 NODE_AGENT_BOT='BOT_ID_FROM_AGENTS'
