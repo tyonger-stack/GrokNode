@@ -69,22 +69,13 @@ npm run node-agent-api -- --backend codex --port 18770 --recover true
 架构与运行边界
 下面是 Agent API 的主要交互路径：
 
-flowchart LR
-    Client[网页 / CLI / Zcode] --> API[Agent API：认证、会话、HTTP/SSE]
-    API --> Harness[Mac：Codex Harness / 模型与工具路由]
-    Harness -->|Docker stdio| Linux[Linux：shell、文件、构建与测试]
-    API -->|授权桌面链接与控制租约| Desktop[bot 桌面 / 终端与浏览器画面]
-    Linux --- Desktop
-    App[Grok Node app] -->|管理已有容器与桌面| Linux
-
+<img width="3148" height="464" alt="image" src="https://github.com/user-attachments/assets/21faa044-fb18-4551-a123-a271673b39c2" />
 
 部署位置：当前执行环境由 Mac 上的 Grok Node 管理，使用本地 Docker 容器。文中的“远程”指客户端访问 Linux 执行端及其桌面。
 bot 关系：各 bot 使用不同桌面，容器和文件系统共用。API 的用户/bot 权限控制请求范围，共享文件系统仍是现有运行边界。
 环境生命周期：Agent API 连接已有盒子，不自动创建、替换或重启容器，原 App 继续负责环境管理。
 访问与恢复：API 默认监听 127.0.0.1，采用 Bearer 密钥和服务端桌面授权。恢复保留的项目与会话资料后，由用户处理已中断的任务；运行中进程按中断处理。
 原桌面应用的 Electron、preload、host 与推理路由关系见 架构文档。
-
-
 
 ### Agent API GUI
 <img width="3456" height="1866" alt="image" src="https://github.com/user-attachments/assets/e7c16836-5f84-4ee3-9547-821491e89132" />
