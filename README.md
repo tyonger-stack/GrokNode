@@ -66,8 +66,12 @@ npm run node-agent-api -- --backend codex --port 18770 --recover true
 
 2026-10-07 更新包含模型与 TokenHub 扩展、桌面控制和中文标题修复；本分支的实现、测试与文档同步发布。
 
+### Agent API GUI
 <img width="3456" height="1866" alt="image" src="https://github.com/user-attachments/assets/e7c16836-5f84-4ee3-9547-821491e89132" />
 
+### 调用 Agent API 实例：Zcode 增加 bot功能（dots样式）
+
+<img width="3448" height="1876" alt="image" src="https://github.com/user-attachments/assets/540b87b3-30be-4add-8a9c-572c53175af5" />
 
 ### 调用 Agent API 实例录像：Zcode 连接远程开发与调试环境
 
