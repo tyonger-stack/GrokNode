@@ -74,7 +74,8 @@ test("Router settings and inference packaging expose only local providers", asyn
   assert.doesNotMatch(providers, /queryClaude|claude-code|resolveClaudeCodeCliPath/);
   assert.match(codexDirect, /store: false/);
   assert.match(codexDirect, /type: "function_call_output"/);
-  assert.match(providers, /parameters: jsonSchema\(normalizeStrictToolSchema\(toToolWireParameters\(parameters\)\)/);
+  assert.match(providers, /parameters: jsonSchema\(toOpenRouterToolWireParameters\(parameters, baseUrl\)/);
+  assert.match(providers, /toToolSet\(definitions, executeTool, transport\.baseUrl\)/);
   assert.match(providers, /export function normalizeStrictToolSchema/);
   assert.match(providers, /You are Grok Bot, a warm, concise desktop assistant/);
   assert.match(providers, /recordRoutedUsage\(provider, usage\)/);
