@@ -100,5 +100,49 @@ test("OpenRouter tool parameters keep closed object schemas required by Muse Spa
     nested: z.object({ value: z.string() }),
   }));
   assert.equal(schema.additionalProperties, false);
+  assert.doesNotMatch(JSON.stringify(schema), /"\$ref"/);
   assert.equal(schema.properties.nested.additionalProperties, false);
+});
+
+test("Z.ai computer screenshots keep action-specific and follow-up fields optional", async () => {
+  const [computer, provider] = await Promise.all([
+    loadModule("source/host/runner/tools/sand-computer-tool.ts", "zai-computer-parameters.mjs"),
+    loadModule("source/host/extensions/inference/provider-session.ts", "zai-provider-parameters.mjs"),
+  ]);
+  const tools = provider.toToolSet([
+    { name: "computer_use", parameters: computer.computerActionParameters },
+  ], undefined, "https://api.z.ai/api/coding/paas/v4");
+  const schema = tools.computer_use.parameters.jsonSchema;
+  assert.deepEqual(schema.required, ["action"]);
+  assert.equal(schema.properties.then.minItems, 1);
+  assert.equal(computer.computerActionParameters.safeParse({ action: "screenshot" }).success, true);
+  assert.equal(computer.computerActionParameters.safeParse({ action: "screenshot", then: [] }).success, false);
+  assert.equal(schema.additionalProperties, false);
+});
+
+test("Z.ai messages keep fields from other message types optional", async () => {
+  const [message, provider] = await Promise.all([
+    loadModule("source/host/runner/tools/send-message-schema.ts", "zai-message-parameters.mjs"),
+    loadModule("source/host/extensions/inference/provider-session.ts", "zai-provider-parameters.mjs"),
+  ]);
+  const tools = provider.toToolSet([
+    { name: "send_message", parameters: message.sendMessageParameters },
+  ], undefined, "https://api.z.ai/api/coding/paas/v4");
+  const schema = tools.send_message.parameters.jsonSchema;
+  assert.deepEqual(schema.required, ["type"]);
+  assert.deepEqual(schema.properties.widget.required, ["prompt", "options"]);
+  assert.equal(message.sendMessageParameters.safeParse({ type: "text", content: "Opened Baidu." }).success, true);
+});
+
+test("strict tool backends still receive every declared property as required", async () => {
+  const { z } = await import("zod");
+  const provider = await loadModule(
+    "source/host/extensions/inference/provider-session.ts", "strict-provider-parameters.mjs",
+  );
+  const parameters = z.object({ action: z.string(), then: z.array(z.string()).optional() });
+  for (const baseUrl of [undefined, "http://127.0.0.1:10100/v1", "https://api.z.ai.example.com/v1"]) {
+    const tools = provider.toToolSet([{ name: "test", parameters }], undefined, baseUrl);
+    assert.deepEqual(tools.test.parameters.jsonSchema.required, ["action", "then"]);
+    assert.equal(tools.test.parameters.jsonSchema.additionalProperties, false);
+  }
 });

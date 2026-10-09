@@ -307,10 +307,8 @@ function stripSchemaArtifacts(value: unknown): unknown {
 // Strict function-calling normalization for the OpenAI-compatible channel: every
 // object node must declare additionalProperties:false and list all declared
 // properties in required (some strict backends reject anything else with a 400,
-// e.g. muse-spark via the local proxy). Applied at this single egress so both
-// zod-built tools and pass-through MCP inputSchemas are covered. Non-strict
-// backends accept the result as plain JSON Schema. Runtime args are still
-// validated by zod on the host side; this only describes the shape to the model.
+// e.g. muse-spark via the local proxy). Z.ai accepts ordinary JSON Schema;
+// making its optional fields mandatory contradicts the host validators.
 function resolveInternalRef(root: unknown, ref: string): unknown {
   if (!ref.startsWith("#/")) return undefined;
   let node: unknown = root;
@@ -324,20 +322,31 @@ function resolveInternalRef(root: unknown, ref: string): unknown {
   return node;
 }
 
+interface ToolSchemaNormalization {
+  readonly strict: boolean;
+  readonly root?: unknown;
+  readonly seen?: Set<string>;
+}
+
 export function normalizeStrictToolSchema(value: unknown, root?: unknown, seen?: Set<string>): unknown {
+  return normalizeToolSchema(value, { strict: true, root, ...(seen === undefined ? {} : { seen }) });
+}
+
+function normalizeToolSchema(value: unknown, context: ToolSchemaNormalization): unknown {
   // AI SDK jsonSchema() wrappers carry the real schema under .jsonSchema while
   // internal $refs resolve relative to that inner schema, so descend first and
   // let the inner object become the ref owner.
   if (value != null && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
     if (record.jsonSchema != null && typeof record.jsonSchema === "object" && record.type === undefined && record.$ref === undefined) {
-      return { ...record, jsonSchema: normalizeStrictToolSchema(record.jsonSchema) };
+      return { ...record, jsonSchema: normalizeToolSchema(record.jsonSchema, { strict: context.strict }) };
     }
   }
-  const owner = root ?? value;
-  const active = seen ?? new Set<string>();
+  const owner = context.root ?? value;
+  const active = context.seen ?? new Set<string>();
+  const childContext = { strict: context.strict, root: owner, seen: active };
   if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) return value.map((child) => normalizeStrictToolSchema(child, owner, active));
+  if (Array.isArray(value)) return value.map((child) => normalizeToolSchema(child, childContext));
   const record = value as Record<string, unknown>;
   // zod-to-json-schema emits internal relative $refs (e.g. z.array of a
   // discriminatedUnion points at its sibling branch). Strict backends do not
@@ -349,7 +358,7 @@ export function normalizeStrictToolSchema(value: unknown, root?: unknown, seen?:
     if (target == null || typeof target !== "object") return value;
     active.add(ref);
     try {
-      const inlined = normalizeStrictToolSchema(target, owner, active);
+      const inlined = normalizeToolSchema(target, childContext);
       if (inlined == null || typeof inlined !== "object" || Array.isArray(inlined)) return value;
       const { $ref: _dropped, ...siblings } = record;
       return { ...(inlined as Record<string, unknown>), ...siblings };
@@ -358,8 +367,8 @@ export function normalizeStrictToolSchema(value: unknown, root?: unknown, seen?:
     }
   }
   const result: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(record)) result[key] = normalizeStrictToolSchema(child, owner, active);
-  if (result.type === "object") {
+  for (const [key, child] of Object.entries(record)) result[key] = normalizeToolSchema(child, childContext);
+  if (result.type === "object" && context.strict) {
     // Bare object nodes (e.g. pass-through MCP inputSchemas) carry no
     // additionalProperties key at all; strict backends reject those too.
     if (result.additionalProperties !== false) result.additionalProperties = false;
@@ -452,7 +461,15 @@ function codexExecutor(messages: readonly ProviderMessage[], invocationId: strin
   return { fullStream, response: resultResponse.promise, usage: usage.promise, extendedUsage: extendedUsage.promise, providerMetadata: metadata.promise, invocationId: Promise.resolve(invocationId) };
 }
 
-function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: RoutedToolExecutor): ToolSet | undefined {
+export function toOpenRouterToolWireParameters(parameters: unknown, baseUrl?: string): unknown {
+  const schema = toToolWireParameters(parameters);
+  if (baseUrl != null && URL.canParse(baseUrl) && new URL(baseUrl).hostname === "api.z.ai") {
+    return normalizeToolSchema(schema, { strict: false });
+  }
+  return normalizeStrictToolSchema(schema);
+}
+
+export function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: RoutedToolExecutor, baseUrl?: string): ToolSet | undefined {
   if (definitions == null || definitions.length === 0) return undefined;
   const tools: ToolSet = {};
   for (const definition of definitions) {
@@ -461,7 +478,7 @@ function toToolSet(definitions: readonly Loose[] | undefined, executeTool?: Rout
     if (parameters == null) continue;
     const routedTool: any = {
       ...(typeof definition.description === "string" ? { description: definition.description } : {}),
-      parameters: jsonSchema(normalizeStrictToolSchema(toToolWireParameters(parameters)) as Parameters<typeof jsonSchema>[0]),
+      parameters: jsonSchema(toOpenRouterToolWireParameters(parameters, baseUrl) as Parameters<typeof jsonSchema>[0]),
     };
     if (executeTool != null) routedTool.execute = async (args: unknown, options: { toolCallId: string }) => await executeTool(definition, args, options.toolCallId);
     tools[definition.name] = tool(routedTool);
@@ -523,7 +540,7 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     recordChatError(error);
     throw error;
   }
-  const tools = toToolSet(definitions, executeTool);
+  const tools = toToolSet(definitions, executeTool, transport.baseUrl);
   const result = streamText({ model, system: GROK_ROUTER_SYSTEM_PROMPT, messages: messages as CoreMessage[], ...(signal === undefined ? {} : { abortSignal: signal }), ...(tools === undefined ? {} : { tools }), toolCallStreaming: true, maxSteps: tools === undefined ? 1 : 8, maxRetries: 4 });
   async function* observedFullStream() {
     const iterator = result.fullStream[Symbol.asyncIterator]();
