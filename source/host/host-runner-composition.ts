@@ -2075,15 +2075,15 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         mode: scopedAutoReviewModes.computer,
         agentId,
         boxIdentity: {
-          boxId: agentId,
-          windowGeneration: `${autoReviewController?.hostGeneration ?? "host"}:${agentId}`,
+          boxId: session.id,
+          windowGeneration: `${autoReviewController?.hostGeneration ?? "host"}:${session.id}`,
         },
         ...(autoReviewController === undefined ? {} : { autoReviewController }),
         extractConversationContext: extractProductionTurnAutoReviewConversationContext,
         getApprovalExpiryPolicy: () => sandAutoReviewApprovalExpiryPolicy("turn"),
         resolveDisplayNumber: async (context: unknown) => {
-          await method(remoteBox, "ensureReady")?.(context, agentId);
-          const windowIndex = boxAgentWindowIndex(remoteBox as any, agentId);
+          await method(remoteBox, "ensureReady")?.(context, session.id);
+          const windowIndex = boxAgentWindowIndex(remoteBox as any, session.id);
           return windowIndex ?? (boxSupportsMultiWindow(remoteBox as any) ? undefined : 1);
         },
         ...(scopedUserAutoRunInstructions === undefined
@@ -2251,7 +2251,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           dependencies: createHostBrowserDriverDependencies({
             resourceAccessor: boxAccessor,
           box: remoteBox as unknown as HostBrowserBoxOwner<unknown>,
-          getBoxId: () => agentId,
+          getBoxId: () => session.id,
           getDefaultViewId: () => agentId,
           executeShell: createHostShellExecutor({
             resourceAccessor: boxAccessor,
