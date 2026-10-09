@@ -82,7 +82,7 @@ bot 关系：各 bot 使用不同桌面，容器和文件系统共用。API 的�
 
 ### 调用 Agent API 实例：Zcode 增加 bot功能（dots样式）
 
-<img width="3448" height="1876" alt="image" src="https://github.com/user-attachments/assets/540b87b3-30be-4add-8a9c-572c53175af5" />
+https://github.com/user-attachments/assets/5e1defe1-af18-4a59-85c5-c5f98488c09a
 
 ### 调用 Agent API 实例录像：Zcode 连接远程开发与调试环境
 
