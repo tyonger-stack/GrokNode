@@ -241,7 +241,7 @@ test('caller-supplied model ids are a catalog when the endpoint list is not refr
   const emptyDir = await realpath(await mkdtemp(join(tmpdir(), 'tokenhub-nocatalog-')));
   const empty = await createTokenHub(emptyDir);
   try {
-    const policy = await createModelPolicy(join(emptyDir, 'policy'), { tokenhub: empty });
+    const policy = await createModelPolicy(emptyDir, { tokenhub: empty });
     await assert.rejects(policy.list('bot-a'), error => error.status === 503 && error.code === 'model_catalog_unavailable');
   } finally { await empty.close(); }
 });
