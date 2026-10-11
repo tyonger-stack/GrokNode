@@ -259,6 +259,7 @@ flowchart TB
 
   subgraph MAC["Mac 宿主"]
     API["Node Agent API<br/>127.0.0.1:18770"]
+    JEV{"JEV 决策模型<br/>（规划中 / 未来版本）"}
     App["Grok Node.app"]
     State[("状态目录 JSON<br/>keys · sessions · tokenhub")]
     Harness["codex app-server<br/>（codex 后端，Mac 子进程）"]
@@ -293,7 +294,17 @@ flowchart TB
   Harness -->|"HTTP Responses（config.toml）"| LLM
   Relay -->|"HTTPS + 端点密钥"| LLM
   App -->|"docker run · 挂载 host-main.cjs"| Host
+
+  %% 规划中 / 未来版本：以下虚线与虚框均未上线
+  API -.->|"会话路由（规划中）"| JEV
+  JEV -.->|"编码 / 工具型 → codex 后端"| Harness
+  JEV -.->|"原生对话 / 桌面型 → grok 后端"| Host
+  Harness <-.->|"会话上下文 / 历史互通（规划中）"| Host
+  classDef planned stroke-dasharray: 6 4
+  class JEV planned
 ```
+
+> 图例：实线为已上线；虚线和虚框为规划中（未来版本）。
 
 **调用链说明**（依据为 main 分支，未注明目录的文件都在 `tools/node-agent-api/` 下；模型端点部分来自已合并的 #14）
 
@@ -311,6 +322,11 @@ flowchart TB
 | 10. 单应用画面 | 本机随机端口的 WebSocket 服务为每个窗口起 `docker exec -i node -e <application-stream>`，在容器里对该窗口启动 `x11vnc`，RFB 字节走 stdio | `shared-runtime.mjs:111-131,181`、`application-stream.mjs` |
 | 11. 服务状态 | 密钥、会话、端点设置都存为 Mac 上的 JSON（默认 `.lab/node-agent-shared`，原子写入）；Codex 会话目录默认 `.lab/shared-runtime` | `auth.mjs:14`、`store.mjs:10`、`persistence.mjs:16-21`、`cli.mjs:22,29` |
 | 12. Grok Node.app 与容器 | App 用 `docker run` 创建容器，只读挂载重建的 `host-main.cjs`，把 1337/1339/1340/6080/6081/8790 发布到 `127.0.0.1`。Agent API 不创建、不重启容器 | `source/electron-main/box/local-docker-host-connector.ts:464-482` |
+
+#### 规划中
+
+- **JEV 决策模型（会话路由）**：自动判断普通对话该交给哪个后端，编码 / 工具型任务进 Codex Harness 会话（`codex` 后端），原生对话 / 桌面型任务进 Grok Node 原生聊天（`grok` 后端）。未来版本上线，当前版本请在创建会话时用 `backend` 指定。
+- **两类会话打通**：Codex Harness 会话与 Grok Node 原生聊天之间互通会话上下文和历史。未来版本上线，当前版本请在创建会话时用 `backend` 指定；两类会话的历史目前各自独立。
 
 **各 bot 使用不同桌面，但共用容器和数据。** API 的用户/bot 权限只限制请求范围，不构成共享文件系统上 bot 之间的隔离。
 
