@@ -1,4 +1,4 @@
-<h1 align="center">Grok Node</h1>
+<h1 align="center"></h1>
 
 <p align="center">
   <img src="docs/assets/hero-multi-agent.jpg" alt="Grok Node 多智能体 harness：多个 bot 经 Node Agent API 连接沙箱电脑和本地 Mac" width="100%">
