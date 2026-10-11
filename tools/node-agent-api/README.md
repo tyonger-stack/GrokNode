@@ -49,7 +49,21 @@ codex 服务同时提供两种会话执行方式。创建会话时省略 `backen
 
 两种模式随后都向 `/v1/agents/sessions/{id}/events` 提交同样的消息请求。`accepted` 仅表示接收成功；原生模式不根据新增消息或轮询次数推断回合完成状态。
 
-此版本默认使用已有 opencodex 代理 http://127.0.0.1:10100/v1 和 Mac 的 ~/.codex/opencodex-catalog.json；Mac 需要已有 Codex 登录。可用 --base-url 和 --model 指定对应代理端点与模型。API 不替用户安装或修改代理、登录及原 GrokNode 软件。Node 版本遵循仓库 .node-version（26.5.x）。
+模型调用只需要一个 OpenAI 兼容端点，不需要再安装 Bun 或额外的协议包。未配置端点时不会连接任何默认代理。Mac 仍需要已有 Codex 登录。API 不替用户安装或修改代理、登录及原 GrokNode 软件。Node 版本遵循仓库 .node-version（26.5.x）。
+
+端点、密钥和模型可以用启动参数或环境变量给出。启动参数优先。密钥不要放进命令行，优先用环境变量，因为进程列表能看到参数。已有 `tokenhub.json` 时，已保存的自定义 revision 不会被启动参数改写；没有保存过地址时，这次启动的值会写入初始 revision。
+
+```sh
+export NODE_AGENT_BASE_URL='https://example.com/v1'
+export NODE_AGENT_API_KEY='...'          # 有密钥且未指定协议时按 Chat Completions
+export NODE_AGENT_MODEL='gpt-4.1'        # 可选，服务默认模型
+export NODE_AGENT_WIRE_API='chat'        # chat 或 responses；只有地址、没有密钥时默认 responses
+export NODE_AGENT_MODELS='gpt-4.1,gpt-4.1-mini'   # 可选，端点没有 /models 时自己列模型
+export NODE_AGENT_MODEL_CATALOG='/path/to/catalog.json'  # 可选，旧式 slug 目录文件
+npm run node-agent-api -- --backend codex --port 18770 --recover true
+```
+
+等价的启动参数是 `--base-url`、`--api-key`、`--model`、`--wire-api`。只传地址、不传密钥时按 Responses 直连，Codex 配置里的 provider 名是 `openai_compat`，协议固定为 responses，密钥不会写入配置。Chat Completions 或带密钥的 Responses 由本机 Node 桥翻译或转发，密钥只留在 Mac。以前把 `--base-url` 指到自己的本地 Responses 代理仍然可以，服务不会去启动那个代理。运行中改端点用 `PATCH /v1/settings/tokenhub`。
 
 Ctrl+C 只关闭 API 与它自己的连接、执行端和 VNC 辅助进程，不关闭 GrokNode 或共享容器。Linux 中用户启动的应用按正常应用管理。
 

@@ -1,8 +1,8 @@
 import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import { ApiError, badRequest, object } from './errors.mjs';
 import { atomicJson, readPrivateJson } from './persistence.mjs';
+import { isBuiltinRevision } from './inference-config.mjs';
 
 export const DEFAULT_MODEL = null;
 const VERIFIED_BASELINE_MODEL = 'gpt-6.1-sol';
@@ -11,7 +11,7 @@ export const modelId = value => {
   return value;
 };
 
-export async function createModelPolicy(directory, { catalogFile = join(homedir(), '.codex/opencodex-catalog.json'), defaultModel = DEFAULT_MODEL, tokenhub } = {}) {
+export async function createModelPolicy(directory, { catalogFile = null, defaultModel = DEFAULT_MODEL, tokenhub } = {}) {
   const file = join(directory, 'models.json');
   const saved = await readPrivateJson(file, null);
   let state = saved ?? {
@@ -36,17 +36,21 @@ export async function createModelPolicy(directory, { catalogFile = join(homedir(
   validate(state);
   if (saved === null) await atomicJson(file, state);
   let saving = Promise.resolve(), fault;
+  // 端点已经拉到或由用户写入的模型优先。否则读显式目录文件。两者都没有就 503，已有会话模型不动。
   async function catalog() {
     const endpoint = await tokenhub?.catalog();
-    if (endpoint?.external) {
-      if (!endpoint.models.length) throw new ApiError(503, 'model_catalog_unavailable', 'Refresh models from the configured TokenHub API first');
-      return endpoint.models;
-    }
+    if (endpoint?.models?.length) return endpoint.models;
+    if (!catalogFile) throw new ApiError(503, 'model_catalog_unavailable', 'Model catalog is unavailable. Configure an endpoint and refresh models, or set NODE_AGENT_MODELS / NODE_AGENT_MODEL_CATALOG. Existing session models are preserved');
     try {
       const value = JSON.parse(await readFile(catalogFile, 'utf8'));
       if (!Array.isArray(value.models) || !value.models.length) throw new Error('Invalid catalog');
       return value.models.map(row => ({ id: modelId(row.slug), name: typeof row.display_name === 'string' ? row.display_name : row.slug, reasoning_efforts: (row.supported_reasoning_levels ?? []).map(x => x.effort).filter(x => ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(x)) }));
-    } catch { throw new ApiError(503, 'model_catalog_unavailable', 'Model catalog is unavailable; existing session models are preserved'); }
+    } catch { throw new ApiError(503, 'model_catalog_unavailable', 'Model catalog is unavailable. Configure an endpoint and refresh models, or set NODE_AGENT_MODELS / NODE_AGENT_MODEL_CATALOG. Existing session models are preserved'); }
+  }
+  // 旧工具链记录没有 endpoint_revision，当时的内置 revision 叫 opencodex。内置 revision 互相视为同一验收范围。
+  function sameEndpoint(stored, active) {
+    const left = stored ?? 'opencodex', right = active ?? 'opencodex';
+    return left === right || (isBuiltinRevision(left) && isBuiltinRevision(right));
   }
   function current() { if (fault) throw fault; return state; }
   function effectiveDefault(botId) {
@@ -67,7 +71,7 @@ export async function createModelPolicy(directory, { catalogFile = join(homedir(
       const endpoint = await tokenhub?.catalog();
       for (const id of next.allowed_models) {
         if (!ids.has(id)) throw badRequest('Approved model is absent from the current catalog');
-        const workflow = next.verified_models.some(v => v.id === id && (v.endpoint_revision ?? 'opencodex') === (endpoint?.revision ?? 'opencodex'));
+        const workflow = next.verified_models.some(v => v.id === id && sameEndpoint(v.endpoint_revision, endpoint?.revision));
         if (!workflow && !endpoint?.tests.some(t => t.model === id && t.status === 'passed')) throw badRequest('Test this model API connection before approval');
       }
       try { await atomicJson(file, next); } catch { fault = new ApiError(503, 'model_settings_persistence_failed', 'Model settings could not be saved'); throw fault; }
@@ -82,7 +86,7 @@ export async function createModelPolicy(directory, { catalogFile = join(homedir(
       const entry = (await catalog()).find(row => row.id === selected.model);
       if (!entry) throw badRequest('Model is absent from the current catalog');
       const endpoint = await tokenhub?.catalog(), revision = endpoint?.revision ?? 'opencodex';
-      const workflow = state.verified_models.some(v => v.id === selected.model && (v.endpoint_revision ?? 'opencodex') === revision);
+      const workflow = state.verified_models.some(v => v.id === selected.model && sameEndpoint(v.endpoint_revision, revision));
       const tests = endpoint?.tests.filter(t => t.model === selected.model && t.status === 'passed') ?? [];
       if (!workflow && !tests.length) throw badRequest('Model connection has not been tested for this endpoint');
       const levels = [...new Set([...(entry.reasoning_efforts ?? []), ...tests.map(t => t.reasoning_effort).filter(Boolean)])];
@@ -93,7 +97,7 @@ export async function createModelPolicy(directory, { catalogFile = join(homedir(
       await saving; const value = current();
       const endpoint = await tokenhub?.catalog(), revision = endpoint?.revision ?? 'opencodex';
       return { object: 'list', data: (await catalog()).map(row => {
-        const workflow = value.verified_models.find(v => v.id === row.id && (v.endpoint_revision ?? 'opencodex') === revision);
+        const workflow = value.verified_models.find(v => v.id === row.id && sameEndpoint(v.endpoint_revision, revision));
         const tests = endpoint?.tests.filter(t => t.model === row.id && t.status === 'passed') ?? [], verified = !!workflow || tests.length > 0;
         return { ...row, reasoning_efforts: [...new Set([...(row.reasoning_efforts ?? []), ...tests.map(t => t.reasoning_effort).filter(Boolean)])], approved: verified && value.allowed_models.includes(row.id), verified, verification_level: workflow ? 'tool_workflow' : tests.length ? 'connection' : 'unverified', verification_evidence: workflow?.evidence ?? (tests.length ? 'Actual model API test passed' : null) };
       }), has_more: false, default_model: botId ? effectiveDefault(botId) : value.default_model, endpoint_revision: revision };
