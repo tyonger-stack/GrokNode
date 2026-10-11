@@ -4,7 +4,7 @@
 
 现在提供[API 地址、密钥、拉取模型和实际测试](NODE_AGENT_API_TOKENHUB.md)。管理员连接测试成功后可授权其他模型；连接测试与工具链验收分开显示。`verified_models` 是工具链证据登记机制，不是唯一授权前置条件。
 
-模型调用使用 API 服务所在 Mac 配置的上游账户：默认沿用 opencodex，使用自定义 TokenHub 端点时使用该端点保存的模型 API 密钥。模型下拉框不会把计费切换到调用者账户；Node Agent API 访问密钥只用于本机服务授权。GrokNode 的 bot、盒子、桌面及原配置保持原有管理方式。
+模型调用使用 API 服务所在 Mac 上配置的 OpenAI 兼容端点：未配置端点时不连接默认代理；配置了端点时使用该端点保存的模型 API 密钥。模型下拉框不会把计费切换到调用者账户；Node Agent API 访问密钥只用于本机服务授权。GrokNode 的 bot、盒子、桌面及原配置保持原有管理方式。
 
 ## 使用
 
@@ -14,7 +14,7 @@
 
 服务默认初始为空（API 返回 null）。管理员可选择“未设置默认模型”，或 PATCH {"default_model":null}（也接受空字符串并规范化为 null）。服务和该 bot 默认都为空时，页面要求先选择模型；REST 未指定 model 返回 400 model_required，不创建会话、不回落 gpt-6.1-sol。清空默认不撤销模型授权，也不修改既有会话。
 
-未配置自定义端点时目录来源为 Mac 的 ~/.codex/opencodex-catalog.json；自定义 TokenHub 目录从该 API 的 /models 拉取。目录条目、连接测试与工具链验收分开显示。初始只授权已完成 0.3.0 原生工具链验收的 gpt-6.1-sol；其他模型可在 TokenHub 设置里实际测试，成功后授权使用。管理员还可在真实改文件、测试、审批、取消验收后登记 evidence；evidence 是管理员的验收声明，服务不会自动证明某个模型的完整工具能力。
+模型目录优先使用端点 `/models` 的结果，或 `PATCH /v1/settings/tokenhub` 的 `models`、环境变量 `NODE_AGENT_MODELS`。两者都没有时，可读 `NODE_AGENT_MODEL_CATALOG` 指向的旧式 slug 目录文件。都没有则返回 503，已有会话模型保留。目录条目、连接测试与工具链验收分开显示。初始只授权已完成 0.3.0 原生工具链验收的 gpt-6.1-sol；其他模型可在端点设置里实际测试，成功后授权使用。管理员还可在真实改文件、测试、审批、取消验收后登记 evidence；evidence 是管理员的验收声明，服务不会自动证明某个模型的完整工具能力。
 
 ## REST
 

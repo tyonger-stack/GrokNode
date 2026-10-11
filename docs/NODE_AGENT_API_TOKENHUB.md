@@ -7,7 +7,7 @@ Node Agent API 参考 GrokNode 本地实现的 fetchEndpointModels、probeEffort
 ## 网页操作
 
 1. 用 Node Agent API 访问密钥连接工作台，以 owner 身份展开“管理员模型设置”。
-2. 点击“TokenHub 账户与端点”。API 地址填模型 API 根地址，例如 `https://api.z.ai/api/coding/paas/v4`，协议选 Chat Completions；opencodex 通常选 Responses。
+2. 点击“TokenHub 账户与端点”。API 地址填模型 API 根地址，例如 `https://api.z.ai/api/coding/paas/v4`。多数兼容端点选 Chat Completions；本身说 Responses 的端点选 Responses。
 3. 保存地址后输入该模型服务的 API 密钥，点击保存。换到不同地址会清除当前密钥引用，避免误发送旧服务的凭据。
 4. 点击“重新拉取”：服务端在 Mac 请求 `{API地址}/models`，网页只收到模型与能力列表。
 5. 从模型下拉选择任何已拉取模型。推理强度显示目录已知或实测通过的档位；未知档位可以在测试输入框单独验证。空档位表示端点默认，不发送推理字段。
@@ -18,7 +18,7 @@ Node Agent API 参考 GrokNode 本地实现的 fetchEndpointModels、probeEffort
 
 ## 密钥与会话边界
 
-模型密钥通过 AES-256-GCM 加密存于 Mac 的 API state/tokenhub.json；加密密钥在同目录 tokenhub.master.key，目录 700、文件 600。网页只能看到 key_saved，不会回显；密钥不会进入 Linux 执行进程。该加密保护文件静态内容，不是防御同一 Mac 用户同时读取两个文件的安全边界。原 ChatGPT/opencodex/GrokNode 密钥不自动复制到 TokenHub。
+模型密钥通过 AES-256-GCM 加密存于 Mac 的 API state/tokenhub.json；加密密钥在同目录 tokenhub.master.key，目录 700、文件 600。网页只能看到 key_saved，不会回显；密钥不会进入 Linux 执行进程。该加密保护文件静态内容，不是防御同一 Mac 用户同时读取两个文件的安全边界。原 ChatGPT 或 GrokNode 密钥不自动复制到这里。
 
 改变 API 地址、协议或密钥建立一个新的端点版本，连接测试记录重新开始。旧版本保留，已有会话继续使用创建时的端点版本、模型和推理强度，直到管理员另行处置这些历史凭据；不静默把旧会话转到另一个模型服务。
 
@@ -26,9 +26,9 @@ Node Agent API 参考 GrokNode 本地实现的 fetchEndpointModels、probeEffort
 
 ## 协议适配与依赖
 
-Codex 0.160 使用 Responses。Mac 本地 TokenHub relay 复用已安装 `@bitkyc08/opencodex` 的 Chat adapter、Responses parser 与 SSE bridge，转发文本、推理、函数调用与工具结果；Codex Harness 仍管理模型回合、工具循环、审批与取消。连接 TokenHub 不替换 GrokNode 的模型循环。
+Codex 0.160 使用 Responses。Mac 本地桥用 Node 内置实现：Responses 端点原样转发；Chat Completions 端点把 Responses 译成 Chat，再把 SSE 译回 Responses，覆盖文本、推理档位、函数调用与工具结果。Codex Harness 仍管理模型回合、工具循环、审批与取消。连接端点不替换 GrokNode 的模型循环。
 
-TokenHub relay 需要 Bun 与 opencodex 安装，当前验收为 Bun 1.4.2、opencodex 2.78.0。默认读取 `~/.bun/bin/bun` 和 `~/.npm-global/lib/node_modules/@bitkyc08/opencodex`；未安装时返回明确的适配器不可用错误。CI 在隔离 runner 安装这两个固定版本，真实流式函数调用/工具结果回归不跳过。该依赖只用于 API 协议适配，不改变原 GrokNode 程序或当前 Mac 的全局版本。
+不需要安装 Bun，也不需要安装额外的协议包。CI 不再安装这两项，流式函数调用回归仍用本地假端点真实跑完。只有地址、没有密钥时不启桥，Codex 按 Responses 直连该地址，因此把地址指到使用者自己的 Responses 代理仍然可用，服务不会去启动那个代理。带密钥或选择 Chat 时才启桥，密钥留在 Mac。
 
 relay 只监听 127.0.0.1，具有随机 capability token，真实模型密钥通过私有 stdin 输入。版本变动后应重跑 tokenhub 回归。原 Codex 0.160.0 严格检查保留；API 启动支持 `--codex-bin` 指定固定版本，本机全局更新不自动改变项目支持范围。
 
@@ -39,7 +39,7 @@ relay 只监听 127.0.0.1，具有随机 capability token，真实模型密钥�
 | 方法与路径 | owner 操作 |
 | --- | --- |
 | GET /v1/settings/tokenhub | 地址、协议、key_saved、模型与测试记录；无密钥 |
-| PATCH /v1/settings/tokenhub | base_url / wire_api(chat 或 responses) / api_key(write-only)；建立新版本 |
+| PATCH /v1/settings/tokenhub | base_url / wire_api(chat 或 responses) / api_key(write-only) / models(可选 id 列表)；建立新版本 |
 | POST /v1/settings/tokenhub/models | 从当前端点实际拉取模型 |
 | POST /v1/settings/tokenhub/test | {model,reasoning_effort:null或字符串}；只有成功文本响应才通过 |
 
