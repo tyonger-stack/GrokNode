@@ -47,8 +47,8 @@ export async function loadOfficialOpenPill() {
 }
 
 export const COMPUTER_SLEEP_LABELS = {
-  zh: { title: "电脑预览已关闭", wake: "恢复预览", waking: "正在恢复预览…", open: "打开", sleep: "休眠", sleepHint: "仅关闭预览，Bot 继续运行" },
-  en: { title: "Computer preview is off", wake: "Show preview", waking: "Restoring preview…", open: "Open", sleep: "Sleep preview", sleepHint: "Hide preview; Bots keep running" },
+  zh: { title: "电脑预览已关闭", wake: "恢复预览", waking: "正在恢复预览…", open: "打开", sleep: "休眠", sleepHint: "暂停预览流，Bot 继续运行" },
+  en: { title: "Computer preview is off", wake: "Show preview", waking: "Restoring preview…", open: "Open", sleep: "Sleep preview", sleepHint: "Pause preview stream; Bots keep running" },
 };
 
 export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGlyph) {
@@ -63,8 +63,13 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
   var L=${JSON.stringify(COMPUTER_SLEEP_LABELS)}[ZH?'zh':'en'];
   var IDS={overlay:'rcompsleep-stage',wake:'rcompsleep-wake',pill:'rcompsleep-pill',pillSleep:'rcompsleep-pill-sleep'};
   function bridge(){var c=window.desktop&&window.desktop.computer;return c!=null&&typeof c.getSleepState==='function'?c:null}
-  function pool(){return document.querySelector('.sand-box-vnc-pool')}
+  function pool(){return document.querySelector('.sand-computer-preview__frame .sand-box-vnc-pool')}
   function previewFrame(host){return host.closest('.sand-computer-preview__frame')||host}
+  function pausePreviewStream(paused){
+    if(window.__rCompPreviewAsleep===paused)return;
+    window.__rCompPreviewAsleep=paused;
+    window.dispatchEvent(new Event('grok-node-preview-stream-state'));
+  }
 
   // --- Shape resolution: reuse the entry chunk's own Cee (palette+fallback) via fiber ---
   function currentBotShape(){
@@ -106,8 +111,9 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     removeOverlay();
     var host=pool();
     if(host==null)return;
-    host.insertAdjacentHTML('beforeend',labels(mode));
-    var stage=host.lastElementChild;
+    var frame=previewFrame(host);
+    frame.insertAdjacentHTML('beforeend',labels(mode));
+    var stage=frame.lastElementChild;
     if(stage==null||stage.getAttribute('data-stage')!=='asleep'){removeOverlay();return}
     stage.id=IDS.overlay;
     host.setAttribute('data-preview-asleep','true');
@@ -123,7 +129,7 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
         wake.disabled=!0;
         var title=stage.querySelector('[data-stage-words]>span');
         if(title!=null)title.textContent=L.waking;
-        b.wake().then(function(state){if(state==='awake'){removeOverlay();rebindHover()}else wake.disabled=!1}).catch(function(){wake.disabled=!1;if(title!=null)title.textContent=L.title});
+        b.wake().then(function(state){if(state==='awake'){pausePreviewStream(!1);removeOverlay();rebindHover()}else wake.disabled=!1}).catch(function(){wake.disabled=!1;if(title!=null)title.textContent=L.title});
       });
     }
   }
@@ -171,7 +177,7 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
       event.stopPropagation();
       var b=bridge();if(b==null)return;
       sleep.disabled=!0;
-      b.sleep().then(function(state){removePill();if(state==='asleep')mountOverlay('asleep')}).catch(function(){sleep.disabled=!1});
+      b.sleep().then(function(state){removePill();if(state==='asleep'){pausePreviewStream(!0);mountOverlay('asleep')}}).catch(function(){sleep.disabled=!1});
     });
     wrap.appendChild(sleep);
     pillOpen=open;pillLabel=label;pillReveal={value:open.style.getPropertyValue('--sand-computer-open-reveal'),priority:open.style.getPropertyPriority('--sand-computer-open-reveal')};
@@ -208,6 +214,9 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
   var rebindHover=bindHover();
 
   // --- Tick ---
+  window.addEventListener('grok-node-preview-stream-mounted',function(){
+    if(window.__rCompPreviewAsleep)mountOverlay('asleep');
+  });
   function tick(){
     var b=bridge();
     if(b==null)return;
@@ -216,10 +225,12 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     rebindHover();
     b.getSleepState().then(function(state){
       if(state==='asleep'){
+        pausePreviewStream(!0);
         removePill();
         var current=document.getElementById(IDS.overlay);
         if(current==null)mountOverlay('asleep');
       }else if(state==='awake'){
+        pausePreviewStream(!1);
         removeOverlay();
         rebindHover();
       }

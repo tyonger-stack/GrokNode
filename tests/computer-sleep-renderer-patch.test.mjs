@@ -10,6 +10,7 @@ import { build } from "esbuild";
 
 import { COMPUTER_SLEEP_CSS_TOKENS, COMPUTER_SLEEP_LABELS, computerSleepOverlayRuntime, loadOfficialAsleepArtifacts, loadOfficialOpenPill, loadOfficialShapeSvgs } from "../scripts/lib/computer-sleep-renderer-components.mjs";
 import { patchComputerSleepRenderer, applyComputerSleepRendererPatch, nativeSleepIconGlyph } from "../scripts/lib/computer-sleep-renderer-patch.mjs";
+import { PREVIEW_POOL_FIXTURE } from "./fixtures/computer-preview-pool.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const nativeIcons = 'var icons={"arrows-expand-simple":"\\uf2cf","moon-z":"\\uf46f"};';
@@ -66,7 +67,7 @@ test("COMPUTER_SLEEP_CSS_TOKENS lists the grok-node additions only (official rul
 test("patchComputerSleepRenderer appends once and refuses a second application", async () => {
   const { html } = await loadOfficialAsleepArtifacts();
   const runtime = computerSleepOverlayRuntime(html, {}, nativeSleepIconGlyph(nativeIcons));
-  const patched = patchComputerSleepRenderer("var x=1;\n", runtime);
+  const patched = patchComputerSleepRenderer(PREVIEW_POOL_FIXTURE, runtime);
   assert.ok(patched.includes("/* grok-node computer sleep overlay"));
   assert.throws(() => patchComputerSleepRenderer(patched, runtime), /already applied/);
 });
@@ -87,7 +88,7 @@ test("applyComputerSleepRendererPatch works end-to-end on a fixture stage", asyn
   const assets = path.join(stage, "dist", "renderer", "assets");
   mkdirSync(assets, { recursive: true });
   writeFileSync(path.join(stage, "dist", "renderer", "index.html"), '<script src="./assets/index-fixture.js"></script>');
-  writeFileSync(path.join(assets, "index-fixture.js"), 'var pool="sand-box-vnc-pool";\n' + nativeIcons);
+  writeFileSync(path.join(assets, "index-fixture.js"), PREVIEW_POOL_FIXTURE + nativeIcons);
   writeFileSync(path.join(assets, "index-fixture.css"), FIXTURE_CSS);
   const provenance = await applyComputerSleepRendererPatch({ stageRoot: stage });
   assert.equal(provenance.entry, "assets/index-fixture.js");

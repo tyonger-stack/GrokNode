@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "acorn";
+import { patchComputerPreviewStream } from "./computer-preview-stream-renderer-patch.mjs";
 import {
   COMPUTER_SLEEP_CSS_TOKENS,
   COMPUTER_SLEEP_TOKEN_SHIMS,
@@ -19,7 +20,7 @@ const JS_MARKER = "/* grok-node computer sleep overlay";
 
 export function patchComputerSleepRenderer(source, runtime) {
   if (source.includes(JS_MARKER)) throw new Error("Computer-sleep renderer patch was already applied.");
-  const patched = source + runtime;
+  const patched = patchComputerPreviewStream(source) + runtime;
   parse(patched, { ecmaVersion: "latest", sourceType: "module" });
   return patched;
 }
@@ -87,8 +88,8 @@ export async function applyComputerSleepRendererPatch({ stageRoot }) {
   console.log(`Computer-sleep overlay: appended stage+shapes(${shapeNames.length})+pill to ${entryScripts[0]}; pool: .sand-box-vnc-pool`);
 
   const provenance = {
-    mode: "computer-preview-display-only",
-    behavior: "Sleep hides the local preview while Docker and Bot execution continue.",
+    mode: "computer-preview-stream-only",
+    behavior: "Sleep unmounts preview webviews, warm cached views and hidden fullscreen viewers; Restore remounts the current preview. Visible interactive viewers, Docker and Bot execution continue.",
     styleScope: "Exported rules and token shims are restricted to the asleep stage; hover actions inherit the native renderer styles.",
     hoverActions: "Reuse the existing native Open button; Sleep shares its button and pill classes and appears below it with the same reveal state.",
     evidence: "Grok Bot 0.70.2 asleep stage and 13 shape SVGs exported from official DOM; hover actions reuse the shipped renderer's native Open pill and moon-z icon registry.",
