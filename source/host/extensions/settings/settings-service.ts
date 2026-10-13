@@ -7,7 +7,9 @@ import type { SandAutoReviewInstructions } from "../../../shared/sand-auto-revie
 import type { SidebarSection } from "../../../shared/sidebar-sections.js";
 import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { GrokBotMainAgentRefusedError, normalizeGrokBotMainAgentId } from "../../../shared/node/grok-bot-main-agent.js";
+import { GrokBotBotColorRefusedError, resolveBotColorInChatEnabled } from "../../../shared/node/grok-bot-bot-color.js";
 import { isGrokBotMainAgentEnabled } from "./main-agent-gate.js";
+import { isGrokBotBotColorThemingEnabled } from "./bot-color-gate.js";
 import { isSandInferenceProvider, type SandInferenceProvider } from "../../../shared/inference-router.js";
 import type { McpServerConfig } from "../../../shared/node/mcp/mcp-display-runtime.js";
 import { normalizeOpenRouterChannelStatus, type OpenRouterChannelStatus } from "../../../shared/openrouter-channel-status.js";
@@ -25,6 +27,8 @@ export interface HostSettingsUpdate {
   /** The user's main bot (主 Bot). `null` clears it. Gated: refused while the feature gate is off. */
   mainAgentId?: string | null;
   defaultMainAgentId?: string;
+  /** 强调色 = Bot 颜色. Stored as upstream's boolean preference; getHostSettings reports the gate-resolved effective value. */
+  botColorInChatEnabled?: boolean;
 }
 
 export class SettingsService {
@@ -42,7 +46,10 @@ export class SettingsService {
     const chatStatus = this.store.getOpenRouterChatStatus();
     const mainAgentId = normalizeGrokBotMainAgentId(this.store.getMainAgentId());
     const defaultMainAgentId = this.store.getDefaultMainAgentId();
-    return { notifications: this.store.getNotificationConfig(), mcpCustomInstructions: this.store.getMcpCustomInstructions(), mcpCustomInstructionsByServerId: this.store.getMcpCustomInstructionsByServerId(), mcpDisabledToolsByServerId: this.store.getMcpDisabledToolsByServerId(), ...(scope === undefined ? {} : { mcpCustomInstructionsAccountScope: scope }), mcpBoxServers: this.store.getMcpBoxServers(), autoReviewInstructions: this.store.getAutoReviewInstructions(), localToolPermission: this.store.getLocalToolPermission(), webauthnProxyEnabled: this.store.getWebauthnProxyEnabled(), inferenceProvider: this.store.getInferenceProvider(), inferenceRouterUsage: this.store.getInferenceRouterUsage(), openRouterModel: this.store.getOpenRouterModel() ?? null, openRouterAgentModels: this.store.getOpenRouterAgentModels(), openRouterAgentEfforts: this.store.getOpenRouterAgentEfforts(), openRouterBaseUrl: this.store.getOpenRouterBaseUrl() ?? null, openRouterEffort: this.store.getOpenRouterEffort() ?? null, ...(chatStatus === undefined ? {} : { openRouterChatStatus: chatStatus }), ...(userTimeZone === undefined ? {} : { userTimeZone }), ...(userTimeZoneOverride === undefined ? {} : { userTimeZoneOverride }), ...(agentDefaultModel === undefined ? {} : { agentDefaultModel }), ...(computerUseModel === undefined ? {} : { computerUseModel }), ...(pinnedAgentIds === undefined ? {} : { pinnedAgentIds }), sidebarSections: sidebarSections ?? [], ...(hasSeenOnboarding === undefined ? {} : { hasSeenOnboarding }), mainAgentId, defaultMainAgentId };
+    // Official three-state rule: an unset preference follows the gate default, and a gate
+    // that is off forces the feature off regardless of the stored preference.
+    const botColorInChatEnabled = resolveBotColorInChatEnabled(this.store.getBotColorInChatEnabled(), isGrokBotBotColorThemingEnabled());
+    return { notifications: this.store.getNotificationConfig(), mcpCustomInstructions: this.store.getMcpCustomInstructions(), mcpCustomInstructionsByServerId: this.store.getMcpCustomInstructionsByServerId(), mcpDisabledToolsByServerId: this.store.getMcpDisabledToolsByServerId(), ...(scope === undefined ? {} : { mcpCustomInstructionsAccountScope: scope }), mcpBoxServers: this.store.getMcpBoxServers(), autoReviewInstructions: this.store.getAutoReviewInstructions(), localToolPermission: this.store.getLocalToolPermission(), webauthnProxyEnabled: this.store.getWebauthnProxyEnabled(), inferenceProvider: this.store.getInferenceProvider(), inferenceRouterUsage: this.store.getInferenceRouterUsage(), openRouterModel: this.store.getOpenRouterModel() ?? null, openRouterAgentModels: this.store.getOpenRouterAgentModels(), openRouterAgentEfforts: this.store.getOpenRouterAgentEfforts(), openRouterBaseUrl: this.store.getOpenRouterBaseUrl() ?? null, openRouterEffort: this.store.getOpenRouterEffort() ?? null, ...(chatStatus === undefined ? {} : { openRouterChatStatus: chatStatus }), ...(userTimeZone === undefined ? {} : { userTimeZone }), ...(userTimeZoneOverride === undefined ? {} : { userTimeZoneOverride }), ...(agentDefaultModel === undefined ? {} : { agentDefaultModel }), ...(computerUseModel === undefined ? {} : { computerUseModel }), ...(pinnedAgentIds === undefined ? {} : { pinnedAgentIds }), sidebarSections: sidebarSections ?? [], ...(hasSeenOnboarding === undefined ? {} : { hasSeenOnboarding }), botColorInChatEnabled, mainAgentId, defaultMainAgentId };
   }
   clearDeletedMainAgent(ids: readonly string[]): void {
     const id = this.store.getMainAgentId();
@@ -70,6 +77,13 @@ export class SettingsService {
     if (update.mainAgentId !== undefined) {
       if (!isGrokBotMainAgentEnabled()) throw new GrokBotMainAgentRefusedError();
       this.store.setMainAgentId(normalizeGrokBotMainAgentId(update.mainAgentId) ?? undefined);
+    }
+    // Same admission split as mainAgentId above: the read (getHostSettings) never needs
+    // the gate, the write does, mirroring upstream's "writes are refused while the gate
+    // is off" for setBotColorInChatEnabled.
+    if (update.botColorInChatEnabled !== undefined) {
+      if (!isGrokBotBotColorThemingEnabled()) throw new GrokBotBotColorRefusedError();
+      this.store.setBotColorInChatEnabled(update.botColorInChatEnabled);
     }
     if (update.defaultMainAgentId !== undefined) this.store.setDefaultMainAgentId(update.defaultMainAgentId);
     if (update.sidebarSections !== undefined) this.store.setSidebarSections(update.sidebarSections);

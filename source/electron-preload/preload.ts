@@ -441,6 +441,11 @@ export function createDesktopPreloadBridge(options: {
       getMainAgent: () => edge("getHostMainAgent"),
       setMainAgent: (agentId: string | null) => edge("setHostMainAgent", { agentId }),
       ensureMainAgent: () => edge("ensureHostMainAgent"),
+      // 强调色 = Bot 颜色 (bot color in chat). Same admission split as the main bot:
+      // `get` answers the gate-resolved effective value, `set` is refused by the host
+      // while the gate is off.
+      getBotColorInChat: () => edge("getHostBotColorInChat"),
+      setBotColorInChat: (enabled: boolean) => edge("setHostBotColorInChat", { enabled }),
       getSidebarSections: () => edge("getHostSidebarSections"),
       setSidebarSections: (sections: readonly unknown[]) => edge("setHostSidebarSections", { sections }),
       getDefaultModel: () => edge("getAgentDefaultModel"),

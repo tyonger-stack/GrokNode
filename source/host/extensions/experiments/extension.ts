@@ -5,6 +5,7 @@ import { resolveSpotlightEnabled } from "../../../shared/sand-spotlight.js";
 import { SandExperimentService } from "../../../shared/node/experiments/cursor-experiments.js";
 import { GROK_BOT_FORCE_MAIN_AGENT_SELECTION_GATE, GROK_BOT_MAIN_AGENT_GATE } from "../../../shared/node/grok-bot-main-agent.js";
 import { pinGrokBotMainAgentGateReader } from "../settings/main-agent-gate.js";
+import { pinGrokBotBotColorGateReader } from "../settings/bot-color-gate.js";
 import { HostExtensions } from "../extension-ids.generated.js";
 
 interface AuthApi { getAccessToken(options: { backendUrl: string }): Promise<string>; getMachineId(): Promise<string>; peekAccessToken(): string | null; subscribeToRenewal(listener: (event: { outcome: string; isFirstCredential: boolean }) => void): () => void; }
@@ -21,6 +22,10 @@ export const experimentsExtension = defineHostExtension({
     // Read live, not captured once: a rollout that flips while the host runs must take effect.
     pinGrokBotMainAgentGateReader((name) => service.checkFeatureGate(name as Parameters<typeof service.checkFeatureGate>[0]));
     context.onStop(() => pinGrokBotMainAgentGateReader(null));
+    // Same handoff for the bot-color gate (强调色 = Bot 颜色): the settings extension reads
+    // it live through this reader, never captured once.
+    pinGrokBotBotColorGateReader((name) => service.checkFeatureGate(name as Parameters<typeof service.checkFeatureGate>[0]));
+    context.onStop(() => pinGrokBotBotColorGateReader(null));
     return {
       checkFeatureGate: (name: Parameters<typeof service.checkFeatureGate>[0]) => service.checkFeatureGate(name), getFeatureGateProperty: (name: Parameters<typeof service.getFeatureGateProperty>[0]) => service.getFeatureGateProperty(name),
       checkGate: (name: Parameters<typeof service.checkGate>[0], options?: { timeoutMs?: number }) => service.checkGate(name, options), getDynamicConfig: (name: Parameters<typeof service.getDynamicConfig>[0]) => service.getDynamicConfig(name), subscribe: (listener: Parameters<typeof service.subscribe>[0]) => service.subscribe(listener),

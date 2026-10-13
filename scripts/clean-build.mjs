@@ -50,7 +50,10 @@ import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
 import { applyTeachGateRestorePatch } from "./lib/teach-gate-restore-patch.mjs";
 import { applyGrokMainAgentGatePatch } from "./lib/grok-main-agent-gate-patch.mjs";
+import { applyBotColorGatePatch } from "./lib/bot-color-gate-patch.mjs";
 import { applyMainAgentRendererPatch } from "./lib/main-agent-renderer-patch.mjs";
+import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
+import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -325,6 +328,17 @@ export async function buildFidelityReconstructedAsar({
   // already RLocT calls, so it needs the RLocT runtime that main-i18n appends below.
   await applyOriginalRendererAgentModel({ stageRoot });
   await applyMainAgentRendererPatch({ stageRoot });
+  // 强调色 = Bot 颜色 (bot color in chat): appends a self-starting IIFE to the ENTRY
+  // chunk (not the sidebar chunk the pass above edits), so the two never touch the same
+  // bytes and the order here is documentary, not load-bearing. The IIFE emits no RLocT
+  // calls and no i18n strings, so the i18n passes below ignore it.
+  await applyBotColorRendererPatch({ stageRoot });
+  // Phase 2 of the same feature: the Settings → Appearance accent dropdown, patched into
+  // the lazy settings chunk (identified by its theme palette table, not its filename).
+  // Order-free against the pass above (different chunk); must precede the i18n passes
+  // only in the sense that it, too, emits no RLocT calls — it appends English strings that
+  // match the settings surface's own hardcoded English.
+  await applyBotColorSettingsPatch({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
@@ -336,6 +350,9 @@ export async function buildFidelityReconstructedAsar({
   // Also last: registers two NEW entries in the same bundled FLAGS table the pass above
   // touches. Independent anchors, and the two passes do not read each other's output.
   await applyGrokMainAgentGatePatch({ stageRoot });
+  // Also also last: one more NEW entry in the same bundled FLAGS table, with its own
+  // anchor check. Independent of both passes above (they assert on their own gate names).
+  await applyBotColorGatePatch({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);

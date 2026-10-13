@@ -160,6 +160,11 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     setComputerUseModel: (raw) => { const requested = req(raw).model; const model = requested === null ? null : parseAgentModel(requested, true); if (requested === null || model != null) { invoke(deps.agentPrefsStore, "setComputerUseModel", model ?? undefined); void deps.syncHostSettingsToBox({ computerUseModel: invoke(deps.agentPrefsStore, "getComputerUseModel") ?? null }); } return computerUseModel(deps); },
     getHostPinnedAgents: async () => (await deps.readHostSettingsFromBox()).pinnedAgentIds ?? null,
     setHostPinnedAgents: (raw) => echo(deps, "pinnedAgentIds", req(raw).pinnedAgentIds, "pinned agents"),
+    // 强调色 = Bot 颜色 (bot color in chat). getHostSettings reports the gate-resolved
+    // effective boolean, so a read never needs the gate; the write goes through the host's
+    // setHostSettings, which refuses it while the gate is off (upstream's admission split).
+    getHostBotColorInChat: async () => (await deps.readHostSettingsFromBox()).botColorInChatEnabled === true,
+    setHostBotColorInChat: (raw) => echo(deps, "botColorInChatEnabled", req(raw).enabled === true, "the accent setting"),
     // Main bot (主 Bot) — the three-method shape the official desktop facade uses
     // (getGrokBotUserRuntimeSettings / setGrokBotMainAgent / ensureGrokBotDefaultMainAgent).
     // `get` never needs the gate; `set` is refused by the HOST while the gate is off, which

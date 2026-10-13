@@ -55,8 +55,14 @@ export const SETTINGS_I18N_PAIRS = [
   ["Add Rule", "添加规则", "bmQLn5"],
   ["Add rule", "添加规则", "O8tK4v"],
   ["Allow automatically", "自动允许", "H+RaRS"],
+  // Accent-color row ported from official 0.70.2 (bot-color settings row in
+  // bot-color-settings-patch.mjs emits these three English literals; the IDs are
+  // upstream's own message IDs from the 0.70.2 settings catalogs).
+  ["Accent", "强调色", "Eax/et"],
   ["Appearance", "外观", "aAIQg2"],
   ["Ask first", "先询问", "4YjKLA"],
+  ["Black", "黑色", "THokF3"],
+  ["Bot color", "Bot 颜色", "p7v5PZ"],
   ["Auto-detect", "自动检测", "pEb1UY"],
   ["Auto-review", "自动审核", "RkLueX"],
   ["Auto-review Rules", "自动审核规则", "LgRXPe"],

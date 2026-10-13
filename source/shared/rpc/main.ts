@@ -66,6 +66,9 @@ export const MAIN_METHOD_TABLE = {
   setComputerUseModel: { args: "object" },
   getHostPinnedAgents: { args: "none" },
   setHostPinnedAgents: { args: "object" },
+  // 强调色 = Bot 颜色 (bot color in chat); same whitelist discipline as the entries below.
+  getHostBotColorInChat: { args: "none" },
+  setHostBotColorInChat: { args: "object" },
   // Main bot (主 Bot). This table is the desktop edge's exposure whitelist: a handler
   // that is missing here is never published on `window.desktop`, so the preload bridge
   // calls `mainEdge[method]!()` on undefined and throws at the first use.
