@@ -56,13 +56,13 @@ test("preview controls hide and restore content without opening the computer", a
   window.desktop = { computer: { getSleepState: async () => preview.getState(), sleep: async () => preview.sleep(), wake: async () => preview.wake() } };
   window.setTimeout = (callback) => { queueMicrotask(callback); return 1; };
   window.setInterval = (callback) => { refresh = callback; return 1; };
-  window.document.body.innerHTML = '<div id="preview-frame" class="sand-computer-preview__frame"><div class="sand-box-vnc-pool"><canvas id="preview-stream"></canvas></div><button id="open-computer" class="sand-computer-preview__open">Open computer</button></div>';
+  window.document.body.innerHTML = '<div id="preview-frame" class="sand-computer-preview__frame"><div class="sand-box-vnc-pool"><canvas id="preview-stream"></canvas></div><button id="open-computer" class="sand-computer-preview__open native-open-control"><span class="native-open-pill"><i class="ui-icon native-icon" data-icon-name="arrows-expand-simple" data-size="sm" aria-hidden="true"></i>Open computer</span></button></div>';
   const css = window.document.createElement("style");
   css.textContent = '.sand-box-vnc-pool { position:absolute;inset:0; } .sand-box-vnc-pool > canvas,.sand-computer-preview__open { visibility:visible; }' + computerSleepStyles(stage.css + pill.css);
   window.document.head.append(css);
   window.document.getElementById("open-computer").addEventListener("click", () => { opened += 1; });
   try {
-    window.eval(computerSleepOverlayRuntime(stage.html, shapes, pill.html));
+    window.eval(computerSleepOverlayRuntime(stage.html, shapes, "\uf46f"));
     window.document.dispatchEvent(new window.Event("DOMContentLoaded"));
     await new Promise(resolve => setImmediate(resolve));
     const host = window.document.querySelector(".sand-box-vnc-pool");
@@ -71,9 +71,19 @@ test("preview controls hide and restore content without opening the computer", a
     window.document.getElementById("preview-frame").dispatchEvent(new window.Event("pointerenter"));
     const sleep = window.document.getElementById("rcompsleep-pill-sleep");
     assert.ok(sleep);
-    const open = window.document.querySelector("#rcompsleep-pill button");
+    const open = window.document.getElementById("open-computer");
     assert.ok(open);
-    assert.equal(window.getComputedStyle(open).position, "static", "the open control must not cover the sleep target");
+    assert.equal(window.document.querySelectorAll("#preview-frame button").length, 2, "reuse the original opener without a duplicate Open button");
+    assert.ok(sleep.classList.contains("native-open-control"));
+    assert.equal(sleep.firstElementChild.className, open.firstElementChild.className, "both actions use the native pill style");
+    assert.equal(open.style.getPropertyValue("--sand-computer-open-reveal"), "1");
+    assert.equal(sleep.style.getPropertyValue("--sand-computer-open-reveal"), "1");
+    assert.equal(sleep.style.backgroundColor, "", "the native pill supplies the background");
+    const sleepIcon = sleep.querySelector('[data-icon-name="moon-z"]');
+    assert.ok(sleepIcon, "sleep uses the native moon-z icon");
+    assert.equal(sleepIcon.className, open.querySelector("i").className);
+    assert.equal(sleepIcon.getAttribute("data-size"), "sm");
+    assert.equal(sleepIcon.style.getPropertyValue("--cursor-icon-content"), '"\uf46f"');
     open.click();
     assert.equal(opened, 1, "the open control must invoke the original opener");
     opened = 0;
@@ -91,6 +101,11 @@ test("preview controls hide and restore content without opening the computer", a
     assert.equal(window.getComputedStyle(canvas).visibility, "visible");
     assert.equal(window.getComputedStyle(window.document.getElementById("open-computer")).visibility, "visible");
     assert.equal(opened, 0, "restore must not open a second surface");
+    window.document.getElementById("preview-frame").dispatchEvent(new window.Event("pointerenter"));
+    assert.ok(window.document.getElementById("rcompsleep-pill-sleep"));
+    window.document.getElementById("preview-frame").dispatchEvent(new window.Event("pointerleave"));
+    assert.equal(window.document.getElementById("rcompsleep-pill-sleep"), null);
+    assert.equal(open.style.getPropertyValue("--sand-computer-open-reveal"), "");
     await refresh();
     assert.equal(window.document.getElementById("rcompsleep-stage"), null);
   } finally {

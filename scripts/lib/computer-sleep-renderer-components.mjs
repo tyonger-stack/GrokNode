@@ -4,8 +4,8 @@
 //
 //   A) Shape-aware mascot: the overlay's SVG swaps to the CURRENT bot's shape
 //      (13 official shapes from the 0.70.2 editor picker, exported & embedded).
-//   C) Hover pill: on pointerenter over the computer preview, an "打开" pill
-//      (official openPill DOM/CSS) appears with a "休眠" button below it.
+//   C) Hover actions: preserve the native "打开" button and derive the "休眠"
+//      button from the same native button/pill classes, directly below it.
 //
 // The `computer` namespace controls local preview visibility; Bot execution continues.
 
@@ -51,14 +51,14 @@ export const COMPUTER_SLEEP_LABELS = {
   en: { title: "Computer preview is off", wake: "Show preview", waking: "Restoring preview…", open: "Open", sleep: "Sleep preview", sleepHint: "Hide preview; Bots keep running" },
 };
 
-export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, openPillHtml) {
+export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGlyph) {
   return `
 /* grok-node computer sleep overlay + hover pill — official 0.70.2 exports. */
 (function(){
   if(typeof window!=='object'||window.__rCompSleep)return;window.__rCompSleep=!0;
   var STAGE_HTML=${JSON.stringify(officialHtml)};
   var SHAPE_SVGS=${JSON.stringify(shapeSvgs)};
-  var OPEN_PILL=${JSON.stringify(openPillHtml)};
+  var SLEEP_ICON_GLYPH=${JSON.stringify(sleepIconGlyph)};
   var ZH=(navigator.language||'').toLowerCase().indexOf('zh')===0;
   var L=${JSON.stringify(COMPUTER_SLEEP_LABELS)}[ZH?'zh':'en'];
   var IDS={overlay:'rcompsleep-stage',wake:'rcompsleep-wake',pill:'rcompsleep-pill',pillSleep:'rcompsleep-pill-sleep'};
@@ -123,44 +123,50 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, openPillHtm
         wake.disabled=!0;
         var title=stage.querySelector('[data-stage-words]>span');
         if(title!=null)title.textContent=L.waking;
-        b.wake().then(function(state){if(state==='awake')removeOverlay();else wake.disabled=!1}).catch(function(){wake.disabled=!1;if(title!=null)title.textContent=L.title});
+        b.wake().then(function(state){if(state==='awake'){removeOverlay();rebindHover()}else wake.disabled=!1}).catch(function(){wake.disabled=!1;if(title!=null)title.textContent=L.title});
       });
     }
   }
 
-  // --- Hover pill (official openPill + our Sleep button) ---
+  // --- Native Open pill styling shared by the Sleep action ---
   var pillVisible=!1;
-  function removePill(){var el=document.getElementById(IDS.pill);if(el!=null&&el.parentNode!=null)el.parentNode.removeChild(el);pillVisible=!1}
+  var pillOpen=null,pillLabel=null,pillReveal=null;
+  function removePill(){
+    var el=document.getElementById(IDS.pill);if(el!=null&&el.parentNode!=null)el.parentNode.removeChild(el);
+    if(pillOpen!=null){
+      if(pillReveal.value==='')pillOpen.style.removeProperty('--sand-computer-open-reveal');
+      else pillOpen.style.setProperty('--sand-computer-open-reveal',pillReveal.value,pillReveal.priority);
+    }
+    pillOpen=null;pillLabel=null;pillReveal=null;pillVisible=!1;
+  }
   function mountPill(){
     removePill();
     var host=pool();
     if(host==null)return;
+    var frame=previewFrame(host);
+    var open=frame.querySelector(':scope > .sand-computer-preview__open');
+    var label=open!=null?open.firstElementChild:null;
+    if(open==null||label==null)return;
     var wrap=document.createElement('div');
     wrap.id=IDS.pill;
-    wrap.style.cssText='position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:50;display:flex;flex-direction:column;align-items:center;gap:4px;';
-    // Official openPill button
-    var pillHtml=OPEN_PILL.replace(/ 打开| Open/,L.open);
-    wrap.innerHTML=pillHtml;
-    wrap.style.setProperty('--sand-computer-open-reveal','1');
-    var open=wrap.querySelector('button');
-    if(open!=null){
-      open.style.position='static';open.style.inset='auto';open.style.zIndex='auto';
-      var openLabel=open.querySelector('span');
-      if(openLabel!=null&&openLabel.lastChild!=null&&openLabel.lastChild.nodeType===3)openLabel.lastChild.textContent=L.open;
-      open.setAttribute('aria-label',L.open);
-      open.addEventListener('click',function(event){
-        event.stopPropagation();
-        var original=previewFrame(host).querySelector(':scope > .sand-computer-preview__open');
-        if(original!=null&&original!==open)original.click();
-      });
-    }
-    // Our Sleep button below (styled to match)
-    var sleep=document.createElement('button');
+    wrap.style.cssText='position:absolute;left:50%;top:50%;transform:translate(-50%,calc(50% + var(--cursor-spacing-2,8px)));z-index:50;width:max-content;';
+    var sleep=open.cloneNode(!1);
     sleep.id=IDS.pillSleep;
+    sleep.classList.remove('sand-computer-preview__open');
     sleep.type='button';
-    sleep.textContent=L.sleep;
+    sleep.setAttribute('aria-label',L.sleep);
     sleep.title=L.sleepHint;
-    sleep.style.cssText='border:none;border-radius:9999px;padding:6px 14px;font-size:12px;font-weight:420;cursor:pointer;background:rgba(245,245,245,.08);color:#f5f5f5;backdrop-filter:blur(8px);';
+    sleep.style.position='static';sleep.style.inset='auto';sleep.style.width='auto';sleep.style.height='auto';
+    sleep.style.setProperty('--sand-computer-open-reveal','1');
+    var words=label.cloneNode(!1);
+    var nativeIcon=label.querySelector('[data-icon-name="arrows-expand-simple"]');
+    if(nativeIcon!=null){
+      var icon=nativeIcon.cloneNode(!0);
+      icon.setAttribute('data-icon-name','moon-z');
+      icon.style.setProperty('--cursor-icon-content',JSON.stringify(SLEEP_ICON_GLYPH));
+      words.appendChild(icon);
+    }
+    words.appendChild(document.createTextNode(L.sleep));sleep.appendChild(words);
     sleep.addEventListener('click',function(event){
       event.stopPropagation();
       var b=bridge();if(b==null)return;
@@ -168,7 +174,9 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, openPillHtm
       b.sleep().then(function(state){removePill();if(state==='asleep')mountOverlay('asleep')}).catch(function(){sleep.disabled=!1});
     });
     wrap.appendChild(sleep);
-    host.appendChild(wrap);
+    pillOpen=open;pillLabel=label;pillReveal={value:open.style.getPropertyValue('--sand-computer-open-reveal'),priority:open.style.getPropertyPriority('--sand-computer-open-reveal')};
+    open.style.setProperty('--sand-computer-open-reveal','1');
+    frame.appendChild(wrap);
     pillVisible=!0;
   }
 
@@ -177,6 +185,7 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, openPillHtm
     var lastPool=null;
     function attach(host){
       if(host===lastPool)return;
+      removePill();
       if(lastPool!=null){lastPool.removeEventListener('pointerenter',onEnter);lastPool.removeEventListener('pointerleave',onLeave);lastPool.removeEventListener('focusin',onEnter);lastPool.removeEventListener('focusout',onLeave)}
       lastPool=host;
       if(host!=null){host.addEventListener('pointerenter',onEnter);host.addEventListener('pointerleave',onLeave);host.addEventListener('focusin',onEnter);host.addEventListener('focusout',onLeave)}
@@ -189,7 +198,12 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, openPillHtm
       if(e.relatedTarget&&e.currentTarget.contains(e.relatedTarget))return;
       removePill();
     }
-    return function(){var host=pool();attach(host==null?null:previewFrame(host))};
+    return function(){
+      var host=pool(),frame=host==null?null:previewFrame(host);
+      attach(frame);
+      if(pillOpen!=null&&pillOpen.firstElementChild!==pillLabel)removePill();
+      if(frame!=null&&(frame.matches(':hover')||frame.contains(document.activeElement)))onEnter();
+    };
   }
   var rebindHover=bindHover();
 
@@ -207,6 +221,7 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, openPillHtm
         if(current==null)mountOverlay('asleep');
       }else if(state==='awake'){
         removeOverlay();
+        rebindHover();
       }
     }).catch(function(){});
   }
@@ -233,7 +248,7 @@ export const COMPUTER_SLEEP_TOKEN_SHIMS = Object.freeze({
 
 /** Official rules plus the two host-side additions the official frame already had. */
 export function computerSleepStyles(officialCss) {
-  const scope = ":is(#rcompsleep-stage,#rcompsleep-pill)";
+  const scope = ":is(#rcompsleep-stage)";
   const shims = scope + "{" + Object.entries(COMPUTER_SLEEP_TOKEN_SHIMS).map(([token, value]) => `${token}:${value};`).join("") + "}";
   const window = new Window();
   let scopedCss;
@@ -266,7 +281,6 @@ export function computerSleepStyles(officialCss) {
 #rcompsleep-stage{z-index:60;pointer-events:auto}
 #rcompsleep-pill{pointer-events:auto}
 #rcompsleep-pill button{pointer-events:auto}
-#rcompsleep-pill-sleep:hover{background:rgba(245,245,245,.14)!important}
 #rcompsleep-pill-sleep:disabled{cursor:default;opacity:.6}
 `;
 }

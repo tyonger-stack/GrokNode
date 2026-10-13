@@ -9,9 +9,16 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 
 import { COMPUTER_SLEEP_CSS_TOKENS, COMPUTER_SLEEP_LABELS, computerSleepOverlayRuntime, loadOfficialAsleepArtifacts, loadOfficialOpenPill, loadOfficialShapeSvgs } from "../scripts/lib/computer-sleep-renderer-components.mjs";
-import { patchComputerSleepRenderer, applyComputerSleepRendererPatch } from "../scripts/lib/computer-sleep-renderer-patch.mjs";
+import { patchComputerSleepRenderer, applyComputerSleepRendererPatch, nativeSleepIconGlyph } from "../scripts/lib/computer-sleep-renderer-patch.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const nativeIcons = 'var icons={"arrows-expand-simple":"\\uf2cf","moon-z":"\\uf46f"};';
+
+test("native sleep icon requires an unambiguous shipped icon registry", () => {
+  assert.equal(nativeSleepIconGlyph(nativeIcons), "\uf46f");
+  assert.throws(() => nativeSleepIconGlyph('var unrelated={"moon-z":"x"};'), /missing or ambiguous/);
+  assert.throws(() => nativeSleepIconGlyph(nativeIcons + 'var bold={"arrows-expand-simple":"a","moon-z":"z"};'), /missing or ambiguous/);
+});
 
 // ---------------------------------------------------------------------------
 // Runtime emission.
@@ -32,8 +39,8 @@ test("official asleep artifacts carry the exported stage byte-for-byte", async (
 });
 
 test("computerSleepOverlayRuntime embeds the official DOM, labels and both levers", async () => {
-  const [{ html }, shapes, pill] = await Promise.all([loadOfficialAsleepArtifacts(), loadOfficialShapeSvgs(), loadOfficialOpenPill()]);
-  const runtime = computerSleepOverlayRuntime(html, shapes, pill.html);
+  const [{ html }, shapes] = await Promise.all([loadOfficialAsleepArtifacts(), loadOfficialShapeSvgs()]);
+  const runtime = computerSleepOverlayRuntime(html, shapes, nativeSleepIconGlyph(nativeIcons));
   assert.ok(runtime.includes("window.__rCompSleep"));
   assert.ok(runtime.includes(".sand-box-vnc-pool"));
   assert.ok(runtime.includes("getSleepState"));
@@ -58,7 +65,7 @@ test("COMPUTER_SLEEP_CSS_TOKENS lists the grok-node additions only (official rul
 // ---------------------------------------------------------------------------
 test("patchComputerSleepRenderer appends once and refuses a second application", async () => {
   const { html } = await loadOfficialAsleepArtifacts();
-  const runtime = computerSleepOverlayRuntime(html);
+  const runtime = computerSleepOverlayRuntime(html, {}, nativeSleepIconGlyph(nativeIcons));
   const patched = patchComputerSleepRenderer("var x=1;\n", runtime);
   assert.ok(patched.includes("/* grok-node computer sleep overlay"));
   assert.throws(() => patchComputerSleepRenderer(patched, runtime), /already applied/);
@@ -80,11 +87,12 @@ test("applyComputerSleepRendererPatch works end-to-end on a fixture stage", asyn
   const assets = path.join(stage, "dist", "renderer", "assets");
   mkdirSync(assets, { recursive: true });
   writeFileSync(path.join(stage, "dist", "renderer", "index.html"), '<script src="./assets/index-fixture.js"></script>');
-  writeFileSync(path.join(assets, "index-fixture.js"), 'var pool="sand-box-vnc-pool";\n');
+  writeFileSync(path.join(assets, "index-fixture.js"), 'var pool="sand-box-vnc-pool";\n' + nativeIcons);
   writeFileSync(path.join(assets, "index-fixture.css"), FIXTURE_CSS);
   const provenance = await applyComputerSleepRendererPatch({ stageRoot: stage });
   assert.equal(provenance.entry, "assets/index-fixture.js");
   assert.equal(provenance.containerClass, "sand-box-vnc-pool");
+  assert.deepEqual(provenance.sleepIcon, { name: "moon-z", glyph: "\uf46f" });
   const patched = readFileSync(path.join(assets, "index-fixture.js"), "utf8");
   assert.ok(patched.includes("window.__rCompSleep"));
   const css = readFileSync(path.join(assets, "index-fixture.css"), "utf8");
@@ -131,7 +139,9 @@ test("hydrated 0.18 renderer satisfies every computer-sleep anchor", { skip: hyd
   assert.equal(cssFiles.length, 1);
   const css = readFileSync(path.join(rendererRoot, "assets", cssFiles[0]), "utf8");
   for (const token of COMPUTER_SLEEP_CSS_TOKENS) assert.ok(css.includes(token), token);
-  patchComputerSleepRenderer(entry, computerSleepOverlayRuntime((await loadOfficialAsleepArtifacts()).html));
+  const glyph = nativeSleepIconGlyph(entry);
+  assert.equal(glyph, "\uf46f", "hydrated native regular and bold tables agree on moon-z");
+  patchComputerSleepRenderer(entry, computerSleepOverlayRuntime((await loadOfficialAsleepArtifacts()).html, {}, glyph));
 });
 
 // ---------------------------------------------------------------------------

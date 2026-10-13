@@ -11,7 +11,6 @@ import {
   computerSleepOverlayRuntime,
   computerSleepStyles,
   loadOfficialAsleepArtifacts,
-  loadOfficialOpenPill,
   loadOfficialShapeSvgs,
 } from "./computer-sleep-renderer-components.mjs";
 
@@ -23,6 +22,27 @@ export function patchComputerSleepRenderer(source, runtime) {
   const patched = source + runtime;
   parse(patched, { ecmaVersion: "latest", sourceType: "module" });
   return patched;
+}
+
+export function nativeSleepIconGlyph(source) {
+  const glyphs = new Set();
+  const pending = [parse(source, { ecmaVersion: "latest", sourceType: "module" })];
+  while (pending.length) {
+    const node = pending.pop();
+    if (node.type === "ObjectExpression") {
+      const entries = node.properties.filter(property => property.type === "Property" && !property.computed);
+      const value = name => entries.find(property => (property.key.value ?? property.key.name) === name)?.value;
+      const open = value("arrows-expand-simple");
+      const sleep = value("moon-z");
+      if (open?.type === "Literal" && typeof open.value === "string" && sleep?.type === "Literal" && typeof sleep.value === "string") glyphs.add(sleep.value);
+    }
+    for (const child of Object.values(node)) {
+      if (Array.isArray(child)) pending.push(...child.filter(item => item && typeof item.type === "string"));
+      else if (child && typeof child.type === "string") pending.push(child);
+    }
+  }
+  if (glyphs.size !== 1 || [...glyphs][0].length !== 1) throw new Error("Computer-sleep patch: native moon-z icon glyph is missing or ambiguous.");
+  return [...glyphs][0];
 }
 
 function officialCssTokens(css) {
@@ -39,10 +59,9 @@ export async function applyComputerSleepRendererPatch({ stageRoot }) {
   const source = await readFile(entryPath, "utf8");
   if (!source.includes("sand-box-vnc-pool")) throw new Error("Computer-sleep patch: computer view root class sand-box-vnc-pool missing from entry chunk.");
 
-  const [{ html: stageHtml, css: officialCss }, shapeSvgs, { html: pillHtml, css: pillCss }] = await Promise.all([
+  const [{ html: stageHtml, css: officialCss }, shapeSvgs] = await Promise.all([
     loadOfficialAsleepArtifacts(),
     loadOfficialShapeSvgs(),
-    loadOfficialOpenPill(),
   ]);
 
   const cssFiles = (await readdir(path.join(rendererRoot, "assets"))).filter(file => /^index-.*\.css$/.test(file));
@@ -51,16 +70,17 @@ export async function applyComputerSleepRendererPatch({ stageRoot }) {
   const css = await readFile(cssPath, "utf8");
   if (css.includes("#rcompsleep-pill")) throw new Error("Computer-sleep patch: stylesheet already carries the overlay styles.");
   const shimmed = new Set(Object.keys(COMPUTER_SLEEP_TOKEN_SHIMS));
-  const allOfficialCss = officialCss + "\n" + pillCss;
+  const allOfficialCss = officialCss;
   for (const token of [...COMPUTER_SLEEP_CSS_TOKENS, ...officialCssTokens(allOfficialCss)]) {
     if (shimmed.has(token) || css.includes(token)) continue;
     throw new Error(`Computer-sleep patch: missing design token: ${token}`);
   }
 
-  const runtime = computerSleepOverlayRuntime(stageHtml, shapeSvgs, pillHtml);
+  const sleepIconGlyph = nativeSleepIconGlyph(source);
+  const runtime = computerSleepOverlayRuntime(stageHtml, shapeSvgs, sleepIconGlyph);
   const patched = patchComputerSleepRenderer(source, runtime);
   await writeFile(entryPath, patched);
-  const allStyles = computerSleepStyles(officialCss + "\n" + pillCss);
+  const allStyles = computerSleepStyles(officialCss);
   const patchedCss = css + allStyles;
   await writeFile(cssPath, patchedCss);
   const shapeNames = Object.keys(shapeSvgs);
@@ -69,8 +89,10 @@ export async function applyComputerSleepRendererPatch({ stageRoot }) {
   const provenance = {
     mode: "computer-preview-display-only",
     behavior: "Sleep hides the local preview while Docker and Bot execution continue.",
-    styleScope: "Exported rules and token shims are restricted to the preview stage and hover pill.",
-    evidence: "Grok Bot 0.70.2 asleep stage + 13 shape SVGs + openPill, all exported from official app DOM",
+    styleScope: "Exported rules and token shims are restricted to the asleep stage; hover actions inherit the native renderer styles.",
+    hoverActions: "Reuse the existing native Open button; Sleep shares its button and pill classes and appears below it with the same reveal state.",
+    evidence: "Grok Bot 0.70.2 asleep stage and 13 shape SVGs exported from official DOM; hover actions reuse the shipped renderer's native Open pill and moon-z icon registry.",
+    sleepIcon: { name: "moon-z", glyph: sleepIconGlyph },
     entry: entryScripts[0],
     containerClass: "sand-box-vnc-pool",
     shapes: shapeNames,
