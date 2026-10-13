@@ -1,10 +1,14 @@
-// D17 账户编辑表单的类名必须与官方 0.66 逐字相同 —— 门禁化 `scripts/verify-d17-classnames.mjs`。
+// D17 账户编辑表单的类名必须与**本机安装的官方 Grok Bot** 逐字相同 —— 门禁化
+// `scripts/verify-d17-classnames.mjs`。对拍目标随官方升级走（2026-10-05 起 0.66，
+// 2026-10-11 起 0.68.1，2026-10-13 起 0.70.2，取值口 `--dump-official`）：脚本侧
+// 按特征（mcp_multi_account + BJ7R7v 同函数）发现官方锚，官方 chunk 改名/组件搬家/
+// 混淆名更换不再需要改本守卫。
 //
 // 这条守卫存在的理由：类名拼错一个字母，样式**照常生效**（匹配上了别的规则），
 // 看起来「有样式」，实际几何全错，而且没有任何既有自检会报。
 //
 // 守卫自身的三条性质（缺一不可）：
-//   ① 官方侧取值靠**语义绑定**（JSX 树里「重命名 input 的直接父 span / 最近的 div 变体祖先」），
+//   ① 官方侧取值靠**语义绑定**（JSX 树里「重命名 input 的直接父 span / 最近带 className 的 div 祖先」），
 //      不是「离哪个类名近」——后者在实测中把非编辑态 span 当成输入框，三组全挑错。
 //   ② 判据是**与官方变体 0 集合完全相等**，不是子集（少抄会静默通过），
 //      也不是「匹配任一变体」（抄成 connected 态会静默通过，变异 M4 实测）。
@@ -27,17 +31,21 @@ function runScript(args) {
   return spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", timeout: 60000 });
 }
 
-// 官方 0.66 是这个比对的事实来源。缺它就没有可比对象 —— 明确跳过而不是假装通过。
+// 官方 app 是这个比对的事实来源。缺它就没有可比对象 —— 明确跳过而不是假装通过。
 const skip = !existsSync(OFFICIAL_APP)
-  ? "官方 0.66 不在本机（/Applications/Grok Bot.app），无法做逐字比对"
+  ? "官方 Grok Bot 不在本机（/Applications/Grok Bot.app），无法做逐字比对"
   : !existsSync(DEPLOYED_APP)
     ? "部署版不在本机（/Applications/Grok Node.app），无法判定 0.18 能否解析类名"
     : false;
 
-test("抽取器与判据先在合成夹具上自证正确", { skip }, () => {
+test("抽取器与判据先在合成夹具上自证正确", () => {
   const r = runScript(["--selftest"]);
   assert.equal(r.status, 0, `自检未通过:\n${r.stdout}\n${r.stderr}`);
   assert.match(r.stdout, /自检全绿/);
+  assert.match(r.stdout, /特征发现不依赖 chunk 或函数名/);
+  assert.match(r.stdout, /同名嵌套函数不抢占实际顶层目标/);
+  assert.match(r.stdout, /两个标记分散在不同函数时不得组成目标/);
+  assert.match(r.stdout, /跨 chunk 的重复目标必须全部保留/);
 });
 
 test("D17 四组类名配方与官方逐字相同", { skip }, () => {

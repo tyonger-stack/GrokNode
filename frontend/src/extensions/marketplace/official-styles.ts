@@ -1109,17 +1109,17 @@ export const DETAIL_ACCOUNT_FORM_SLOT_CLASSES = [
   "sand-z9dl7a", "sand-1pic42t", "sand-sag5q8", "sand-1onr9mi",
 ];
 
-/** 表单里的输入框自身（官方 input 的完整 14 类，含 `sand-15kz4h8`）。 */
+/** 表单里的输入框自身（官方 input 的完整 14 类，含 `sand-15kz4h8`；0.70.2 起 `sand-1wd3ewq`→`sand-tyxrsu`）。 */
 export const DETAIL_ACCOUNT_FORM_INPUT_CLASSES = [
   "sand-9f619", "sand-5f5z56", "sand-15kz4h8", "sand-193iq5w", "sand-1717udv", "sand-c342km", "sand-ng3xce",
-  "sand-jbqb8w", "sand-1wd3ewq", "sand-jb2p0i", "sand-11wthnw", "sand-d4r4e8", "sand-12oo3zp",
+  "sand-jbqb8w", "sand-tyxrsu", "sand-jb2p0i", "sand-11wthnw", "sand-d4r4e8", "sand-12oo3zp",
   "sand-1t137rt",
 ];
 
-/** 「保存 <account> 账户」按钮。 */
+/** 「保存 <account> 账户」按钮（0.70.2 起 `sand-4b2ntj`/`sand-7gh5u8`→`sand-169k319`/`sand-n4ifyr`）。 */
 export const DETAIL_ACCOUNT_SAVE_CLASSES = [
   "sand-9f619", "sand-3nfvp2", "sand-6s0dn4", "sand-1c4vz4f", "sand-2lah0s", "sand-dl72j9",
-  "sand-1717udv", "sand-c342km", "sand-ng3xce", "sand-jbqb8w", "sand-4b2ntj", "sand-7gh5u8",
+  "sand-1717udv", "sand-c342km", "sand-ng3xce", "sand-jbqb8w", "sand-169k319", "sand-n4ifyr",
   "sand-1ypdohk",
 ];
 
