@@ -68,15 +68,15 @@ function fixtureDocument() {
     <div class="sand-transcript sand-virtual-transcript__inner">
       <!-- 生产形状：日分隔条是 sand-kit-timestamp（0.68/0.70 虚拟化 transcript） -->
       <div class="sand-kit-timestamp sand-78zum5" datetime="${new Date(2026, 8, 20).toISOString()}">9月20日</div>
-      <div data-role="assistant"><button role="button" aria-label="Open 旧研报.docx"><span class="sand-kit-text">2.1 MB</span></button></div>
+      <div data-role="assistant"><span role="button" aria-label="Open 旧研报.docx"><span class="sand-kit-text">2.1 MB</span></span></div>
       <div class="sand-transcript-time-separator" datetime="${OLDER_EDGE.toISOString()}">10月4日</div>
       <div data-role="assistant"><a href="https://example.com/edge-old">边界旧链接</a></div>
       <div class="sand-transcript-time-separator" datetime="${WEEK_MID.toISOString()}">10月6日</div>
-      <div data-role="user"><button role="button" aria-label="Open 我发的合同.docx"><span class="sand-kit-text">88 KB</span></button></div>
+      <div data-role="user"><button aria-label="Open 我发的合同.docx"><span class="sand-kit-text">88 KB</span></button></div>
       <div data-role="assistant"><a href="https://example.com/report-a">行业研报 A</a></div>
       <div data-role="assistant"><a href="https://example.com/report-a">行业研报 A（重复卡片）</a></div>
       <div class="sand-transcript-time-separator" datetime="${new Date(2026, 9, 11).toISOString()}">10月11日</div>
-      <div data-role="assistant"><button role="button" aria-label="Open 今日快报.md"><span class="sand-kit-text">12 KB</span></button></div>
+      <div data-role="assistant"><button aria-label="Open 今日&quot;快报.md"><span class="sand-kit-text">12 KB</span></button></div>
       <div data-role="assistant"><button aria-label="Media preview"><img src="sand-attach://chart-20261011.png"></button></div>
       <div data-role="assistant"><div class="sand-link-card"><a href="https://example.com/today">今日来源链接</a></div></div>
     </div>`;
@@ -95,19 +95,19 @@ test("MRe 分桶：日历午夜 6 天边界，null 一律 older", async () => {
   assert.notEqual(core.bucketForTimestamp(OLDER_EDGE.getTime(), NOW_MS), "week", "10-04（同 ISO 周）必须按 6 天边界判 older");
 });
 
-test("FRe 投影：四类条目、用户侧排除、链接去重、首次胜出、新→旧", async () => {
+test("对话资料投影：原生及ARIA按钮、双方附件、链接去重、首次胜出、新→旧", async () => {
   const core = await loadBundled(CORE);
   const { window, document } = fixtureDocument();
   try {
     const items = core.collectLibraryItems(document.querySelector(".sand-transcript"));
-    assert.equal(items.length, 6, `条目数: ${items.length}（旧研报 + 边界旧链接 + 研报A×1 + 快报 + 图片 + 今日链接；用户合同排除）`);
+    assert.equal(items.length, 7, `条目数: ${items.length}（双方附件均属于对话资料）`);
     const kinds = items.map((item) => item.kind);
-    assert.deepEqual(kinds, ["link", "image", "file", "link", "link", "file"], `新→旧顺序与四类: ${JSON.stringify(kinds)}`);
+    assert.deepEqual(kinds, ["link", "image", "file", "link", "file", "link", "file"], `新→旧顺序与四类: ${JSON.stringify(kinds)}`);
     const reportLinks = items.filter((item) => item.kind === "link" && item.url === "https://example.com/report-a");
     assert.equal(reportLinks.length, 1, "重复 href 只留一条（首次出现胜出）");
     const groups = core.groupLibraryItems(items, NOW_MS);
-    assert.deepEqual(groups.today.map((item) => core.itemLabel(item)), ["https://example.com/today", "chart-20261011.png", "今日快报.md"]);
-    assert.deepEqual(groups.week.map((item) => core.itemLabel(item)), ["https://example.com/report-a"]);
+    assert.deepEqual(groups.today.map((item) => core.itemLabel(item)), ["https://example.com/today", "chart-20261011.png", '今日"快报.md']);
+    assert.deepEqual(groups.week.map((item) => core.itemLabel(item)), ["https://example.com/report-a", "我发的合同.docx"]);
     assert.deepEqual(groups.older.map((item) => core.itemLabel(item)), ["https://example.com/edge-old", "旧研报.docx"]);
   } finally {
     window.close();
@@ -133,7 +133,7 @@ test("外壳行为：挂载例行任务正下方、分组标题、点击回放�
     class FixedDate extends RealDate { constructor(...args) { super(...(args.length ? args : [FIXED])); } static now() { return FIXED; } }
     window.Date = FixedDate; })();`);
   let clickedLabel = null;
-  document.querySelectorAll('[role="button"][aria-label^="Open "], button[aria-label="Media preview"]').forEach((chip) => {
+  document.querySelectorAll('[aria-label^="Open "], button[aria-label="Media preview"]').forEach((chip) => {
     chip.addEventListener("click", () => { clickedLabel = chip.getAttribute("aria-label"); });
   });
   const bundle = await (await import("node:fs/promises")).readFile(out, "utf8");
@@ -152,13 +152,17 @@ test("外壳行为：挂载例行任务正下方、分组标题、点击回放�
     window.__sandLibrarySync();
     assert.equal(document.querySelectorAll("section.sand-agent-library").length, 1, "重复同步不得产生重复分节");
     const rows = [...section.querySelectorAll("[data-library-item]")];
-    assert.equal(rows.length, 6, `条目数不对: ${rows.length}`);
+    assert.equal(rows.length, 7, `条目数不对: ${rows.length}`);
     const groupTitles = [...section.querySelectorAll("section[aria-label]")].map((el) => el.getAttribute("aria-label"));
     assert.deepEqual(groupTitles, ["今天", "本周", "更早"], `分组标题: ${JSON.stringify(groupTitles)}`);
-    const mdRow = rows.find((row) => row.getAttribute("data-library-kind") === "file" && row.textContent.includes("今日快报.md"));
+    const mdRow = rows.find((row) => row.getAttribute("data-library-kind") === "file" && row.textContent.includes('今日"快报.md'));
     assert.ok(mdRow != null);
     mdRow.click();
-    assert.equal(clickedLabel, "Open 今日快报.md", "点击资料库条目应回放对应芯片点击");
+    assert.equal(clickedLabel, 'Open 今日"快报.md', "点击应回放无显式role的原生按钮，文件名引号不破坏定位");
+    const uploaded = rows.find((row) => row.textContent.includes("我发的合同.docx"));
+    assert.ok(uploaded != null);
+    uploaded.click();
+    assert.equal(clickedLabel, "Open 我发的合同.docx", "用户上传附件也走原有预览入口");
     routineSection.innerHTML = '<div data-empty-routine-root><p class="sand-routine__empty">例行任务是这个智能体按计划重复执行的任务。</p><button data-routine-row="new">创建例行任务</button></div>';
     window.__sandLibrarySync();
     const emptyRoot = document.querySelector('[data-empty-routine-root]');

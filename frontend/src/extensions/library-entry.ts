@@ -15,6 +15,7 @@ import {
   BUCKET_LABELS,
   LIBRARY_GROUP_ORDER,
   LIBRARY_REVEAL_PAGE_SIZE,
+  LIBRARY_FILE_SELECTOR,
   collectLibraryItems,
   formatWhen,
   groupLibraryItems,
@@ -138,7 +139,8 @@ function onOpenItem(item: LibraryItem): void {
     return;
   }
   // 文件：回放对应芯片点击 —— 走上游既有的查看器（PDF/DOCX/文本/媒体）。
-  const chip = transcriptRoot().querySelector(`[role="button"][aria-label="Open ${item.name}"]`);
+  const chip = Array.from(transcriptRoot().querySelectorAll(LIBRARY_FILE_SELECTOR))
+    .find((candidate) => candidate.getAttribute("aria-label") === `Open ${item.name}`);
   (chip as HTMLElement | null)?.click();
 }
 
@@ -156,14 +158,14 @@ function renderSection(items: readonly LibraryItem[], nowMs: number): HTMLElemen
 
   if (items.length === 0) {
     const empty = document.createElement("p");
-    empty.textContent = "这个 Bot 还没有发过文件或链接";
+    empty.textContent = "对话中还没有文件或链接";
     Object.assign(empty.style, styleOf({ color: "#858d80", margin: "4px 0 0" }));
     section.append(empty);
     return section;
   }
 
   const note = document.createElement("p");
-  note.textContent = `Bot 发给你的文件与链接 · ${items.length} 项`;
+  note.textContent = `对话中的文件与链接 · ${items.length} 项`;
   Object.assign(note.style, styleOf({ color: "#858d80", margin: "0 0 4px" }));
   section.append(note);
 
