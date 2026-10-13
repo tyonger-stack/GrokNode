@@ -1,12 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, realpath, readFile, writeFile, stat } from 'node:fs/promises';
+import { mkdtemp, realpath, readFile, writeFile, stat, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createTokenHub, endpointUrl } from '../tools/node-agent-api/tokenhub.mjs';
+import { createTokenHub, endpointUrl, savedDirectBaseUrl } from '../tools/node-agent-api/tokenhub.mjs';
 import { createModelPolicy } from '../tools/node-agent-api/models.mjs';
 import { startNodeAgentApi } from '../tools/node-agent-api/server.mjs';
+import { resolveInferenceSettings } from '../tools/node-agent-api/inference-config.mjs';
+import { responsesToChat } from '../tools/node-agent-api/openai-bridge.mjs';
+import { prepareCodex } from '../tools/node-agent-api/runtime/codex.mjs';
 
 async function fixture() {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'tokenhub-'))), requests = [];
@@ -59,7 +62,7 @@ test('TokenHub encrypts secrets, discovers remote models, tests actual requests 
   } finally { await f.close(); }
 });
 
-test('installed opencodex relay carries actual streaming function calls and tool results without exposing upstream key to client', async () => {
+test('node protocol adapter carries actual streaming function calls and tool results without exposing upstream key to client', async () => {
   const f = await fixture();
   try {
     const configured = await f.hub.update({ base_url: f.base_url, api_key: 'fixture-secret', wire_api: 'chat' });
@@ -117,4 +120,190 @@ test('TokenHub REST owner-only configuration never returns API key and performs 
     assert.equal((await call('GET', '/v1/models')).data.data[0].approved, true);
     assert.equal((await call('GET', '/v1/settings/models')).data.default_model, null);
   } finally { await api?.close(); await f.close(); }
+});
+
+test('fresh state has no built-in proxy address and accepts an explicit local Responses URL without a bridge', async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'tokenhub-default-')));
+  const hub = await createTokenHub(dir);
+  try {
+    const settings = await hub.settings();
+    assert.equal(settings.revision, 'unconfigured');
+    assert.equal(settings.base_url, '');
+    assert.equal(settings.wire_api, 'chat');
+    assert.equal(await hub.connection(settings.revision), null);
+    const raw = await readFile(join(dir, 'tokenhub.json'), 'utf8');
+    assert.doesNotMatch(raw, /10100/);
+    assert.doesNotMatch(raw, /opencodex/);
+    assert.equal(await savedDirectBaseUrl(dir), null);
+  } finally { await hub.close(); }
+
+  const directDir = await realpath(await mkdtemp(join(tmpdir(), 'tokenhub-direct-')));
+  const direct = await createTokenHub(directDir, { baseUrl: 'http://127.0.0.1:10100/v1' });
+  try {
+    const settings = await direct.settings();
+    assert.equal(settings.revision, 'direct');
+    assert.equal(settings.base_url, 'http://127.0.0.1:10100/v1');
+    assert.equal(settings.wire_api, 'responses');
+    assert.equal(settings.key_saved, false);
+    assert.equal(await direct.connection('direct'), null);
+    assert.equal(await savedDirectBaseUrl(directDir), 'http://127.0.0.1:10100/v1');
+  } finally { await direct.close(); }
+});
+
+test('a saved builtin revision keeps its own URL and follows a later direct address', async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'tokenhub-legacy-')));
+  await writeFile(join(dir, 'tokenhub.json'), JSON.stringify({
+    active: 'opencodex',
+    revisions: [{ id: 'opencodex', base_url: 'http://127.0.0.1:10100/v1', wire_api: 'responses', key: null, models: [], tests: [] }],
+  }), { mode: 0o600 });
+  const first = await createTokenHub(dir);
+  try {
+    assert.equal(await first.connection('opencodex'), null);
+    assert.equal((await first.settings()).base_url, 'http://127.0.0.1:10100/v1');
+  } finally { await first.close(); }
+  const moved = await createTokenHub(dir, { baseUrl: 'https://example.com/v1' });
+  try {
+    const settings = await moved.settings();
+    assert.equal(settings.revision, 'opencodex');
+    assert.equal(settings.base_url, 'https://example.com/v1');
+    assert.equal(settings.wire_api, 'responses');
+    assert.equal(await moved.connection('opencodex'), null);
+  } finally { await moved.close(); }
+});
+
+test('chat credentials passed at startup stay encrypted and the node bridge serves them', async () => {
+  const f = await fixture();
+  const hub = await createTokenHub(join(f.dir, 'seeded'), { baseUrl: f.base_url, apiKey: 'fixture-secret', wireApi: 'chat' });
+  try {
+    const settings = await hub.settings();
+    assert.match(settings.revision, /^th_[a-f0-9]{24}$/);
+    assert.equal(settings.key_saved, true);
+    assert.doesNotMatch(await readFile(join(f.dir, 'seeded', 'tokenhub.json'), 'utf8'), /fixture-secret/);
+    const relay = await hub.connection(settings.revision, 'low');
+    assert.ok(relay.baseUrl.includes('/low/v1'));
+    assert.notEqual(relay.token, 'fixture-secret');
+  } finally { await hub.close(); await f.close(); }
+});
+
+test('responses wire with a key proxies the upstream stream and keeps the key off the client', async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'tokenhub-responses-')));
+  const seen = [];
+  const server = createServer(async (req, res) => {
+    let raw = ''; for await (const data of req) raw += data;
+    seen.push({ path: req.url, auth: req.headers.authorization, body: raw ? JSON.parse(raw) : null });
+    if (req.headers.authorization !== 'Bearer fixture-secret') { res.writeHead(401); res.end(); return; }
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.end('event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const hub = await createTokenHub(dir, { baseUrl: `http://127.0.0.1:${server.address().port}/v1`, apiKey: 'fixture-secret', wireApi: 'responses' });
+  try {
+    const settings = await hub.settings();
+    const relay = await hub.connection(settings.revision);
+    const response = await fetch(relay.baseUrl + '/responses', { method: 'POST', headers: { authorization: 'Bearer ' + relay.token, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gpt-4.1', input: 'hi', stream: true }) });
+    const text = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(text, /response\.completed/);
+    assert.doesNotMatch(text, /fixture-secret/);
+    assert.equal(seen.at(-1).path, '/v1/responses');
+    assert.equal(seen.at(-1).auth, 'Bearer fixture-secret');
+    assert.equal(seen.at(-1).body.model, 'gpt-4.1');
+    const denied = await fetch(relay.baseUrl + '/responses', { method: 'POST', body: '{}' });
+    assert.equal(denied.status, 401);
+  } finally {
+    await hub.close();
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('chat translation keeps the known disable-thinking contracts and tool results', () => {
+  const flash = responsesToChat({ model: 'vendor/glm-flash', input: 'hi', reasoning: { effort: 'none' } });
+  assert.equal(flash.reasoning_effort, 'low');
+  const minimax = responsesToChat({ model: 'minimax-m3', input: [{ type: 'function_call_output', call_id: 'call_1', output: 'hi' }], reasoning: { effort: 'none' }, tools: [{ type: 'function', name: 'probe_shell', parameters: { type: 'object' } }] });
+  assert.equal(minimax.reasoning_effort, undefined);
+  assert.deepEqual(minimax.thinking, { type: 'disabled' });
+  assert.equal(minimax.messages.at(-1).role, 'tool');
+  assert.equal(minimax.messages.at(-1).tool_call_id, 'call_1');
+  assert.equal(minimax.tools[0].function.name, 'probe_shell');
+  assert.throws(() => responsesToChat({ model: 'unknown-model', input: 'hi', reasoning: { effort: 'none' } }), /Unsupported disable-thinking contract/);
+});
+
+test('caller-supplied model ids are a catalog when the endpoint list is not refreshed', async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'tokenhub-models-')));
+  const hub = await createTokenHub(dir, { models: ['gpt-4.1'] });
+  try {
+    const listed = await (await createModelPolicy(dir, { tokenhub: hub })).list('bot-a');
+    assert.deepEqual(listed.data.map(row => row.id), ['gpt-4.1']);
+    await hub.update({ models: ['gpt-4.1', 'glm-test'] });
+    assert.deepEqual((await hub.catalog()).models.map(row => row.id), ['gpt-4.1', 'glm-test']);
+  } finally { await hub.close(); }
+  const emptyDir = await realpath(await mkdtemp(join(tmpdir(), 'tokenhub-nocatalog-')));
+  const empty = await createTokenHub(emptyDir);
+  try {
+    const policy = await createModelPolicy(emptyDir, { tokenhub: empty });
+    await assert.rejects(policy.list('bot-a'), error => error.status === 503 && error.code === 'model_catalog_unavailable');
+  } finally { await empty.close(); }
+});
+
+async function codexConfig(baseUrl) {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'codex-prep-')));
+  const authFile = join(dir, 'auth.json'), binary = join(dir, 'fake-codex');
+  await writeFile(authFile, '{}', { mode: 0o600 });
+  await writeFile(binary, '#!/bin/sh\nprintf "codex-cli 0.160.0\\n"\n', { mode: 0o700 });
+  const command = await prepareCodex({
+    namespace: 'grok-node-lab-test', botId: 'bot-a', stateRoot: dir,
+    runtime: {
+      async status() { return { running: true }; },
+      async descriptor() { return { environments: [{ display: '', transport: 'stdio', program: '/bin/true', args: [] }] }; },
+    },
+    codexBinary: binary, authFile, ...(baseUrl ? { baseUrl } : {}),
+  });
+  return readFile(join(command.cwd, 'config.toml'), 'utf8');
+}
+
+test('Codex config omits a provider until a base URL is given and never names the old relay', async () => {
+  const plain = await codexConfig();
+  assert.doesNotMatch(plain, /10100|opencodex|model_provider/);
+  assert.match(plain, /model_reasoning_effort = "medium"/);
+  const pointed = await codexConfig('http://127.0.0.1:10100/v1');
+  assert.match(pointed, /model_provider = "openai_compat"/);
+  assert.match(pointed, /http:\/\/127\.0\.0\.1:10100\/v1/);
+  assert.match(pointed, /wire_api = "responses"/);
+  assert.doesNotMatch(pointed, /opencodex/);
+});
+
+test('inference settings prefer explicit flags, then environment, and default the wire from what was provided', () => {
+  const env = {
+    NODE_AGENT_BASE_URL: 'https://env.example/v1',
+    NODE_AGENT_API_KEY: 'env-key',
+    NODE_AGENT_MODEL: 'env-model',
+    NODE_AGENT_WIRE_API: 'responses',
+    NODE_AGENT_MODELS: 'gpt-4.1, glm-test',
+    NODE_AGENT_MODEL_CATALOG: '/tmp/catalog.json',
+  };
+  const explicit = resolveInferenceSettings({ baseUrl: 'https://cli.example/v1', apiKey: 'cli-key', model: 'cli-model', wireApi: 'chat' }, env);
+  assert.equal(explicit.baseUrl, 'https://cli.example/v1');
+  assert.equal(explicit.apiKey, 'cli-key');
+  assert.equal(explicit.model, 'cli-model');
+  assert.equal(explicit.wireApi, 'chat');
+  assert.deepEqual(explicit.models, ['gpt-4.1', 'glm-test']);
+  assert.equal(explicit.catalogFile, '/tmp/catalog.json');
+  assert.equal(resolveInferenceSettings({}, { NODE_AGENT_BASE_URL: 'https://env.example/v1' }).wireApi, 'responses');
+  assert.equal(resolveInferenceSettings({}, { NODE_AGENT_BASE_URL: 'https://env.example/v1', NODE_AGENT_API_KEY: 'k' }).wireApi, 'chat');
+  assert.equal(resolveInferenceSettings({}, { NODE_AGENT_BASE_URL: '   ', NODE_AGENT_API_KEY: '' }).baseUrl, null);
+  assert.equal(resolveInferenceSettings({ baseUrl: '' }, { NODE_AGENT_BASE_URL: 'https://env.example/v1' }).baseUrl, 'https://env.example/v1');
+  assert.throws(() => resolveInferenceSettings({}, { NODE_AGENT_API_KEY: 'only-key' }), /NODE_AGENT_API_KEY requires/);
+  assert.throws(() => resolveInferenceSettings({}, { NODE_AGENT_WIRE_API: 'grpc' }), /must be chat or responses/);
+});
+
+test('node agent api sources do not hardcode the old relay runtime', async () => {
+  const root = join(import.meta.dirname, '..', 'tools', 'node-agent-api');
+  const files = await readdir(root, { recursive: true });
+  const forbidden = ['127.0.0.1:10100', 'opencodex-catalog', '.bun/bin/bun', '@bitkyc08/opencodex'];
+  for (const name of files) {
+    if (!String(name).endsWith('.mjs')) continue;
+    const text = await readFile(join(root, name), 'utf8');
+    for (const needle of forbidden) assert.equal(text.includes(needle), false, `${name} contains ${needle}`);
+  }
 });

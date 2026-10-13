@@ -7,11 +7,13 @@ import { createHarness } from './runtime/harness.mjs';
 import { recoverServiceLocks } from './persistence.mjs';
 import { createSharedRuntime } from './shared-runtime.mjs';
 import { loadEmbeddedViewer } from './viewer.mjs';
+import { resolveInferenceSettings } from './inference-config.mjs';
+import { savedDirectBaseUrl } from './tokenhub.mjs';
 
 const flags = process.argv.slice(2), options = {};
 for (let i = 0; i < flags.length; i += 2) {
   const name = flags[i];
-  if (!['--port','--state','--container','--allow-writes','--backend','--runtime-state','--namespace','--model','--base-url','--recover','--workspace','--codex-bin'].includes(name) || flags[i + 1] === undefined || Object.hasOwn(options, name)) throw new Error('Usage: cli.mjs [--backend codex|grok] [--container NAME] [--workspace LINUX_PATH] [--port PORT] [--state DIRECTORY] [--recover true|false] [--codex-bin FILE]');
+  if (!['--port','--state','--container','--allow-writes','--backend','--runtime-state','--namespace','--model','--base-url','--api-key','--wire-api','--recover','--workspace','--codex-bin'].includes(name) || flags[i + 1] === undefined || Object.hasOwn(options, name)) throw new Error('Usage: cli.mjs [--backend codex|grok] [--container NAME] [--workspace LINUX_PATH] [--port PORT] [--state DIRECTORY] [--recover true|false] [--codex-bin FILE] [--base-url URL] [--api-key KEY] [--wire-api chat|responses] [--model ID]');
   options[name] = flags[i + 1];
 }
 const port = Number(options['--port'] ?? 18770);
@@ -20,6 +22,7 @@ if (options['--allow-writes'] !== undefined && !['true','false'].includes(option
 const root = path.resolve(import.meta.dirname, '../..'), stateDirectory = path.resolve(options['--state'] ?? path.join(root, '.lab/node-agent-shared'));
 if (options['--recover'] === 'true') await recoverServiceLocks(stateDirectory);
 const backend = options['--backend'] ?? 'codex';
+const settings = backend === 'codex' ? resolveInferenceSettings({ baseUrl: options['--base-url'], apiKey: options['--api-key'], model: options['--model'], wireApi: options['--wire-api'] }) : null;
 let adapter, nativeAdapter;
 if (backend === 'grok') adapter = createGrokNodeAdapter({ container: options['--container'] ?? 'grok-node-local-vm', allowNativeChat: options['--allow-writes'] === 'true' });
 else if (backend === 'codex') {
@@ -29,11 +32,13 @@ else if (backend === 'codex') {
     async agents() { return (await runtime.roster.agents()).map(row => ({ ...row, backend: 'codex_harness' })); },
     async createAgent(input) { const result = await runtime.roster.gateway('createAgent', { name: input.name, description: input.description ?? '', origin: 'user', isKickstartRequested: false, isIntroductionSuppressed: true }); const row = result.agent ?? result; if (typeof row.id !== 'string') throw new Error('GrokNode did not return a bot identifier'); return { object: 'node.agent', id: row.id, name: row.name, description: row.description ?? '', backend: 'codex_harness' }; },
   };
-  const harness = createHarness({ runtime, namespace, stateRoot, model: options['--model'], baseUrl: options['--base-url'], binary: options['--codex-bin'] });
+  // 本次启动没给地址时，沿用已保存的内置直连地址。密钥不进 Harness。
+  const codexBaseUrl = settings.baseUrl ?? await savedDirectBaseUrl(stateDirectory);
+  const harness = createHarness({ runtime, namespace, stateRoot, model: settings.model ?? undefined, baseUrl: codexBaseUrl ?? undefined, catalogFile: settings.catalogFile ?? undefined, binary: options['--codex-bin'] });
   adapter = createCodexAdapter({ runtime, harness, roster, namespace, stateRoot, artifactRoot: path.join(stateDirectory, 'artifacts') });
   nativeAdapter = createGrokNodeAdapter({ container: options['--container'] ?? 'grok-node-local-vm', allowNativeChat: true, docker: '/usr/local/bin/docker' });
 } else throw new Error('Unknown backend');
-const service = await startNodeAgentApi({ adapter, nativeAdapter, stateDirectory, port, embeddedViewer: loadEmbeddedViewer(), ...(backend === 'codex' ? { modelOptions: { defaultModel: options['--model'] }, tokenhubOptions: { baseUrl: options['--base-url'] } } : {}) });
+const service = await startNodeAgentApi({ adapter, nativeAdapter, stateDirectory, port, embeddedViewer: loadEmbeddedViewer(), ...(backend === 'codex' ? { modelOptions: { defaultModel: settings.model, ...(settings.catalogFile ? { catalogFile: settings.catalogFile } : {}) }, tokenhubOptions: { baseUrl: settings.baseUrl, apiKey: settings.apiKey, wireApi: settings.wireApi, models: settings.models } } : {}) });
 console.log(JSON.stringify({ service: 'Node Agent API', version: '0.3.0', backend, origin: service.origin, ui: service.origin + '/ui/', owner_key_file: service.keyFile, writes_enabled: adapter.writesEnabled }));
 async function stop() { await service.close(); process.exit(0); }
 process.once('SIGTERM', () => { void stop(); }); process.once('SIGINT', () => { void stop(); });

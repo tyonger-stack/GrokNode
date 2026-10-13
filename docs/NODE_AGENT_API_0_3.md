@@ -56,7 +56,7 @@ flowchart LR
 | 宿主 | Apple Silicon Mac，Node.js 26.5.x，仓库锁定依赖 |
 | 原程序 | GrokNode 已运行，已有 bot 和可用的 `grok-node-local-vm` |
 | Codex | Mac CLI 与 Linux 执行包均为 0.160.0；版本不符时拒绝连接，不自动升级 |
-| 模型入口 | Mac 已登录 Codex；默认代理 `http://127.0.0.1:10100/v1`，已有 `~/.codex/opencodex-catalog.json` |
+| 模型入口 | Mac 已登录 Codex。另备一个 OpenAI 兼容端点（地址、可选密钥、模型）；不配置端点时不连接默认代理 |
 | 执行包 | Linux 持久目录 `/home/box/sand-data/codex-vm/bin/codex` |
 
 首次准备执行包，可在已运行的盒子中安装：
@@ -549,7 +549,7 @@ REST 错误结构为：
 | 413 / 415 | 核对请求大小与 `application/json` |
 | 429 | 查看 `/v1/usage`，关闭多余 SSE/viewer，检查配额或 outbox/ticket 容量 |
 | 5xx 或后端不可用 | 检查原盒子、Mac 代理、state 权限与服务诊断；查询状态后再决定恢复或重试 |
-| 503 `model_catalog_unavailable` | opencodex 目录不可读，或自定义端点还未拉取模型；已有会话保留原模型 |
+| 503 `model_catalog_unavailable` | 端点模型、用户配置的模型列表和目录文件都不可用；已有会话保留原模型 |
 | 浏览器连接失败 / 端口无监听 | 按[后台排障](NODE_AGENT_API_OPERATIONS.md#服务打不开)检查 API 进程、LaunchAgent 和日志 |
 | 查看器超时 / 页面仍显示旧提示 | Chrome 按 ⌘⇧R 强制刷新，重新登录、选择已有会话，再签发桌面授权；刷新不会删除会话 |
 

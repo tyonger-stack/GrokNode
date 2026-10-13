@@ -7,6 +7,7 @@ import { ApiError, identifier } from './errors.mjs';
 import { resourceNames } from './runtime/common.mjs';
 import { normalizeApplicationId } from './runtime/applications.mjs';
 import { sameExecutor } from './runtime/harness.mjs';
+import { isBuiltinRevision } from './inference-config.mjs';
 
 const execute = promisify(execFile);
 const outcomes = { inProgress: 'running', completed: 'completed', failed: 'failed', interrupted: 'interrupted' };
@@ -37,9 +38,10 @@ export function createCodexAdapter({ runtime, harness, roster, namespace, stateR
   async function threadModel(session) {
     const selection = session.model ? { model: session.model } : {};
     if (session.reasoning_effort) selection.reasoningEffort = session.reasoning_effort;
-    if (session.endpoint_revision && session.endpoint_revision !== 'opencodex') {
+    // 内置 revision 不设 providerConnection，Codex 使用自己的配置地址。桥只用于带密钥或 Chat 协议的 th_* 版本。
+    if (session.endpoint_revision && !isBuiltinRevision(session.endpoint_revision)) {
       const connection = await tokenhub.connection(session.endpoint_revision, session.reasoning_effort);
-      selection.providerConnection = connection;
+      if (connection) selection.providerConnection = connection;
     }
     return selection;
   }

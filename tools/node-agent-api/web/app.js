@@ -167,7 +167,7 @@ function updateEfforts(modelControl, effortControl) {
 async function loadTokenHub() {
   tokenhubSettings = await scopedJSON('/v1/settings/tokenhub');
   $('tokenhub-url').value = tokenhubSettings.base_url; $('tokenhub-protocol').value = tokenhubSettings.wire_api;
-  text('tokenhub-key-status', tokenhubSettings.key_saved ? '已加密保存在 Mac；不会回显。' : '未保存密钥。本机 opencodex 可按原配置使用。');
+  text('tokenhub-key-status', tokenhubSettings.key_saved ? '已加密保存在 Mac；不会回显。' : '未保存密钥。配置端点后密钥只加密保存在本机，不会回显。');
   $('tokenhub-model').replaceChildren(new Option('先重新拉取模型', ''));
   for (const row of tokenhubSettings.models) $('tokenhub-model').add(new Option(row.name || row.id, row.id));
   updateEfforts('tokenhub-model', 'tokenhub-effort'); controls();

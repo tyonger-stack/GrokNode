@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { privateDirectory, resourceNames } from './common.mjs';
 
 const execute = promisify(execFile);
-export async function prepareCodex({ namespace, botId, stateRoot, runtime, codexBinary = 'codex', authFile = join(homedir(), '.codex/auth.json'), model, baseUrl, status, registry }) {
+export async function prepareCodex({ namespace, botId, stateRoot, runtime, codexBinary = 'codex', authFile = join(homedir(), '.codex/auth.json'), model, baseUrl, catalogFile, status, registry }) {
   const n = resourceNames(namespace, botId);
   const home = await privateDirectory(join(stateRoot, namespace, n.key, 'mac-codex'));
   const env = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: home, CODEX_HOME: home, TMPDIR: process.env.TMPDIR ?? '/tmp', TERM: process.env.TERM ?? 'xterm-256color', OCX_SHIM_BYPASS: '1', NO_PROXY: '127.0.0.1,localhost,::1', no_proxy: '127.0.0.1,localhost,::1' };
@@ -21,11 +21,18 @@ export async function prepareCodex({ namespace, botId, stateRoot, runtime, codex
   try {
     if (!(await lstat(link)).isSymbolicLink() || await readlink(link) !== auth) throw new Error('Unexpected Mac auth link');
   } catch (error) { if (error.code !== 'ENOENT') throw error; await symlink(auth, link); }
-  const inferenceUrl = new URL(baseUrl ?? 'http://127.0.0.1:10100/v1').href;
+  // 没给地址就不写 model_provider，避免连到任何默认代理。wire_api 固定为 responses：
+  // Codex 和本地桥对 Codex 暴露的都是 Responses；Chat 端点在桥里翻译，密钥不写入这份配置。
+  const provider = [];
+  if (baseUrl) {
+    const inferenceUrl = new URL(baseUrl).href;
+    provider.push('model_provider = "openai_compat"', `openai_base_url = ${JSON.stringify(inferenceUrl)}`,
+      ...(catalogFile ? [`model_catalog_json = ${JSON.stringify(catalogFile)}`] : []),
+      '[model_providers.openai_compat]', 'name = "OpenAI-compatible API"', `base_url = ${JSON.stringify(inferenceUrl)}`,
+      'wire_api = "responses"', 'requires_openai_auth = false', 'supports_websockets = false');
+  }
   const config = ['approval_policy = "on-request"', 'sandbox_mode = "danger-full-access"', 'suppress_unstable_features_warning = true',
-    ...(model ? [`model = ${JSON.stringify(model)}`] : []), 'model_provider = "opencodex"', 'model_reasoning_effort = "medium"',
-    `openai_base_url = ${JSON.stringify(inferenceUrl)}`, `model_catalog_json = ${JSON.stringify(join(homedir(), '.codex/opencodex-catalog.json'))}`,
-    '[model_providers.opencodex]', 'name = "Existing local opencodex proxy"', `base_url = ${JSON.stringify(inferenceUrl)}`, 'wire_api = "responses"', 'requires_openai_auth = false', 'supports_websockets = false',
+    ...(model ? [`model = ${JSON.stringify(model)}`] : []), 'model_reasoning_effort = "medium"', ...provider,
     '[features]', 'apps = false', 'plugins = false', 'remote_plugin = false', 'shell_snapshot = false', 'enable_request_compression = false', 'respect_system_proxy = false', 'system_proxy_fallback = false',
     '[shell_environment_policy]', 'inherit = "none"', 'include_only = []', registry.environments[0].display ? `set = { DISPLAY = ${JSON.stringify(':' + registry.environments[0].display)} }` : 'set = {}', ''];
   const entry = registry.environments[0];

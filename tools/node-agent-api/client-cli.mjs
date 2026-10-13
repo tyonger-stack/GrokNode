@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { launchCodex } from './runtime/codex.mjs';
 import { readFile } from 'node:fs/promises';
 import { createSharedRuntime } from './shared-runtime.mjs';
+import { resolveInferenceSettings } from './inference-config.mjs';
 
 const [command, botId, ...args] = process.argv.slice(2);
 const allowed = new Set(['namespace', 'state-root', 'codex-bin', 'model', 'base-url', 'prompt', 'thread', 'api-origin', 'api-key-file', 'application', 'mode', 'session', 'container', 'workspace']);
@@ -22,7 +23,8 @@ try {
   await roster.requireAgent(botId);
   if (command === 'codex' || command === 'resume') {
     if (command === 'resume' && !/^[\w-]{1,128}$/.test(options.thread ?? '')) throw new Error('resume requires a valid --thread');
-    process.exitCode = await launchCodex({ namespace, botId, stateRoot, runtime, codexBinary: options['codex-bin'], model: options.model, baseUrl: options['base-url'], threadId: command === 'resume' ? options.thread : undefined }, options.prompt);
+    const settings = resolveInferenceSettings({ baseUrl: options['base-url'], model: options.model });
+    process.exitCode = await launchCodex({ namespace, botId, stateRoot, runtime, codexBinary: options['codex-bin'], model: settings.model ?? undefined, baseUrl: settings.baseUrl ?? undefined, catalogFile: settings.catalogFile ?? undefined, threadId: command === 'resume' ? options.thread : undefined }, options.prompt);
   } else if (command === 'desktop') {
     const origin = options['api-origin'] ?? 'http://127.0.0.1:18770';
     if (new URL(origin).hostname !== '127.0.0.1') throw new Error('Local API origin required');

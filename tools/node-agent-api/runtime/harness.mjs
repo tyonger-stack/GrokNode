@@ -50,7 +50,7 @@ export function sameExecutor(left, right) {
   return !!left && !!right && ['containerId', 'containerStartedAt', 'assignmentRevision', 'display'].every(key => left[key] != null && left[key] === right[key]);
 }
 
-export function createHarness({ runtime, namespace, stateRoot, model, baseUrl, authFile, binary = 'codex', spawnProcess = spawn, timeoutMs = 60000 }) {
+export function createHarness({ runtime, namespace, stateRoot, model, baseUrl, catalogFile, authFile, binary = 'codex', spawnProcess = spawn, timeoutMs = 60000 }) {
   const events = new EventEmitter();
   const sessions = new Map();
   const secrets = new Set();
@@ -87,7 +87,7 @@ export function createHarness({ runtime, namespace, stateRoot, model, baseUrl, a
       if (url.protocol !== 'ws:' || url.hostname !== '127.0.0.1' || url.username || url.password) throw new Error('Owned loopback executor required');
       secrets.add(entry.authToken);
     }
-    const command = await prepareCodex({ runtime, namespace, stateRoot, botId, codexBinary: binary, model, baseUrl, authFile, registry, status });
+    const command = await prepareCodex({ runtime, namespace, stateRoot, botId, codexBinary: binary, model, baseUrl, catalogFile, authFile, registry, status });
     if (executorIdentity && !sameExecutor(executorIdentity, await runtime.validateExecutor(botId))) throw new Error('Executor changed during Harness preparation');
     if (!isAbsolute(command.cwd)) throw new Error('Private Harness home unavailable');
     const child = spawnProcess(binary, ['app-server', '--strict-config', '-c', 'mcp_servers={}', '-c', 'features.apps=false', '-c', 'features.plugins=false'], { cwd: command.cwd, env: command.env, stdio: ['pipe','pipe','pipe'] });
