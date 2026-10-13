@@ -2,6 +2,7 @@ import { buildBotTemplateRendererExtension } from "./bot-template-renderer-exten
 import { buildChannelStatusRendererExtension } from "./channel-status-renderer-extension.mjs";
 import { buildPluginsDockRendererExtension } from "./plugins-dock-renderer-extension.mjs";
 import { buildWebhookCredentialRendererExtension } from "./webhook-credential-renderer-extension.mjs";
+import { buildLibraryRendererExtension } from "./library-renderer-extension.mjs";
 import { patchOriginalAutoReviewApproval } from "./auto-review-renderer-patch.mjs";
 import { patchOriginalRoutineSurfaces } from "./routine-surfaces-renderer-patch.mjs";
 import { createHash } from "node:crypto";
@@ -255,6 +256,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const channelStatusExtension = await buildChannelStatusRendererExtension();
   const pluginsDockExtension = await buildPluginsDockRendererExtension();
   const webhookCredentialExtension = await buildWebhookCredentialRendererExtension();
+  const libraryExtension = await buildLibraryRendererExtension();
   const approvalName = "view-QqBtBG74.js";
   const approvalTarget = path.join(assetsRoot, approvalName);
   const approvalCandidate = { name: approvalName, target: approvalTarget, source: await readFile(approvalTarget, "utf8") };
@@ -279,7 +281,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const changes = [];
   for (const { candidate, roles, transforms } of transformsByFile.values()) {
     const isRegistry = roles.includes("registry");
-    const registryExtensions = isRegistry ? "\n;" + [botTemplateExtension, channelStatusExtension, pluginsDockExtension, webhookCredentialExtension].join("\n;") : "";
+    const registryExtensions = isRegistry ? "\n;" + [botTemplateExtension, channelStatusExtension, pluginsDockExtension, webhookCredentialExtension, libraryExtension].join("\n;") : "";
     let patched = candidate.source;
     let aboutVersionDialectUsed = null;
     for (const transform of transforms) patched = transform(patched);
@@ -314,8 +316,8 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     schemaVersion: 1,
     mode: "original-renderer-settings-extension",
     chunks: changes,
-    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy", "routine-row-toggle", "routine-detail-panel"],
-    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "routine-list-row-switch", "routine-detail-surface", "fail-closed-always-allow"],
+    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy", "routine-row-toggle", "routine-detail-panel", "agent-library-documents"],
+    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "routine-list-row-switch", "routine-detail-surface", "fail-closed-always-allow", "append-agent-library-documents"],
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-router-extension.json");
   await writeFile(provenancePath, `${JSON.stringify(record, null, 2)}\n`);
