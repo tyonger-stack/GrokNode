@@ -11,6 +11,12 @@ const ROW_MAP_BEFORE = 'e[17]!==r?(k=v=>{const b=G2n(v);return p.jsx(H2n,{onClic
 const ROW_MAP_AFTER = "k=v=>p.jsx(RRoutineRow,{agentId:t,automation:v,onOpen:r},v.id)";
 const EDITOR_MOUNT_BEFORE = "p.jsx(_2n,{agentId:t.id,automation:V,";
 const EDITOR_MOUNT_AFTER = "p.jsx(RRoutineSurface,{agentId:t.id,automation:V,";
+const EMPTY_SECTION_BEFORE = '1:{className:"sand-78zum5 sand-dt5ytf sand-17d4w8g sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-2lwn1j"}}[!!Cmt(x)<<0].className';
+const EMPTY_SECTION_AFTER = '1:{className:"sand-78zum5 sand-dt5ytf sand-17d4w8g"}}[!!Cmt(x)<<0].className';
+const EMPTY_ROOT_BEFORE = 'v={className:"sand-78zum5 sand-dt5ytf sand-6s0dn4 sand-l56j7k sand-1v2ro7d sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-yamay9 sand-1l90r2v"},e[10]=v';
+const EMPTY_ROOT_AFTER = 'v={className:"sand-78zum5 sand-dt5ytf sand-6s0dn4 sand-l56j7k"},e[10]=v';
+const EMPTY_MOUNT_BEFORE = 'N=p.jsxs("div",{className:v.className,children:[b,x]})';
+const EMPTY_MOUNT_AFTER = 'N=p.jsxs("div",{className:v.className,style:{minHeight:72,flex:"none",gap:3},children:[b,x]})';
 
 const COMPONENT_SOURCE = String.raw`
 function RRtLoc(en,zh){return typeof RLocT==="function"?RLocT(en,zh):en}
@@ -34,5 +40,8 @@ function replaceExactlyOnce(source, before, after, label) {
 export function patchOriginalRoutineSurfaces(source) {
   let patched = replaceExactlyOnce(source, LIST_ANCHOR, COMPONENT_SOURCE + LIST_ANCHOR, "routine component insertion");
   patched = replaceExactlyOnce(patched, ROW_MAP_BEFORE, ROW_MAP_AFTER, "routine list row switch");
+  patched = replaceExactlyOnce(patched, EMPTY_SECTION_BEFORE, EMPTY_SECTION_AFTER, "known-empty routine overview wrapper");
+  patched = replaceExactlyOnce(patched, EMPTY_ROOT_BEFORE, EMPTY_ROOT_AFTER, "known-empty routine root");
+  patched = replaceExactlyOnce(patched, EMPTY_MOUNT_BEFORE, EMPTY_MOUNT_AFTER, "known-empty routine height");
   return replaceExactlyOnce(patched, EDITOR_MOUNT_BEFORE, EDITOR_MOUNT_AFTER, "routine detail surface");
 }

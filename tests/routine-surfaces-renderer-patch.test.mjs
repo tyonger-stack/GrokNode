@@ -34,6 +34,20 @@ test("routine surfaces patch fails closed when an anchor is missing or repeated"
   assert.throws(() => patchOriginalRoutineSurfaces(patchOriginalRoutineSurfaces(guarded)), /anchor must appear exactly once/);
 });
 
+test("known-empty routines retain the one-row height without growing the overview", { skip: bundleSkip }, () => {
+  const patched = patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(bundle));
+  const functions = source => parse(source, { ecmaVersion: "latest", sourceType: "module" }).body.filter(n => n.type === "FunctionDeclaration");
+  const get = (source, name) => {
+    const node = functions(source).find(n => n.id.name === name);
+    assert.ok(node, name);
+    return source.slice(node.start, node.end);
+  };
+  assert.ok(get(patched, "K2n").includes('style:{minHeight:72,flex:"none",gap:3}'));
+  assert.ok(!get(patched, "K2n").includes('sand-yamay9 sand-1l90r2v'));
+  assert.ok(get(patched, "p3n").includes('1:{className:"sand-78zum5 sand-dt5ytf sand-17d4w8g"}}[!!Cmt(x)<<0].className'));
+  for (const name of ["Cmt", "c2", "_2n"]) assert.equal(get(patched, name), get(bundle, name), `${name} eligibility/editor is unchanged`);
+});
+
 test("routine detail keeps 0.59 copy, the webhook card gate, and the create path on the upstream editor", () => {
   return readFile(path.resolve(import.meta.dirname, "../scripts/lib/routine-surfaces-renderer-patch.mjs"), "utf8").then((source) => {
     for (const zh of ["当 Webhook 被触发时", "指令", "何时运行", "POST 到", "密钥", "标头", "暂停", "恢复", "测试", "编辑", "删除例行任务", "编辑你的例行任务：", "这将删除例行任务并停止其后续运行。此操作无法撤销。"]) {
