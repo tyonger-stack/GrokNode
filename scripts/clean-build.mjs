@@ -55,6 +55,7 @@ import { applyBotColorGatePatch } from "./lib/bot-color-gate-patch.mjs";
 import { applyMainAgentRendererPatch } from "./lib/main-agent-renderer-patch.mjs";
 import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
+import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -341,6 +342,7 @@ export async function buildFidelityReconstructedAsar({
   // only in the sense that it, too, emits no RLocT calls — it appends English strings that
   // match the settings surface's own hardcoded English.
   await applyBotColorSettingsPatch({ stageRoot });
+  await applyComputerSleepRendererPatch({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });

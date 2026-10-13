@@ -23,3 +23,6 @@ Use the native dialog focus trap and menu keyboard handling. Label the main mark
 
 ## 8. Evidence and accepted limits
 This is a local host implementation, without the official account service or a simulated 04:00 rollout. Initial proactive work uses the existing introduction mechanism after explicit creation. The old renderer kit supplies the dialog surface; behavior and main-marker semantics follow the observed newer application.
+
+## 9. Computer preview display state
+The user-directed Sleep action only turns off the computer preview. Its local states are awake and asleep; Docker, the host connection, Bot execution and workspace files continue unchanged. Reuse the shipped asleep-stage surface and existing tokens as a visual cover, with “电脑预览已关闭” and “恢复预览” labels. The Sleep tooltip explains that Bots keep running. Hide preview content while keeping the restore control interactive, and restore the existing content on wake. Switching Bots keeps the current preview state; restarting the app starts with the preview visible. This display-only behavior is an explicit local adaptation, not an observation about upstream server hibernation.

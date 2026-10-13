@@ -1,0 +1,275 @@
+// 电脑休眠/唤醒 (computer sleep/wake) — the renderer overlay, ported from official
+// 0.70.2 by byte-export. The asleep stage's exact DOM (mascot, z-z-z, kit button) and
+// CSS rules were exported from the official app. This version adds:
+//
+//   A) Shape-aware mascot: the overlay's SVG swaps to the CURRENT bot's shape
+//      (13 official shapes from the 0.70.2 editor picker, exported & embedded).
+//   C) Hover pill: on pointerenter over the computer preview, an "打开" pill
+//      (official openPill DOM/CSS) appears with a "休眠" button below it.
+//
+// The `computer` namespace controls local preview visibility; Bot execution continues.
+
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { Window } from "happy-dom";
+
+const ARTIFACTS_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), "computer-sleep-official");
+
+export async function loadOfficialAsleepArtifacts() {
+  const [html, css] = await Promise.all([
+    readFile(path.join(ARTIFACTS_DIR, "asleep-stage.html"), "utf8"),
+    readFile(path.join(ARTIFACTS_DIR, "asleep-stage.css"), "utf8"),
+  ]);
+  if (!html.includes("{{TITLE}}") || !html.includes("{{WAKE}}") || !html.includes('data-stage="asleep"')) {
+    throw new Error("computer-sleep: official asleep template is malformed.");
+  }
+  return { html, css };
+}
+
+export async function loadOfficialShapeSvgs() {
+  const raw = await readFile(path.join(ARTIFACTS_DIR, "shape-map.json"), "utf8");
+  const map = JSON.parse(raw);
+  const expected = ["blob","cloud","square","sparkle","clover","heart","flower","teardrop","tablet","wedge","house","star","hex"];
+  for (const shape of expected) {
+    if (typeof map[shape] !== "string" || !map[shape].includes("<svg")) {
+      throw new Error(`computer-sleep: shape ${shape} missing or malformed in shape-map.json`);
+    }
+  }
+  return map;
+}
+
+export async function loadOfficialOpenPill() {
+  const [html, css] = await Promise.all([
+    readFile(path.join(ARTIFACTS_DIR, "open-pill.html"), "utf8"),
+    readFile(path.join(ARTIFACTS_DIR, "open-pill.css"), "utf8"),
+  ]);
+  return { html, css };
+}
+
+export const COMPUTER_SLEEP_LABELS = {
+  zh: { title: "电脑预览已关闭", wake: "恢复预览", waking: "正在恢复预览…", open: "打开", sleep: "休眠", sleepHint: "仅关闭预览，Bot 继续运行" },
+  en: { title: "Computer preview is off", wake: "Show preview", waking: "Restoring preview…", open: "Open", sleep: "Sleep preview", sleepHint: "Hide preview; Bots keep running" },
+};
+
+export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, openPillHtml) {
+  return `
+/* grok-node computer sleep overlay + hover pill — official 0.70.2 exports. */
+(function(){
+  if(typeof window!=='object'||window.__rCompSleep)return;window.__rCompSleep=!0;
+  var STAGE_HTML=${JSON.stringify(officialHtml)};
+  var SHAPE_SVGS=${JSON.stringify(shapeSvgs)};
+  var OPEN_PILL=${JSON.stringify(openPillHtml)};
+  var ZH=(navigator.language||'').toLowerCase().indexOf('zh')===0;
+  var L=${JSON.stringify(COMPUTER_SLEEP_LABELS)}[ZH?'zh':'en'];
+  var IDS={overlay:'rcompsleep-stage',wake:'rcompsleep-wake',pill:'rcompsleep-pill',pillSleep:'rcompsleep-pill-sleep'};
+  function bridge(){var c=window.desktop&&window.desktop.computer;return c!=null&&typeof c.getSleepState==='function'?c:null}
+  function pool(){return document.querySelector('.sand-box-vnc-pool')}
+  function previewFrame(host){return host.closest('.sand-computer-preview__frame')||host}
+
+  // --- Shape resolution: reuse the entry chunk's own Cee (palette+fallback) via fiber ---
+  function currentBotShape(){
+    var row=document.querySelector('.sand-agent-item[data-active],[data-agent-id][data-active]');
+    if(row==null)return 'blob';
+    var fiber=null;
+    for(var k of Object.getOwnPropertyNames(row)){if(k.indexOf('__reactFiber$')===0){fiber=row[k];break;}}
+    for(var node=fiber,hops=0;node!=null&&hops<16;node=node.return,hops++){
+      var props=node.memoizedProps;
+      if(props==null||typeof props!=='object')continue;
+      for(var p in props){
+        var v=props[p];
+        if(v!=null&&typeof v==='object'&&!Array.isArray(v)&&typeof v.avatarShape==='string'){
+          return SHAPE_SVGS[v.avatarShape]!=null?v.avatarShape:'blob';
+        }
+      }
+    }
+    return 'blob';
+  }
+  function swapMascotShape(stage){
+    var shape=currentBotShape();
+    var svg=SHAPE_SVGS[shape];
+    if(svg==null)return;
+    var mark=stage.querySelector('.sand-grok-bot-mark');
+    if(mark==null)return;
+    // Replace the inner SVG area (keep the mark wrapper and its CSS var --grok-bot-ink)
+    var container=mark.querySelector('span[style*="inline-block"]');
+    if(container!=null){container.innerHTML='<span style="position:absolute;left:50%;top:50%;width:100%;height:100%;transform:translate(-50%,-50%);pointer-events:none;">'+svg+'</span>';}
+  }
+
+  // --- Overlay ---
+  function labels(mode){return STAGE_HTML.replace('{{TITLE}}',mode==='waking'?L.waking:L.title).replace('{{WAKE}}',L.wake)}
+  function removeOverlay(){
+    var el=document.getElementById(IDS.overlay);
+    if(el!=null&&el.parentNode!=null){el.parentNode.removeAttribute('data-preview-asleep');el.parentNode.removeChild(el)}
+    var host=pool();if(host!=null){host.removeAttribute('data-preview-asleep');previewFrame(host).removeAttribute('data-preview-asleep')}
+  }
+  function mountOverlay(mode){
+    removeOverlay();
+    var host=pool();
+    if(host==null)return;
+    host.insertAdjacentHTML('beforeend',labels(mode));
+    var stage=host.lastElementChild;
+    if(stage==null||stage.getAttribute('data-stage')!=='asleep'){removeOverlay();return}
+    stage.id=IDS.overlay;
+    host.setAttribute('data-preview-asleep','true');
+    previewFrame(host).setAttribute('data-preview-asleep','true');
+    stage.addEventListener('click',function(event){event.stopPropagation()});
+    swapMascotShape(stage);
+    var wake=stage.querySelector('button');
+    if(wake!=null){
+      wake.id=IDS.wake;
+      wake.addEventListener('click',function(event){
+        event.stopPropagation();
+        var b=bridge();if(b==null)return;
+        wake.disabled=!0;
+        var title=stage.querySelector('[data-stage-words]>span');
+        if(title!=null)title.textContent=L.waking;
+        b.wake().then(function(state){if(state==='awake')removeOverlay();else wake.disabled=!1}).catch(function(){wake.disabled=!1;if(title!=null)title.textContent=L.title});
+      });
+    }
+  }
+
+  // --- Hover pill (official openPill + our Sleep button) ---
+  var pillVisible=!1;
+  function removePill(){var el=document.getElementById(IDS.pill);if(el!=null&&el.parentNode!=null)el.parentNode.removeChild(el);pillVisible=!1}
+  function mountPill(){
+    removePill();
+    var host=pool();
+    if(host==null)return;
+    var wrap=document.createElement('div');
+    wrap.id=IDS.pill;
+    wrap.style.cssText='position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:50;display:flex;flex-direction:column;align-items:center;gap:4px;';
+    // Official openPill button
+    var pillHtml=OPEN_PILL.replace(/ 打开| Open/,L.open);
+    wrap.innerHTML=pillHtml;
+    wrap.style.setProperty('--sand-computer-open-reveal','1');
+    var open=wrap.querySelector('button');
+    if(open!=null){
+      open.style.position='static';open.style.inset='auto';open.style.zIndex='auto';
+      var openLabel=open.querySelector('span');
+      if(openLabel!=null&&openLabel.lastChild!=null&&openLabel.lastChild.nodeType===3)openLabel.lastChild.textContent=L.open;
+      open.setAttribute('aria-label',L.open);
+      open.addEventListener('click',function(event){
+        event.stopPropagation();
+        var original=previewFrame(host).querySelector(':scope > .sand-computer-preview__open');
+        if(original!=null&&original!==open)original.click();
+      });
+    }
+    // Our Sleep button below (styled to match)
+    var sleep=document.createElement('button');
+    sleep.id=IDS.pillSleep;
+    sleep.type='button';
+    sleep.textContent=L.sleep;
+    sleep.title=L.sleepHint;
+    sleep.style.cssText='border:none;border-radius:9999px;padding:6px 14px;font-size:12px;font-weight:420;cursor:pointer;background:rgba(245,245,245,.08);color:#f5f5f5;backdrop-filter:blur(8px);';
+    sleep.addEventListener('click',function(event){
+      event.stopPropagation();
+      var b=bridge();if(b==null)return;
+      sleep.disabled=!0;
+      b.sleep().then(function(state){removePill();if(state==='asleep')mountOverlay('asleep')}).catch(function(){sleep.disabled=!1});
+    });
+    wrap.appendChild(sleep);
+    host.appendChild(wrap);
+    pillVisible=!0;
+  }
+
+  // --- Pool hover handlers ---
+  function bindHover(){
+    var lastPool=null;
+    function attach(host){
+      if(host===lastPool)return;
+      if(lastPool!=null){lastPool.removeEventListener('pointerenter',onEnter);lastPool.removeEventListener('pointerleave',onLeave);lastPool.removeEventListener('focusin',onEnter);lastPool.removeEventListener('focusout',onLeave)}
+      lastPool=host;
+      if(host!=null){host.addEventListener('pointerenter',onEnter);host.addEventListener('pointerleave',onLeave);host.addEventListener('focusin',onEnter);host.addEventListener('focusout',onLeave)}
+    }
+    function onEnter(){
+      if(document.getElementById(IDS.overlay)!=null)return; // no pill while asleep
+      if(!pillVisible)mountPill();
+    }
+    function onLeave(e){
+      if(e.relatedTarget&&e.currentTarget.contains(e.relatedTarget))return;
+      removePill();
+    }
+    return function(){var host=pool();attach(host==null?null:previewFrame(host))};
+  }
+  var rebindHover=bindHover();
+
+  // --- Tick ---
+  function tick(){
+    var b=bridge();
+    if(b==null)return;
+    var host=pool();
+    if(host==null){removeOverlay();removePill();return}
+    rebindHover();
+    b.getSleepState().then(function(state){
+      if(state==='asleep'){
+        removePill();
+        var current=document.getElementById(IDS.overlay);
+        if(current==null)mountOverlay('asleep');
+      }else if(state==='awake'){
+        removeOverlay();
+      }
+    }).catch(function(){});
+  }
+  setInterval(tick,2500);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(tick,800)});
+  else setTimeout(tick,800);
+})();
+`;
+}
+
+/** Tokens the official rules reference that 0.18 doesn't define; scoped to the preview controls. */
+export const COMPUTER_SLEEP_TOKEN_SHIMS = Object.freeze({
+  "--sand-bg-pane": "#161616",
+  "--sand-bg-secondary": "rgba(245,245,245,.04)",
+  "--sand-bg-secondary-hover": "rgba(245,245,245,.08)",
+  "--sand-bg-secondary-disabled": "rgba(245,245,245,.02)",
+  "--sand-border-focus-primary": "#1e86fc",
+  "--sand-border-tertiary-translucent": "rgba(28,28,28,.08)",
+  "--sand-letter-spacing-sm": "0em",
+  "--sand-letter-spacing-xs": "0em",
+  "--sand-line-height-sm": "18px",
+  "--sand-line-height-xs": "16px",
+});
+
+/** Official rules plus the two host-side additions the official frame already had. */
+export function computerSleepStyles(officialCss) {
+  const scope = ":is(#rcompsleep-stage,#rcompsleep-pill)";
+  const shims = scope + "{" + Object.entries(COMPUTER_SLEEP_TOKEN_SHIMS).map(([token, value]) => `${token}:${value};`).join("") + "}";
+  const window = new Window();
+  let scopedCss;
+  try {
+    const sheet = new window.CSSStyleSheet();
+    sheet.replaceSync(officialCss);
+    function scopedRules(rules) {
+      return Array.from(rules, rule => {
+        if (typeof rule.selectorText === "string") {
+          const pseudo = rule.selectorText.match(/:{1,2}(?:before|after|first-letter|first-line)$/)?.[0] ?? "";
+          const selector = pseudo === "" ? rule.selectorText : rule.selectorText.slice(0, -pseudo.length);
+          if (/::{0,1}(?:before|after|first-letter|first-line)\b/.test(selector) || (pseudo !== "" && selector.includes(","))) {
+            throw new Error(`Unsupported preview pseudo-element selector: ${rule.selectorText}`);
+          }
+          return `${scope}:is(${selector})${pseudo},${scope} :is(${selector})${pseudo}{${rule.style.cssText}}`;
+        }
+        if (rule.cssRules != null && rule.type !== window.CSSRule.KEYFRAMES_RULE) {
+          return rule.cssText.slice(0, rule.cssText.indexOf("{") + 1) + scopedRules(rule.cssRules) + "}";
+        }
+        return rule.cssText;
+      }).join("\n");
+    }
+    scopedCss = scopedRules(sheet.cssRules);
+  } finally {
+    window.close();
+  }
+  return shims + "\n" + scopedCss + `
+.sand-box-vnc-pool[data-preview-asleep="true"]>:not(#rcompsleep-stage){visibility:hidden}
+.sand-computer-preview__frame[data-preview-asleep="true"]>.sand-computer-preview__open{visibility:hidden}
+#rcompsleep-stage{z-index:60;pointer-events:auto}
+#rcompsleep-pill{pointer-events:auto}
+#rcompsleep-pill button{pointer-events:auto}
+#rcompsleep-pill-sleep:hover{background:rgba(245,245,245,.14)!important}
+#rcompsleep-pill-sleep:disabled{cursor:default;opacity:.6}
+`;
+}
+
+/** Tokens the grok-node additions consume. */
+export const COMPUTER_SLEEP_CSS_TOKENS = ["--sand-bg-elevated", "--sand-border-default", "--sand-fill-ghost-hover", "--sand-text-secondary"];

@@ -477,6 +477,12 @@ export function createDesktopPreloadBridge(options: {
         migrateFromLocalStorage: (entries: readonly unknown[]) => ipc.invoke(CLIENT_PERSISTENCE_CHANNELS.migrate, { entries }),
       },
     },
+    computer: {
+      // 电脑休眠/唤醒 (computer sleep/wake): the overlay in the renderer drives these.
+      getSleepState: () => edge("getComputerSleepState"),
+      sleep: () => edge("sleepComputer"),
+      wake: () => edge("wakeComputer"),
+    },
     update: {
       getStatus: () => edge("getUpdateStatus"),
       check: () => edge("checkForUpdates"),

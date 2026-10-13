@@ -14,6 +14,8 @@ import { isSandBoxRuntime } from "../shared/box-runtime.js";
 import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_MAC_FORWARDER_PORT, effortSupportedByModel, isOpenRouterProxyMode, listOpenRouterProxyModels, normalizeOpenRouterReasoningEffort, openRouterEffortOptionsFor, readOpenRouterModelReasoning, probeOpenRouterChannel, resolveOpenRouterBaseUrl } from "../shared/node/openrouter-proxy.js";
 import { mergeOpenRouterChannelStatus, normalizeOpenRouterChannelStatus } from "../shared/openrouter-channel-status.js";
 import { getLocalDockerStatus, probeLocalDockerRelay, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
+import { createComputerPreviewController } from "./computer-sleep.js";
+import type { ComputerPreviewController } from "./computer-sleep.js";
 
 export const MAIN_EDGE_UNSERVED = "main/unserved-method";
 export const MAIN_EDGE_UPDATE_UNAVAILABLE = "main/update-unavailable";
@@ -74,6 +76,7 @@ export interface MainEdgeDeps {
   readonly platform: NodeJS.Platform;
   readonly delay?: (milliseconds: number) => Promise<void>;
   readonly detectTimeZone?: () => string | null | undefined;
+  readonly computerPreview?: ComputerPreviewController;
 }
 
 async function mainAgentRequest(deps: MainEdgeDeps, method: "getMainAgent" | "setMainAgent" | "ensureDefaultMainAgent", args: UnknownRecord): Promise<UnknownRecord> {
@@ -116,6 +119,7 @@ function parseAgentModel(value: unknown, requireNonWhitespaceId: boolean): { mod
 }
 
 export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
+  const computerPreview = deps.computerPreview ?? createComputerPreviewController();
   const handlers: HandlerMap = {
     getUpdateStatus: () => invoke(updateService(deps), "getStatus"),
     checkForUpdates: () => invoke(updateService(deps), "checkForUpdates", { trigger: "explicit" }),
@@ -165,6 +169,9 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     // setHostSettings, which refuses it while the gate is off (upstream's admission split).
     getHostBotColorInChat: async () => (await deps.readHostSettingsFromBox()).botColorInChatEnabled === true,
     setHostBotColorInChat: (raw) => echo(deps, "botColorInChatEnabled", req(raw).enabled === true, "the accent setting"),
+    getComputerSleepState: async () => computerPreview.getState(),
+    sleepComputer: async () => computerPreview.sleep(),
+    wakeComputer: async () => computerPreview.wake(),
     // Main bot (主 Bot) — the three-method shape the official desktop facade uses
     // (getGrokBotUserRuntimeSettings / setGrokBotMainAgent / ensureGrokBotDefaultMainAgent).
     // `get` never needs the gate; `set` is refused by the HOST while the gate is off, which
