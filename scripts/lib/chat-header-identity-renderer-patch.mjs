@@ -86,6 +86,30 @@ import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { DISPLAY_PROPS } from "./i18n-patch-engine.mjs";
+import { parse } from "acorn";
+
+export const IDENTITY_HOVER_CSS = `
+.sand-chat-header__identity { --sand-island-reveal:0; --sand-island-tint:0; position:relative; isolation:isolate; }
+.sand-chat-header__identity:hover:not(:disabled), .sand-chat-header__identity:focus-visible { --sand-island-reveal:1; --sand-island-tint:1; }
+.sand-chat-header__identity[aria-expanded="true"], .sand-chat-header__identity[aria-expanded="true"]:hover:not(:disabled), .sand-chat-header__identity[aria-expanded="true"]:focus-visible { --sand-island-reveal:0; }
+.sand-chat-header__identity::before { content:""; position:absolute; inset:0; border-radius:inherit; background-color:var(--sand-bg-hover,var(--sand-fill-ghost-hover)); opacity:var(--sand-island-tint); pointer-events:none; z-index:-1; transition:opacity .12s ease; }
+.sand-chat-header__identity-chevron { display:inline-flex; align-items:center; flex-shrink:0; overflow:hidden; color:var(--sand-text-tertiary); max-width:calc(var(--sand-island-reveal) * 8px); margin-inline-start:calc(var(--sand-island-reveal) * 8px - 8px); opacity:var(--sand-island-reveal); transition:max-width .14s cubic-bezier(.22,1,.36,1),opacity .14s cubic-bezier(.22,1,.36,1),margin-inline-start .14s cubic-bezier(.22,1,.36,1); }
+.sand-chat-header__identity-chevron > span { margin-inline-start:-2px; transform:translate(calc((1 - var(--sand-island-reveal)) * -6px*var(--sand-inline-sign,1))); transition:transform .14s cubic-bezier(.22,1,.36,1); }
+@media (prefers-reduced-motion:reduce) { .sand-chat-header__identity::before, .sand-chat-header__identity-chevron, .sand-chat-header__identity-chevron > span { transition-property:none; } }
+`;
+const IDENTITY_HOVER_COMPONENT = String.raw`
+function RChHoverChevron(){return p.jsx("span",{"aria-hidden":!0,className:"sand-chat-header__identity-chevron",children:p.jsx("span",{style:{fontFamily:"cursor-icons",fontSize:12,lineHeight:1,"--icon-weight":600},children:"\ueab6"})})}
+`;
+
+export function patchOriginalChatHeaderHover(source) {
+  const node = parse(source, { sourceType:"module",ecmaVersion:"latest" }).body.find(n=>n.type==="FunctionDeclaration"&&n.id.name==="aSn");
+  if (!node) throw new Error("Chat header for hover patch missing");
+  const body = source.slice(node.start,node.end);
+  const anchor='type:"button",children:[xe,Ne]';
+  const patchedBody=replaceExactlyOnce(body,anchor,'type:"button",children:[xe,Ne,p.jsx(RChHoverChevron,{})]',"chat header hover chevron");
+  const style=`;(()=>{if(document.getElementById("sand-chat-header-hover-style"))return;const s=document.createElement("style");s.id="sand-chat-header-hover-style";s.textContent=${JSON.stringify(IDENTITY_HOVER_CSS)};document.head.append(s)})();`;
+  return source.slice(0,node.start)+patchedBody+source.slice(node.end)+"\n"+IDENTITY_HOVER_COMPONENT+style;
+}
 
 const COMPONENT_ANCHOR = "function aSn(n){const e=he.c(109),";
 
@@ -307,7 +331,8 @@ export function patchOriginalChatHeaderIdentity(source) {
   patched = replaceExactlyOnce(patched, TOOLBAR_FILL_0_BEFORE, TOOLBAR_FILL_0_AFTER, "chat toolbar opaque fill (variant 0)");
   patched = replaceExactlyOnce(patched, TOOLBAR_FILL_1_BEFORE, TOOLBAR_FILL_1_AFTER, "chat toolbar opaque fill (variant 1)");
   patched = replaceExactlyOnce(patched, TOOLBAR_DIVIDER_BEFORE, TOOLBAR_DIVIDER_AFTER, "chat toolbar hairline suppression");
-  return replaceExactlyOnce(patched, IDENTITY_AVATAR_BEFORE, IDENTITY_AVATAR_AFTER, "chat header identity avatar size");
+  patched = replaceExactlyOnce(patched, IDENTITY_AVATAR_BEFORE, IDENTITY_AVATAR_AFTER, "chat header identity avatar size");
+  return patchOriginalChatHeaderHover(patched);
 }
 
 /**
@@ -423,6 +448,15 @@ export async function applyOriginalRendererChatHeaderIdentity({ stageRoot }) {
       },
     ],
     features: ["chat-header-identity-centre", "chat-header-identity-open-details"],
+    hoverReference: {
+      version: "0.70.2",
+      member: "dist/renderer/assets/index-CjjO5fU0.js",
+      function: "jU",
+      byteRange: [1564010, 1574783],
+      asarSha256: "8dd7b6c4a58439d626a9a7b3766982b7c725db2bc1f6ff68a29fc1ec62ca4cf7",
+      behavior: ["hover/focus background tint", "hover/focus chevron reveal", "open details hide chevron", "reduced-motion disables transitions"],
+      adaptations: ["pinned icon font", "Node hover token fallback"],
+    },
     transformations: [
       "insert-chat-header-identity-styles",
       "chat-header-root-three-column-grid",

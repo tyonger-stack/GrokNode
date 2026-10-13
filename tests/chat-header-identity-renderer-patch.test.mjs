@@ -17,6 +17,7 @@ import {
   HEADER_CLASS_NAMES,
   HEADER_CUSTOM_PROPERTIES,
   patchOriginalChatHeaderIdentity,
+  IDENTITY_HOVER_CSS,
 } from "../scripts/lib/chat-header-identity-renderer-patch.mjs";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
@@ -45,6 +46,16 @@ const IDENTITY_OPEN_DETAILS =
   '"aria-label":"View conversation details",className:Z,onClick:()=>RChOpenInfo(c,o,RChOpenOv),style:RChIdentity';
 const CONTROLS_IN_TAIL_CELL = 'j=p.jsxs("div",{className:ee,style:RChControls,children:[te,ne]})';
 const THREE_COLUMN_GRID = 'gridTemplateColumns:"minmax(0,1fr) auto minmax(0,1fr)"';
+
+test("identity hover retains the official tint and expandable chevron", { skip: pinnedSkip }, async () => {
+  const patched = patchOriginalChatHeaderIdentity(await readPinnedChunk());
+  assert.ok(patched.includes('children:[xe,Ne,p.jsx(RChHoverChevron,{})]'));
+  assert.ok(patched.includes('.sand-chat-header__identity:hover:not(:disabled)'));
+  assert.ok(patched.includes('--sand-island-reveal:1'));
+  assert.ok(patched.includes('max-width:calc(var(--sand-island-reveal) * 8px)'));
+  assert.ok(IDENTITY_HOVER_CSS.includes('.sand-chat-header__identity[aria-expanded="true"]'));
+  assert.ok(patched.includes('@media (prefers-reduced-motion:reduce)'));
+});
 
 /** Pull the injected handler back out of the patched chunk so it can be exercised. */
 function extractOpenInfoHandler(patched) {
