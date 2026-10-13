@@ -160,23 +160,34 @@ export function reduceGrokBotMainAgentChooser(
 
 /**
  * Whether one specific agent is the user's main bot — the predicate behind BOTH of the
- * official app's main-agent UI affordances, ported from official 0.66.0
- * (renderer index-ZYxf-aBb.js, sidebar context-menu component xA):
+ * official app's main-agent UI affordances. Re-verified byte-for-byte against the
+ * installed official 0.68.1 on 2026-10-11 (renderer index-ByKx0M82.js, function lE
+ * @423239; helpers resolved through index.eager-app-aiFqpW8R.js):
  *
- *     const y = F3();                                    // the main_agent_id pointer
- *     const x = U9(m, y);                                // other candidates
- *     const v = y.kind === "known" && y.agentId === n.id && x.length === 0;
- *     // … later, in the same menu:
- *     ie = v ? <bA onReplace={...} />                    // 「替换为其他 Bot」, icon arrow-swap
- *            : x.length > 0 ? <kA .../> : null;
+ *     const m = rowTargets(agent.id);                   // this ROW's target ids
+ *     const v = Sw(m, pointer);                         // Ixe: m minus the main agent id
+ *     const j = pointer.kind === "known" && pointer.agentId === n.id && v.length === 0;
+ *     ne = j ? <aE onReplace={...}/>                    // 「替换为其他 Bot」, arrow-swap
+ *        : v.length > 0 ? <sE targets={v} .../>         // delete, targets = v
+ *        : null;
  *
- * and the sidebar row takes the same flag as an `isMain` prop (row component J4), which
- * appends 「主 Bot」 to the row's accessible name and sets the avatar corner marker to
- * "main" (accessibility-name builder DI; marker resolver s1e).
+ * and the sidebar row takes `Iw() === s.id` as its `isMain` prop (row component kE
+ * @445075), which appends 「主 Bot」 to the row's accessible name and sets the avatar
+ * corner marker to "main" (kP @242361; vpe @241657).
  *
- * Note the `otherCandidateCount === 0` clause: upstream shows 「替换为其他 Bot」 only while
- * this agent is the main one AND there is nothing else to replace it with — that is why
- * the same slot renders a batch-delete item instead when other candidates exist.
+ * NOTE the scope of `otherCandidateCount`, corrected against 0.68.1: `v` is the ROW's
+ * targets minus the main agent id — row-scoped deletable targets, NOT the number of
+ * other bots in the roster. For a single-select row, `v` is empty exactly when the row
+ * IS the main bot (so 「替换为其他 Bot」 shows precisely then); a row that additionally
+ * targets other agents deletes those instead, sparing the main bot. An UNKNOWN pointer
+ * makes `v` empty for every row, and the official menu then renders NEITHER item — the
+ * injected renderer block reproduces that rule (it renders nothing until the pointer
+ * resolves). Do not "fix" the count to a global roster count: that inverts the official
+ * decision for the main row.
+ *
+ * The 0.66-era minified names quoted in older notes (U9/Sw/xA/bA/kA, DI/s1e, a3e/Zge)
+ * are chunk-scoped and have all drifted by 0.68.1 — treat any of them as historical
+ * pointers only, never as anchors.
  *
  * Do not confuse this with pinning. Pinning is a separate, already-ported concept in this
  * build (pinnedAgentIds, rendered by the 0.18 baseline with its own pin / pin-slash menu

@@ -13,9 +13,9 @@
 //   * the agent-item splice quietly breaking memoization. The call site is a React
 //     Compiler cache; swapping the element's component while leaving the dependency list
 //     pointing at the old one is the kind of change that only shows up as stale rows.
-//   * the marker overriding the running/attention corner. Official 0.66's `s1e` makes the
-//     main marker the LAST fallback corner, so a working bot must still show its own
-//     marker.
+//   * the marker overriding the running/attention corner. Official 0.68.1's `vpe` makes the
+//     main marker the LAST fallback corner (in every layout, collapsed included), so a
+//     working bot must still show its own marker.
 //   * the dialog being driven by a prop the 0.18 kit does not read. `Gt.Root` is a
 //     passthrough, so `onClose` is accepted silently and does nothing — the dialog is
 //     then un-dismissable, because it is mounted with a hard-coded `open:true`.
@@ -361,12 +361,14 @@ test("the agent item really is called with the props the wrapper reads", { skip:
   }
 });
 
-test("the main marker yields to the corner resolver, as 0.66's s1e does", { skip: pinnedSkip }, async () => {
+test("the main marker yields to the corner resolver, as 0.68.1's vpe does", { skip: pinnedSkip }, async () => {
   const patched = await patchedChunk();
   assert.ok(patched.includes("const corner=hnt({layout:props.layout,marker:props.marker,isWorking:props.isWorking,isActivityNamed:props.isPreviewActivity});"),
     "the wrapper must reuse the bundle's own corner resolver");
-  assert.ok(patched.includes("const show=main&&props.layout!=='collapsed'&&corner.corner===null;"),
-    "the main marker must be the LAST fallback corner, never an override");
+  assert.ok(patched.includes("const show=main&&corner.corner===null;"),
+    "the main marker must be the LAST fallback corner in every layout, never an override — 0.68.1's vpe reaches main in collapsed too");
+  assert.ok(!patched.includes("props.layout!=='collapsed'&&corner"),
+    "collapsed must NOT be excluded: official 0.68.1 kpe gives collapsed its own 12px gpe box");
   assert.ok(patched.includes("main=state.loaded&&state.agentId===id;"),
     "an unresolved main id must not badge an arbitrary row");
   // The resolver's real signature, from the bundle, must be the one being called.
@@ -433,12 +435,76 @@ test("the replacement row uses the real menu and icon primitives", { skip: pinne
   const patched = await patchedChunk();
   assert.ok(patched.includes("ee=p.jsx(RMainDeleteOrReplace,{batchCount:r,id:t.id,onRequestDelete:A})"),
     "the delete slot must be taken over, not duplicated");
+  assert.ok(patched.includes("if(!state.loaded)return null;"),
+    "an unresolved pointer must render NEITHER replace nor delete — 0.68.1's Sw returns [] while unknown");
   assert.ok(patched.includes("return p.jsx(mcn,{batchCount:props.batchCount,id:props.id,onRequestDelete:props.onRequestDelete});"),
     "a non-main row must still get the original delete menu");
   assert.ok(patched.includes("p.jsx(It.Item,{leading:p.jsx(bt,{name:'arrow-swap',size:'base'})"),
     "the replacement row must use the shipped menu item and icon");
   assert.ok(patched.includes("(props.batchCount??1)===1"),
     "the replacement row must be replaced by delete in a multi-select, as in 0.66");
+});
+
+test("the replace/delete decision table matches 0.68.1's lE for single-select rows", () => {
+  // Reconstructed from the injected predicate: v (row targets minus the main id) is empty
+  // exactly when a single-select row IS the main bot; unknown pointers hide both items.
+  const decide = (state, props) => {
+    if (!state.loaded) return "neither";
+    if (state.agentId === props.id && (props.batchCount ?? 1) === 1) return "replace";
+    return "delete";
+  };
+  assert.equal(decide({ loaded: false, agentId: null }, { id: "bot-1", batchCount: 1 }), "neither",
+    "unknown pointer: a possibly-main bot must not be deletable (official renders neither)");
+  assert.equal(decide({ loaded: true, agentId: "bot-1" }, { id: "bot-1", batchCount: 1 }), "replace",
+    "known pointer, this row is the main bot: v=[] shows 「替换为其他 Bot」");
+  assert.equal(decide({ loaded: true, agentId: "bot-1" }, { id: "bot-2", batchCount: 1 }), "delete",
+    "known pointer, another row: v=[id] shows delete");
+  assert.equal(decide({ loaded: true, agentId: null }, { id: "bot-2", batchCount: 1 }), "delete",
+    "known+null pointer: every row is deletable");
+});
+
+test("the collapsed rail gets the official 12px badge, not the expanded one", () => {
+  assert.ok(MAIN_AGENT_STYLE.includes(".r-main-avatar[data-layout=collapsed]>.r-main-badge{width:12px;height:12px}"),
+    "collapsed badge box must be 12px — official 0.68.1 kpe's gpe");
+  assert.ok(MAIN_AGENT_STYLE.includes(".r-main-avatar[data-layout=collapsed]>.r-main-badge>svg{width:6px;height:6px}"),
+    "collapsed star glyph must be 6px — official 0.68.1 bpe's collapsed icon size");
+});
+
+test("the main row's accessible name is built like 0.68.1's kP, not a blind override", () => {
+  // kP (@242361): normalize whitespace, then APPEND main / marker / working in that
+  // order. The wrapper only rebuilds the label for the main row and leaves every other
+  // row's caller-supplied aria-label untouched.
+  const source = MAIN_AGENT_COMPONENTS;
+  assert.ok(source.includes("const label=main?RMainAccessibleName(props):rest['aria-label'];"),
+    "only the main row's label is rebuilt; other rows keep the caller's aria-label");
+  assert.ok(source.includes("String(props.name??'').replace(/\\s+/g,' ').trim()"),
+    "the name must be whitespace-normalized exactly as kP does");
+  // The emitted block goes through String.raw, so the regex must survive verbatim.
+  assert.ok(source.includes(".replace(/\\s+/g,' ')") && !source.includes("/\\\\s+/"),
+    "String.raw keeps backslashes literal — a doubled backslash would match a literal '\\s' and never normalize");
+  const build = new Function("RMainT", "props",
+    // The RAW text keeps keyword spacing; the body holds no braces of its own, so the
+    // first "}" after the signature closes it — [0] is exactly the body. (The dense form
+    // cannot be evaluated: it squeezes "return name" into "returnname".)
+    MAIN_AGENT_COMPONENTS.split("function RMainAccessibleName(props){")[1].split("}")[0]);
+  const zh = (_, chinese) => chinese;
+  assert.equal(build(zh, { name: "Grok Bot ", marker: null, isWorking: false }), "Grok Bot, 主 Bot",
+    "trailing whitespace is trimmed before the label is appended");
+  assert.equal(build(zh, { name: "A\n  B", marker: "blocked", isWorking: true }), "A B, 主 Bot, 需要注意, 工作中",
+    "kP order: main first, then marker, then working");
+  assert.equal(build(zh, { name: "  ", marker: null, isWorking: false }), "主 Bot",
+    "an all-whitespace name yields the status alone, as kP's empty guard does");
+});
+
+test("only the forced chooser opens the agent after saving, as 0.68.1's KE/XE split does", () => {
+  assert.ok(MAIN_AGENT_COMPONENTS.includes("const wasForced=RMainView.forced;"),
+    "the forced flag must be read before the publish that resets it");
+  assert.ok(MAIN_AGENT_COMPONENTS.includes("if(wasForced)side.current.onOpenAgent(agentId);"),
+    "the replace picker closes without opening; only the forced chooser selects the agent");
+  const mutated = MAIN_AGENT_COMPONENTS.replace("if(wasForced)side.current.onOpenAgent(agentId);", "side.current.onOpenAgent(agentId);");
+  assert.notEqual(mutated, MAIN_AGENT_COMPONENTS, "sanity: the mutation applied");
+  assert.ok(!mutated.includes("if(wasForced)side.current.onOpenAgent(agentId);"),
+    "this is the regression: a replace-confirm yanking the user to another agent");
 });
 
 test("the sidebar wrapper keeps the original sidebar mounted", { skip: pinnedSkip }, async () => {
@@ -678,21 +744,41 @@ test("MUTATION: an unguarded i18n call breaks the whole sidebar", () => {
   assert.ok(!mutated.includes("typeof RLocT"), "and the guard is gone");
 });
 
-test("MUTATION: letting the main marker override the corner regresses 0.66's priority", () => {
+test("MUTATION: letting the main marker override the corner regresses the official priority", () => {
   const mutated = MAIN_AGENT_COMPONENTS.replace(
-    "main&&props.layout!=='collapsed'&&corner.corner===null",
-    "main&&props.layout!=='collapsed'",
+    "main&&corner.corner===null",
+    "main",
   );
   assert.notEqual(mutated, MAIN_AGENT_COMPONENTS, "sanity: the mutation applied");
   // The mutated predicate badges a working bot over its own running/attention marker.
   const show = (state, props) => {
     const main = state.loaded && state.agentId === props.id;
-    const corner = props.corner;
     return mutated.includes("&&corner.corner===null")
-      ? main && props.layout !== "collapsed" && corner === null
-      : main && props.layout !== "collapsed";
+      ? main && props.corner === null
+      : main;
   };
   const workingRow = { id: "bot-1", layout: "expanded", corner: "running" };
   assert.equal(show({ loaded: true, agentId: "bot-1" }, workingRow), true,
     "this is what dropping the corner guard buys: the main badge covers the running marker");
+});
+
+test("MUTATION: re-excluding collapsed drops the official collapsed badge", () => {
+  const mutated = MAIN_AGENT_COMPONENTS.replace(
+    "const show=main&&corner.corner===null;",
+    "const show=main&&props.layout!=='collapsed'&&corner.corner===null;",
+  );
+  assert.notEqual(mutated, MAIN_AGENT_COMPONENTS, "sanity: the mutation applied");
+  // Official 0.68.1 (vpe + kpe): non-expanded layouts fall back to main, and collapsed
+  // gets its own 12px box — so a collapsed main row with no marker and no activity must
+  // still show the badge.
+  const show = (main, layout, corner) =>
+    mutated.includes("props.layout!=='collapsed'&&corner.corner===null")
+      ? main && layout !== "collapsed" && corner === null
+      : main && corner === null;
+  // Baseline (unmutated semantics): the collapsed main row keeps its badge…
+  assert.equal(MAIN_AGENT_COMPONENTS.includes("const show=main&&corner.corner===null;"), true,
+    "sanity: the shipped predicate has no collapsed exclusion");
+  // …and this is exactly what the mutation costs — the official 12px gpe box goes dark.
+  assert.equal(show(true, "collapsed", null), false,
+    "re-excluding collapsed drops the official collapsed badge");
 });

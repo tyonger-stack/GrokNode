@@ -1,4 +1,26 @@
-// The main Bot renderer injection, ported from Grok Bot 0.66.0.
+// The main Bot renderer injection, ported from Grok Bot 0.66.0 and re-verified against
+// official 0.68.1 on 2026-10-11 (installed app.asar sha256 a4662991…; main chunk
+// index-ByKx0M82.js, evidence in the investigation directory). The 0.68.1 re-read confirmed
+// the port's shape and corrected three readings that the 0.66 notes had drifted on:
+//
+//   * the official replace/delete decision (function lE @423239): `v = Sw(rowTargets,
+//     pointer)` is the ROW's targets minus the main agent id — row-scoped deletable
+//     targets, not global replacement candidates. `Sw` is `Ixe` in index.eager-app
+//     (@684814): `if (t.kind==="unknown") return []; return [...e].filter(s=>s!==agentId)`.
+//     A single-select row of the main bot therefore has v=[] and shows 「替换为其他 Bot」;
+//     any other row shows delete. An UNKNOWN pointer yields v=[] for every row, and the
+//     official menu then renders NEITHER item (a possibly-main bot is not offered deletion).
+//   * the official accessible-name builder kP (@242361) is dev-gated in production
+//     (`isDevBuild && agent.origin==="dev"`); production rows expose the main-bot status
+//     through the badge element's own role="img" aria-label (V8a0q9 「主 Bot」). kP itself
+//     normalizes whitespace and APPENDS main/marker/working in that order — it never
+//     stomps a caller label with a bare `name + ", 主 Bot"`.
+//   * the official corner resolver vpe (@241657) falls back to main in EVERY layout
+//     (non-expanded: marker ?? activity ?? main; expanded: running ?? main), and kpe
+//     (@237042) gives collapsed its own 12px box (`gpe`) with a 6px star — collapsed is
+//     NOT excluded. 0.18's own `hnt` is vpe minus isMain/workingDot, so appending the
+//     main badge when `corner.corner===null` reproduces the official precedence in all
+//     three layouts 0.18 ships.
 //
 // Everything below is bound to 0.18's own primitives rather than invented markup, because
 // the dialog reads as "stock" only when it uses the same shell the rest of the app uses:
@@ -46,6 +68,10 @@ export const MAIN_AGENT_STYLE = `
 .r-main-avatar{display:inline-flex;position:relative;align-items:center;justify-content:center}
 .r-main-badge{position:absolute;right:-2px;bottom:-2px;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:2px solid var(--sand-bg-elevated);border-radius:50%;background:var(--sand-fill-warning);color:var(--sand-text-on-color);pointer-events:none}
 .r-main-avatar[data-layout=pinned]>.r-main-badge{width:20px;height:20px}
+/* Collapsed rail keeps the badge at official 0.68.1's collapsed size: kpe's dedicated
+   "gpe" box is 12px with a 6px star (bpe collapsed icon), against the 16px/8px pinned box. */
+.r-main-avatar[data-layout=collapsed]>.r-main-badge{width:12px;height:12px}
+.r-main-avatar[data-layout=collapsed]>.r-main-badge>svg{width:6px;height:6px}
 
 /* Introduction (0.66's dP, step==="intro"): avatar, heading, one paragraph. The heading and
    copy are laid out here because 0.66's own rules for them are not among the 45 class names
@@ -136,13 +162,34 @@ function RMainStar(){return p.jsx('svg',{width:12,height:12,viewBox:'0 0 24 24',
 function RMainAgentItem(props){
   const state=RMainState(),{base:Base,...rest}=props,id=props['data-agent-id'],main=state.loaded&&state.agentId===id;
   const corner=hnt({layout:props.layout,marker:props.marker,isWorking:props.isWorking,isActivityNamed:props.isPreviewActivity});
-  const show=main&&props.layout!=='collapsed'&&corner.corner===null;
+  // 0.68.1's vpe falls back to main in every layout (collapsed included, via its own 12px
+  // gpe box), and only when the resolver has nothing stronger (marker, running) for the
+  // corner. 0.18's hnt is that resolver without isMain, so corner===null is exactly the
+  // official fallback slot.
+  const show=main&&corner.corner===null;
   const avatar=show?p.jsxs('span',{className:'r-main-avatar','data-layout':props.layout,children:[props.avatar,p.jsx('span',{className:'r-main-badge',role:'img','aria-label':RMainT('Main Bot','主 Bot'),children:p.jsx(RMainStar,{})})]}):props.avatar;
-  return p.jsx(Base,{...rest,avatar,...main?{'aria-label':props.name+', '+RMainT('Main Bot','主 Bot')}:{} });
+  // 0.68.1's kP (@242361): normalize the name, then append main / marker / working in
+  // that order. Only the main-bot row gets a rebuilt label; every other row keeps the
+  // caller's aria-label untouched.
+  const label=main?RMainAccessibleName(props):rest['aria-label'];
+  return p.jsx(Base,{...rest,avatar,...label===undefined?{}:{'aria-label':label}});
+}
+function RMainAccessibleName(props){
+  const name=String(props.name??'').replace(/\s+/g,' ').trim();
+  const parts=[RMainT('Main Bot','主 Bot')];
+  if(props.marker!=null)parts.push(props.marker==='blocked'?RMainT('Needs attention','需要注意'):RMainT('Unread activity','有未读活动'));
+  if(props.isWorking)parts.push(RMainT('Working','工作中'));
+  return name.length?name+', '+parts.join(', '):parts.join(', ');
 }
 function RMainDeleteOrReplace(props){
   const state=RMainState();
-  if(state.loaded&&state.agentId===props.id&&(props.batchCount??1)===1)return p.jsx(It.Item,{leading:p.jsx(bt,{name:'arrow-swap',size:'base'}),onSelect:()=>RMainPublish({dialog:'chooser',forced:false,error:null}),children:RMainT('Replace with different Bot','替换为其他 Bot')});
+  // 0.68.1's Sw returns [] while the pointer is unknown, and lE then renders NEITHER the
+  // replace nor the delete item: a row that might be the main bot must not be deletable
+  // on an unresolved pointer. Known pointers reproduce the official split below — for a
+  // single-select row, v (row targets minus the main id) is empty exactly when this row
+  // IS the main bot.
+  if(!state.loaded)return null;
+  if(state.agentId===props.id&&(props.batchCount??1)===1)return p.jsx(It.Item,{leading:p.jsx(bt,{name:'arrow-swap',size:'base'}),onSelect:()=>RMainPublish({dialog:'chooser',forced:false,error:null}),children:RMainT('Replace with different Bot','替换为其他 Bot')});
   return p.jsx(mcn,{batchCount:props.batchCount,id:props.id,onRequestDelete:props.onRequestDelete});
 }
 /* Ported from 0.66.0's picker (function cP). Its shape, verbatim:
@@ -168,9 +215,11 @@ function RMainFold(value){
   return String(value??'').toLocaleLowerCase().replaceAll('ς','σ');
 }
 function RMainCandidates({agents,current}){
-  // 0.66's rP(t,e): t.filter(n=>!n.isGroup&&!Ff(n)&&n.id!==e), where Ff is
-  // hr, i.e. viewerIsOwner===false. Groups and bots the user does not own are not
-  // selectable, and the current main Bot is excluded because it is already the main Bot.
+  // 0.68.1's UE (@530728): t.filter(n=>KY(n)&&n.id!==e), where KY is VLe
+  // (@718352 in index.eager-app): isGroup!==true && viewerIsOwner!==false &&
+  // visibility!=="team". The team term is dropped here because this local-only roster has
+  // no team visibility; groups and bots the user does not own stay excluded, and the
+  // current main Bot is excluded by id because it is already the main Bot.
   return agents.filter(agent=>!agent.isGroup&&agent.viewerIsOwner!==false&&agent.id!==current);
 }
 function RMainPicker({candidates,query,onQuery,picked,onPick}){
@@ -301,8 +350,12 @@ function RMainRoot({sidebar}){
     try{const bridge=window.desktop.agent,result=id===null?await bridge.ensureMainAgent():await bridge.setMainAgent(id),agentId=typeof result==='string'?result:result?.agentId;
       if(typeof agentId!=='string'||!agentId.length)throw new Error(result?.outcome==='tombstoned'?RMainT('The default main Bot was deleted. Choose an existing Bot.','默认主 Bot 已删除，请选择一个现有 Bot。'):id===null?RMainT("Couldn't set the primary Bot",'无法设置主 Bot'):RMainT("Couldn't replace the main Bot",'无法替换主 Bot'));
       const pins=await bridge.getPinnedAgents();if(Array.isArray(pins))await side.current.onSetPinned(pins);
+      // 0.68.1's two choosers part ways here: the replace picker (KE) only closes after
+      // mainAgent.set resolves, while the forced chooser (XE) selects the agent it landed
+      // on. RMainView.forced is read BEFORE the publish below resets it.
+      const wasForced=RMainView.forced;
       RMainPublish({loaded:true,agentId,dialog:null,forced:false,busy:false,error:null});++RMainRevision;
-      side.current.onOpenAgent(agentId);
+      if(wasForced)side.current.onOpenAgent(agentId);
     }catch(error){RMainPublish({busy:false,error:String(error?.message??error)});++RMainRevision}
   };
   return state.dialog?p.jsx(RMainDialog,{agents:sidebar.agents,mode:state.dialog,onSave:save}):null;
