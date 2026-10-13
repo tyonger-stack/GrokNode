@@ -36,6 +36,7 @@ import {
   electronMainBindingProvenancePath,
 } from "./electron-main-production-activation.mjs";
 import { applyOriginalRendererRouterPatch } from "./lib/router-renderer-patch.mjs";
+import { applyOriginalRendererLibraryStageClose } from "./lib/library-stage-close-renderer-patch.mjs";
 import { applyOriginalRendererSidebarTopBarSearch } from "./lib/sidebar-search-renderer-patch.mjs";
 import { applyOriginalRendererChatHeaderIdentity } from "./lib/chat-header-identity-renderer-patch.mjs";
 import { applyOriginalRendererActivityLabelVisibility } from "./lib/activity-label-visibility-renderer-patch.mjs";
@@ -289,6 +290,7 @@ export async function buildFidelityReconstructedAsar({
   const clean = await attachCompositionAudit(prepared);
   await overlayCleanDistribution(clean.outputRoot, { stageRoot, composition: clean.buildManifest.runtimeComposition });
   await applyOriginalRendererRouterPatch({ stageRoot });
+  await applyOriginalRendererLibraryStageClose({ stageRoot });
   // Must run after the renderer extension (it patches the same chunk) and before the
   // i18n passes (its "Search" label is localised by main-i18n's existing pair).
   await applyOriginalRendererSidebarTopBarSearch({ stageRoot });

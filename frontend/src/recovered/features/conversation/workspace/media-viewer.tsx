@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type { AttachmentBytesResult, AttachmentMedia } from "../../../contracts/desktop-bridge";
 import { attachmentBasename, formatAttachmentBytes, inferAttachmentKind, type AttachmentKind, type DraftAttachment } from "./model";
 import { PdfAttachmentViewer, type PdfBytesResolver } from "./pdf-viewer";
+import { TextAttachmentViewer } from "./text-viewer";
+import { DocxAttachmentViewer } from "./docx-viewer";
 import type { TranscriptAdjacency } from "./transcript-adjacency";
 
 // @evidence src/app/dist/renderer/assets/view-DPSBrvyV.js#byteOffset=0 (user-attachment media/file leaf)
@@ -34,6 +36,8 @@ type GalleryAttachment = DraftAttachment & UserAttachmentGalleryMetadata;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 5;
 const DRAG_THRESHOLD = 4;
+
+const DOCUMENT_KINDS: ReadonlySet<AttachmentKind> = new Set<AttachmentKind>(["markdown", "text", "document", "json"]);
 
 function isPreviewable(kind: AttachmentKind): boolean {
   return kind === "image" || kind === "video";
@@ -198,19 +202,20 @@ function MediaViewer({ attachments, startIndex, resolveMedia, onClose, restoreFo
   );
 }
 
-function MediaCard({ attachment, kind, media, loading, role, onOpen, onOpenPdf }: { attachment: GalleryAttachment; kind: AttachmentKind; media: AttachmentMedia | null; loading: boolean; role: "user" | "assistant"; onOpen?: (trigger: HTMLButtonElement) => void; onOpenPdf?: (trigger: HTMLButtonElement) => void }) {
+function MediaCard({ attachment, kind, media, loading, role, onOpen, onOpenPdf, onOpenDocument }: { attachment: GalleryAttachment; kind: AttachmentKind; media: AttachmentMedia | null; loading: boolean; role: "user" | "assistant"; onOpen?: (trigger: HTMLButtonElement) => void; onOpenPdf?: (trigger: HTMLButtonElement) => void; onOpenDocument?: (trigger: HTMLButtonElement) => void }) {
   const label = attachment.name || attachmentBasename(attachment.path);
   const attachmentLabel = role === "assistant" ? "Agent attachment" : "User attachment";
   const userMediaStyle = attachment.sourceKind === "user-attachment" ? { maxWidth: 320 } : undefined;
   if (media?.kind === "image" && onOpen != null) return <button aria-label="Media preview" className="sand-attachment" data-attachment-label={attachmentLabel} onClick={(event) => onOpen(event.currentTarget)} type="button"><img alt={label} className="sand-attachment__image" draggable={false} height={attachment.height ?? undefined} src={media.dataUrl} style={userMediaStyle} width={attachment.width ?? undefined} /></button>;
   if (media?.kind === "video" && onOpen != null) return <button aria-label="Media preview" className="sand-attachment" data-attachment-label={attachmentLabel} onClick={(event) => onOpen(event.currentTarget)} type="button"><video aria-label={label} className="sand-attachment__video" height={attachment.height ?? undefined} muted preload="metadata" src={media.src} style={userMediaStyle} width={attachment.width ?? undefined} /></button>;
   if (media?.kind === "audio") return <audio aria-label={label} className="sand-attachment" data-attachment-label={attachmentLabel} controls preload="metadata" src={media.src} />;
+  if (DOCUMENT_KINDS.has(kind) && onOpenDocument != null) return <button aria-label={`Open ${label}`} className="sand-file-attachment-chip sand-message-attachment" data-attachment-label={attachmentLabel} data-kind={kind} onClick={(event) => onOpenDocument(event.currentTarget)} type="button" title={attachment.path}><span aria-hidden="true">▤</span><span><strong>{label}</strong><small>{kind}{attachment.size == null ? "" : ` · ${formatAttachmentBytes(attachment.size)}`}</small></span></button>;
   if (kind === "pdf" && onOpenPdf != null) return <button aria-label={`Open ${label}`} className="sand-file-attachment-chip sand-message-attachment" data-attachment-label={attachmentLabel} data-kind={kind} onClick={(event) => onOpenPdf(event.currentTarget)} type="button" title={attachment.path}><span aria-hidden="true">▤</span><span><strong>{label}</strong><small>{kind}{attachment.size == null ? "" : ` · ${formatAttachmentBytes(attachment.size)}`}</small></span></button>;
   if (loading) return <span aria-label="Loading media…" className="sand-attachment" data-attachment-label={attachmentLabel} role="status">Loading media…</span>;
   return <span aria-label={`Open ${label}`} className="sand-file-attachment-chip sand-message-attachment" data-attachment-label={attachmentLabel} data-kind={kind} role="group" title={attachment.path}><span aria-hidden="true">{kind === "image" ? "▧" : kind === "audio" ? "♪" : kind === "video" ? "▶" : "▤"}</span><span><strong>{label}</strong><small>{kind}{attachment.size == null ? "" : ` · ${formatAttachmentBytes(attachment.size)}`}</small></span></span>;
 }
 
-function AttachmentItem({ attachment, adjacency, mediaAttachments, resolveMedia, readAttachmentBytes, downloadAttachment, role, onOpen, onOpenPdf }: { attachment: GalleryAttachment; adjacency?: TranscriptAdjacency; mediaAttachments: readonly GalleryAttachment[]; resolveMedia?: MediaResolver; readAttachmentBytes?: PdfBytesResolver; downloadAttachment?: (path: string, suggestedName?: string) => Promise<boolean>; role: "user" | "assistant"; onOpen: (index: number, trigger: HTMLButtonElement) => void; onOpenPdf: (attachment: DraftAttachment, trigger: HTMLButtonElement) => void }) {
+function AttachmentItem({ attachment, adjacency, mediaAttachments, resolveMedia, readAttachmentBytes, downloadAttachment, role, onOpen, onOpenPdf, onOpenDocument }: { attachment: GalleryAttachment; adjacency?: TranscriptAdjacency; mediaAttachments: readonly GalleryAttachment[]; resolveMedia?: MediaResolver; readAttachmentBytes?: PdfBytesResolver; downloadAttachment?: (path: string, suggestedName?: string) => Promise<boolean>; role: "user" | "assistant"; onOpen: (index: number, trigger: HTMLButtonElement) => void; onOpenPdf: (attachment: DraftAttachment, trigger: HTMLButtonElement) => void; onOpenDocument: (attachment: DraftAttachment, trigger: HTMLButtonElement) => void }) {
   const kind = inferAttachmentKind({ mimeType: attachment.mimeType, fileName: attachment.name, urlOrPath: attachment.path });
   const [media, setMedia] = useState<AttachmentMedia | null>(null);
   const [loading, setLoading] = useState(resolveMedia != null && (kind === "image" || kind === "video" || kind === "audio"));
@@ -228,7 +233,7 @@ function AttachmentItem({ attachment, adjacency, mediaAttachments, resolveMedia,
   const isUserAttachment = attachment.sourceKind === "user-attachment";
   const isUserFile = isUserAttachment && !isPreviewable(kind);
   const className = isUserFile ? "sand-file-card-wrap sand-78zum5 sand-dt5ytf sand-uk3077 sand-11twubx sand-h8yej3 sand-1vyvmim sand-pvyfi4" : undefined;
-  const card = <MediaCard attachment={attachment} kind={kind} loading={loading} media={media} onOpen={mediaIndex < 0 ? undefined : (trigger) => onOpen(mediaIndex, trigger)} onOpenPdf={kind === "pdf" && readAttachmentBytes != null && downloadAttachment != null ? (trigger) => onOpenPdf(attachment, trigger) : undefined} role={role} />;
+  const card = <MediaCard attachment={attachment} kind={kind} loading={loading} media={media} onOpen={mediaIndex < 0 ? undefined : (trigger) => onOpen(mediaIndex, trigger)} onOpenPdf={kind === "pdf" && readAttachmentBytes != null && downloadAttachment != null ? (trigger) => onOpenPdf(attachment, trigger) : undefined} onOpenDocument={DOCUMENT_KINDS.has(kind) && readAttachmentBytes != null && downloadAttachment != null ? (trigger) => onOpenDocument(attachment, trigger) : undefined} role={role} />;
   if (!isUserAttachment) return card;
   return <div className={className} data-group-start={adjacency?.isGroupStart || undefined} data-role="user" style={{ alignItems: "flex-end", alignSelf: "flex-end", justifyContent: "flex-end", ...(isPreviewable(kind) ? { maxWidth: 320 } : {}) }}>{card}</div>;
 }
@@ -238,12 +243,28 @@ export function TranscriptAttachmentGallery({ attachments, adjacency, role, reso
   const mediaAttachments = galleryAttachments.filter((attachment) => isPreviewable(inferAttachmentKind({ mimeType: attachment.mimeType, fileName: attachment.name, urlOrPath: attachment.path })));
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [openPdf, setOpenPdf] = useState<DraftAttachment | null>(null);
+  const [openDoc, setOpenDoc] = useState<DraftAttachment | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const close = useCallback(() => setOpenIndex(null), []);
   const restoreFocus = useCallback(() => { triggerRef.current?.focus(); }, []);
   return <>
-    <div aria-label={role === "assistant" ? "Agent attachments" : "Attachments"} className="sand-message-attachments" data-role={role} role="group"><div className="sand-message-attachments__strip">{galleryAttachments.map((attachment) => <AttachmentItem adjacency={adjacency} attachment={attachment} downloadAttachment={downloadAttachment} key={`${attachment.path}:${attachment.name}`} mediaAttachments={mediaAttachments} onOpen={(mediaIndex, trigger) => { triggerRef.current = trigger; setOpenIndex(mediaIndex); }} onOpenPdf={(pdf, trigger) => { triggerRef.current = trigger; setOpenPdf(pdf); }} readAttachmentBytes={readAttachmentBytes} resolveMedia={resolveMedia} role={role} />)}</div></div>
+    <div aria-label={role === "assistant" ? "Agent attachments" : "Attachments"} className="sand-message-attachments" data-role={role} role="group"><div className="sand-message-attachments__strip">{galleryAttachments.map((attachment) => <AttachmentItem adjacency={adjacency} attachment={attachment} downloadAttachment={downloadAttachment} key={`${attachment.path}:${attachment.name}`} mediaAttachments={mediaAttachments} onOpen={(mediaIndex, trigger) => { triggerRef.current = trigger; setOpenIndex(mediaIndex); }} onOpenPdf={(pdf, trigger) => { triggerRef.current = trigger; setOpenPdf(pdf); }} onOpenDocument={(doc, trigger) => { triggerRef.current = trigger; setOpenDoc(doc); }} readAttachmentBytes={readAttachmentBytes} resolveMedia={resolveMedia} role={role} />)}</div></div>
     {openIndex == null || resolveMedia == null ? null : <MediaViewer attachments={mediaAttachments} onClose={close} resolveMedia={resolveMedia} restoreFocus={restoreFocus} startIndex={openIndex} />}
     {openPdf == null || readAttachmentBytes == null || downloadAttachment == null ? null : <PdfAttachmentViewer name={openPdf.name || attachmentBasename(openPdf.path)} onClose={() => setOpenPdf(null)} onDownload={() => downloadAttachment(openPdf.path, openPdf.name || attachmentBasename(openPdf.path))} readBytes={readAttachmentBytes} restoreFocus={() => triggerRef.current?.focus()} source={openPdf.path} isOpen />}
+    {openDoc == null || readAttachmentBytes == null || downloadAttachment == null ? null : (() => {
+      const label = openDoc.name || attachmentBasename(openDoc.path);
+      const kind = inferAttachmentKind({ mimeType: openDoc.mimeType, fileName: openDoc.name, urlOrPath: openDoc.path });
+      const shared = {
+        name: label,
+        onClose: () => setOpenDoc(null),
+        onDownload: () => downloadAttachment(openDoc.path, label),
+        readBytes: readAttachmentBytes,
+        restoreFocus: () => triggerRef.current?.focus(),
+        source: openDoc.path,
+        isOpen: true
+      };
+      if (kind === "document") return <DocxAttachmentViewer {...shared} />;
+      return <TextAttachmentViewer {...shared} mode={kind === "markdown" ? "markdown" : "text"} />;
+    })()}
   </>;
 }
