@@ -59,6 +59,27 @@ npm run frontend:build  # 构建可读 renderer 重建
 
 **部署**：`npm run package` 产物在 `dist/`，完整可用 app 需 `ditto` 到 `/Applications`。部署前**必须停掉旧进程**，否则 ditto 失败。沙箱内 `cp -R` 会被拦，用 `/usr/bin/ditto`。
 
+## Cursor Cloud specific instructions
+
+Cloud Agents 跑在 **Linux x86_64** 上，不是本机 macOS。可用范围对齐 `.github/workflows/check.yml` 的 ubuntu `check` job，**不是**完整桌面 app 打包路径。
+
+| 能做 | 不能做（macOS-only / 桌面运行时） |
+| --- | --- |
+| `bash scripts/cloud-agent-install.sh`（Node 26.5、`git lfs pull`、`npm ci`、用 7z 从 LFS DMG hydrate `src/app/dist`） | `npm run bootstrap`（需要 `hdiutil`） |
+| `npm run typecheck` / `source:typecheck` / `test:offline` / `frontend:build` / `publication:check` | `npm run package` / `verify` / `smoke` / GUI CDP / 装到 `/Applications` |
+| 离线回归与 renderer-patch 单测（依赖 hydrate 出的 `src/app/dist`） | 本地 Docker VM、ocx-relay、Feishu ingress（CommonCrypto） |
+
+**推荐验证序列**（与 CI 一致）：
+
+```sh
+bash scripts/cloud-agent-install.sh
+npm run typecheck && npm run source:typecheck && npm run test:offline
+npm run frontend:build
+npm run publication:check
+```
+
+Dashboard 的 `install` 字段应嵌入与 `scripts/cloud-agent-install.sh` 相同的逻辑（promotable build 在默认分支上跑，不能假定未合并的仓库脚本已存在）。不需要 API key 即可完成上述门禁；真实网络 web tools 测试留在 `workflow_dispatch` 的 `network` job。
+
 ## 已知陷阱（已实证，别再踩）
 
 | 现象 | 结论 | 处理 |
