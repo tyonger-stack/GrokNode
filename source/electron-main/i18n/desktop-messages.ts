@@ -96,12 +96,20 @@ interface ContextMenuMessages {
   readonly selectAll: string;
 }
 
+/** `{0}` is replaced with the app name, as in the 0.71.2 catalog. */
+interface RendererRecoveryMessages {
+  readonly crashLoopMessage: string;
+  readonly reloadButton: string;
+  readonly quitButton: string;
+}
+
 export interface DesktopMessages {
   readonly move: MoveMessages;
   readonly avatar: AvatarMessages;
   readonly attachments: AttachmentsMessages;
   readonly notification: NotificationMessages;
   readonly contextMenu: ContextMenuMessages;
+  readonly rendererRecovery: RendererRecoveryMessages;
 }
 
 const EN: DesktopMessages = {
@@ -142,6 +150,11 @@ const EN: DesktopMessages = {
     copy: "Copy",
     paste: "Paste",
     selectAll: "Select All",
+  },
+  rendererRecovery: {
+    crashLoopMessage: "The {0} window keeps crashing. Reload it or quit.",
+    reloadButton: "Reload",
+    quitButton: "Quit {0}",
   },
 };
 
@@ -184,8 +197,14 @@ const ZH_CN: DesktopMessages = {
     paste: "粘贴",
     selectAll: "全选",
   },
+  rendererRecovery: {
+    crashLoopMessage: "窗口反复崩溃。请重新加载或退出 {0}。",
+    reloadButton: "重新加载",
+    quitButton: "退出 {0}",
+  },
 };
 
+// rendererRecovery rows come from 0.71.2 (electron-main/locales/zh-CN/messages.cjs).
 // 0.59.1 main-catalog message IDs backing the ZH rows above, in field order:
 // move: cl1wFU XIG+80 Ztywec WfbkKQ 3/XRac K4NRRh 2pfw/p hDgwB3 zga9sT
 // avatar: Bvll0Q an5hVd cwHmX1 O9LjcE
@@ -231,4 +250,7 @@ export const DESKTOP_MESSAGE_IDS: Record<string, string> = {
   "contextMenu.copy": "he3ygx",
   "contextMenu.paste": "HzVv6g",
   "contextMenu.selectAll": "mCB6Je",
+  "rendererRecovery.crashLoopMessage": "1nxZwl",
+  "rendererRecovery.reloadButton": "HpK/8d",
+  "rendererRecovery.quitButton": "n02Ulq",
 };

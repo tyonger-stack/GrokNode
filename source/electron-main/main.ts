@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { getSandRootDir } from "../host/host-paths.js";
 import { applyChromiumLocaleFromPreference } from "./prefs/chromium-locale.js";
 import { reportDesktopEdgeFailure } from "./desktop-edge-failures.js";
+import { desktopMessages } from "./i18n/desktop-messages.js";
+import { installRendererCrashRecovery } from "./renderer-crash-recovery.js";
 import { createDevToolsGate, createDevToolsMembershipResolver } from "./devtools-gate.js";
 import { isGrokNodePackagedApp } from "../shared/node/grok-node-identity.js";
 import {
@@ -55,6 +57,8 @@ export interface MainWebContents {
   ): void;
   on(event: "did-start-loading", listener: () => void): void;
   on(event: "unresponsive" | "responsive", listener: () => void): void;
+  on(event: "render-process-gone", listener: (event: unknown, details: { readonly reason: string }) => void): void;
+  isCrashed(): boolean;
 }
 
 export interface MainBrowserWindow extends WindowStatePersistenceWindow {
@@ -184,6 +188,9 @@ export interface ElectronMainDependencies {
   readonly initializeServices: (options?: ElectronMainServicesInitializationOptions) => Promise<ElectronMainServices>;
   readonly syncWindowFocused: (state: { readonly isFocused: boolean }) => Promise<unknown>;
   readonly beginBeforeQuit?: () => "continue" | "prevent";
+  readonly dialog?: {
+    showMessageBox(window: MainBrowserWindow, options: Record<string, unknown>): Promise<{ readonly response: number }>;
+  };
 }
 
 export interface MainBrowserWindowOptions {
@@ -361,8 +368,37 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
     });
     window.webContents.on("did-start-loading", () => deps.deepLinks.markNotReady());
     window.on("closed", () => deps.deepLinks.markNotReady());
-    if (env.VITE_DEV_SERVER_URL != null) await window.loadURL(env.VITE_DEV_SERVER_URL);
-    else await window.loadFile(deps.rendererHtmlPath);
+    installRendererCrashRecovery(window.webContents, {
+      isQuitting: () => appIsQuitting,
+      reload: () => {
+        loadMainDocument(window).catch((error: unknown) => reportDesktopEdgeFailure("renderer-recovery", "reload", error));
+      },
+      askToReloadOrQuit: () => askToReloadOrQuit(window),
+      quit: () => deps.app.quit(),
+      reportAskFailure: (error) => reportDesktopEdgeFailure("renderer-recovery", "crash-loop-dialog", error),
+      reportCrashLoop: (record) =>
+        reportDesktopEdgeFailure("renderer-recovery", "crash-loop", new Error(`renderer crash loop after ${record.reloads} reloads`)),
+    });
+    await loadMainDocument(window);
+  };
+
+  const loadMainDocument = (window: MainBrowserWindow): Promise<unknown> =>
+    env.VITE_DEV_SERVER_URL != null ? window.loadURL(env.VITE_DEV_SERVER_URL) : window.loadFile(deps.rendererHtmlPath);
+
+  const askToReloadOrQuit = async (window: MainBrowserWindow): Promise<"reload" | "quit"> => {
+    if (deps.dialog == null) return "reload";
+    const preference = services?.getLanguageController().getState().preference ?? "follow-system";
+    const copy = desktopMessages(resolveLocale(preference, deps.app.getPreferredSystemLanguages?.() ?? [])).rendererRecovery;
+    const withAppName = (text: string): string => text.replace("{0}", deps.appName);
+    const { response } = await deps.dialog.showMessageBox(window, {
+      type: "error",
+      message: withAppName(copy.crashLoopMessage),
+      buttons: [copy.reloadButton, withAppName(copy.quitButton)],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    return response === 1 ? "quit" : "reload";
   };
 
   const ensureMainWindow = (): void => {

@@ -87,6 +87,7 @@ export interface ElectronProductionNativeBindings {
   };
   readonly shell: { openExternal(url: string): Promise<unknown> };
   readonly screen: WindowStatePersistenceScreen;
+  readonly dialog?: ElectronMainDependencies["dialog"];
 }
 
 export function createElectronProductionNativeBindings(electron: {
@@ -97,6 +98,7 @@ export function createElectronProductionNativeBindings(electron: {
   readonly Menu: ElectronProductionNativeBindings["Menu"];
   readonly shell: ElectronProductionNativeBindings["shell"];
   readonly screen: ElectronProductionNativeBindings["screen"];
+  readonly dialog?: ElectronProductionNativeBindings["dialog"];
 }): ElectronProductionNativeBindings {
   const required = ["app", "safeStorage", "ipcMain", "BrowserWindow", "Menu", "shell", "screen"] as const;
   const missing = required.filter((name) => electron[name] == null);
@@ -106,7 +108,7 @@ export function createElectronProductionNativeBindings(electron: {
   if (typeof electron.Menu.buildFromTemplate !== "function" || typeof electron.Menu.setApplicationMenu !== "function") throw new Error("Electron production ABI requires Menu construction and installation.");
   if (typeof electron.shell.openExternal !== "function") throw new Error("Electron production ABI requires shell.openExternal().");
   if (typeof electron.safeStorage.isEncryptionAvailable !== "function" || typeof electron.safeStorage.encryptString !== "function" || typeof electron.safeStorage.decryptString !== "function") throw new Error("Electron production ABI requires safeStorage encryption methods.");
-  return { app: electron.app, safeStorage: electron.safeStorage, ipcMain: electron.ipcMain, BrowserWindow: electron.BrowserWindow, Menu: electron.Menu, shell: electron.shell, screen: electron.screen };
+  return { app: electron.app, safeStorage: electron.safeStorage, ipcMain: electron.ipcMain, BrowserWindow: electron.BrowserWindow, Menu: electron.Menu, shell: electron.shell, screen: electron.screen, ...(electron.dialog == null ? {} : { dialog: electron.dialog }) };
 }
 
 export interface ElectronProductionResources {
@@ -935,6 +937,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
     initializeServices,
     syncWindowFocused: (state) => coordinator?.setWindowFocused(state) ?? Promise.resolve(),
     beginBeforeQuit,
+    ...(bindings.native.dialog == null ? {} : { dialog: bindings.native.dialog }),
   };
   return { dependencies, bindRuntime(value) { runtime = value; } };
 }
