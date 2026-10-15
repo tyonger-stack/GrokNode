@@ -56,6 +56,7 @@ import { applyMainAgentRendererPatch } from "./lib/main-agent-renderer-patch.mjs
 import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
 import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-patch.mjs";
+import { applyOriginalRendererUndeliveredSend } from "./lib/undelivered-send-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -343,6 +344,10 @@ export async function buildFidelityReconstructedAsar({
   // match the settings surface's own hardcoded English.
   await applyBotColorSettingsPatch({ stageRoot });
   await applyComputerSleepRendererPatch({ stageRoot });
+  // 0.71.2's "Not delivered yet": MAIN chunk send journal, transcript overlay and user-row
+  // footer. Its one label is an RLocT call, so it must precede main-i18n (which appends
+  // the RLocT runtime); none of its anchors overlap the passes above.
+  await applyOriginalRendererUndeliveredSend({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
