@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { decideBoxHandBack as decideSharedHandBack } from "../../../shared/forever-box.js";
 export const SNAPSHOT_TIMEOUT_MS = 5_000;
 export const MAX_DOMAIN_LENGTH = 64;
 export interface HandoffRequest { agentId: string; instruction: string; telemetry?: { reason?: string; domain?: string; idpDomain?: string } }
 export interface PendingHandoff { requestId: string; instruction: string; snapshotDataUrl?: string }
-export type HandoffTrigger = { resolution?: "completed" | "cancelled"; trigger?: string } | string;
+export type HandoffTrigger = { resolution?: "handed_back" | "dismissed" | "completed" | "cancelled"; trigger?: string } | string;
 export interface BoxHandoffDeps {
   grabScreenshot?(agentId: string): Promise<string | Uint8Array | null>;
   prepare?(agentId: string, request: Record<string, unknown>): Promise<void>;
@@ -14,7 +15,19 @@ export interface BoxHandoffDeps {
   report?(event: Record<string, unknown>): void;
   timeoutMs?: number;
 }
-export function decideBoxHandBack(pending: PendingHandoff | undefined, trigger: HandoffTrigger): { kind: "none" } | { kind: "end"; requestId: string; resolution: string; trigger: string } { if (pending == null) return { kind: "none" }; if (typeof trigger === "string") return { kind: "end", requestId: pending.requestId, resolution: trigger === "cancel" ? "cancelled" : "completed", trigger }; return { kind: "end", requestId: pending.requestId, resolution: trigger.resolution ?? "completed", trigger: trigger.trigger ?? "unknown" }; }
+export function decideBoxHandBack(pending: PendingHandoff | undefined, trigger: HandoffTrigger): { kind: "none" } | { kind: "end"; requestId: string; resolution: "handed_back" | "dismissed"; trigger: string } {
+  const reason = typeof trigger === "string" ? trigger : trigger.trigger ?? "unknown";
+  const isCancellation = reason === "cancel" || reason === "cancelled";
+  const decision = decideSharedHandBack(pending, isCancellation ? "dismissed" : reason);
+  if (decision.kind === "none") return decision;
+  const explicit = typeof trigger === "string" ? undefined : trigger.resolution;
+  const resolution = explicit === "cancelled" || explicit === "dismissed" ? "dismissed"
+    : explicit === "completed" || explicit === "handed_back" ? "handed_back" : decision.resolution;
+  const resumeTrigger = resolution === "dismissed" ? "dismissed"
+    : isCancellation || reason === "dismissed" ? "button" : reason;
+  return { kind: "end", requestId: decision.requestId, resolution, trigger: resumeTrigger };
+}
+
 export class BoxHandoffService {
   private readonly pending = new Map<string, PendingHandoff>();
   constructor(readonly deps: BoxHandoffDeps) {}

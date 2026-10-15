@@ -46,6 +46,7 @@ import {
 import type {
   TurnAwaitToolFactoryInput,
   TurnBrowserToolFactoryInput,
+  TurnBoxHelpToolFactoryInput,
   TurnCloudAgentToolFactoryInput,
   TurnComputerToolFactoryInput,
   TurnMcpMetaToolFactoryInput,
@@ -281,6 +282,7 @@ export interface ProductionSessionBoundRunner {
   } | undefined;
   run(prompt: string, options?: SubagentRunOptions): Promise<unknown>;
   interrupt(reason: string): unknown;
+  endTurnAwaitingUser?(reason: string): void;
   getResolvedOutline(): Promise<readonly unknown[]>;
   getObservedToolCallCount(): number;
   getActivitySnapshot(): readonly string[];
@@ -2120,6 +2122,45 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               react: args => turn.emitUpdate?.({ type: "react-to-message", ...args }),
             },
       }),
+      createRequestBoxHelpToolInputs: (turn): TurnBoxHelpToolFactoryInput => {
+        let endRequested = false;
+        const pause = () => {
+          if (turn.endThisRunAwaitingUser !== undefined) {
+            turn.endThisRunAwaitingUser("awaiting box help");
+            return;
+          }
+          const runner = builtRunner;
+          if (runner?.endTurnAwaitingUser === undefined) throw new TypeError("box handoff run lifecycle is not bound");
+          runner.endTurnAwaitingUser("awaiting box help");
+        };
+        return { dependencies: {
+          getAgentId: () => agentId,
+          endTurn: () => { endRequested = true; },
+          requestHelp: async request => {
+            const start = method(extensions.api("session"), "startHandoff");
+            if (start === undefined) throw new TypeError("box handoff session service is not bound");
+            const outcome = await start(request);
+            if (outcome?.kind === "already-pending" && typeof outcome.requestId === "string" && typeof outcome.instruction === "string") {
+              if (endRequested) pause();
+              return { kind: "already-pending", requestId: outcome.requestId, instruction: outcome.instruction };
+            }
+            if (outcome?.kind === "started" && typeof outcome.requestId === "string") return { kind: "started", requestId: outcome.requestId };
+            throw new TypeError("box handoff session returned an invalid outcome");
+          },
+          onSendMessage: (message, timestampMs, metadata) => {
+            const update = {
+              type: "send-message",
+              message,
+              timestampMs,
+              boxHandoff: metadata,
+              ...(turn.ackToken === undefined ? {} : { ackToken: turn.ackToken }),
+            };
+            if (turn.emitUpdate !== undefined) turn.emitUpdate(update);
+            else hooks.transport.onUpdate(update);
+            if (endRequested) pause();
+          },
+        } };
+      },
       createAgentManagementToolInputs: () => ({
         dependencies: dependencies.agentManagement,
       }),

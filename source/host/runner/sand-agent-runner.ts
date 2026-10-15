@@ -1044,6 +1044,17 @@ export class SandAgentRunner<T = unknown> {
   isRunAwaitingUserSelection(): boolean {
     return this.#awaitingUserSelection;
   }
+  endTurnAwaitingUser(reason: string): void {
+    if (this.#productionTurnRunShell !== undefined) {
+      this.#productionTurnRunShell.endTurnAwaitingUser(reason);
+      return;
+    }
+    const active = this.#activeRun;
+    if (active == null) return;
+    active.awaitingUserSelection = true;
+    this.#awaitingUserSelection = true;
+    active.controller.abort({ intentional: true, reason });
+  }
 
   resolveBoxTerminalsFolder(): string | undefined {
     return this.#boxTerminalsFolder ?? this.options.getBoxTerminalsFolder?.();
