@@ -9,6 +9,7 @@ import {
 } from "./box-vnc-liveness.js";
 import { createViewerVisibilityGate } from "./box-vnc-visibility-gate.js";
 import { VNC_LIVENESS_CHANNEL } from "../shared/vnc-liveness.js";
+import { VNC_ACCEPTS_INPUT_CHANNEL } from "../shared/vnc-control-input.js";
 import { VNC_VIEWER_VISIBLE_CHANNEL } from "../shared/vnc-viewer-visibility.js";
 import {
   installSandBrowserPreload,
@@ -135,6 +136,8 @@ export function installNoVncChromeHider(options: {
 export function installVncClipboardBridge(options: {
   readonly renderer: VncRendererPort | null;
   readonly edge: BoxVncEdge | null;
+  /** 官方 `input` 开关：仅在看播者已取得控制权时才镜像剪贴板。 */
+  readonly acceptsInput?: () => boolean;
   readonly frame: VncFramePort | null;
   readonly window: VncEventTargetPort | null;
   readonly document: VncDocumentPort | null;
@@ -152,10 +155,11 @@ export function installVncClipboardBridge(options: {
   let lastBoxTextSentToHost = "";
   let lastHostTextSentToBox = "";
   let lastGestureAt = 0;
+  const acceptsInput = options.acceptsInput ?? (() => true);
   const visibility = createViewerVisibilityGate();
   const textarea = (): VncTextareaPort | null => getVncClipboardTextarea(document, options.isTextarea);
   function mirrorBoxClipboardToHost(): void {
-    if (!visibility.isVisible()) return;
+    if (!visibility.isVisible() || !acceptsInput()) return;
     const element = textarea();
     if (element == null) return;
     const text = element.value;
@@ -166,7 +170,7 @@ export function installVncClipboardBridge(options: {
     });
   }
   function mirrorHostClipboardToBox(): void {
-    if (!visibility.isVisible()) return;
+    if (!visibility.isVisible() || !acceptsInput()) return;
     const now = (options.now ?? Date.now)();
     if (now - lastGestureAt < VNC_CLIPBOARD_GESTURE_THROTTLE_MS) return;
     lastGestureAt = now;
@@ -234,12 +238,14 @@ export function installVncHostKeyForwarder(options: {
   readonly renderer: VncRendererPort | null;
   readonly document: VncDocumentPort | null;
   readonly location: VncLocationPort | null;
+  readonly acceptsInput?: () => boolean;
   readonly warn?: VncWarn;
 }): void {
   if (options.renderer == null || options.document == null || !isInteractiveVncPage(options.location)) return;
   const forwardedArrows = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
   options.document.addEventListener("keydown", (event: { readonly key?: string }) => {
     if (event.key == null || !forwardedArrows.has(event.key)) return;
+    if (options.acceptsInput != null && !options.acceptsInput()) return;
     try {
       options.renderer?.sendToHost("sand:vnc-host-key", event.key);
     } catch (error) {
@@ -352,12 +358,17 @@ export function installVncLivenessTripwire(options: {
   options.window.addEventListener("pagehide", () => polling.dispose(), { once: true });
 }
 
-export function buildVncMacKeyMappingScript(): string {
+export function buildVncMacKeyMappingScript(acceptsInput = true): string {
   return `
     (function () {
-      if (window.__sandVncMacKeysInstalled) return;
       if (!/Mac/i.test((navigator && navigator.platform) || "")) return;
+      if (window.__sandVncMacKeysInstalled) {
+        // 控制权可反复切换，注入是幂等的：已装过就只更新开关状态。
+        window.__setSandVncMacKeysEnabled && window.__setSandVncMacKeysEnabled(${acceptsInput ? "true" : "false"});
+        return;
+      }
       window.__sandVncMacKeysInstalled = true;
+      window.__sandVncMacKeysEnabled = ${acceptsInput ? "true" : "false"};
 
       var SHORTCUTS = { KeyA: 0x61, KeyC: 0x63, KeyV: 0x76, KeyX: 0x78, KeyZ: 0x7a };
       var CONTROL_L = 0xffe3;
@@ -375,6 +386,7 @@ export function buildVncMacKeyMappingScript(): string {
 
       document.addEventListener("keydown", function (e) {
         if (!e.metaKey) return;
+        if (window.__sandVncMacKeysEnabled !== true) return;
         var keysym = SHORTCUTS[e.code];
         if (keysym === undefined) return;
         var rfb = ui && ui.rfb;
@@ -391,6 +403,8 @@ export function buildVncMacKeyMappingScript(): string {
         if (e.shiftKey) rfb.sendKey(SHIFT_L, "ShiftLeft", false);
         rfb.sendKey(CONTROL_L, "ControlLeft", false);
       }, true);
+
+      window.__setSandVncMacKeysEnabled = function (value) { window.__sandVncMacKeysEnabled = value === true; };
     })();
   `;
 }
@@ -398,11 +412,51 @@ export function buildVncMacKeyMappingScript(): string {
 export function installVncMacKeyMapping(options: {
   readonly frame: VncFramePort | null;
   readonly location: VncLocationPort | null;
+  readonly acceptsInput?: () => boolean;
+  onAcceptsInput?(apply: () => void): void;
   readonly warn?: VncWarn;
 }): void {
-  if (options.frame == null || !isInteractiveVncPage(options.location)) return;
-  options.frame.executeJavaScript(buildVncMacKeyMappingScript()).catch((error: unknown) => {
-    options.warn?.("vnc mac key mapping injection failed", errorMessage(error));
+  if (options.frame == null) return;
+  if (!isInteractiveVncPage(options.location)) return;
+  const acceptsInput = options.acceptsInput ?? (() => true);
+  // 官方 `input` 开关只影响映射是否把键送进 noVNC；映射本身常驻，需能随时启停。
+  const apply = (): void => {
+    options.frame?.executeJavaScript(buildVncMacKeyMappingScript(acceptsInput())).catch((error: unknown) => {
+      options.warn?.("vnc mac key mapping injection failed", errorMessage(error));
+    });
+  };
+  if (options.onAcceptsInput != null) options.onAcceptsInput(apply);
+  apply();
+}
+
+
+export interface VncIpcPort {
+  on(channel: string, listener: (event: unknown, payload: unknown) => void): void;
+}
+
+export interface VncInputGateOptions {
+  readonly ipc: VncIpcPort;
+  onAcceptsInput(acceptsInput: boolean): void;
+}
+
+/**
+ * 官方 0.70.2 `lr()` 的输入开关语义：`interactivity`（URL 的 `sandInteractive=1`，渲染期固定）
+ * 决定能否聚焦收键；`input`（宿主通过 `sand:vnc-accepts-input` 宣告「已取得控制权」）
+ * 决定是否真的把键鼠与剪贴板转发进 noVNC。默认不接受输入 —— 对应「仅观看」态。
+ * 取得控制权后页面不重载，因此这个开关必须是可变的进程内状态。
+ */
+export function createVncInputSwitch(): { acceptsInput(): boolean; setAcceptsInput(value: boolean): void } {
+  let acceptsInput = false;
+  return {
+    acceptsInput: () => acceptsInput,
+    setAcceptsInput: (value: boolean) => { acceptsInput = value; },
+  };
+}
+
+export function installVncInputGate(options: VncInputGateOptions): void {
+  options.ipc.on(VNC_ACCEPTS_INPUT_CHANNEL, (_event, payload) => {
+    if (typeof payload !== "boolean") return;
+    options.onAcceptsInput(payload);
   });
 }
 
@@ -415,6 +469,7 @@ export function installVncPreload(options: {
   readonly session: Parameters<typeof installVncRfbSessionReporter>[0];
   readonly macKeys: Parameters<typeof installVncMacKeyMapping>[0];
   readonly liveness: Parameters<typeof installVncLivenessTripwire>[0];
+  readonly inputGate: Parameters<typeof installVncInputGate>[0];
   readonly warn?: VncWarn;
 }): void {
   options.installBrowserPreload();
@@ -429,6 +484,7 @@ export function installVncPreload(options: {
   install("vnc rfb session reporter", () => installVncRfbSessionReporter(options.session));
   install("vnc mac key mapping", () => installVncMacKeyMapping(options.macKeys));
   install("vnc liveness tripwire", () => installVncLivenessTripwire(options.liveness));
+  install("vnc input gate", () => installVncInputGate(options.inputGate));
 }
 
 export interface VncPreloadElectronRuntime extends BrowserPreloadRenderer, VncRendererPort {
@@ -456,6 +512,8 @@ export function installVncPreloadEntrypoint(electron: VncPreloadElectronBindings
     },
   }) as BoxVncEdge;
   const startPolling: StartPolling = ({ name, intervalMs, task }) => createRealPollingPolicy({ name, intervalMs }).start(async () => { await task(); });
+  const inputSwitch = createVncInputSwitch();
+  let reapplyMacKeys = (): void => {};
   installVncPreload({
     installBrowserPreload: () => installSandBrowserPreload({
       renderer: electron.ipcRenderer,
@@ -475,10 +533,11 @@ export function installVncPreloadEntrypoint(electron: VncPreloadElectronBindings
       location: locationPort,
       startPolling,
       isTextarea: (value): value is VncTextareaPort => typeof HTMLTextAreaElement !== "undefined" && value instanceof HTMLTextAreaElement,
+      acceptsInput: () => inputSwitch.acceptsInput(),
       warn,
     },
     presence: { edge, window: windowPort, document: documentPort, location: locationPort, warn },
-    hostKeys: { renderer: electron.ipcRenderer, document: documentPort, location: locationPort, warn },
+    hostKeys: { renderer: electron.ipcRenderer, document: documentPort, location: locationPort, acceptsInput: () => inputSwitch.acceptsInput(), warn },
     session: {
       renderer: electron.ipcRenderer,
       window: windowPort,
@@ -487,7 +546,8 @@ export function installVncPreloadEntrypoint(electron: VncPreloadElectronBindings
       createMutationObserver: (listener) => new MutationObserver(listener),
       warn,
     },
-    macKeys: { frame: electron.webFrame, location: locationPort, warn },
+    macKeys: { frame: electron.webFrame, location: locationPort, acceptsInput: () => inputSwitch.acceptsInput(), onAcceptsInput: (apply) => { reapplyMacKeys = apply; }, warn },
+    inputGate: { ipc: electron.ipcRenderer, onAcceptsInput: (value) => { inputSwitch.setAcceptsInput(value); reapplyMacKeys(); } },
     liveness: { renderer: electron.ipcRenderer, frame: electron.webFrame, window: windowPort, document: documentPort, location: locationPort, startPolling, warn },
     warn,
   });

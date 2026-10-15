@@ -65,9 +65,11 @@ export interface MainBrowserWindow extends WindowStatePersistenceWindow {
   focus(): void;
   isFocused(): boolean;
   setFullScreen(fullscreen: boolean): void;
+  setTitle(title: string): void;
   setTitleBarOverlay?(overlay: WindowsTitleBarOverlay): void;
   loadURL(url: string): Promise<unknown>;
   loadFile(file: string): Promise<unknown>;
+  on(event: "page-title-updated", listener: (event: PreventableEvent, title: string) => void): void;
   on(
     event:
       | "resize"
@@ -330,6 +332,16 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
         sandbox: false,
         webviewTag: true,
       },
+    });
+    // The shipped renderer is branded "Grok Bot" and sets document.title, which
+    // would overwrite this window's title (shown in the Dock window list and
+    // Mission Control) despite the fork's appName. Rewrite those titles to the
+    // fork's name, preserving any dynamic suffix the renderer appends.
+    window.on("page-title-updated", (event, title) => {
+      if (title.includes("Grok Bot")) {
+        event.preventDefault();
+        window.setTitle(title.replaceAll("Grok Bot", "Grok Node"));
+      }
     });
     services.hardenVncWebviewAttach?.(window.webContents);
     mainWindow = window;

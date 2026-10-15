@@ -39,3 +39,9 @@ node_modules/
 # local tool state (omc)
 /.omc/
 /.lab/
+
+# Local build, verify, and scratch artifacts
+.work/
+.mavis/
+.tmp-*
+chunk-computer-screen-preview-*.js

@@ -479,9 +479,9 @@ export function createDesktopPreloadBridge(options: {
     },
     computer: {
       // 电脑休眠/唤醒 (computer sleep/wake): the overlay in the renderer drives these.
-      getSleepState: () => edge("getComputerSleepState"),
-      sleep: () => edge("sleepComputer"),
-      wake: () => edge("wakeComputer"),
+      getSleepState: (agentId: string) => edge("getComputerSleepState", { agentId }),
+      sleep: (agentId: string) => edge("sleepComputer", { agentId }),
+      wake: (agentId: string) => edge("wakeComputer", { agentId }),
     },
     update: {
       getStatus: () => edge("getUpdateStatus"),

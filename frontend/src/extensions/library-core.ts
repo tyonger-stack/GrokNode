@@ -8,7 +8,7 @@
 //     · PS  @1579315  日历午夜边界：PS(now, daysBack) = 本地时区往前 daysBack 天的 0 点
 //     · MRe @1579345  bucketFor：null→older；≥PS(now,0)→today；≥PS(now,6)→week；否则 older
 //                      —— 是日历午夜 6 天前，不是滚动 168h，也不是 ISO 自然周
-//     · $S  @1581400  渐进揭示每批 24 条
+//     · TS  @1579197  渐进揭示每批 5 条（0.70.2 aC @1763513；$S @1582225 是缩略图 24px）
 //     · FRe @1581347  transcript→items 投影：三类抽取（视觉/文件/链接）、
 //                      kind 前缀去重 Set 跨全量共享、首次出现胜出、结果 toReversed()（新→旧）
 //
@@ -49,8 +49,8 @@ export type LibraryItem = LibraryMediaItem | LibraryLinkItem;
 export const LIBRARY_GROUP_ORDER: readonly LibraryBucket[] = ["today", "week", "older"] as const;
 /** `ERe` @1579238 — 「本周」窗口 7 天（配合 PS 得到 6–7 天的日历跨度）。 */
 export const LIBRARY_WEEK_DAYS = 7;
-/** `$S` @1581400 — 渐进揭示每批条数。 */
-export const LIBRARY_REVEAL_PAGE_SIZE = 24;
+/** `TS` @1579197（0.70.2 `aC` @1763513）— 渐进揭示每批条数；`$S` 是缩略图像素不是分页。 */
+export const LIBRARY_REVEAL_PAGE_SIZE = 5;
 export const LIBRARY_FILE_SELECTOR = 'button[aria-label^="Open "], [role="button"][aria-label^="Open "]';
 export const BUCKET_LABELS: Readonly<Record<LibraryBucket, string>> = { today: "今天", week: "本周", older: "更早" };
 

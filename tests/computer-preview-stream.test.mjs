@@ -7,12 +7,18 @@ import * as React from "react";
 import * as jsx from "react/jsx-runtime";
 import * as compiler from "react/compiler-runtime";
 import { Window } from "happy-dom";
-import { PREVIEW_POOL_FIXTURE, VNC_VIEW_FIXTURE } from "./fixtures/computer-preview-pool.mjs";
+import { PREVIEW_POOL_FIXTURE, VNC_VIEW_FIXTURE, PREVIEW_OWNER_FIXTURE } from "./fixtures/computer-preview-pool.mjs";
 import { computerSleepOverlayRuntime, loadOfficialAsleepArtifacts, loadOfficialShapeSvgs } from "../scripts/lib/computer-sleep-renderer-components.mjs";
 import { patchComputerSleepRenderer } from "../scripts/lib/computer-sleep-renderer-patch.mjs";
 import { patchComputerPreviewStream } from "../scripts/lib/computer-preview-stream-renderer-patch.mjs";
 
 const canonicalPath = path.resolve(import.meta.dirname, "../src/app/dist/renderer/assets/index-UbX-y3il.js");
+function setPreviewPaused(window, agentId, paused) {
+  window.__rCompPreviewPausedBots ??= new Set();
+  if (paused) window.__rCompPreviewPausedBots.add(agentId);
+  else window.__rCompPreviewPausedBots.delete(agentId);
+  window.dispatchEvent(new window.Event("grok-node-preview-stream-state"));
+}
 
 test("canonical retained monitor thumbnails pause at the shared VNC viewer boundary while interactive refs remain intact", { skip: existsSync(canonicalPath) ? false : "Bootstrap the pinned renderer to run canonical viewer topology." }, async () => {
   const source = readFileSync(canonicalPath, "utf8");
@@ -30,40 +36,46 @@ test("canonical retained monitor thumbnails pause at the shared VNC viewer bound
     return jsx.jsx("webview", { src, ref });
   }
   Object.assign(window, { S: React, p: jsx, he: compiler, VncSession, nbn: 3, re: (...classes) => classes.join(" "), H5e: () => ({ width: 1280, height: 800 }), bZ: () => null, Fe: () => ({ className: "" }), Ut: { label: {} }, z1t: { captionText: {} } });
-  window.eval(patchComputerPreviewStream(VNC_VIEW_FIXTURE + topology) + "\nwindow.Pool=dbn;window.Thumbnail=mbn;window.KeepViewer=JTn;window.Viewer=DAe;");
+  window.eval(patchComputerPreviewStream(VNC_VIEW_FIXTURE + PREVIEW_OWNER_FIXTURE + topology) + "\nwindow.Pool=dbn;window.Thumbnail=mbn;window.KeepViewer=JTn;window.Viewer=DAe;window.Owner=bbn;");
   const { createRoot } = await import("react-dom/client");
   const container = window.document.createElement("div");
   window.document.body.append(container);
   const root = createRoot(container);
   const interactiveRef = React.createRef();
+  const peerRef = React.createRef();
   function App({ src, open, viewerVisible = true }) {
     const retained = window.KeepViewer({ isViewerOpen: open, isInfoPaneOpen: true });
-    return jsx.jsxs(React.Fragment, { children: [
+    return jsx.jsxs(React.Fragment, { children: [jsx.jsx(window.Owner, { agentId: "bot-A", children: jsx.jsxs(React.Fragment, { children: [
       jsx.jsx(window.Pool, { src }),
       retained ? jsx.jsx(window.Thumbnail, { monitor: { vncUrl: "thumbnail-B", subagentId: "B", title: "B" }, onFocus: () => {} }) : null,
       jsx.jsx(window.Viewer, { src: "interactive", isInteractive: true, isViewerVisible: viewerVisible, ref: interactiveRef }),
-    ] });
+    ] }) }), jsx.jsx(window.Owner, { agentId: "bot-B", children: jsx.jsx(window.Viewer, { src: "peer-B", ref: peerRef }) })] });
   }
   try {
     await React.act(async () => root.render(jsx.jsx(App, { src: "preview-A", open: true })));
     await React.act(async () => root.render(jsx.jsx(App, { src: "preview-C", open: false })));
-    assert.deepEqual([...sessions].sort(), ["interactive", "preview-A", "preview-C", "thumbnail-B"]);
+    assert.deepEqual([...sessions].sort(), ["interactive", "peer-B", "preview-A", "preview-C", "thumbnail-B"]);
     const interactiveNode = interactiveRef.current;
+    const peerNode = peerRef.current;
     assert.ok(interactiveNode);
-    await React.act(async () => { window.__rCompPreviewAsleep = true; window.dispatchEvent(new window.Event("grok-node-preview-stream-state")); });
-    assert.deepEqual([...sessions], ["interactive"], "retained thumbnails must release their preview sessions too");
+    await React.act(async () => setPreviewPaused(window, "bot-A", true));
+    assert.deepEqual([...sessions].sort(), ["interactive", "peer-B"], "A's retained thumbnails stop while B's independent preview continues");
     assert.equal(interactiveRef.current, interactiveNode);
+    assert.equal(peerRef.current, peerNode);
     await React.act(async () => root.render(jsx.jsx(App, { src: "preview-D", open: false })));
-    assert.deepEqual([...sessions], ["interactive"]);
-    await React.act(async () => { window.__rCompPreviewAsleep = false; window.dispatchEvent(new window.Event("grok-node-preview-stream-state")); });
-    assert.deepEqual([...sessions].sort(), ["interactive", "preview-D", "thumbnail-B"]);
+    assert.deepEqual([...sessions].sort(), ["interactive", "peer-B"]);
+    await React.act(async () => setPreviewPaused(window, "bot-A", false));
+    assert.deepEqual([...sessions].sort(), ["interactive", "peer-B", "preview-D", "thumbnail-B"]);
     assert.equal(interactiveRef.current, interactiveNode);
-    await React.act(async () => { window.__rCompPreviewAsleep = true; window.dispatchEvent(new window.Event("grok-node-preview-stream-state")); root.render(jsx.jsx(App, { src: "preview-D", open: false, viewerVisible: false })); });
-    assert.deepEqual([...sessions], [], "a retained fullscreen viewer must release its stream when it is hidden and previews are paused");
+    await React.act(async () => { setPreviewPaused(window, "bot-A", true); root.render(jsx.jsx(App, { src: "preview-D", open: false, viewerVisible: false })); });
+    assert.deepEqual([...sessions], ["peer-B"], "A's hidden fullscreen closes without closing B's preview");
     assert.equal(interactiveRef.current, null);
     await React.act(async () => root.render(jsx.jsx(App, { src: "preview-D", open: false, viewerVisible: true })));
-    assert.deepEqual([...sessions], ["interactive"], "opening fullscreen while previews are paused must allow interactive viewing");
+    assert.deepEqual([...sessions].sort(), ["interactive", "peer-B"], "opening fullscreen for A while paused preserves B's independent preview");
     assert.ok(interactiveRef.current);
+    await React.act(async () => setPreviewPaused(window, "bot-B", true));
+    assert.deepEqual([...sessions], ["interactive"], "B's own pause closes B without closing A's visible fullscreen");
+    assert.equal(peerRef.current, null);
   } finally {
     await React.act(async () => root.unmount());
     assert.equal(interactiveRef.current, null);
@@ -75,7 +87,54 @@ test("canonical retained monitor thumbnails pause at the shared VNC viewer bound
   }
 });
 
-test("Sleep releases active and warm preview sessions; Restore connects the current Bot without interrupting interactive sessions", async () => {
+test("late A polling and Sleep replies cannot wake A or cover B after switching Bots", async () => {
+  const [stage, shapes] = await Promise.all([loadOfficialAsleepArtifacts(), loadOfficialShapeSvgs()]);
+  const window = new Window();
+  const states = new Map();
+  let refresh;
+  let delayReads = false;
+  let finishRead;
+  let finishSleep;
+  let requestedBot;
+  window.desktop = { computer: {
+    getSleepState: agentId => {
+      const snapshot = states.get(agentId) ?? "awake";
+      return delayReads ? new Promise(resolve => { finishRead = () => resolve(snapshot); }) : Promise.resolve(snapshot);
+    },
+    sleep: agentId => { requestedBot = agentId; return new Promise(resolve => { finishSleep = () => { states.set(agentId, "asleep"); resolve("asleep"); }; }); },
+    wake: async agentId => { states.delete(agentId); return "awake"; },
+  } };
+  window.setTimeout = callback => { queueMicrotask(callback); return 1; };
+  window.setInterval = callback => { refresh = callback; return 1; };
+  window.document.body.innerHTML = '<div class="sand-computer-preview__frame" data-preview-bot-id="bot-A"><div class="sand-box-vnc-pool"></div><button class="sand-computer-preview__open"><span><i data-icon-name="arrows-expand-simple"></i>打开</span></button></div>';
+  const frame = window.document.querySelector(".sand-computer-preview__frame");
+  try {
+    window.eval(computerSleepOverlayRuntime(stage.html, shapes, "\uf46f"));
+    window.document.dispatchEvent(new window.Event("DOMContentLoaded"));
+    await new Promise(resolve => setImmediate(resolve));
+    delayReads = true;
+    refresh();
+    frame.dispatchEvent(new window.Event("pointerenter"));
+    window.document.getElementById("rcompsleep-pill-sleep").click();
+    assert.equal(requestedBot, "bot-A");
+    frame.setAttribute("data-preview-bot-id", "bot-B");
+    window.dispatchEvent(new window.Event("grok-node-preview-stream-mounted"));
+    finishSleep();
+    await new Promise(resolve => setImmediate(resolve));
+    finishRead();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(window.__rCompPreviewPausedBots.has("bot-A"), true, "the old awake poll must not undo A's Sleep");
+    assert.equal(window.__rCompPreviewPausedBots.has("bot-B"), false);
+    assert.equal(window.document.getElementById("rcompsleep-stage"), null, "A's late Sleep reply must not cover B");
+    frame.setAttribute("data-preview-bot-id", "bot-A");
+    window.dispatchEvent(new window.Event("grok-node-preview-stream-mounted"));
+    assert.ok(window.document.getElementById("rcompsleep-wake"));
+  } finally {
+    window.close();
+  }
+});
+
+test("sleeping A permits B's preview, remembers A on return and does not wake B when A restores", async () => {
   const [stage, shapes] = await Promise.all([loadOfficialAsleepArtifacts(), loadOfficialShapeSvgs()]);
   const window = new Window();
   const savedGlobals = new Map(["window", "document", "IS_REACT_ACT_ENVIRONMENT"].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -91,8 +150,8 @@ test("Sleep releases active and warm preview sessions; Restore connects the curr
     }, [src]);
     return jsx.jsx("webview", { src });
   }
-  let state = "awake";
-  window.desktop = { computer: { getSleepState: async () => state, sleep: async () => state = "asleep", wake: async () => state = "awake" } };
+  const states = new Map();
+  window.desktop = { computer: { getSleepState: async agentId => states.get(agentId) ?? "awake", sleep: async agentId => { states.set(agentId, "asleep"); return "asleep"; }, wake: async agentId => { states.delete(agentId); return "awake"; } } };
   window.S = React;
   window.p = jsx;
   window.re = (...classes) => classes.join(" ");
@@ -101,18 +160,15 @@ test("Sleep releases active and warm preview sessions; Restore connects the curr
   let refresh;
   window.setInterval = callback => { refresh = callback; return 1; };
   const runtime = computerSleepOverlayRuntime(stage.html, shapes, "\uf46f");
-  window.eval(patchComputerSleepRenderer(PREVIEW_POOL_FIXTURE, runtime) + "\nwindow.PreviewPool=dbn;");
+  window.eval(patchComputerSleepRenderer(PREVIEW_POOL_FIXTURE, runtime) + "\nwindow.PreviewPool=dbn;window.PreviewFrame=_bn;window.Owner=bbn;");
   const { createRoot } = await import("react-dom/client");
   const container = window.document.createElement("div");
   window.document.body.append(container);
   const root = createRoot(container);
   function App({ src }) {
     return jsx.jsxs(React.Fragment, { children: [
-      jsx.jsxs("div", { className: "sand-computer-preview__frame", children: [
-        jsx.jsx(window.PreviewPool, { src }),
-        jsx.jsx("button", { className: "sand-computer-preview__open", children: jsx.jsxs("span", { children: [jsx.jsx("i", { "data-icon-name": "arrows-expand-simple" }), "打开"] }) }),
-      ] }, src),
-      jsx.jsx(window.PreviewPool, { src: "interactive", isInteractive: true }, "interactive"),
+      jsx.jsx(window.PreviewFrame, { agentId: src === "preview-A" ? "bot-A" : "bot-B", src }),
+      jsx.jsx(window.Owner, { agentId: "bot-C", children: jsx.jsx(window.PreviewPool, { src: "interactive", isInteractive: true }) }),
     ] });
   }
   const previewSessions = () => [...sessions].filter(src => src.startsWith("preview-"));
@@ -125,17 +181,26 @@ test("Sleep releases active and warm preview sessions; Restore connects the curr
       window.document.querySelector(".sand-computer-preview__frame").dispatchEvent(new window.Event("pointerenter"));
       window.document.getElementById("rcompsleep-pill-sleep").click();
     });
-    assert.equal(state, "asleep");
+    assert.equal(states.get("bot-A"), "asleep");
     assert.deepEqual(previewSessions(), [], "Sleep must release preview sessions, not merely hide their pixels");
     assert.equal(closed, 2);
     assert.equal(window.document.querySelector(".sand-computer-preview__frame webview"), null);
     assert.ok(sessions.has("interactive"), "full-screen sessions are outside the preview pause scope");
     await React.act(async () => root.render(jsx.jsx(App, { src: "preview-B" })));
-    assert.deepEqual(previewSessions(), [], "switching Bots while asleep must not reconnect a preview");
-    assert.ok(window.document.getElementById("rcompsleep-wake"), "a replaced preview frame must show Restore without waiting for the polling timer");
+    assert.deepEqual(previewSessions().sort(), ["preview-B", "preview-B/warm"], "B is awake and must not inherit A's pause or cached URL");
+    assert.equal(window.document.getElementById("rcompsleep-stage"), null);
+    await React.act(async () => {
+      window.document.querySelector(".sand-computer-preview__frame").dispatchEvent(new window.Event("pointerenter"));
+      window.document.getElementById("rcompsleep-pill-sleep").click();
+    });
+    assert.equal(states.get("bot-B"), "asleep");
+    await React.act(async () => root.render(jsx.jsx(App, { src: "preview-A" })));
+    assert.deepEqual(previewSessions(), [], "returning to A remembers its independent pause");
+    assert.ok(window.document.getElementById("rcompsleep-wake"), "a replaced paused frame must show Restore without polling");
     await React.act(async () => window.document.getElementById("rcompsleep-wake").click());
-    assert.equal(state, "awake");
-    assert.deepEqual(previewSessions().sort(), ["preview-B", "preview-B/warm"]);
+    assert.equal(states.has("bot-A"), false);
+    assert.equal(states.get("bot-B"), "asleep", "restoring A must leave B paused");
+    assert.deepEqual(previewSessions().sort(), ["preview-A", "preview-A/warm"]);
     assert.ok(sessions.has("interactive"));
     assert.equal(window.document.getElementById("rcompsleep-stage"), null);
   } finally {

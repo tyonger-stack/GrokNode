@@ -63,6 +63,7 @@ npm run frontend:build  # 构建可读 renderer 重建
 
 | 现象 | 结论 | 处理 |
 | --- | --- | --- |
+| app 挂「正在重新连接」/Recover 重试弹窗数小时不消，但 `curl 127.0.0.1:1340/health` 一直 200、重启 app 即愈 | **coordinator 连接池冻结不自愈**（2026-10-11 实证）。OrbStack 端口转发坏窗期间建立的 keep-alive 连接被静默冻结（无 RST/FIN、恒 ESTABLISHED），旧实现命令路径走全局 fetch，undici 池永远复用死连接；`forceReconnect()` 只重启 SSE 循环不销毁池。排查时「字节级对比新旧包完全相同却一好一坏」极易误导——差异不在包在启动时机（坏窗内起=冻、坏窗后起=好） | ✅ 已修（2026-10-11）：`CoordinatorGatewayClient` 改用专用 undici `Agent`（keepAliveTimeout 10s）+ 传输失败连击断路（30s 窗口内 3 次 network/timeout/refused/dns/http_5xx → 整池销毁重建，发 `gateway-pool-recycled` 传输事件），`forceReconnect()`/`close()` 联动回收。回归测试 `tests/gateway-pool-freeze-recovery.test.mjs`（黑冻服务器复现全场景，变异验证禁用断路必红）。复诊口诀：health 200 → 重启 app 即愈；refused → OrbStack 转发问题，等或 `docker restart grok-node-local-vm` |
 | `npm run verify` FAIL | `checksum-pinned-artifact-runtime` 模式下 verify.mjs **不消费** `renderer-router-extension.json` 的 patched 哈希 → 必然不匹配。是上游脚本缺口 | 以 package 内嵌的 `verifyReconstructedMacPackage` 为准（已通过） |
 | `npm run smoke` PREREQUISITE | smoke 只认 clean-source renderer 模式，与默认打包模式不符 | 运行时进程产物检查均 PASS，可忽略该门禁 |
 | `dist/` 残留残壳 app | package 末尾 `rm` + `ditto`，中途被打断会只剩 `Contents/Resources` | 重跑 package，勿用残壳 |
@@ -401,3 +402,11 @@ node /tmp/asar-get.mjs "/Applications/Grok Node.app/Contents/Resources/app.asar"
 ③ 指针移出   hidden=false visible=true opacity=1   ← 0.18 正是在这一步翻回 opacity:0
 ```
 即：常显、悬停不改变、移出不隐藏，三点全过。**验收这类「显隐」bug 必须用 `Input.dispatchMouseEvent` 把真指针挪走再读 `getComputedStyle`**——kimi-cu 的 AXPress/click 只给焦点，且它不告诉你真指针在哪。
+
+## 本轮新增（2026-10-06）「Grok Node 的电脑」段落
+
+| 现象 | 结论 | 处理 |
+| --- | --- | --- |
+| **在渲染器补丁里用 `RLocT()` 包住一条 i18n 词表拥有的字面量，可能直接把打包打挂**（`i18n pair has no anchor outside string spans: Refresh Anyway`） | `applyPair` 在**一个 pair 找不到任何可匹配锚点时直接抛错**，而不是跳过。词表里每条 pair 都必须至少剩一个锚点；补丁若把它在 chunk 里的**最后一份**搬进 `RLocT(...)`，`isRlocInserted` 会跳过它 → 0 锚点 → 抛错。**报错文案指的是那条 pair 的英文，不是你改的那行** | 判定方法不能靠猜：把该字面量的**替换结果**落在哪算出来 —— 在「已跑完 main-i18n 之前的那些 pass」的 chunk 上定位词表 zh 文案，统计「在目标 span 内 / span 外」的份数；`总 > span 内` 才可以包。0.18 的「Grok Node 的电脑」段里 **3 条不能包**（`oxmHsP` 横幅、`FXpklv`/`yT3Jyn` dev 按钮），它们各自的值本来就等于官方值，交给词表即可。守卫见 `tests/computer-update-renderer-patch.test.mjs`（顺带断言补丁只改 span 内的字节，所以 span 外的 pair 不可能被影响） |
+| 0.18 的「已是最新版本」卡片在这条构建上**永远走不到**（`isBoxUpToDate = imageUpdateAvailable === false`，而 `imageUpdateAvailable` 恒为 `undefined`） | 镜像探针 `ForeverBoxService.refreshImageUpdateAvailable` 开头就 `if (!isInBox()) return {outcome:"skipped"}`（`SAND_HOST_IN_BOX !== "1"`，桌面宿主永远不满足），于是 flag 一直是 `undefined`，`undefined === false` 为 false。叠加 `LOCAL_DOCKER_BOX_IMAGE_DIGEST` 按 digest 钉死，**本来就不可能存在更新的镜像**。官方 0.66 的判定式与 0.18 逐字同形（`phase==="up-to-date" && !isRebuildBlocked`），所以不需要重画任何东西 | `scripts/lib/computer-update-renderer-patch.mjs` 把决定布局的两个输入就地钉住（phase 常量 + `isRebuildBlocked` 在**唯一那处绑定**上置 `false`——它在同函数里被读 7 次，只改一处才不可能漏），横幅/行/分组组件与全部 stylix 类名保持上游字节。**`isResetBoxPending` 是真状态、不动**：实测重建中仍读「正在重置…」并保持禁用 |
+| CDP 实机点不开设置面板的 `设置` 菜单项（DOM `.click()` 关菜单但不开面板，真 `Input.dispatchMouseEvent` 点击命中了内层 `ui-menu__item-content` 也不触发） | 这个 `ui-menu` 只认键盘激活：把 `li[role=menuitem]` `focus()` 之后发 Enter，面板立刻开。窗口被遮挡时 CDP 的 `Input.dispatchMouseEvent` 全部落空（`elementFromPoint` 命中的是全屏 `ui-menu__backdrop`），而 DOM 派发的事件始终有效 —— 两者都失败时先试键盘，别继续换坐标 | 探针每步都要自证形态（`[role=dialog]` 数量、`更新通道` 是否出现），否则会把「面板没开」读成「段���没渲染」。另外按钮可见性只认 `getComputedStyle` + `getBoundingClientRect`，见上条 |

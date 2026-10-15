@@ -19,10 +19,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const OFFICIAL_ASAR = "/Applications/Grok Bot.app/Contents/Resources/app.asar";
 // 官方锚**不写死** chunk 哈希名与混淆组件名 —— 0.66→0.68.1 时两样都换过（组件搬出
 // plugin-detail-view chunk 进了 chunk-view，ve()→ho()），写死必然随官方升级腐烂。
-// 改按特征发现：renderer chunk 里「同一函数体内同时含 mcp_multi_account（多账户行
-// 特征）与 BJ7R7v（重命名输入框 aria-label 消息 id）」的函数声明，全 asar 恰好一处
-// （0.68.1 实测：含 marker 的 chunk 两个，含 BJ7R7v 的 30+ 个，交集且同函数的仅一个）。
-const FEATURE_MARKER = "mcp_multi_account";
+// 0.71.2 起 i18n 投递改版：组件改用 t({id:"…"}) 引用消息 id，旧组合的 mcp_multi_account
+// 特征串从渲染层消失、BJ7R7v 等消息 id 内联进 38 个 chunk-core 语言表（不再是组件特征）。
+// 新锚 = 用法形态 `id:"BJ7R7v"`（aria-label 构造）：消息表里是 `"BJ7R7v":[…]` 键形态，
+// 不会误配；0.71.2 实测全 asar 恰好一个 chunk、一个函数（chunk-view-DYLZy-Qo.js 表单内）。
+// 历史锚沿革：0.66-0.70 = mcp_multi_account + BJ7R7v 同函数；0.71.2 起 = id:"BJ7R7v" 用法。
+const FEATURE_MARKER = 'id:"BJ7R7v"';
 const INPUT_ARIA_ID = "BJ7R7v";
 
 // ── asar 读取 ────────────────────────────────────────────────────────────────
@@ -354,12 +356,14 @@ function selftest() {
   // ⑩ 三元两个分支的 id 都要取到
   eq("夹具⑩ 三元 aria-label 两分支", ariaLabelIds({ props: `{"aria-label":V!=null?c({id:"a"}):c({id:"b"}),"aria-expanded":V!=null}` }), ["a", "b"]);
 
-  const target = 'function renamed(){const brace="}";return ["mcp_multi_account","BJ7R7v"]}';
+  // 0.71.2 锚形态：组件里 aria-label 以 t({id:"BJ7R7v",…}) 用法引用；字符串内 "}" 不得截断函数体。
+  const target = 'function renamed(){const brace="}";return jsx("input",{"aria-label":t({id:"BJ7R7v",values:{label:x}})})}';
   const discovered = findFeatureTargets([{ chunk: "chunk-renamed.js", source: target }]);
   eq("特征发现不依赖 chunk 或函数名，且字符串括号不截断函数", discovered.map(hit => [hit.chunk, hit.component, hit.fn.text]), [["chunk-renamed.js", "renamed", target]]);
   const shadowed = 'function outer(){function renamed(){return "unrelated"}}' + target;
   eq("同名嵌套函数不抢占实际顶层目标", findFeatureTargets([{ chunk: "chunk-shadowed.js", source: shadowed }]).map(hit => hit.fn.text), [target]);
-  eq("两个标记分散在不同函数时不得组成目标", findFeatureTargets([{ chunk: "split.js", source: 'function a(){return "mcp_multi_account"}function b(){return "BJ7R7v"}' }]).length, 0);
+  // 消息表键形态（"BJ7R7v":[…]）不含用法形态 —— 38 个语言表 chunk 不得误配成锚。
+  eq("消息表键形态不是组件用法，不得组成目标", findFeatureTargets([{ chunk: "table.js", source: 'function a(){return {"BJ7R7v":["Rename ",["label"]," account"]}}' }]).length, 0);
   eq("跨 chunk 的重复目标必须全部保留供唯一性守卫拒绝", findFeatureTargets([{ chunk: "a.js", source: target }, { chunk: "b.js", source: target }]).length, 2);
 
   console.log(fails === 0 ? "\n✅ 自检全绿" : `\n❌ 自检 ${fails} 项失败`);

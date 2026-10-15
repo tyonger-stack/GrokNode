@@ -70,9 +70,9 @@ export const MAIN_METHOD_TABLE = {
   getHostBotColorInChat: { args: "none" },
   setHostBotColorInChat: { args: "object" },
   // Preview display state only; the box and host continue running.
-  getComputerSleepState: { args: "none" },
-  sleepComputer: { args: "none" },
-  wakeComputer: { args: "none" },
+  getComputerSleepState: { args: "object" },
+  sleepComputer: { args: "object" },
+  wakeComputer: { args: "object" },
   // Main bot (主 Bot). This table is the desktop edge's exposure whitelist: a handler
   // that is missing here is never published on `window.desktop`, so the preload bridge
   // calls `mainEdge[method]!()` on undefined and throws at the first use.

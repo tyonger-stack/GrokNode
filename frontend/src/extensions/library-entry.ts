@@ -8,7 +8,7 @@
 // 重建；面板关闭时节点随面板消失，不留孤儿。
 //
 // 视图语义对齐官方 0.68.1（见 library-core.ts 头注锚点）：分组 今天/本周/更早、
-// 新→旧排序、每组渐进揭示 24 条（$S @1581400）、四类条目（image/video/file/link）。
+// 新→旧排序、每组渐进揭示 5 条（TS @1579197，0.70.2 aC @1763513）、四类条目（image/video/file/link）。
 // 样式沿用 0.18 的 sand-* 色板，不自造新色。
 
 import {
@@ -102,7 +102,7 @@ function groupSection(bucket: LibraryBucket, items: readonly LibraryItem[], nowM
   header.append(label, count);
   section.append(header);
 
-  // `f_`/`m_`（提取区间外）的揭示分页语义：每批 LIBRARY_REVEAL_PAGE_SIZE 条。
+  // `f_`/`m_`（揭示分页，0.68.1 @1589691/@1589856）语义：每批 LIBRARY_REVEAL_PAGE_SIZE 条。
   const list = document.createElement("div");
   let revealed = Math.min(LIBRARY_REVEAL_PAGE_SIZE, items.length);
   const more = document.createElement("button");

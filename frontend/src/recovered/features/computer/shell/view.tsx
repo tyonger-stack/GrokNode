@@ -4,6 +4,7 @@ import type { DesktopBridge } from "../../../contracts/desktop-bridge";
 import type { TranscriptComputerHandoff } from "../../conversation/workspace/model";
 import type { ComputerExperience, ComputerHandoffCardProjection } from "./controller";
 import {
+  COMPUTER_CONTROL_LABELS,
   DIRECT_MONITOR_LIMIT,
   VNC_FOCUS_DELAY_MS,
   VNC_WARM_PREVIEW_LIMIT,
@@ -400,9 +401,27 @@ function ComputerCursorOverlay({ cursor, framebuffer }: { cursor: ComputerCursor
   </div>;
 }
 
+/**
+ * 官方 0.70.2 `chunk-box-desktop-modal-N-I4Mrel.js` 的 `jn`/`kn` 控制条：
+ * 未取得控制权时是 primary「取得控制权」+ 右侧状态 pill「仅观看/你正在控制」；
+ * 取得控制权后 pill 变成强调样式、按钮变成 secondary「停止」。
+ */
+function ComputerControlBar({ hasControl, onTakeControl, onStopControl }: { hasControl: boolean; onTakeControl(): void; onStopControl(): void }) {
+  return <div className="sand-computer-control-bar sand-1n2onr6 sand-78zum5 sand-6s0dn4 sand-l56j7k sand-2lah0s sand-h8yej3 sand-n3w4p2 sand-163pfp sand-18qnofl sand-1k70j0n sand-euugli sand-4b2ntj sand-b3r6kr">
+    <span aria-live="polite" className="sand-computer-control-bar__status sand-euugli sand-b3r6kr sand-17d4w8g sand-lyipyv sand-1o0liin">
+      {hasControl ? COMPUTER_CONTROL_LABELS.inControl : COMPUTER_CONTROL_LABELS.viewOnly}
+    </span>
+    {hasControl
+      ? <button className={KIT_BUTTON_SECONDARY} data-size="sm" data-variant="secondary" onClick={onStopControl} type="button"><span className="sand-euugli sand-b3r6kr sand-lyipyv">{COMPUTER_CONTROL_LABELS.stop}</span></button>
+      : <button className={KIT_BUTTON_PRIMARY} data-size="sm" data-variant="primary" onClick={onTakeControl} type="button"><span className="sand-euugli sand-b3r6kr sand-lyipyv">{COMPUTER_CONTROL_LABELS.takeControl}</span></button>}
+    {hasControl ? null : <span className="sand-computer-control-bar__hint sand-euugli sand-b3r6kr sand-17d4w8g sand-2b8uid">{COMPUTER_CONTROL_LABELS.takeControlHint}</span>}
+  </div>;
+}
+
 export function ComputerFullscreen({ bridge, experience, subjectLabel, onRequestComposerFocus, teachRecording }: { bridge: DesktopBridge; experience: ComputerExperience; subjectLabel: string; onRequestComposerFocus(): void; teachRecording?: TeachRecordingComputerInjection }) {
   const { isOpen, monitors, view } = experience;
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hasControl, setHasControl] = useState(false);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   let selected = firstSelectedMonitor(monitors, selectedId);
   if (isOpen && experience.focusMonitorId != null && experience.focusMonitorId !== focusedId) {
@@ -436,6 +455,9 @@ export function ComputerFullscreen({ bridge, experience, subjectLabel, onRequest
     setReady(value);
     if (!value) setFocusedStage(null);
   }, []);
+  // 官方 EXe 的语义：overlay 关闭或切换 stage 时把控制权收回（T(!1)），避免残留输入权限。
+  useEffect(() => { if (!isOpen) setHasControl(false); }, [isOpen]);
+  useEffect(() => { setHasControl(false); }, [stageKey]);
   const step = useCallback((delta: -1 | 1) => setSelectedId((value) => stepSelectedMonitor(monitors, value, delta)), [monitors]);
   const onArrow = useCallback((key: string, preventDefault?: () => void) => {
     if (monitors.length < 2) return;
@@ -481,11 +503,12 @@ export function ComputerFullscreen({ bridge, experience, subjectLabel, onRequest
       {teachRecording == null ? null : <TeachRecordingFrame {...teachRecording.frame} />}
       <div className="sand-computer-stage sand-1n2onr6 sand-h8yej3 sand-1iyjqo2 sand-s83m0k sand-2lwn1j sand-78zum5 sand-6s0dn4 sand-l56j7k sand-pqogu8">
         {stageKey != null && stageVnc != null ? <div className="sand-computer-stage__frame sand-1n2onr6 sand-78zum5 sand-6s0dn4 sand-l56j7k sand-b3r6kr sand-t9pb60 sand-1ua6jya sand-j04kma" style={{ width: `min(100cqw, calc(100cqh * ${dimensions.width} / ${dimensions.height}))`, aspectRatio: `${dimensions.width} / ${dimensions.height}` }}>
-          <div className="sand-10l6tqk sand-10a8y8t"><VncWebview bridge={bridge} isInteractive isViewerVisible={isOpen} key={`${stageKey}:${stageVnc}`} onHostKey={(key) => onArrow(key)} onReadyChange={onReadyChange} openedAtMs={experience.openedAtMs} ref={webviewRef} src={stageVnc} /></div>
+          <div className="sand-10l6tqk sand-10a8y8t"><VncWebview acceptsInput={hasControl} bridge={bridge} isInteractive isViewerVisible={isOpen} key={`${stageKey}:${stageVnc}`} onHostKey={(key) => onArrow(key)} onReadyChange={onReadyChange} openedAtMs={experience.openedAtMs} ref={webviewRef} src={stageVnc} /></div>
         </div> : <StagePlaceholder copy={copy} onRetry={experience.refresh} tone="cover" />}
       </div>
       {teachRecording == null ? null : <TeachRecordingStoreView {...teachRecording.storeView} />}
       {current == null ? null : <div className="sand-78zum5 sand-6s0dn4 sand-l56j7k sand-1jnr06f sand-2lah0s sand-h8yej3 sand-euugli sand-1k70j0n"><span className="sand-fifm61 sand-1d3mw78 sand-12oo3zp sand-euugli sand-b3r6kr sand-lyipyv sand-uxw1ft sand-2b8uid sand-102cea3">{current.title}</span></div>}
+      {stageKey == null || stageVnc == null ? null : <ComputerControlBar hasControl={hasControl} onStopControl={() => setHasControl(false)} onTakeControl={() => setHasControl(true)} />}
       <MonitorStrip bridge={bridge} monitors={otherMonitors} onFocus={setSelectedId} />
     </div>
   </div>;

@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   outputApp,
@@ -56,6 +56,19 @@ await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleDisplayName", "-string", re
 // localisation. Without this hint macOS may treat the app as English-only on
 // mixed-locale machines and skip the system role translations.
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleDevelopmentRegion", "-string", "zh-Hans", infoPlist]);
+// macOS renders the menu-bar app title (the menu right of the Apple logo) from
+// the bundle's LOCALIZED CFBundleName, overriding whatever title Electron sets
+// on the first application-menu item. The raw CFBundleName must stay "Grok Bot"
+// (see the note near the end of this script), so the fork's display name is
+// injected through InfoPlist.strings overrides instead: Electron's startup
+// check reads the raw plist value and still passes, while AppKit shows
+// "Grok Node". zh-Hans + zh_CN cover Chinese locales, en is the fallback.
+const menuBarNameStrings = `/* Localized override: app menu title for the Grok Node fork. Raw CFBundleName stays "Grok Bot" for the Electron helper-name startup check. */\nCFBundleName = "${reconstructedName}";\nCFBundleDisplayName = "${reconstructedName}";\n`;
+for (const lproj of ["zh-Hans", "zh_CN", "en"]) {
+  const lprojDir = path.join(resources, `${lproj}.lproj`);
+  await mkdir(lprojDir, { recursive: true });
+  await writeFile(path.join(lprojDir, "InfoPlist.strings"), menuBarNameStrings, "utf8");
+}
 // The official Grok Bot bundle owns the `sand` and `grokbot` URL schemes. When
 // it is installed, Grok Node registers only its own `groknode` scheme so
 // LaunchServices keeps routing sand:// and grokbot:// links to the official

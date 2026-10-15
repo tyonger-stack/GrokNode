@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { Agent, fetch as undiciFetch } from "undici";
+
 import {
   DeadlineExceededError,
   createDeadlinePolicy,
@@ -28,12 +30,21 @@ import {
   classifyBaseUrlKind,
   classifyGatewayError,
   classifyStreamDown,
-  outcomeForHttpStatus
+  outcomeForHttpStatus,
+  type GatewayReachabilityOutcome
 } from "./gateway-reachability.js";
 import { SseBlockDecoder } from "./sse-block-decoder.js";
 
 export const PERMANENT_REFUSAL_KINDS = new Set(["no_storage", "box_blocked", "access_denied"]);
 export const PRE_DISPATCH_KINDS = new Set(["refused", "dns"]);
+/**
+ * 传输层失败种类：连续命中这些达 {@link GATEWAY_POOL_RECYCLE_STREAK} 次（窗口
+ * {@link GATEWAY_POOL_RECYCLE_WINDOW_MS}）就整体回收网关连接池。命令失败
+ * （4xx SandGatewayCommandError）不算——那是服务端在正常说话。
+ */
+export const TRANSPORT_FAILURE_KINDS: ReadonlySet<string> = new Set(["network", "timeout", "refused", "dns", "http_5xx"]);
+export const GATEWAY_POOL_RECYCLE_STREAK = 3;
+export const GATEWAY_POOL_RECYCLE_WINDOW_MS = 30_000;
 export const CREATE_AGENT_RETRY_POLICY = { name: "gateway-create-agent-retry", maxAttempts: 3, initialDelayMs: 1_000, maxDelayMs: 4_000, backoffFactor: 2 } as const;
 export const SSE_RECONNECT_MIN_MS = 1_000;
 export const SSE_RECONNECT_MAX_MS = 10_000;
@@ -131,6 +142,9 @@ export class CoordinatorGatewayClient {
   private readonly upstreamResolveConnection: CoordinatorGatewayClientOptions["resolveConnection"];
   private readonly mintDedupeProvenBaseUrls = new Set<string>();
   private readonly sendDedupeProvenBaseUrls = new Set<string>();
+  private gatewayAgent: Agent;
+  private transportFailureStreak = 0;
+  private lastTransportFailureAtMonotonicMs: number | undefined;
 
   constructor(options: CoordinatorGatewayClientOptions) {
     const { resolveConnection, ...rest } = options;
@@ -138,6 +152,62 @@ export class CoordinatorGatewayClient {
     this.upstreamResolveConnection = resolveConnection;
     this.sendAcceptReturnDisabled = process.env[DISABLE_SEND_ACCEPT_RETURN_ENV] === "1";
     this.slimAvatarsDisabled = process.env[DISABLE_SLIM_AVATARS_ENV] === "1";
+    this.gatewayAgent = this.createGatewayAgent();
+  }
+
+  /**
+   * 专用网关连接池：不依赖全局 dispatcher，断路回收时可整体销毁重建。
+   *
+   * 2026-10-11 事故背景：OrbStack 端口转发坏窗期间建立的 keep-alive 连接被静默
+   * 冻结（无 RST、无 FIN，请求写进去永远没有回音，socket 状态一直是
+   * ESTABLISHED）。走全局 fetch 的池子会永远复用这批死连接——每 5s 的重试全部
+   * 撞在同一批冻结 socket 上，「正在重新连接」横幅挂到进程重启才消失。重启即愈
+   * 证明网关/token/网络都好，坏的只是池子，所以自愈单元就是池子本身。
+   *
+   * keepAliveTimeout 让空闲冻结连接 10s 内自然淘汰；连击断路（见
+   * noteTransportFailure）兜底「冻结连接一直被复用」的情形——销毁会让在途请求
+   * 立刻失败、挂起的 promise 立刻 settle，下一跳就是全新 TCP。
+   */
+  private createGatewayAgent(): Agent {
+    return new Agent({ connect: { timeout: SSE_CONNECT_TIMEOUT_MS }, keepAliveTimeout: 10_000, keepAliveMaxTimeout: 10_000 });
+  }
+
+  /**
+   * 所有网关 HTTP（命令 / sendPrompt / SSE）统一走专用池，禁止落到全局 dispatcher。
+   * fetch 与 Agent 必须来自同一个 undici 包实例——跨大版本混搭（Node 内置 undici v7
+   * 的全局 fetch + npm undici 5.x 的 Agent）没有协议兼容保证。
+   */
+  private gatewayFetch(url: string, init: { method?: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }): Promise<Response> {
+    return undiciFetch(url, {
+      ...(init.method == null ? {} : { method: init.method as "POST" }),
+      headers: init.headers,
+      ...(init.body == null ? {} : { body: init.body }),
+      ...(init.signal == null ? {} : { signal: init.signal }),
+      dispatcher: this.gatewayAgent
+    }) as unknown as Promise<Response>;
+  }
+
+  private noteTransportFailure(kind: GatewayReachabilityOutcome | string): void {
+    if (!TRANSPORT_FAILURE_KINDS.has(kind)) return;
+    const now = this.options.timing.clock.monotonicNow();
+    if (this.lastTransportFailureAtMonotonicMs !== undefined && now - this.lastTransportFailureAtMonotonicMs > GATEWAY_POOL_RECYCLE_WINDOW_MS) this.transportFailureStreak = 0;
+    this.lastTransportFailureAtMonotonicMs = now;
+    this.transportFailureStreak += 1;
+    if (this.transportFailureStreak >= GATEWAY_POOL_RECYCLE_STREAK) this.recycleGatewayAgent(`transport-failure-streak-${this.transportFailureStreak}`);
+  }
+
+  private noteTransportHealthy(): void {
+    this.transportFailureStreak = 0;
+    this.lastTransportFailureAtMonotonicMs = undefined;
+  }
+
+  private recycleGatewayAgent(reason: string): void {
+    if (this.isClosed) return;
+    const dead = this.gatewayAgent;
+    this.gatewayAgent = this.createGatewayAgent();
+    this.noteTransportHealthy();
+    this.emitTransportEvent({ family: "gateway-pool-recycled", payload: { reason } });
+    void dead.destroy().catch(() => {});
   }
 
   requestHeaders(base: Record<string, string>, connection: GatewayConnection): Record<string, string> {
@@ -175,6 +245,9 @@ export class CoordinatorGatewayClient {
 
   forceReconnect(): Promise<void> {
     if (this.isClosed) return Promise.reject(new Error("gateway client is closed"));
+    // 强制重连的语义就是「扔掉一切旧连接重来」——池子也一起回收，
+    // 否则新的 SSE/命令请求仍会复用冻结的 keep-alive 连接。
+    this.recycleGatewayAgent("forced-reconnect");
     if (this.pendingForcedReconnect != null) {
       this.reconnectGeneration += 1;
       this.interruptEventLoopAttempt();
@@ -222,6 +295,7 @@ export class CoordinatorGatewayClient {
     this.activeEventLoopController?.abort();
     this.pendingForcedReconnect?.reject(new Error("gateway client closed"));
     this.pendingForcedReconnect = undefined;
+    void this.gatewayAgent.destroy().catch(() => {});
   }
 
   private reportReachability(report: unknown, baseUrl?: string): void {
@@ -258,7 +332,7 @@ export class CoordinatorGatewayClient {
       const traceparent = child?.traceparent ?? root;
       fetchStartMonotonicMs = this.options.timing.clock.monotonicNow();
       fetchStartEpochMs = this.options.timing.clock.now();
-      const response = await fetch(`${connection.baseUrl}${GATEWAY_API_PREFIX}/${method}`, {
+      const response = await this.gatewayFetch(`${connection.baseUrl}${GATEWAY_API_PREFIX}/${method}`, {
         method: "POST",
         headers: this.requestHeaders({ "content-type": "application/json", ...(traceparent === undefined ? {} : { [GATEWAY_TRACEPARENT_HEADER]: traceparent }) }, connection),
         body: JSON.stringify(args ?? {}),
@@ -272,12 +346,14 @@ export class CoordinatorGatewayClient {
       }
       const result = await response.json() as unknown;
       if (response.headers.get(GATEWAY_MINT_DEDUPE_HEADER) === "1") this.mintDedupeProvenBaseUrls.add(connection.baseUrl);
+      this.noteTransportHealthy();
       this.reportCommandSpan(method, commandTrace, { startEpochMs: fetchStartEpochMs, durationMs: this.options.timing.clock.monotonicNow() - fetchStartMonotonicMs, isError: false });
       return { result, connection };
     } catch (error) {
       this.reportCommandSpan(method, commandTrace, { startEpochMs: fetchStartEpochMs, durationMs: this.options.timing.clock.monotonicNow() - fetchStartMonotonicMs, isError: true });
       if (error instanceof SandGatewayCommandError || error instanceof GatewayEndpointChangedError) throw error;
       const classified = classifyGatewayError(error);
+      this.noteTransportFailure(classified.outcome);
       this.reportReachability({ outcome: classified.outcome, method, latencyMs: this.options.timing.clock.monotonicNow() - startMonotonicMs, baseUrlKind: classifyBaseUrlKind(connection?.baseUrl), ...(classified.httpStatus === undefined ? {} : { httpStatus: classified.httpStatus }), ...(classified.causeSummary === undefined ? {} : { causeSummary: classified.causeSummary }) }, connection?.baseUrl);
       if (error instanceof SandGatewayUnreachableError) throw error;
       const blocked = findSandBoxBlockedMessage(error);
@@ -373,7 +449,7 @@ export class CoordinatorGatewayClient {
     try {
       state.postStarted = true;
       const result = await this.options.timing.sendPostDeadline.run(async (signal) => {
-        const response = await fetch(`${connection.baseUrl}${GATEWAY_API_PREFIX}/sendPrompt`, { method: "POST", headers: this.requestHeaders({ "content-type": "application/json" }, connection), body: JSON.stringify(args), signal });
+        const response = await this.gatewayFetch(`${connection.baseUrl}${GATEWAY_API_PREFIX}/sendPrompt`, { method: "POST", headers: this.requestHeaders({ "content-type": "application/json" }, connection), body: JSON.stringify(args), signal });
         if (!response.ok) {
           const detail = await response.text().catch(() => response.statusText);
           throw new SandGatewayCommandError(extractGatewayErrorMessage(detail) ?? `gateway sendPrompt failed: ${detail}`);
@@ -381,9 +457,11 @@ export class CoordinatorGatewayClient {
         return await response.json() as unknown;
       });
       if (typeof result === "object" && result != null && "accepted" in result && result.accepted === true) this.sendDedupeProvenBaseUrls.add(connection.baseUrl);
+      this.noteTransportHealthy();
       this.recordSendStage({ stage: "gateway-post", attempt, clientNonce: args.clientNonce, traceparent: args.traceparent, startEpochMs: postStartEpochMs, durationMs: clock.monotonicNow() - postStartMonotonicMs });
       return result ?? undefined;
     } catch (error) {
+      if (!(error instanceof SandGatewayCommandError)) this.noteTransportFailure(classifyGatewayError(error).outcome);
       this.recordSendStage({ stage: "gateway-post", attempt, clientNonce: args.clientNonce, traceparent: args.traceparent, startEpochMs: postStartEpochMs, durationMs: clock.monotonicNow() - postStartMonotonicMs, isError: true });
       throw error;
     }
@@ -424,7 +502,7 @@ export class CoordinatorGatewayClient {
         handshake = await this.options.timing.connectDeadline.run(async (deadlineSignal) => {
           const resolved = await this.resolveConnection(deadlineSignal);
           connection = resolved;
-          const response = await fetch(`${resolved.baseUrl}${GATEWAY_EVENTS_PATH}`, { headers: this.requestHeaders({ accept: "text/event-stream" }, resolved), signal: controller.signal });
+          const response = await this.gatewayFetch(`${resolved.baseUrl}${GATEWAY_EVENTS_PATH}`, { headers: this.requestHeaders({ accept: "text/event-stream" }, resolved), signal: controller.signal });
           if (controller.signal.aborted || attemptGeneration !== this.reconnectGeneration) {
             void response.body?.cancel().catch(() => {});
             throw new Error("gateway connect superseded");
@@ -438,6 +516,7 @@ export class CoordinatorGatewayClient {
       this.connectionCount += 1;
       didConnect = true;
       this.transportState = "connected";
+      this.noteTransportHealthy();
       const blocks = new SseBlockDecoder((block) => this.dispatchEventBlock(block, handshake.connection.vncProxy ?? null));
       let stalled = false;
       const watchdog = this.options.timing.stallWatchdog.arm(() => { stalled = true; controller.abort(); });
@@ -455,11 +534,15 @@ export class CoordinatorGatewayClient {
         }
       } catch (error) {
         down = classifyStreamDown({ stalled, forced: attemptGeneration !== this.reconnectGeneration, devInducedOffline: this.devInducedOffline, clientPaused: this.clientPaused, error });
+        // 冻结的 SSE 流（stall 看门狗触发）与命令路径共用同一批池化连接，
+        // 计入断路连击；自然结束（服务端关流）不计。
+        if (stalled) this.noteTransportFailure("timeout");
         throw error;
       } finally { watchdog.dispose(); controller.abort(); this.notifyDisconnected(down.reason, down.cause); }
     } catch (error) {
       if (!didConnect && !this.isClosed && attemptGeneration === this.reconnectGeneration) {
         const classified = classifyGatewayError(error);
+        this.noteTransportFailure(classified.outcome);
         this.reportReachability({ outcome: classified.outcome, method: "events", latencyMs: this.options.timing.clock.monotonicNow() - connectStartMonotonicMs, baseUrlKind: classifyBaseUrlKind(connection?.baseUrl), ...(classified.httpStatus === undefined ? {} : { httpStatus: classified.httpStatus }), ...(classified.causeSummary === undefined ? {} : { causeSummary: classified.causeSummary }) }, connection?.baseUrl);
       }
       throw error;

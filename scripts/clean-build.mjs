@@ -45,6 +45,7 @@ import { applyOriginalRendererSkillDetail } from "./lib/skill-detail-renderer-pa
 import { applyOriginalRendererTeachSuccessPath } from "./lib/teach-success-path-renderer-patch.mjs";
 import { applyOriginalRendererInfoPaneSplit } from "./lib/info-pane-split-renderer-patch.mjs";
 import { applyOriginalRendererAgentModel } from "./lib/agent-model-renderer-patch.mjs";
+import { applyOriginalRendererComputerUpdate } from "./lib/computer-update-renderer-patch.mjs";
 import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patch.mjs";
 import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
@@ -56,6 +57,9 @@ import { applyMainAgentRendererPatch } from "./lib/main-agent-renderer-patch.mjs
 import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
 import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-patch.mjs";
+import { applyComputerControlRendererPatch } from './lib/computer-control-renderer-patch.mjs';
+import { applyShapePickerPatch } from "./lib/shape-picker-patch.mjs";
+import { applyOriginalRendererConversationComputerCard } from "./lib/conversation-computer-card-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -330,6 +334,13 @@ export async function buildFidelityReconstructedAsar({
   // Experimental per-bot model card in the bot properties panel (h3n). Its labels are
   // already RLocT calls, so it needs the RLocT runtime that main-i18n appends below.
   await applyOriginalRendererAgentModel({ stageRoot });
+  // Settings → 更新 → "Grok Node 的电脑": this build runs the box from a digest-pinned
+  // image, so no newer image can ever be offered and the section always shows official's
+  // up-to-date card (primary-coloured title, the shared-computer sentence, the blue
+  // check-circle banner). It pins the two inputs that decide that card and rewrites the
+  // group's strings through RLocT, so — like every pass that emits RLocT — it must land
+  // before the i18n passes below, which append the RLocT runtime to this same chunk.
+  await applyOriginalRendererComputerUpdate({ stageRoot });
   await applyMainAgentRendererPatch({ stageRoot });
   // 强调色 = Bot 颜色 (bot color in chat): appends a self-starting IIFE to the ENTRY
   // chunk (not the sidebar chunk the pass above edits), so the two never touch the same
@@ -342,7 +353,15 @@ export async function buildFidelityReconstructedAsar({
   // only in the sense that it, too, emits no RLocT calls — it appends English strings that
   // match the settings surface's own hardcoded English.
   await applyBotColorSettingsPatch({ stageRoot });
+  // 电脑休眠/唤醒 (computer sleep/wake): appends the sleep overlay runtime to the ENTRY
+  // chunk and its stylesheet to the main CSS. Order-free against the passes above
+  // (appended bytes only); emits no RLocT and carries its own bilingual labels.
+  await applyShapePickerPatch({ stageRoot });
   await applyComputerSleepRendererPatch({ stageRoot });
+  // 电脑控制条 official 0.70.2 view-only/take-control/stop overlay. Appended bytes only;
+  // own labels, no RLocT: order-free against the passes above.
+  await applyComputerControlRendererPatch({ stageRoot });
+  await applyOriginalRendererConversationComputerCard({ appRoot: stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });

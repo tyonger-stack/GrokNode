@@ -2,6 +2,7 @@
 
 export const VNC_VIEWER_VISIBLE_CHANNEL = "sand:vnc-viewer-visible";
 export const VNC_HOST_KEY_CHANNEL = "sand:vnc-host-key";
+export const VNC_ACCEPTS_INPUT_CHANNEL = "sand:vnc-accepts-input";
 export const VNC_SESSION_CHANNEL = "sand:vnc-session";
 export const VNC_LIVENESS_CHANNEL = "sand:vnc-liveness";
 export const VNC_PARTITION = "persist:sand-forever-box";
@@ -17,6 +18,18 @@ export const COMPUTER_ACTIVE_HOLD_MS = 2_500;
 export type ComputerPhase = "off" | "starting" | "sleeping" | "local" | "running" | "pulling";
 export type ComputerReadState = "unknown" | "known" | "error";
 export type ComputerHandoffResolution = "waiting" | "handed_back" | "replied" | "dismissed" | string;
+
+
+// 官方 0.70.2 `chunk-box-desktop-modal-N-I4Mrel.js` 控制条文案（i18n 表 chunk-core-DLLz6F9_.js）：
+// cC22Hu/12cc1j/Kmqs84/qGXg6g/ygCKqB。全屏态默认 hasControl=false（仅观看），
+// 点击「取得控制权」后才把 `sand:vnc-accepts-input` 置真，键鼠才会送进 noVNC。
+export const COMPUTER_CONTROL_LABELS = {
+  takeControl: "取得控制权",
+  viewOnly: "仅观看",
+  inControl: "你正在控制",
+  takeControlHint: "取得控制权后即可点击和输入",
+  stop: "停止"
+} as const;
 
 export interface ComputerHandoff {
   requestId: string;

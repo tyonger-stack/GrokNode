@@ -2,6 +2,7 @@
 import { forwardRef, useCallback, type Ref, type RefAttributes } from "react";
 import type { DesktopBridge } from "../../../contracts/desktop-bridge";
 import {
+  VNC_ACCEPTS_INPUT_CHANNEL,
   VNC_CRASH_LIMIT,
   VNC_CRASH_WINDOW_MS,
   VNC_HOST_KEY_CHANNEL,
@@ -27,6 +28,7 @@ interface VncWebviewProps {
   src: string;
   className?: string;
   isInteractive?: boolean;
+  acceptsInput?: boolean;
   isViewerVisible?: boolean;
   openedAtMs?: number;
   onReadyChange?(ready: boolean): void;
@@ -57,6 +59,7 @@ interface VncLifecycle {
   lastCrashAtMs: number | null;
   hasCrashedOut: boolean;
   wasViewerVisible: boolean;
+  sentAcceptsInput: boolean;
 }
 
 const lifecycleByWebview = new WeakMap<VncWebviewElement, VncLifecycle>();
@@ -74,6 +77,11 @@ function sendViewerVisibility(element: VncWebviewElement, visible: boolean): voi
   if (result != null) settle(result);
 }
 
+function sendAcceptsInput(element: VncWebviewElement, acceptsInput: boolean): void {
+  const result = element.send?.(VNC_ACCEPTS_INPUT_CHANNEL, acceptsInput);
+  if (result != null) settle(result);
+}
+
 function assignRef<T>(ref: Ref<T> | undefined, value: T | null): void {
   if (typeof ref === "function") ref(value);
   else if (ref != null) ref.current = value;
@@ -81,11 +89,12 @@ function assignRef<T>(ref: Ref<T> | undefined, value: T | null): void {
 
 export function bindVncWebviewLifecycle(element: VncWebviewElement, options: Pick<VncWebviewProps,
   "bridge" | "src" | "isInteractive" | "isViewerVisible" | "openedAtMs" | "onReadyChange" |
-  "onConnectedChange" | "onCrashedChange" | "onHostKey">): () => void {
+  "onConnectedChange" | "onCrashedChange" | "onHostKey" | "acceptsInput">): () => void {
   const {
     bridge,
     src,
     isInteractive = false,
+    acceptsInput = !isInteractive,
     isViewerVisible,
     openedAtMs,
     onReadyChange,
@@ -105,7 +114,8 @@ export function bindVncWebviewLifecycle(element: VncWebviewElement, options: Pic
       crashCount: 0,
       lastCrashAtMs: null,
       hasCrashedOut: false,
-      wasViewerVisible: false
+      wasViewerVisible: false,
+      sentAcceptsInput: acceptsInput
     };
     lifecycleByWebview.set(element, lifecycle);
   }
@@ -126,6 +136,13 @@ export function bindVncWebviewLifecycle(element: VncWebviewElement, options: Pic
   const sendVisibility = () => {
     if (isViewerVisible != null && state.isReady) sendViewerVisibility(element, isViewerVisible);
   };
+  const sendInputGate = (force = false) => {
+    if (!state.isReady) return;
+    if (force || state.sentAcceptsInput !== acceptsInput) {
+      state.sentAcceptsInput = acceptsInput;
+      sendAcceptsInput(element, isInteractive && acceptsInput);
+    }
+  };
   const becameVisible = isViewerVisible === true && !state.wasViewerVisible;
   state.wasViewerVisible = isViewerVisible === true;
   if (didNavigate) report("navigate");
@@ -140,6 +157,7 @@ export function bindVncWebviewLifecycle(element: VncWebviewElement, options: Pic
     if (state.hasCrashedOut) onCrashedChange?.(true);
   }
   sendVisibility();
+  sendInputGate();
 
   const reportDomReady = () => {
     if (!state.domReadyReported) {
@@ -152,11 +170,13 @@ export function bindVncWebviewLifecycle(element: VncWebviewElement, options: Pic
     onReadyChange?.(true);
     reportDomReady();
     sendVisibility();
+    sendInputGate(true);
   };
   const onDidFinishLoad = () => {
     state.isReady = true;
     reportDomReady();
     sendVisibility();
+    sendInputGate(true);
   };
   const onDidFailLoad = (event: Event) => {
     const errorCode = (event as Event & { errorCode?: number }).errorCode;
@@ -223,6 +243,7 @@ export const VncWebview = forwardRef<VncWebviewElement, VncWebviewProps>(functio
     src,
     className,
     isInteractive = false,
+    acceptsInput,
     isViewerVisible,
     openedAtMs,
     onReadyChange,
@@ -236,13 +257,13 @@ export const VncWebview = forwardRef<VncWebviewElement, VncWebviewProps>(functio
     if (element == null) return;
     const detach = bindVncWebviewLifecycle(element, {
       bridge, src, isInteractive, isViewerVisible, openedAtMs,
-      onReadyChange, onConnectedChange, onCrashedChange, onHostKey
+      onReadyChange, onConnectedChange, onCrashedChange, onHostKey, acceptsInput
     });
     return () => {
       detach();
       assignRef(forwardedRef, null);
     };
-  }, [bridge, forwardedRef, isInteractive, isViewerVisible, onConnectedChange, onCrashedChange, onHostKey, onReadyChange, openedAtMs, src]);
+  }, [acceptsInput, bridge, forwardedRef, isInteractive, isViewerVisible, onConnectedChange, onCrashedChange, onHostKey, onReadyChange, openedAtMs, src]);
 
   return <WebviewTag
     aria-hidden={isInteractive ? undefined : true}

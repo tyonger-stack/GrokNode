@@ -97,6 +97,11 @@ function isLocalMacForwarder(baseUrl: string): boolean {
   } catch { return false; }
 }
 function req(value: unknown): UnknownRecord { return typeof value === "object" && value != null && !Array.isArray(value) ? value as UnknownRecord : {}; }
+function previewAgentId(value: unknown): string {
+  const agentId = req(value).agentId;
+  invariant(typeof agentId === "string" && agentId.trim().length > 0, "A Bot ID is required for preview sleep state.");
+  return agentId;
+}
 function detectTimeZone(): string | null { const value = Intl.DateTimeFormat().resolvedOptions().timeZone; return value.length > 0 ? value : null; }
 const sleep = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -169,9 +174,9 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     // setHostSettings, which refuses it while the gate is off (upstream's admission split).
     getHostBotColorInChat: async () => (await deps.readHostSettingsFromBox()).botColorInChatEnabled === true,
     setHostBotColorInChat: (raw) => echo(deps, "botColorInChatEnabled", req(raw).enabled === true, "the accent setting"),
-    getComputerSleepState: async () => computerPreview.getState(),
-    sleepComputer: async () => computerPreview.sleep(),
-    wakeComputer: async () => computerPreview.wake(),
+    getComputerSleepState: async raw => computerPreview.getState(previewAgentId(raw)),
+    sleepComputer: async raw => computerPreview.sleep(previewAgentId(raw)),
+    wakeComputer: async raw => computerPreview.wake(previewAgentId(raw)),
     // Main bot (主 Bot) — the three-method shape the official desktop facade uses
     // (getGrokBotUserRuntimeSettings / setGrokBotMainAgent / ensureGrokBotDefaultMainAgent).
     // `get` never needs the gate; `set` is refused by the HOST while the gate is off, which
