@@ -1,3 +1,12 @@
+import type { AgentRunErrorKind } from "../../../shared/trays/agent-run-error-title-copy.js";
+import {
+  isBackendUnreachableError,
+  isConversationTooLargeRefusal,
+  isFirstTokenStallError,
+  isProviderCapacityError,
+  isTransientStreamError,
+} from "../../runner/transient-stream-error.js";
+
 export const PROVIDER_OVERLOAD_ERROR_TITLE = "Model provider is overloaded";
 export const PROVIDER_OVERLOAD_ERROR_DETAIL =
   "The model provider is under heavy load right now. This is usually temporary — retry, or switch to another model.";
@@ -188,9 +197,37 @@ export function describeAgentRunError(error: unknown): Record<string, unknown> {
       detail.additionalInfo.nextResetAt,
     );
   else if (!shown) shown = formatted;
+  const errorKind = agentRunErrorKindOf(error, detail != null);
   return {
     ...(title ? { title } : {}),
     detail: shown,
     ...(actions.length ? { actions } : {}),
+    ...(errorKind == null ? {} : { errorKind }),
+    ...(errorKind === "unknown_failure" ? { errorParams: { technicalDetail: formatted } } : {}),
   };
+}
+function errorChainIncludes(
+  error: unknown,
+  matches: (candidate: unknown) => boolean,
+  seen = new Set<unknown>(),
+): boolean {
+  if (matches(error)) return true;
+  if (error == null || typeof error !== "object" || seen.has(error)) return false;
+  seen.add(error);
+  const cause = "cause" in error ? error.cause : undefined;
+  if (cause != null && errorChainIncludes(cause, matches, seen)) return true;
+  const aggregated = "errors" in error ? error.errors : undefined;
+  return (
+    Array.isArray(aggregated) &&
+    aggregated.some((inner) => errorChainIncludes(inner, matches, seen))
+  );
+}
+export function agentRunErrorKindOf(error: unknown, hasBackendDetail = findBackendConnectError(error)?.findDetails()[0]?.details != null): AgentRunErrorKind | undefined {
+  if (isBackendUnreachableError(error)) return "backend_unreachable";
+  if (isProviderCapacityError(error)) return "provider_overloaded";
+  if (hasBackendDetail) return undefined;
+  if (errorChainIncludes(error, isFirstTokenStallError)) return "first_token_stall";
+  if (isConversationTooLargeRefusal(error)) return "conversation_too_large";
+  if (findBackendConnectError(error, false) != null || isTransientStreamError(error)) return "opaque_wire_failure";
+  return "unknown_failure";
 }

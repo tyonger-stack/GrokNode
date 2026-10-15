@@ -13,7 +13,13 @@ import {
   type ActivityUpdate,
   type NamedActivityHoldState,
 } from "../../sand-activity.js";
-import { formatAgentRunError } from "./agent-run-error.js";
+import {
+  agentRunErrorKindOf,
+  describeAgentRunError,
+  formatAgentRunError,
+} from "./agent-run-error.js";
+import { turnFailureCopy } from "../../../shared/trays/agent-run-error-title-copy.js";
+import { hostTrayTitle } from "../../../shared/trays/tray-title-fallbacks.js";
 import { isTurnInterruptedFailure } from "./turn-runtime.js";
 import { ToolRepeatDetector } from "./tool-repeat-detector.js";
 import { SandRunScheduler, type RunLane } from "./run-scheduler.js";
@@ -452,15 +458,22 @@ export class RunLifecycle {
       const description = formatAgentRunError(
         error instanceof Error ? error : new Error(String(error)),
       );
+      const failure = turnFailureCopy(agentRunErrorKindOf(error));
+      const heading = hostTrayTitle({
+        kind: failure.titleKind,
+        description: describeAgentRunError(error),
+      }).title;
       const notice = {
         kind: "notice",
         id: "notice-turn-failure-" + randomUUID(),
         text:
-          "This turn ended without a reply (source: " +
+          heading +
+          ": This turn ended without a reply (source: " +
           source +
           "; error: " +
           description +
           "). Send a message to run it again.",
+        failure,
         timestampMs: Date.now(),
       };
       // The notice kind renders in the live roster, but journal/jsonl lines

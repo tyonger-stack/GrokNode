@@ -355,7 +355,8 @@ export class AutomationRunPath {
             >;
             const detail =
               isTransientStreamError(error) &&
-              description.errorKind == null &&
+              (description.errorKind == null ||
+                description.errorKind === "opaque_wire_failure") &&
               description.rawDetail == null
                 ? `Lost the connection repeatedly and gave up after retrying: ${description.detail}`
                 : String(description.detail);
