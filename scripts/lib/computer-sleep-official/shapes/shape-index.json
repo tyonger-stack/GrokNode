@@ -1,0 +1,70 @@
+{
+  "version": "0.70.2",
+  "shapes": [
+    {
+      "shape": "blob",
+      "file": "blob.svg",
+      "sha256": "772f2f9f15d76672a881d863dd7d53ec0a0accdd83a60a95fcb52ee9f5467ab3"
+    },
+    {
+      "shape": "cloud",
+      "file": "cloud.svg",
+      "sha256": "27baa1d5c5cbc8981c3d81c2fa1be83aa1cca283e6271c6bd67cc7c18e947e11"
+    },
+    {
+      "shape": "square",
+      "file": "square.svg",
+      "sha256": "56f2de15f75e7aed7d00fe6bb6ddff2dcfae8801956f40bac4eabd36fbfa55d0"
+    },
+    {
+      "shape": "sparkle",
+      "file": "sparkle.svg",
+      "sha256": "3e49ebb881e6e01ba3843bc141edb59f4c8504eb2a16ae4b1648367196921a1e"
+    },
+    {
+      "shape": "clover",
+      "file": "clover.svg",
+      "sha256": "86fbfab1a9e5cf27af4757cdf7753e1b160d211d7fa3ce3a938b3b7941883eee"
+    },
+    {
+      "shape": "heart",
+      "file": "heart.svg",
+      "sha256": "74aad9fb16078b4d9ef9b3096ccd2cf78f32a4eb3349c5617c064ccf83f0db6d"
+    },
+    {
+      "shape": "flower",
+      "file": "flower.svg",
+      "sha256": "e867f812d83a96c42108ffae69da1c6c540f144b6a4a3d3d5dfc1ebe09d93121"
+    },
+    {
+      "shape": "teardrop",
+      "file": "teardrop.svg",
+      "sha256": "29e23a71c81f985392b4b6ffec27be7a941c50ac0a2507832e88dfbf0428c284"
+    },
+    {
+      "shape": "tablet",
+      "file": "tablet.svg",
+      "sha256": "aa60e14ae7208c59929d4105d32964636afaf26a6d7d20360ea2d53f0dfd2ae6"
+    },
+    {
+      "shape": "wedge",
+      "file": "wedge.svg",
+      "sha256": "6701a5a69de0808782fea22b64bc529fd4554493ce3c9f3d9fc9ca4ebd96064c"
+    },
+    {
+      "shape": "house",
+      "file": "house.svg",
+      "sha256": "468b0fb8aa20a197867dafa60605e2214653940824076e78fd8a6fa7c60c40f7"
+    },
+    {
+      "shape": "star",
+      "file": "star.svg",
+      "sha256": "db90dd71f04250e6b9416b1da91d7f6670057c3c8a4ebf8595c4777e744174b5"
+    },
+    {
+      "shape": "hex",
+      "file": "hex.svg",
+      "sha256": "1854939fc0eb28de5d2b6cdae2c92a874306fe536b8814734c22d9384fbc0982"
+    }
+  ]
+}

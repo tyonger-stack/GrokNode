@@ -37,12 +37,31 @@ test("preview sleep and wake avoid external dependencies and keep host reads ava
       throw new Error(`preview state accessed an external dependency: ${String(key)}`);
     },
   }));
-  await handlers.sleepComputer({});
+  await handlers.sleepComputer({ agentId: "bot-A" });
   assert.deepEqual(await handlers.getHostPinnedAgents({}), ["qa-agent"]);
-  assert.equal(await handlers.getComputerSleepState({}), "asleep");
-  await handlers.wakeComputer({});
-  assert.equal(await handlers.getComputerSleepState({}), "awake");
+  assert.equal(await handlers.getComputerSleepState({ agentId: "bot-A" }), "asleep");
+  assert.equal(await handlers.getComputerSleepState({ agentId: "bot-B" }), "awake");
+  await assert.rejects(() => handlers.sleepComputer({}), /Bot ID/);
+  await handlers.wakeComputer({ agentId: "bot-A" });
+  assert.equal(await handlers.getComputerSleepState({ agentId: "bot-A" }), "awake");
   assert.equal(hostReads, 1);
+});
+
+test("the actual preload computer facade transports the requested Bot ID for all three operations", async () => {
+  const { createDesktopPreloadBridge } = await loadModule("source/electron-preload/preload.ts");
+  const calls = [];
+  const mainEdge = new Proxy({ subscribe: () => () => {} }, {
+    get(target, method) { return target[method] ?? (async (...args) => { calls.push({ method, args }); return "awake"; }); },
+  });
+  const desktop = createDesktopPreloadBridge({ ipc: { invoke: async () => ({}), on: () => {}, off: () => {} }, webFrame: {}, mainEdge, env: {}, devRestartEnabled: false, initialState: {} });
+  await desktop.computer.getSleepState("bot-A");
+  await desktop.computer.sleep("bot-B");
+  await desktop.computer.wake("bot-A");
+  assert.deepEqual(calls, [
+    { method: "getComputerSleepState", args: [{ agentId: "bot-A" }] },
+    { method: "sleepComputer", args: [{ agentId: "bot-B" }] },
+    { method: "wakeComputer", args: [{ agentId: "bot-A" }] },
+  ]);
 });
 
 test("preview controls hide and restore content without opening the computer", async () => {
@@ -53,10 +72,10 @@ test("preview controls hide and restore content without opening the computer", a
   const window = new Window();
   let refresh;
   let opened = 0;
-  window.desktop = { computer: { getSleepState: async () => preview.getState(), sleep: async () => preview.sleep(), wake: async () => preview.wake() } };
+  window.desktop = { computer: { getSleepState: async agentId => preview.getState(agentId), sleep: async agentId => preview.sleep(agentId), wake: async agentId => preview.wake(agentId) } };
   window.setTimeout = (callback) => { queueMicrotask(callback); return 1; };
   window.setInterval = (callback) => { refresh = callback; return 1; };
-  window.document.body.innerHTML = '<div id="preview-frame" class="sand-computer-preview__frame"><div class="sand-box-vnc-pool"><canvas id="preview-stream"></canvas></div><button id="open-computer" class="sand-computer-preview__open native-open-control"><span class="native-open-pill"><i class="ui-icon native-icon" data-icon-name="arrows-expand-simple" data-size="sm" aria-hidden="true"></i>Open computer</span></button></div>';
+  window.document.body.innerHTML = '<div id="preview-frame" data-preview-bot-id="bot-A" class="sand-computer-preview__frame"><div class="sand-box-vnc-pool"><canvas id="preview-stream"></canvas></div><button id="open-computer" class="sand-computer-preview__open native-open-control"><span class="native-open-pill"><i class="ui-icon native-icon" data-icon-name="arrows-expand-simple" data-size="sm" aria-hidden="true"></i>Open computer</span></button></div>';
   const css = window.document.createElement("style");
   css.textContent = '.sand-box-vnc-pool { position:absolute;inset:0; } .sand-box-vnc-pool > canvas,.sand-computer-preview__open { visibility:visible; }' + computerSleepStyles(stage.css + pill.css);
   window.document.head.append(css);

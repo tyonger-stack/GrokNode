@@ -45,8 +45,6 @@ test("computerSleepOverlayRuntime embeds the official DOM, labels and both lever
   assert.ok(runtime.includes("window.__rCompSleep"));
   assert.ok(runtime.includes(".sand-box-vnc-pool"));
   assert.ok(runtime.includes("getSleepState"));
-  assert.ok(runtime.includes("b.wake()"));
-  assert.ok(runtime.includes("b.sleep()"));
   const embedded = JSON.parse(runtime.match(/var STAGE_HTML=("[^]*?");\n/)[1]);
   assert.ok(embedded.includes('data-stage="asleep"'), "official stage markup embedded");
   assert.ok(embedded.includes('data-grok-state="sleeping"'));
@@ -163,17 +161,20 @@ async function loadExecutor() {
   return import(pathToFileURL(outfile).href);
 }
 
-test("computer preview state is local, isolated and idempotent", async () => {
+test("computer preview state is isolated by Bot, local and idempotent", async () => {
   const { createComputerPreviewController } = await loadExecutor();
   const preview = createComputerPreviewController();
   const other = createComputerPreviewController();
-  assert.equal(preview.getState(), "awake");
-  assert.equal(preview.sleep(), "asleep");
-  assert.equal(preview.sleep(), "asleep");
-  assert.equal(preview.getState(), "asleep");
-  assert.equal(other.getState(), "awake");
-  assert.equal(preview.wake(), "awake");
-  assert.equal(preview.wake(), "awake");
+  assert.equal(preview.getState("bot-A"), "awake");
+  assert.equal(preview.sleep("bot-A"), "asleep");
+  assert.equal(preview.sleep("bot-A"), "asleep");
+  assert.equal(preview.getState("bot-A"), "asleep");
+  assert.equal(preview.getState("bot-B"), "awake", "A sleeping must not pause B");
+  assert.equal(other.getState("bot-A"), "awake");
+  assert.equal(preview.sleep("bot-B"), "asleep");
+  assert.equal(preview.wake("bot-A"), "awake");
+  assert.equal(preview.wake("bot-A"), "awake");
+  assert.equal(preview.getState("bot-B"), "asleep", "A waking must not wake B");
 });
 
 // ---------------------------------------------------------------------------
@@ -188,7 +189,7 @@ test("computer channel: preload calls, method table and main-edge handlers stay 
   const called = [...preload.matchAll(/edge\("(getComputerSleepState|sleepComputer|wakeComputer)"/g)].map(match => match[1]);
   assert.deepEqual([...new Set(called)].sort(), ["getComputerSleepState", "sleepComputer", "wakeComputer"]);
   for (const method of called) {
-    assert.ok(new RegExp(`^  ${method}: \\{ args: "none" \\},$`, "m").test(table), `table missing ${method}`);
+    assert.ok(new RegExp(`^  ${method}: \\{ args: "object" \\},$`, "m").test(table), `table missing ${method}`);
     assert.ok(new RegExp(`^    ${method}: async`, "m").test(edge) || new RegExp(`^    ${method}:`, "m").test(edge), `main-edge missing ${method}`);
   }
 });

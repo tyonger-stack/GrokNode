@@ -13,6 +13,7 @@ import {
   computerSleepStyles,
   loadOfficialAsleepArtifacts,
   loadOfficialShapeSvgs,
+  loadOfficialAvatarStates,
 } from "./computer-sleep-renderer-components.mjs";
 
 const hash = text => createHash("sha256").update(text).digest("hex");
@@ -60,9 +61,10 @@ export async function applyComputerSleepRendererPatch({ stageRoot }) {
   const source = await readFile(entryPath, "utf8");
   if (!source.includes("sand-box-vnc-pool")) throw new Error("Computer-sleep patch: computer view root class sand-box-vnc-pool missing from entry chunk.");
 
-  const [{ html: stageHtml, css: officialCss }, shapeSvgs] = await Promise.all([
+  const [{ html: stageHtml, css: officialCss }, shapeSvgs, avatarStates] = await Promise.all([
     loadOfficialAsleepArtifacts(),
     loadOfficialShapeSvgs(),
+    loadOfficialAvatarStates(),
   ]);
 
   const cssFiles = (await readdir(path.join(rendererRoot, "assets"))).filter(file => /^index-.*\.css$/.test(file));
@@ -78,7 +80,7 @@ export async function applyComputerSleepRendererPatch({ stageRoot }) {
   }
 
   const sleepIconGlyph = nativeSleepIconGlyph(source);
-  const runtime = computerSleepOverlayRuntime(stageHtml, shapeSvgs, sleepIconGlyph);
+  const runtime = computerSleepOverlayRuntime(stageHtml, shapeSvgs, sleepIconGlyph, avatarStates);
   const patched = patchComputerSleepRenderer(source, runtime);
   await writeFile(entryPath, patched);
   const allStyles = computerSleepStyles(officialCss);
@@ -88,11 +90,11 @@ export async function applyComputerSleepRendererPatch({ stageRoot }) {
   console.log(`Computer-sleep overlay: appended stage+shapes(${shapeNames.length})+pill to ${entryScripts[0]}; pool: .sand-box-vnc-pool`);
 
   const provenance = {
-    mode: "computer-preview-stream-only",
-    behavior: "Sleep unmounts preview webviews, warm cached views and hidden fullscreen viewers; Restore remounts the current preview. Visible interactive viewers, Docker and Bot execution continue.",
+    mode: "computer-preview-stream-per-bot",
+    behavior: "Sleep state is keyed by agentId. Only that Bot's previews, warm caches and hidden fullscreen viewers pause; other Bots and visible interactive views continue. Restore affects only the requested Bot. Docker and Bot execution continue.",
     styleScope: "Exported rules and token shims are restricted to the asleep stage; hover actions inherit the native renderer styles.",
     hoverActions: "Reuse the existing native Open button; Sleep shares its button and pill classes and appears below it with the same reveal state.",
-    evidence: "Grok Bot 0.70.2 asleep stage and 13 shape SVGs exported from official DOM; hover actions reuse the shipped renderer's native Open pill and moon-z icon registry.",
+    evidence: "Grok Bot 0.70.2 asleep stage; 13 sleeping/waking SVGs derived by the original parameterized drawing engine with intact local references, plus original animation keyframes. Hover actions reuse the native Open pill and moon-z registry.",
     sleepIcon: { name: "moon-z", glyph: sleepIconGlyph },
     entry: entryScripts[0],
     containerClass: "sand-box-vnc-pool",

@@ -16,14 +16,15 @@ import { Window } from "happy-dom";
 const ARTIFACTS_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), "computer-sleep-official");
 
 export async function loadOfficialAsleepArtifacts() {
-  const [html, css] = await Promise.all([
+  const [html, css, animation] = await Promise.all([
     readFile(path.join(ARTIFACTS_DIR, "asleep-stage.html"), "utf8"),
     readFile(path.join(ARTIFACTS_DIR, "asleep-stage.css"), "utf8"),
+    readFile(path.join(ARTIFACTS_DIR, "asleep-animation.css"), "utf8"),
   ]);
   if (!html.includes("{{TITLE}}") || !html.includes("{{WAKE}}") || !html.includes('data-stage="asleep"')) {
     throw new Error("computer-sleep: official asleep template is malformed.");
   }
-  return { html, css };
+  return { html, css: css + "\n" + animation };
 }
 
 export async function loadOfficialShapeSvgs() {
@@ -37,6 +38,9 @@ export async function loadOfficialShapeSvgs() {
   }
   return map;
 }
+export async function loadOfficialAvatarStates() {
+  return JSON.parse(await readFile(path.join(ARTIFACTS_DIR, "avatar-states.json"), "utf8"));
+}
 
 export async function loadOfficialOpenPill() {
   const [html, css] = await Promise.all([
@@ -47,17 +51,18 @@ export async function loadOfficialOpenPill() {
 }
 
 export const COMPUTER_SLEEP_LABELS = {
-  zh: { title: "电脑预览已关闭", wake: "恢复预览", waking: "正在恢复预览…", open: "打开", sleep: "休眠", sleepHint: "暂停预览流，Bot 继续运行" },
-  en: { title: "Computer preview is off", wake: "Show preview", waking: "Restoring preview…", open: "Open", sleep: "Sleep preview", sleepHint: "Pause preview stream; Bots keep running" },
+  zh: { title: "电脑预览已关闭", wake: "恢复预览", waking: "正在恢复预览…", open: "打开", sleep: "休眠", sleepHint: "暂停当前 Bot 的预览流，任务继续运行" },
+  en: { title: "Computer preview is off", wake: "Show preview", waking: "Restoring preview…", open: "Open", sleep: "Sleep preview", sleepHint: "Pause this Bot's preview stream; tasks keep running" },
 };
 
-export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGlyph) {
+export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGlyph, avatarStates) {
   return `
 /* grok-node computer sleep overlay + hover pill — official 0.70.2 exports. */
 (function(){
   if(typeof window!=='object'||window.__rCompSleep)return;window.__rCompSleep=!0;
   var STAGE_HTML=${JSON.stringify(officialHtml)};
   var SHAPE_SVGS=${JSON.stringify(shapeSvgs)};
+  var SHAPE_STATES=${JSON.stringify(avatarStates ?? { sleeping: shapeSvgs, waking: shapeSvgs })};
   var SLEEP_ICON_GLYPH=${JSON.stringify(sleepIconGlyph)};
   var ZH=(navigator.language||'').toLowerCase().indexOf('zh')===0;
   var L=${JSON.stringify(COMPUTER_SLEEP_LABELS)}[ZH?'zh':'en'];
@@ -65,39 +70,54 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
   function bridge(){var c=window.desktop&&window.desktop.computer;return c!=null&&typeof c.getSleepState==='function'?c:null}
   function pool(){return document.querySelector('.sand-computer-preview__frame .sand-box-vnc-pool')}
   function previewFrame(host){return host.closest('.sand-computer-preview__frame')||host}
-  function pausePreviewStream(paused){
-    if(window.__rCompPreviewAsleep===paused)return;
-    window.__rCompPreviewAsleep=paused;
+  function currentBotId(){var host=pool();return host==null?null:previewFrame(host).getAttribute('data-preview-bot-id')}
+  var revisions=new Map();
+  function revision(agentId){return revisions.get(agentId)||0}
+  function beginChange(agentId){var next=revision(agentId)+1;revisions.set(agentId,next);return next}
+  function isPaused(agentId){return window.__rCompPreviewPausedBots!=null&&window.__rCompPreviewPausedBots.has(agentId)}
+  function pausePreviewStream(agentId,paused){
+    if(!agentId||isPaused(agentId)===paused)return;
+    if(window.__rCompPreviewPausedBots==null)window.__rCompPreviewPausedBots=new Set();
+    if(paused)window.__rCompPreviewPausedBots.add(agentId);else window.__rCompPreviewPausedBots.delete(agentId);
     window.dispatchEvent(new Event('grok-node-preview-stream-state'));
   }
 
   // --- Shape resolution: reuse the entry chunk's own Cee (palette+fallback) via fiber ---
   function currentBotShape(){
+    var agentId=currentBotId();
+    var fallback=typeof Eee==='function'&&agentId?Eee({id:agentId,avatarShape:null}):'blob';
+    var host=pool(),frame=host==null?null:previewFrame(host);
     var row=document.querySelector('.sand-agent-item[data-active],[data-agent-id][data-active]');
-    if(row==null)return 'blob';
+    var roots=[frame,row];
+    for(var root of roots){
+    if(root==null)continue;
     var fiber=null;
-    for(var k of Object.getOwnPropertyNames(row)){if(k.indexOf('__reactFiber$')===0){fiber=row[k];break;}}
-    for(var node=fiber,hops=0;node!=null&&hops<16;node=node.return,hops++){
+    for(var k of Object.getOwnPropertyNames(root)){if(k.indexOf('__reactFiber$')===0){fiber=root[k];break;}}
+    for(var node=fiber,hops=0;node!=null&&hops<64;node=node.return,hops++){
       var props=node.memoizedProps;
       if(props==null||typeof props!=='object')continue;
       for(var p in props){
         var v=props[p];
-        if(v!=null&&typeof v==='object'&&!Array.isArray(v)&&typeof v.avatarShape==='string'){
-          return SHAPE_SVGS[v.avatarShape]!=null?v.avatarShape:'blob';
+        if(v!=null&&typeof v==='object'&&!Array.isArray(v)&&v.id===agentId){
+          var shape=typeof Eee==='function'?Eee(v):v.avatarShape;
+          return SHAPE_SVGS[shape]!=null?shape:fallback;
         }
       }
     }
-    return 'blob';
+    }
+    return fallback;
   }
-  function swapMascotShape(stage){
+  function swapMascotShape(stage,mode){
     var shape=currentBotShape();
-    var svg=SHAPE_SVGS[shape];
+    var state=mode==='waking'?'waking':'sleeping';
+    var svg=SHAPE_STATES[state][shape];
     if(svg==null)return;
     var mark=stage.querySelector('.sand-grok-bot-mark');
     if(mark==null)return;
-    // Replace the inner SVG area (keep the mark wrapper and its CSS var --grok-bot-ink)
     var container=mark.querySelector('span[style*="inline-block"]');
-    if(container!=null){container.innerHTML='<span style="position:absolute;left:50%;top:50%;width:100%;height:100%;transform:translate(-50%,-50%);pointer-events:none;">'+svg+'</span>';}
+    if(container!=null){container.innerHTML='<span style="position:absolute;left:50%;top:50%;width:153.33333333333334%;height:153.33333333333334%;transform:translate(-50%,-50%);pointer-events:none;">'+svg+'</span>';}
+    stage.setAttribute('data-avatar-shape',shape);
+    mark.setAttribute('data-grok-state',state);
   }
 
   // --- Overlay ---
@@ -112,6 +132,8 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     var host=pool();
     if(host==null)return;
     var frame=previewFrame(host);
+    var agentId=frame.getAttribute('data-preview-bot-id');
+    if(!agentId)return;
     frame.insertAdjacentHTML('beforeend',labels(mode));
     var stage=frame.lastElementChild;
     if(stage==null||stage.getAttribute('data-stage')!=='asleep'){removeOverlay();return}
@@ -119,17 +141,19 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     host.setAttribute('data-preview-asleep','true');
     previewFrame(host).setAttribute('data-preview-asleep','true');
     stage.addEventListener('click',function(event){event.stopPropagation()});
-    swapMascotShape(stage);
+    swapMascotShape(stage,mode);
     var wake=stage.querySelector('button');
     if(wake!=null){
       wake.id=IDS.wake;
       wake.addEventListener('click',function(event){
         event.stopPropagation();
         var b=bridge();if(b==null)return;
+        var change=beginChange(agentId);
         wake.disabled=!0;
+        swapMascotShape(stage,'waking');
         var title=stage.querySelector('[data-stage-words]>span');
         if(title!=null)title.textContent=L.waking;
-        b.wake().then(function(state){if(state==='awake'){pausePreviewStream(!1);removeOverlay();rebindHover()}else wake.disabled=!1}).catch(function(){wake.disabled=!1;if(title!=null)title.textContent=L.title});
+        b.wake(agentId).then(function(state){if(change!==revision(agentId))return;beginChange(agentId);if(state==='awake'){pausePreviewStream(agentId,!1);if(currentBotId()===agentId){removeOverlay();rebindHover()}}else{wake.disabled=!1;swapMascotShape(stage,'asleep')}}).catch(function(){wake.disabled=!1;swapMascotShape(stage,'asleep');if(title!=null)title.textContent=L.title});
       });
     }
   }
@@ -150,6 +174,8 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     var host=pool();
     if(host==null)return;
     var frame=previewFrame(host);
+    var agentId=frame.getAttribute('data-preview-bot-id');
+    if(!agentId)return;
     var open=frame.querySelector(':scope > .sand-computer-preview__open');
     var label=open!=null?open.firstElementChild:null;
     if(open==null||label==null)return;
@@ -176,8 +202,9 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     sleep.addEventListener('click',function(event){
       event.stopPropagation();
       var b=bridge();if(b==null)return;
+      var change=beginChange(agentId);
       sleep.disabled=!0;
-      b.sleep().then(function(state){removePill();if(state==='asleep'){pausePreviewStream(!0);mountOverlay('asleep')}}).catch(function(){sleep.disabled=!1});
+      b.sleep(agentId).then(function(state){if(change!==revision(agentId))return;beginChange(agentId);if(state==='asleep'){pausePreviewStream(agentId,!0);if(currentBotId()===agentId){removePill();mountOverlay('asleep')}}}).catch(function(){sleep.disabled=!1});
     });
     wrap.appendChild(sleep);
     pillOpen=open;pillLabel=label;pillReveal={value:open.style.getPropertyValue('--sand-computer-open-reveal'),priority:open.style.getPropertyPriority('--sand-computer-open-reveal')};
@@ -215,22 +242,28 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
 
   // --- Tick ---
   window.addEventListener('grok-node-preview-stream-mounted',function(){
-    if(window.__rCompPreviewAsleep)mountOverlay('asleep');
+    var agentId=currentBotId();
+    if(agentId&&isPaused(agentId)){removePill();mountOverlay('asleep')}
+    else{removeOverlay();removePill();rebindHover()}
   });
   function tick(){
     var b=bridge();
     if(b==null)return;
     var host=pool();
     if(host==null){removeOverlay();removePill();return}
+    var agentId=currentBotId();if(!agentId){removeOverlay();removePill();return}
+    var observedRevision=revision(agentId);
     rebindHover();
-    b.getSleepState().then(function(state){
+    b.getSleepState(agentId).then(function(state){
+      if(observedRevision!==revision(agentId))return;
+      pausePreviewStream(agentId,state==='asleep');
+      if(currentBotId()!==agentId)return;
       if(state==='asleep'){
-        pausePreviewStream(!0);
         removePill();
         var current=document.getElementById(IDS.overlay);
         if(current==null)mountOverlay('asleep');
+        else if(current.getAttribute('data-avatar-shape')!==currentBotShape())swapMascotShape(current,'asleep');
       }else if(state==='awake'){
-        pausePreviewStream(!1);
         removeOverlay();
         rebindHover();
       }
