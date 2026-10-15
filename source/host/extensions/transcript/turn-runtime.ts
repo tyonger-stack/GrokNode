@@ -24,9 +24,12 @@ import { brandedEnumOf, brandedErrno } from "../../../shared/errors/bounded.js";
 import { SandError } from "../../../shared/errors/registry.js";
 import { findSystemErrno } from "../../../shared/system-errno.js";
 import {
+  turnFailureCopy,
+  type AgentRunErrorKind,
+} from "../../../shared/trays/agent-run-error-title-copy.js";
+import {
   describeAgentRunError,
   findBackendConnectError,
-  PROVIDER_OVERLOAD_ERROR_TITLE,
 } from "./agent-run-error.js";
 import {
   createSendMessageEntry,
@@ -629,10 +632,9 @@ export class TurnRuntime {
           const requestId = session.db.getRequestIds().at(-1)?.id;
           this.tm.trayErrors.pushError({
             agentId: session.id,
-            title:
-              description.errorKind === "provider_overloaded"
-                ? PROVIDER_OVERLOAD_ERROR_TITLE
-                : "Agent failed to respond",
+            title: turnFailureCopy(
+              description.errorKind as AgentRunErrorKind | undefined,
+            ).title.message,
             requestId,
             ...description,
           });

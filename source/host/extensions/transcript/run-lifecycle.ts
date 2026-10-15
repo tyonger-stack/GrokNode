@@ -13,7 +13,8 @@ import {
   type ActivityUpdate,
   type NamedActivityHoldState,
 } from "../../sand-activity.js";
-import { formatAgentRunError } from "./agent-run-error.js";
+import { agentRunErrorKindOf, formatAgentRunError } from "./agent-run-error.js";
+import { turnFailureCopy } from "../../../shared/trays/agent-run-error-title-copy.js";
 import { isTurnInterruptedFailure } from "./turn-runtime.js";
 import { ToolRepeatDetector } from "./tool-repeat-detector.js";
 import { SandRunScheduler, type RunLane } from "./run-scheduler.js";
@@ -461,6 +462,7 @@ export class RunLifecycle {
           "; error: " +
           description +
           "). Send a message to run it again.",
+        failure: turnFailureCopy(agentRunErrorKindOf(error)),
         timestampMs: Date.now(),
       };
       // The notice kind renders in the live roster, but journal/jsonl lines
