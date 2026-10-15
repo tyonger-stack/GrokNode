@@ -24,9 +24,10 @@ import { brandedEnumOf, brandedErrno } from "../../../shared/errors/bounded.js";
 import { SandError } from "../../../shared/errors/registry.js";
 import { findSystemErrno } from "../../../shared/system-errno.js";
 import {
-  turnFailureCopy,
+  turnTrayTitleKind,
   type AgentRunErrorKind,
 } from "../../../shared/trays/agent-run-error-title-copy.js";
+import { hostTrayTitle } from "../../../shared/trays/tray-title-fallbacks.js";
 import {
   describeAgentRunError,
   findBackendConnectError,
@@ -632,11 +633,14 @@ export class TurnRuntime {
           const requestId = session.db.getRequestIds().at(-1)?.id;
           this.tm.trayErrors.pushError({
             agentId: session.id,
-            title: turnFailureCopy(
-              description.errorKind as AgentRunErrorKind | undefined,
-            ).title.message,
             requestId,
             ...description,
+            ...hostTrayTitle({
+              kind: turnTrayTitleKind(
+                description.errorKind as AgentRunErrorKind | undefined,
+              ),
+              description,
+            }),
           });
         }
         await this.tm.roster.emitAgentUpdate(session.id);
