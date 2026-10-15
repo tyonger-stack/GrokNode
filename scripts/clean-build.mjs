@@ -57,6 +57,7 @@ import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
 import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-patch.mjs";
 import { applyOriginalRendererUndeliveredSend } from "./lib/undelivered-send-renderer-patch.mjs";
+import { applyOriginalRendererReadFailureRetry } from "./lib/read-failure-retry-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -348,6 +349,7 @@ export async function buildFidelityReconstructedAsar({
   // footer. Its one label is an RLocT call, so it must precede main-i18n (which appends
   // the RLocT runtime); none of its anchors overlap the passes above.
   await applyOriginalRendererUndeliveredSend({ stageRoot });
+  await applyOriginalRendererReadFailureRetry({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
