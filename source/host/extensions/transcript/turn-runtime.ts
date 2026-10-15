@@ -4,6 +4,7 @@ import { SAND_REACTION_AGENT, withAutoReviewExpiryNote } from "../../../shared/t
 import { UNKNOWN_CONNECTOR_TAG } from "../../../shared/observability/connector-auth-telemetry.js";
 import { sandErrorDetail } from "../../ports/telemetry.js";
 import {
+  isBackendUnreachableError,
   isContextOverflowDeadEnd,
   isConversationTooLargeRefusal,
   isFirstTokenStallError,
@@ -301,6 +302,11 @@ export function classifyAgentError(error: unknown): Record<string, unknown> {
     return SandError.providerQuotaExhausted({
       connectCode: connectCodeOf(error),
       statusCode,
+    });
+  }
+  if (isBackendUnreachableError(error)) {
+    return SandError.turnBackendUnreachable({
+      errno: brandedErrno(findSystemErrno(error)),
     });
   }
   if (isProviderCapacityError(error)) {

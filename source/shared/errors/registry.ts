@@ -494,6 +494,16 @@ export const SAND_ERROR_DEFINITIONS = {
     "payload": [],
     "seededFrom": "SandConversationTooLargeError turn gate in conversation-size-limits.ts"
   },
+  "SAND-E0418": {
+    "name": "turnBackendUnreachable",
+    "domain": "agent",
+    "retryable": true,
+    "summary": "Turn never reached the model provider: the transport failed on a Node system error (a refused connect or an unresolved host) with no server response.",
+    "payload": [
+      "errno"
+    ],
+    "seededFrom": "isBackendUnreachableError in transient-stream-error.ts"
+  },
   "SAND-E0501": {
     "name": "updateFeedFetchFailed",
     "domain": "update",
