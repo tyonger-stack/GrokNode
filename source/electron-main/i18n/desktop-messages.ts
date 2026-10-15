@@ -94,6 +94,8 @@ interface ContextMenuMessages {
   readonly copy: string;
   readonly paste: string;
   readonly selectAll: string;
+  readonly saveVideo: string;
+  readonly addToDictionary: string;
 }
 
 /** `{0}` is replaced with the app name, as in the 0.71.2 catalog. */
@@ -150,6 +152,8 @@ const EN: DesktopMessages = {
     copy: "Copy",
     paste: "Paste",
     selectAll: "Select All",
+    saveVideo: "Save video…",
+    addToDictionary: "Add to Dictionary",
   },
   rendererRecovery: {
     crashLoopMessage: "The {0} window keeps crashing. Reload it or quit.",
@@ -196,6 +200,8 @@ const ZH_CN: DesktopMessages = {
     copy: "复制",
     paste: "粘贴",
     selectAll: "全选",
+    saveVideo: "保存视频…",
+    addToDictionary: "添加到词典",
   },
   rendererRecovery: {
     crashLoopMessage: "窗口反复崩溃。请重新加载或退出 {0}。",
@@ -204,7 +210,7 @@ const ZH_CN: DesktopMessages = {
   },
 };
 
-// rendererRecovery rows come from 0.71.2 (electron-main/locales/zh-CN/messages.cjs).
+// contextMenu.saveVideo/addToDictionary and rendererRecovery rows come from 0.71.2 (electron-main/locales/zh-CN/messages.cjs).
 // 0.59.1 main-catalog message IDs backing the ZH rows above, in field order:
 // move: cl1wFU XIG+80 Ztywec WfbkKQ 3/XRac K4NRRh 2pfw/p hDgwB3 zga9sT
 // avatar: Bvll0Q an5hVd cwHmX1 O9LjcE
@@ -250,6 +256,8 @@ export const DESKTOP_MESSAGE_IDS: Record<string, string> = {
   "contextMenu.copy": "he3ygx",
   "contextMenu.paste": "HzVv6g",
   "contextMenu.selectAll": "mCB6Je",
+  "contextMenu.saveVideo": "/e3cNV",
+  "contextMenu.addToDictionary": "DAVInK",
   "rendererRecovery.crashLoopMessage": "1nxZwl",
   "rendererRecovery.reloadButton": "HpK/8d",
   "rendererRecovery.quitButton": "n02Ulq",

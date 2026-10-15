@@ -421,7 +421,7 @@ export interface ElectronProductionServiceFactories {
   createCoordinator(context: ProductionServiceContext): Promise<ProductionCoordinatorService> | ProductionCoordinatorService;
   registerIpc(context: ProductionServiceContext): ProductionDisposable;
   /** Artifact-order process-lifetime registration after the application menu. */
-  registerImageContextMenu?(deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void; readonly language?: DesktopLanguageSource }): void;
+  registerImageContextMenu?(deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void; readonly language?: DesktopLanguageSource; readonly downloadAttachment?: (path: string, suggestedName: string) => Promise<unknown> }): void;
   killLocalExecDaemon?(): Promise<void>;
   onWindowCreated?(window: MainBrowserWindow, context: ProductionServiceContext): void;
 }
@@ -858,6 +858,8 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
             getPreference: () => settings!.getLanguageController().getState().preference,
             systemTags: bindings.native.app.getPreferredSystemLanguages?.() ?? [],
           },
+          downloadAttachment: (path, suggestedName) =>
+            (requireValue(context, "context").attachments as { download(source: unknown, suggestedName: unknown): Promise<boolean> }).download(path, suggestedName),
         }),
         configureVncTrust: () => vncTrust?.configureBoxVncSession(),
         hardenVncWebviewAttach: (contents) => vncTrust?.hardenWebviewAttach(contents),
