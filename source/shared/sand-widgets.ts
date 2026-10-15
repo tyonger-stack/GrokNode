@@ -45,6 +45,12 @@ export const sandWidgetSchema = z.object({
   prompt: z.string().trim().min(1),
   helpText: z.string().trim().min(1).optional(),
   options: z.array(choiceOptionInputSchema).min(1).max(6),
+  multiSelect: z
+    .boolean()
+    .optional()
+    .describe(
+      "When true, several options may apply. The user toggles any subset, then submits once. Picked values return in one reply, one per line.",
+    ),
   allowCustom: z
     .boolean()
     .optional()
@@ -73,6 +79,21 @@ export type SandWidget = z.infer<typeof sandWidgetSchema>;
 interface WidgetLike {
   readonly prompt?: unknown;
   readonly options?: unknown;
+  readonly multiSelect?: unknown;
+}
+
+export const MULTI_SELECT_ANSWER_SEPARATOR = "\n";
+
+export function normalizeMultiSelectAnswerValues(values: readonly string[]): string[] {
+  return values.map((value) => value.replace(/\s*\n\s*/g, " ").trim()).filter((value) => value.length > 0);
+}
+
+export function splitMultiSelectAnswer(answer: string): string[] {
+  return normalizeMultiSelectAnswerValues(answer.split(MULTI_SELECT_ANSWER_SEPARATOR));
+}
+
+function canonicalMultiSelectValue(value: string): string {
+  return normalizeMultiSelectAnswerValues([value])[0] ?? "";
 }
 
 export function summarizeWidget(widget: WidgetLike): string {
@@ -88,6 +109,15 @@ export function getWidgetAnswerLabel(widget: WidgetLike, answer: string): string
   const options = Array.isArray(widget.options)
     ? (widget.options as { readonly label?: string; readonly value?: string }[])
     : [];
+  if (widget.multiSelect === true) {
+    return splitMultiSelectAnswer(answer)
+      .map(
+        (value) =>
+          options.find((option) => canonicalMultiSelectValue(option.value ?? option.label ?? "") === value)?.label ??
+          value,
+      )
+      .join(MULTI_SELECT_ANSWER_SEPARATOR);
+  }
   const match = options.find((option) => (option.value ?? option.label) === answer);
   return match?.label ?? answer;
 }

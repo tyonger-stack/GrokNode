@@ -4,6 +4,7 @@ import { SAND_REACTION_AGENT, withAutoReviewExpiryNote } from "../../../shared/t
 import { UNKNOWN_CONNECTOR_TAG } from "../../../shared/observability/connector-auth-telemetry.js";
 import { sandErrorDetail } from "../../ports/telemetry.js";
 import {
+  isBackendUnreachableError,
   isContextOverflowDeadEnd,
   isConversationTooLargeRefusal,
   isFirstTokenStallError,
@@ -23,9 +24,13 @@ import { brandedEnumOf, brandedErrno } from "../../../shared/errors/bounded.js";
 import { SandError } from "../../../shared/errors/registry.js";
 import { findSystemErrno } from "../../../shared/system-errno.js";
 import {
+  turnTrayTitleKind,
+  type AgentRunErrorKind,
+} from "../../../shared/trays/agent-run-error-title-copy.js";
+import { hostTrayTitle } from "../../../shared/trays/tray-title-fallbacks.js";
+import {
   describeAgentRunError,
   findBackendConnectError,
-  PROVIDER_OVERLOAD_ERROR_TITLE,
 } from "./agent-run-error.js";
 import {
   createSendMessageEntry,
@@ -301,6 +306,11 @@ export function classifyAgentError(error: unknown): Record<string, unknown> {
     return SandError.providerQuotaExhausted({
       connectCode: connectCodeOf(error),
       statusCode,
+    });
+  }
+  if (isBackendUnreachableError(error)) {
+    return SandError.turnBackendUnreachable({
+      errno: brandedErrno(findSystemErrno(error)),
     });
   }
   if (isProviderCapacityError(error)) {
@@ -623,12 +633,14 @@ export class TurnRuntime {
           const requestId = session.db.getRequestIds().at(-1)?.id;
           this.tm.trayErrors.pushError({
             agentId: session.id,
-            title:
-              description.errorKind === "provider_overloaded"
-                ? PROVIDER_OVERLOAD_ERROR_TITLE
-                : "Agent failed to respond",
             requestId,
             ...description,
+            ...hostTrayTitle({
+              kind: turnTrayTitleKind(
+                description.errorKind as AgentRunErrorKind | undefined,
+              ),
+              description,
+            }),
           });
         }
         await this.tm.roster.emitAgentUpdate(session.id);

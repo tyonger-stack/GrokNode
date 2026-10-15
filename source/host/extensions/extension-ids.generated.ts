@@ -1,6 +1,6 @@
 export const HostExtensions = {
   ActionAudit: "action-audit", Attachments: "attachments", Auth: "auth", AutoReview: "auto-review",
-  Automations: "automations", BoxLifecycle: "box-lifecycle", BoxStoreSync: "box-store-sync",
+  Automations: "automations", BoxLifecycle: "box-lifecycle", BoxStoreSync: "box-store-sync", BoxTimezone: "box-timezone",
   BrowserUa: "browser-ua", CloudAgents: "cloud-agents", CodebaseTelemetry: "codebase-telemetry",
   ContentSearch: "content-search", CrossUserSharing: "cross-user-sharing", Experiments: "experiments",
   ForeverBox: "forever-box", HostUpgrade: "host-upgrade", Inference: "inference", LocalExec: "local-exec",

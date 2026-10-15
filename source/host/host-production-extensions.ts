@@ -43,6 +43,7 @@ import { transcriptExtension } from "./extensions/transcript/extension.js";
 import { traysExtension } from "./extensions/trays/extension.js";
 import { turnExecutionExtension } from "./extensions/turn-execution/extension.js";
 import { wallpaperExtension } from "./extensions/wallpaper/extension.js";
+import { boxTimezoneExtension } from "./extensions/box-timezone/extension.js";
 import { webauthnProxyExtension } from "./extensions/webauthn-proxy/extension.js";
 import type { ProductionSandHostPorts } from "./sand-host.js";
 
@@ -123,7 +124,8 @@ export function createRecoveredProductionExtensionRegistry<Host extends { log(me
     [HostExtensions.TeachRecording]: bind(teachRecordingExtension),
     [HostExtensions.WebauthnProxy]: bind(webauthnProxyExtension),
     [HostExtensions.NotifyBus]: bind(notifyBusExtension),
-    [HostExtensions.Wallpaper]: bind(wallpaperExtension)
+    [HostExtensions.Wallpaper]: bind(wallpaperExtension),
+    [HostExtensions.BoxTimezone]: bind(boxTimezoneExtension)
   };
 }
 
