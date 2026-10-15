@@ -56,6 +56,7 @@ import { applyMainAgentRendererPatch } from "./lib/main-agent-renderer-patch.mjs
 import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
 import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-patch.mjs";
+import { applyOriginalRendererSidebarRenameMenu } from "./lib/sidebar-rename-menu-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -343,6 +344,9 @@ export async function buildFidelityReconstructedAsar({
   // match the settings surface's own hardcoded English.
   await applyBotColorSettingsPatch({ stageRoot });
   await applyComputerSleepRendererPatch({ stageRoot });
+  // 0.71.2 "Rename chat / Rename Bot" sidebar context-menu entry. Emits RLocT calls, so it
+  // must land before main-i18n appends the RLocT runtime.
+  await applyOriginalRendererSidebarRenameMenu({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
