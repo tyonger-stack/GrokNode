@@ -60,6 +60,7 @@ import { applyOriginalRendererScrollToBottom } from "./lib/scroll-to-bottom-rend
 import { applyOriginalRendererDownloadAll } from "./lib/download-all-renderer-patch.mjs";
 import { applyOriginalRendererUndeliveredSend } from "./lib/undelivered-send-renderer-patch.mjs";
 import { applyOriginalRendererReadFailureRetry } from "./lib/read-failure-retry-renderer-patch.mjs";
+import { applyOriginalRendererSidebarRenameMenu } from "./lib/sidebar-rename-menu-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -358,6 +359,9 @@ export async function buildFidelityReconstructedAsar({
   // the RLocT runtime); none of its anchors overlap the passes above.
   await applyOriginalRendererUndeliveredSend({ stageRoot });
   await applyOriginalRendererReadFailureRetry({ stageRoot });
+  // 0.71.2 "Rename chat / Rename Bot" sidebar context-menu entry. Emits RLocT calls, so it
+  // must land before main-i18n appends the RLocT runtime.
+  await applyOriginalRendererSidebarRenameMenu({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
