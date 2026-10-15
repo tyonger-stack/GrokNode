@@ -57,6 +57,7 @@ import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
 import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-patch.mjs";
 import { applyOriginalRendererScrollToBottom } from "./lib/scroll-to-bottom-renderer-patch.mjs";
+import { applyOriginalRendererDownloadAll } from "./lib/download-all-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -347,6 +348,9 @@ export async function buildFidelityReconstructedAsar({
   // 0.71.2 transcript "Scroll to bottom" button: edits the MAIN chunk's view builder and
   // transcript plane, and emits an RLocT call, so it must precede the i18n passes.
   await applyOriginalRendererScrollToBottom({ stageRoot });
+  // 0.71.2 "Download" / "Download all" message action: edits the MAIN chunk's hover actions,
+  // message wrapper and image-group host, and emits RLocT calls, so it must precede i18n.
+  await applyOriginalRendererDownloadAll({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
