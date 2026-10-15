@@ -57,6 +57,7 @@ import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
 import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-patch.mjs";
 import { applyOriginalRendererFailureCopy } from "./lib/failure-copy-renderer-patch.mjs";
+import { applyOriginalRendererWidgetMultiselect } from "./lib/widget-multiselect-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -346,6 +347,8 @@ export async function buildFidelityReconstructedAsar({
   await applyComputerSleepRendererPatch({ stageRoot });
   // Its RLocT calls rely on the runtime main-i18n appends to the main chunk.
   await applyOriginalRendererFailureCopy({ stageRoot });
+  // Widget view chunk (view-CIFdOvCz.js); order-free vs main-chunk failure-copy. Must precede extra-i18n (keeps its English anchors).
+  await applyOriginalRendererWidgetMultiselect({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
