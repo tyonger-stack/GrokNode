@@ -9,7 +9,7 @@ import * as React from "react";
 import * as jsx from "react/jsx-runtime";
 import {Window} from "happy-dom";
 import {parse} from "acorn";
-import {OFFICIAL_SHAPES,patchShapePicker,applyShapePickerPatch,officialPicker} from "../scripts/lib/shape-picker-patch.mjs";
+import {AVATAR_PICKER_CSS,OFFICIAL_SHAPES,patchShapePicker,applyShapePickerPatch,officialPicker} from "../scripts/lib/shape-picker-patch.mjs";
 import {createOfficialAvatarEngine} from "../scripts/lib/computer-sleep-official/avatar-engine.mjs";
 import {patchMainAgentRenderer} from "../scripts/lib/main-agent-renderer-patch.mjs";
 const repo=path.resolve(import.meta.dirname,".."),artifact=path.join(repo,"scripts/lib/computer-sleep-official");
@@ -61,6 +61,10 @@ test("actual picker: 5+5+3, exact commits, staged selection and tooltips",()=>{
  const colorButtons=colorGroup.props.children;assert.equal(colorButtons.length,3);assert.equal(colorButtons[2].props["aria-pressed"],true);colorButtons[1].props.onClick();
  assert.deepEqual(Array.from(calls.slice(0,13),c=>c.avatarShape),OFFICIAL_SHAPES);
  assert.deepEqual({...calls[13]},{avatarColor:"blue"});
+});
+test("editor keeps the official popover width and six-column color rail",()=>{
+ assert.match(AVATAR_PICKER_CSS,/\.sand-avatar-editor\{width:min\(calc\(min\(272px,100vw - 32px\) \+ 2\*var\(--cursor-spacing-3\)\),100vw - 32px\)!important\}/);
+ assert.match(AVATAR_PICKER_CSS,/\.r-avatar-colors\{align-self:center;max-width:calc\(6\*32px \+ 5\*var\(--cursor-spacing-2\)\);flex-wrap:wrap\}/);
 });
 test("staged adapter resolves assets once, preserves native reset, fails closed",{skip},async()=>{
  const stage=await mkdtemp(path.join(tmpdir(),"grok-avatar-"));

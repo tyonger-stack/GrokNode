@@ -81,13 +81,14 @@ export function patchShapePicker(source,joAdditions,engineSource){
  return {text,applied:true,reason:"patched"};
 }
 export const AVATAR_PICKER_CSS=`
+.sand-avatar-editor{width:min(calc(min(272px,100vw - 32px) + 2*var(--cursor-spacing-3)),100vw - 32px)!important}
 .r-avatar-shape-row{column-gap:clamp(0px,calc((100% - 240px)/4),var(--cursor-spacing-2))}
 .sand-agent-character__shape{border:1px solid transparent;box-sizing:border-box;background:transparent}
 .sand-agent-character__shape:hover{border-color:var(--sand-border-secondary-translucent,var(--sand-border-default))}
 .r-avatar-shape-outline{position:absolute;inset:-4px;pointer-events:none;background:var(--sand-border-secondary-translucent,var(--sand-border-default));opacity:0;transition:opacity .12s}
 .sand-agent-character__shape:hover .r-avatar-shape-outline{opacity:1}
 .sand-agent-character__shape[aria-pressed=true] .r-avatar-shape-outline{background:var(--sand-border-primary-translucent,var(--sand-text-secondary));opacity:1}
-.r-avatar-colors{align-self:center;max-width:240px;flex-wrap:wrap}
+.r-avatar-colors{align-self:center;max-width:calc(6*32px + 5*var(--cursor-spacing-2));flex-wrap:wrap}
 .r-avatar-color-swatch{display:block;width:24px;height:24px;border-radius:9999px}
 [aria-pressed=true]>.r-avatar-color-swatch{box-shadow:0 0 0 3px var(--sand-bg-elevated),0 0 0 4px var(--sand-border-primary-translucent,var(--sand-text-secondary))}
 `;
