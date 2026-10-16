@@ -3,7 +3,7 @@ import { buildChannelStatusRendererExtension } from "./channel-status-renderer-e
 import { buildPluginsDockRendererExtension } from "./plugins-dock-renderer-extension.mjs";
 import { buildWebhookCredentialRendererExtension } from "./webhook-credential-renderer-extension.mjs";
 import { buildLibraryRendererExtension } from "./library-renderer-extension.mjs";
-import { patchOriginalAutoReviewApproval } from "./auto-review-renderer-patch.mjs";
+import { patchAutoReviewSettingsOpener, patchOriginalAutoReviewApproval } from "./auto-review-renderer-patch.mjs";
 import { patchOriginalRoutineSurfaces } from "./routine-surfaces-renderer-patch.mjs";
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -272,7 +272,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     transformsByFile.set(candidate.name, entry);
   };
   for (const [role, candidate, transform] of [
-    ["registry", registryCandidates[0], (source) => patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source)))],
+    ["registry", registryCandidates[0], (source) => patchAutoReviewSettingsOpener(patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source))))],
     ["panel", panelCandidates[0], patchOriginalSettingsPanel],
     ["approval", approvalCandidate, patchOriginalAutoReviewApproval],
   ]) {
@@ -316,8 +316,8 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     schemaVersion: 1,
     mode: "original-renderer-settings-extension",
     chunks: changes,
-    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy", "routine-row-toggle", "routine-detail-panel", "agent-library-documents"],
-    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "routine-list-row-switch", "routine-detail-surface", "fail-closed-always-allow", "append-agent-library-documents"],
+    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "auto-review-edit-rule", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy", "routine-row-toggle", "routine-detail-panel", "agent-library-documents"],
+    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "routine-list-row-switch", "routine-detail-surface", "fail-closed-always-allow", "auto-review-edit-rule", "auto-review-settings-opener", "append-agent-library-documents"],
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-router-extension.json");
   await writeFile(provenancePath, `${JSON.stringify(record, null, 2)}\n`);
