@@ -16,6 +16,11 @@ import { mergeOpenRouterChannelStatus, normalizeOpenRouterChannelStatus } from "
 import { getLocalDockerStatus, probeLocalDockerRelay, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
 import { createComputerPreviewController } from "./computer-sleep.js";
 import type { ComputerPreviewController } from "./computer-sleep.js";
+import {
+  currentHardwareAccelerationSetting,
+  getHardwareAccelerationEnabledAtLaunch,
+  type HardwareAccelerationGpuFeatureStatus,
+} from "../shared/node/hardware-acceleration.js";
 
 export const MAIN_EDGE_UNSERVED = "main/unserved-method";
 export const MAIN_EDGE_UPDATE_UNAVAILABLE = "main/update-unavailable";
@@ -77,6 +82,11 @@ export interface MainEdgeDeps {
   readonly delay?: (milliseconds: number) => Promise<void>;
   readonly detectTimeZone?: () => string | null | undefined;
   readonly computerPreview?: ComputerPreviewController;
+  /** Boolean returned by AF() at process start (0.71.2 `hardwareAccelerationEnabledAtLaunch`). */
+  readonly hardwareAccelerationEnabledAtLaunch?: boolean;
+  readonly getGpuFeatureStatus?: () => HardwareAccelerationGpuFeatureStatus;
+  /** 0.71.2 relaunchDesktop: app.relaunch() + app.quit() (or restartExitCode path). */
+  readonly relaunchDesktop?: () => void;
 }
 
 async function mainAgentRequest(deps: MainEdgeDeps, method: "getMainAgent" | "setMainAgent" | "ensureDefaultMainAgent", args: UnknownRecord): Promise<UnknownRecord> {
@@ -109,6 +119,17 @@ function languageController(deps: MainEdgeDeps) { return required(deps.readLangu
 function egressController(deps: MainEdgeDeps) { return required(deps.readEgressTunnelController, MAIN_EDGE_EGRESS_TUNNEL_UNAVAILABLE, "The egress tunnel controller is not running."); }
 async function echo(deps: MainEdgeDeps, field: string, value: unknown, label: string): Promise<unknown> { const result = await deps.syncHostSettingsToBox({ [field]: value }); if (result == null) throw new SandHostSettingsUnreachableError(`Couldn't reach the computer to save ${label}.`); return result[field] ?? null; }
 function computerUseModel(deps: MainEdgeDeps): unknown { const stored = invoke(deps.agentPrefsStore, "getComputerUseModel"); const override = deps.getComputerUseModelOverride(); return resolveComputerUseModelSelection({ ...(isSandAgentModelSelection(stored) ? { storedModel: stored } : {}), ...(isSandAgentModelSelection(override) ? { overrideModel: override } : {}) }) ?? null; }
+
+function hardwareAccelerationProjection(deps: MainEdgeDeps) {
+  const stored = invoke(deps.settingsStore, "getHardwareAccelerationEnabled");
+  const storedPreference = typeof stored === "boolean" ? stored : undefined;
+  return currentHardwareAccelerationSetting({
+    storedPreference,
+    platform: deps.platform,
+    enabledAtLaunch: deps.hardwareAccelerationEnabledAtLaunch ?? getHardwareAccelerationEnabledAtLaunch(),
+    ...(deps.getGpuFeatureStatus === undefined ? {} : { gpuFeatureStatus: deps.getGpuFeatureStatus() }),
+  });
+}
 function parseAgentModel(value: unknown, requireNonWhitespaceId: boolean): { modelId: string; maxMode: boolean; parameters: { id: string; value: string }[] } | null {
   if (typeof value !== "object" || value == null || Array.isArray(value)) return null;
   const record = value as UnknownRecord;
@@ -169,6 +190,18 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     // setHostSettings, which refuses it while the gate is off (upstream's admission split).
     getHostBotColorInChat: async () => (await deps.readHostSettingsFromBox()).botColorInChatEnabled === true,
     setHostBotColorInChat: (raw) => echo(deps, "botColorInChatEnabled", req(raw).enabled === true, "the accent setting"),
+    // Hardware acceleration (0.71.2 getHardwareAcceleration / setHardwareAccelerationEnabled / relaunchDesktop).
+    getHardwareAcceleration: () => hardwareAccelerationProjection(deps),
+    setHardwareAccelerationEnabled: (raw) => {
+      invoke(deps.settingsStore, "setHardwareAccelerationEnabled", req(raw).enabled === true);
+      return hardwareAccelerationProjection(deps);
+    },
+    relaunchDesktop: () => {
+      if (typeof deps.relaunchDesktop !== "function") {
+        throw new EdgeCallFailure({ code: "main/relaunch-unavailable", detail: "Desktop relaunch is not available." });
+      }
+      deps.relaunchDesktop();
+    },
     getComputerSleepState: async () => computerPreview.getState(),
     sleepComputer: async () => computerPreview.sleep(),
     wakeComputer: async () => computerPreview.wake(),

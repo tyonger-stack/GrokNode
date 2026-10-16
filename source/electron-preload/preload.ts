@@ -446,6 +446,9 @@ export function createDesktopPreloadBridge(options: {
       // while the gate is off.
       getBotColorInChat: () => edge("getHostBotColorInChat"),
       setBotColorInChat: (enabled: boolean) => edge("setHostBotColorInChat", { enabled }),
+      getHardwareAcceleration: () => edge("getHardwareAcceleration"),
+      setHardwareAccelerationEnabled: (enabled: boolean) => edge("setHardwareAccelerationEnabled", { enabled }),
+      relaunchDesktop: () => edge("relaunchDesktop"),
       getSidebarSections: () => edge("getHostSidebarSections"),
       setSidebarSections: (sections: readonly unknown[]) => edge("setHostSidebarSections", { sections }),
       getDefaultModel: () => edge("getAgentDefaultModel"),
