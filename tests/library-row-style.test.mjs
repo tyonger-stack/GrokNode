@@ -91,7 +91,7 @@ test('source card, row typography, footer and focus/hover declarations survive t
   record('source-style-contract', { actual, hoverAndFocusRulesPresent: true, scope: 'DOM/CSS contract, not live browser layout or visual QA' });
 });
 
-test('page and connected-document metadata remains stacked and visible', async () => {
+test('page and connected-document metadata remains stacked and visible', { skip: pinnedStylesheetAvailable ? false : 'pinned stylesheet not hydrated' }, async () => {
   const page = { kind:'canvas', storeId:'s', canvasId:'c', title:'Original title', visibility:'private', createdAtMs:nowMs-7200000, updatedAtMs:nowMs-3600000 };
   await render(ui.LibraryPageRow, { page, nowMs, origin:null, provider:{}, links:{}, onOpen:()=>{}, onVisibilityChange:()=>{} });
   assert.equal(host.querySelector('[data-icon-name]').dataset.iconName, 'browser');
