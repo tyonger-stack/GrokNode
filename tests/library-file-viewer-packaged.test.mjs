@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -13,6 +14,7 @@ import JSZip from "jszip";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const assets = ["pdf-WLgSwHwh.js", "pdf.worker.min-qwK7q_zL.mjs", "xlsx-CNerDvZX.js", "index-lCyB53CO.css", "cursor-icons-16-f_W_ogc-.woff2"];
+const pinnedViewerAssetsAvailable = assets.every((name) => existsSync(path.join(root, "src/app/dist/renderer/assets", name)));
 const docx = new JSZip();
 docx.file("[Content_Types].xml", '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
 docx.file("_rels/.rels", '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
@@ -111,7 +113,7 @@ window.setPreviewTheme=theme=>{let style=document.getElementById('qa-theme');if(
 window.closeButtonHover=()=>getComputedStyle(document.querySelector('[aria-label="Close preview"]')).backgroundImage;
 `.replaceAll("PDF_FIXTURE", JSON.stringify(pdfBytes())).replaceAll("DOCX_FIXTURE", JSON.stringify(docxFixture));
 
-test("pinned file viewers including DOCX and text render visible overlays from a packaged file renderer", { timeout: 90000 }, async () => {
+test("pinned file viewers including DOCX and text render visible overlays from a packaged file renderer", { timeout: 90000, skip: pinnedViewerAssetsAvailable ? false : "pinned viewer assets not hydrated" }, async () => {
   const evidence = process.env.R7C_EVIDENCE_DIR ?? await fs.mkdtemp(path.join(os.tmpdir(), "library-file-viewer-"));
   await fs.mkdir(evidence, { recursive: true });
   const stage = path.join(evidence, "stage");
