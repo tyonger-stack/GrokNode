@@ -64,6 +64,7 @@ import { applyOriginalRendererSidebarRenameMenu } from "./lib/sidebar-rename-men
 import { applyOriginalRendererFailureCopy } from "./lib/failure-copy-renderer-patch.mjs";
 import { applyOriginalRendererWidgetMultiselect } from "./lib/widget-multiselect-renderer-patch.mjs";
 import { applyOriginalRendererWorkingStatusPhrases } from "./lib/working-status-phrases-renderer-patch.mjs";
+import { applyOriginalRendererPromptAutoLists } from "./lib/prompt-auto-lists-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -371,6 +372,9 @@ export async function buildFidelityReconstructedAsar({
   await applyOriginalRendererWidgetMultiselect({ stageRoot });
   // Replaces gJn before main-i18n; MAIN_I18N_LOCAL_ANCHORED no longer owns gJn.
   await applyOriginalRendererWorkingStatusPhrases({ stageRoot });
+  // 0.71.2 prompt `-` / `1.` auto-lists (hft StarterKit). No RLocT; must stay before i18n
+  // only for ordering consistency with other 0712 UI patches. Strips list Enter shortcuts.
+  await applyOriginalRendererPromptAutoLists({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
