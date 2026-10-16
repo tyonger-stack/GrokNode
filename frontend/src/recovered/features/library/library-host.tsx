@@ -105,6 +105,23 @@ function mediaUrl(item: TranscriptMediaRow): string | null {
 function mediaSource(item: TranscriptMediaRow): { source: string; name: string } | null {
   return "source" in item ? { source: item.source, name: item.name } : null;
 }
+const TRANSCRIPT_SELECTOR = ".sand-virtual-transcript__inner, .sand-transcript";
+const LIBRARY_FILE_SELECTOR = 'button[aria-label^="Open "], [role="button"][aria-label^="Open "]';
+function replayNativeViewerChip(row: LibraryRow): boolean {
+  if (row.kind !== "media" || row.item === undefined || !("source" in row.item)) return false;
+  const item = row.item;
+  const root = document.querySelector(TRANSCRIPT_SELECTOR);
+  if (root === null) return false;
+  const chip = item.kind === "image" || item.kind === "video"
+    ? Array.from(root.querySelectorAll('button[aria-label="Media preview"]'))
+      .find((candidate) => candidate.querySelector(item.kind === "video" ? "video[src]" : "img[src]")
+        ?.getAttribute("src") === item.source)
+    : Array.from(root.querySelectorAll(LIBRARY_FILE_SELECTOR))
+      .find((candidate) => candidate.getAttribute("aria-label") === `Open ${item.name}`);
+  if (!(chip instanceof HTMLElement)) return false;
+  chip.click();
+  return true;
+}
 function sourceFileName(source: string, fallback: string): string {
   const base = decodeURIComponentSafe(source.split(/[?#]/, 1)[0] ?? "").split("/").pop() ?? "";
   return base !== "" ? base : fallback;
@@ -359,6 +376,7 @@ export function LibraryHost(props: LibraryHostProps) {
       return;
     }
     focusReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (replayNativeViewerChip(row)) return;
     if (row.kind === "media" && row.item !== undefined && (row.item.kind === "image" || row.item.kind === "video")) {
       const source = row.item.source;
       const index = galleryVisuals.findIndex((entry) => entry.path === source);
