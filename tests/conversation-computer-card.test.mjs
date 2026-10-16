@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { patchComputerPreviewStream } from '../scripts/lib/computer-preview-stream-renderer-patch.mjs';
@@ -18,10 +18,13 @@ import { MAIN_I18N_PAIRS, MAIN_I18N_061_PAIRS } from '../scripts/lib/main-i18n-p
 import { RConversationComputerCardActions, patchConversationComputerCard, applyOriginalRendererConversationComputerCard, RConversationOfficialCardFactory, CONVERSATION_COMPUTER_CARD_CSS } from '../scripts/lib/conversation-computer-card-renderer-patch.mjs';
 
 const baseline = resolve(process.env.COMPUTER_CARD_BASELINE ?? 'src/app/dist/renderer/assets/index-UbX-y3il.js');
-const original = readFileSync(baseline, 'utf8');
-const patched = patchConversationComputerCard(original);
-const ast = parse(patched, { ecmaVersion: 'latest', sourceType: 'module' });
+const hydrated = existsSync(baseline);
+const skipBundle = hydrated ? false : 'pinned renderer not hydrated; bundle assertions skipped';
+const original = hydrated ? readFileSync(baseline, 'utf8') : '';
+const patched = hydrated ? patchConversationComputerCard(original) : '';
+const ast = hydrated ? parse(patched, { ecmaVersion: 'latest', sourceType: 'module' }) : { body: [] };
 const declaration = name => {
+  if (!hydrated) return '';
   const node = ast.body.find(n => n.type === 'FunctionDeclaration' && n.id.name === name);
   assert.ok(node, name);
   return patched.slice(node.start, node.end);
@@ -61,7 +64,7 @@ function hookHarness(rt) {
   return (id, row, supplied, children = []) => { owner = id; monitors = children; return context.Dbn(row.id, supplied, row); };
 }
 
-test('multiple mounted conversations bind data and retained callbacks to their own agents', async () => {
+test('multiple mounted conversations bind data and retained callbacks to their own agents', { skip: skipBundle }, async () => {
   const rt = runtime(), hook = hookHarness(rt);
   for (const id of ['A', 'B']) rt.statuses.set(id, { handoff: { requestId: `req-${id}`, instruction: `help ${id}`, snapshotDataUrl: `data:image/png;base64,${id}` } });
   const a = hook('A', entry('same-entry-id', 'req-A'));
@@ -73,7 +76,7 @@ test('multiple mounted conversations bind data and retained callbacks to their o
   record('two conversations, same entry id, B then retained A callback', rt.calls);
 });
 
-test('subagent takeover opens original overlay with focus and never resolves a request', async () => {
+test('subagent takeover opens original overlay with focus and never resolves a request', { skip: skipBundle }, async () => {
   const rt = runtime(), hook = hookHarness(rt);
   rt.statuses.set('child', { handoff: { requestId: 'child-request', instruction: 'child task' } });
   const binding = hook('parent', entry('child-card', 'child-request'), undefined, [{ subagentId: 'child', handoff: rt.statuses.get('child').handoff }]);
@@ -84,7 +87,7 @@ test('subagent takeover opens original overlay with focus and never resolves a r
   record('child monitor and original hand-back reasons', rt.calls);
 });
 
-test('context-provided cards have working actions; stale requests cannot finish a newer request', async () => {
+test('context-provided cards have working actions; stale requests cannot finish a newer request', { skip: skipBundle }, async () => {
   const rt = runtime(), hook = hookHarness(rt);
   const card = { requestId: 'old', subagentId: null, status: 'waiting', instruction: 'provided' };
   const binding = hook('A', entry('card', 'old'), card);
@@ -97,7 +100,7 @@ test('context-provided cards have working actions; stale requests cannot finish 
   record('supplied context and stale request guard', rt.calls);
 });
 
-test('no owner, ordinary messages, resolved cards, failed/superseded navigation are safe', async () => {
+test('no owner, ordinary messages, resolved cards, failed/superseded navigation are safe', { skip: skipBundle }, async () => {
   const rt = runtime(), hook = hookHarness(rt);
   assert.equal(hook(null, entry('missing','req')), null);
   assert.equal(hook('A', { id: 'ordinary', kind: 'send-message' }), null);
@@ -117,7 +120,7 @@ test('no owner, ordinary messages, resolved cards, failed/superseded navigation 
   record('missing owner / superseded and failed selection', 'zero overlay opens after supersession or failure');
 });
 
-test('legacy localization anchors stay intact for the existing i18n passes', () => {
+test('legacy localization anchors stay intact for the existing i18n passes', { skip: skipBundle }, () => {
   const calls = [];
   const jsx = (type, props) => ({ type, props });
   const context = vm.createContext({
@@ -147,7 +150,7 @@ test('legacy localization anchors stay intact for the existing i18n passes', () 
   record('preserved legacy i18n anchors', { calls, image: props.snapshotDataUrl, resolvedStatuses: 4 });
 });
 
-test('fail closed on missing, duplicate, drifted or reapplied anchors; unrelated bytes preserved', () => {
+test('fail closed on missing, duplicate, drifted or reapplied anchors; unrelated bytes preserved', { skip: skipBundle }, () => {
   assert.throws(() => patchConversationComputerCard(patched), /anchor/);
   assert.throws(() => patchConversationComputerCard(original.replace('const u=Dbn(o,c);', 'const u=Other(o,c);')), /anchor/);
   assert.throws(() => patchConversationComputerCard(original + 'function Dbn(n,e){}'), /ambiguous/);
@@ -166,7 +169,7 @@ test('fail closed on missing, duplicate, drifted or reapplied anchors; unrelated
   record('anchor integrity and unchanged sleep/preview code', 'full patched module parses; all unrelated suffix bytes equal');
 });
 
-test('recorded resolution wins a lingering live handoff like official vqe', async () => {
+test('recorded resolution wins a lingering live handoff like official vqe', { skip: skipBundle }, async () => {
   const rt = runtime(), hook = hookHarness(rt);
   rt.statuses.set('A', { handoff: { requestId: 'req', instruction: 'old pending' } });
   const row = { ...entry('card', 'req'), boxResolution: 'handed_back' };
@@ -177,7 +180,7 @@ test('recorded resolution wins a lingering live handoff like official vqe', asyn
   record('official recorded-resolution precedence', 'handed_back, zero completion calls');
 });
 
-test('preview pause patch composes in either order without changing per-Bot viewer semantics', () => {
+test('preview pause patch composes in either order without changing per-Bot viewer semantics', { skip: skipBundle }, () => {
   const first = patchComputerPreviewStream(patched);
   const second = patchConversationComputerCard(patchComputerPreviewStream(original));
   assert.equal(first, second);
@@ -185,7 +188,7 @@ test('preview pause patch composes in either order without changing per-Bot view
   record('preview composition in both orders', 'byte-identical output, valid full module');
 });
 
-test('official PV DOM: elevated hierarchy, pending/failure/retry, disclosure, request isolation and bubble states', async () => {
+test('official PV DOM: elevated hierarchy, pending/failure/retry, disclosure, request isolation and bubble states', { skip: skipBundle }, async () => {
   const window = new Window();
   const saved = new Map(['window','document','IS_REACT_ACT_ENVIRONMENT'].map(key => [key,Object.getOwnPropertyDescriptor(globalThis,key)]));
   for (const [key,value] of [['window',window],['document',window.document],['IS_REACT_ACT_ENVIRONMENT',true]]) Object.defineProperty(globalThis,key,{value,configurable:true});
@@ -334,7 +337,7 @@ test('official CSS is scoped and includes card geometry, focus, pending and both
   record('official scoped CSS', 'light/dark tokens, frame/card/button/focus/spinner declarations present; zero global style rules');
 });
 
-test('card labels remain compatible with real i18n pair transforms', () => {
+test('card labels remain compatible with real i18n pair transforms', { skip: skipBundle }, () => {
   const owned=new Set(['Computer','Take over','Take over the computer','I’m done','Skip','Open computer']);
   let localized=patched;
   for(const [en,zh,,mode] of [...MAIN_I18N_PAIRS,...MAIN_I18N_061_PAIRS]) {
@@ -347,7 +350,7 @@ test('card labels remain compatible with real i18n pair transforms', () => {
   record('real card-label i18n transforms', 'all owned anchors reachable; transformed full module parses');
 });
 
-test('official embedded English catalog and Chinese labels both render in PV', () => {
+test('official embedded English catalog and Chinese labels both render in PV', { skip: skipBundle }, () => {
   const context=vm.createContext({});
   vm.runInContext('var lie={},x_e;'+declaration('C2t')+';var I2t=C2t();'+declaration('Fe'),context);
   const captures=[];
@@ -369,7 +372,7 @@ test('official embedded English catalog and Chinese labels both render in PV', (
   record('English embedded catalog and unchanged Chinese labels',{locales:['en','zh'],states:6,artifact:resolve(dir,'locale-dom-states.json')});
 });
 
-test('staged build adapter emits verified hashes and a parseable patched artifact', async () => {
+test('staged build adapter emits verified hashes and a parseable patched artifact', { skip: skipBundle }, async () => {
   const dir = process.env.COMPUTER_CARD_EVIDENCE ? resolve(process.env.COMPUTER_CARD_EVIDENCE) : mkdtempSync(resolve(tmpdir(), 'conversation-card-'));
   const appRoot = resolve(dir, 'staged');
   mkdirSync(resolve(appRoot,'dist/renderer/assets'), { recursive: true });

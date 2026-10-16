@@ -3,7 +3,7 @@ import test, { after } from 'node:test';
 import { build, transform } from 'esbuild';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import vm from 'node:vm';
 import { parse } from 'acorn';
@@ -75,26 +75,33 @@ after(() => {
   for (const [file, hash] of Object.entries(sourceHashes)) assert.equal(createHash('sha256').update(readFileSync(resolve(repo, file))).digest('hex'), hash, 'Concurrent source modification: rerun this probe for ' + file);
   writeFileSync(resolve(evidence, 'registration-verdict.json'), JSON.stringify({
     scope: 'isolated execution of checkout source; no native app/model/network/container',
+    bundleSkipped: !hydrated,
     ...acceptance,
     serverRegistrationImplementationExists: true,
-    overallFeatureAcceptance: Object.values(acceptance).every(Boolean),
+    overallFeatureAcceptance: hydrated ? Object.values(acceptance).every(Boolean) : false,
     sourceHashes,
     scenarios: observations.map(x => x.scenario),
   }, null, 2) + '\n');
+  if (!hydrated) return;
   assert.ok(Object.values(acceptance).every(Boolean), 'All repaired-path acceptance scenarios must execute and pass');
 });
-const source = readFileSync(resolve(process.env.COMPUTER_CARD_BASELINE ?? resolve(repo, '../.tmp-app-verify-20261013/src/app/dist/renderer/assets/index-UbX-y3il.js')), 'utf8');
-const patched = patchConversationComputerCard(source);
-const ast = parse(patched, { ecmaVersion: 'latest', sourceType: 'module' });
+const baselinePath = resolve(process.env.COMPUTER_CARD_BASELINE ?? resolve(repo, '../.tmp-app-verify-20261013/src/app/dist/renderer/assets/index-UbX-y3il.js'));
+const hydrated = existsSync(baselinePath);
+const skipBundle = hydrated ? false : 'pinned renderer not hydrated; bundle assertions skipped';
+const source = hydrated ? readFileSync(baselinePath, 'utf8') : '';
+const patched = hydrated ? patchConversationComputerCard(source) : '';
+const ast = hydrated ? parse(patched, { ecmaVersion: 'latest', sourceType: 'module' }) : { body: [] };
 function declaration(name) {
+  if (!hydrated) return '';
   const node = ast.body.find(n => n.type === 'FunctionDeclaration' && n.id.name === name);
   assert.ok(node, name);
   return patched.slice(node.start, node.end);
 }
 const style = vm.createContext({});
-vm.runInContext('var lie={},x_e;' + declaration('C2t') + ';var I2t=C2t();' + declaration('Fe'), style);
-const View = RConversationOfficialCardFactory(React, compiler, jsx, style.Fe, (...x) => x.filter(Boolean).join(' '), props => jsx.jsx('i', { 'data-icon-name': props.name }), (_en, zh) => zh);
+if (hydrated) vm.runInContext('var lie={},x_e;' + declaration('C2t') + ';var I2t=C2t();' + declaration('Fe'), style);
+const View = hydrated ? RConversationOfficialCardFactory(React, compiler, jsx, style.Fe, (...x) => x.filter(Boolean).join(' '), props => jsx.jsx('i', { 'data-icon-name': props.name }), (_en, zh) => zh) : null;
 function renderCard(card) {
+  assert.ok(View != null, 'hydrated pinned renderer required');
   return renderToStaticMarkup(jsx.jsx(View, { instruction: card.instruction, status: card.status, screen: { agentId: card.agentId, dataUrl: card.snapshotDataUrl }, surface: 'elevated', onOpen() {}, onHandBack() {}, onDismiss() {} }));
 }
 const turn = { autoReviewModes: { hostShell: 'off', boxShell: 'off', mcp: 'off', computer: 'off', automationWrite: 'off', cloudAgent: 'off', subagentLaunch: 'off' } };
@@ -215,7 +222,7 @@ function fixture() {
   return { dir, sessions, service, statuses, events, calls, ends, resumed, request, binding, providerInputs, handBackViaGateway: (id, trigger) => coordinator.dispatchCommand('handBackForeverBox', { id, trigger }), close() { for (const s of sessions.values()) s.db.close(); api.setTranscript([]); } };
 }
 
-test('actual production provider registers box help for ordinary Bots, excluding shared rooms and subagents', () => {
+test('actual production provider registers box help for ordinary Bots, excluding shared rooms and subagents', { skip: skipBundle }, () => {
   const f = fixture();
   try {
     const { produced, scopedTurn } = f.providerInputs('B');
@@ -231,7 +238,7 @@ test('actual production provider registers box help for ordinary Bots, excluding
   } finally { f.close(); }
 });
 
-test('actual tool creates durable per-agent waiting entries and snapshots without pre-existing cards', async () => {
+test('actual tool creates durable per-agent waiting entries and snapshots without pre-existing cards', { skip: skipBundle }, async () => {
   const f = fixture();
   try {
     for (const id of ['A', 'B']) assert.deepEqual(f.sessions.get(id).db.getTranscriptEntries(), []);
@@ -261,7 +268,7 @@ test('actual tool creates durable per-agent waiting entries and snapshots withou
   } finally { f.close(); }
 });
 
-test('actual coordinator Done/Skip persist handed_back/dismissed and resume the correct Bot', async () => {
+test('actual coordinator Done/Skip persist handed_back/dismissed and resume the correct Bot', { skip: skipBundle }, async () => {
   const f = fixture();
   try {
     await f.request('A', 'Complete A');await f.request('B', 'Decline B');
@@ -287,7 +294,7 @@ test('actual coordinator Done/Skip persist handed_back/dismissed and resume the 
   } finally { f.close(); }
 });
 
-test('PV English catalog uses the corrected official English labels', () => {
+test('PV English catalog uses the corrected official English labels', { skip: skipBundle }, () => {
   const English = RConversationOfficialCardFactory(React, compiler, jsx, style.Fe, (...x) => x.filter(Boolean).join(' '), () => null, en => en);
   const html = renderToStaticMarkup(jsx.jsx(English, { instruction: 'isolated', status: 'waiting', surface: 'elevated' }));
   assert.match(html, /Action needed/);
@@ -298,7 +305,7 @@ test('PV English catalog uses the corrected official English labels', () => {
   capture('english-catalog-corrected', { correctEnglish: true, actualHeading: 'Action needed', artifact: resolve(evidence, 'english-catalog-corrected.html'), source: 'dist/renderer/assets/index.eager-app-fbmFpqqH.js embedded English catalog' });
 });
 
-test('a retained callback cannot resolve a newly registered request for the same agent', async () => {
+test('a retained callback cannot resolve a newly registered request for the same agent', { skip: skipBundle }, async () => {
   const f = fixture();
   try {
     await f.request('A', 'First request');
@@ -317,7 +324,7 @@ test('a retained callback cannot resolve a newly registered request for the same
   } finally { f.close(); }
 });
 
-test('production endRequested emits and persists before pause; duplicate requests pause without another emission', async () => {
+test('production endRequested emits and persists before pause; duplicate requests pause without another emission', { skip: skipBundle }, async () => {
   for (const fallback of [false, true]) {
     const f = fixture();
     try {
@@ -345,7 +352,7 @@ test('production endRequested emits and persists before pause; duplicate request
   acceptance.registrationBeforePause = true;
 });
 
-test('legacy and conflicting inputs persist compatible states and emit canonical resume triggers', async () => {
+test('legacy and conflicting inputs persist compatible states and emit canonical resume triggers', { skip: skipBundle }, async () => {
   const cases = [
     ['completed-button', { resolution: 'completed', trigger: 'button' }, 'handed_back', 'button'],
     ['cancelled-dismissed', { resolution: 'cancelled', trigger: 'dismissed' }, 'dismissed', 'dismissed'],
