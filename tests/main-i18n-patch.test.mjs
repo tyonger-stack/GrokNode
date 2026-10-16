@@ -120,12 +120,12 @@ test("transcript date formatters use the selected English or Chinese locale", ()
   assert.equal(resolved(() => "en"), "en-US");
 });
 
-// The "<Bot> is working" row the transcript shows while an agent is busy. The
-// pair matcher structurally cannot reach it: `is working` is template text and
-// `return"Typing…"` is a bare return, so both stayed English while every other
-// "Typing…"/"Working…" copy in the chunk branched. Translations are byte-sourced
-// from official Grok Bot 0.66.0 (rbijNi, Q5ywLe, yQopUI, OmANKk, uqs8Gd, PxYAul).
-const ACTIVITY_LABEL_IDS = ["rbijNi/PxYAul", "rbijNi/Q5ywLe/yQopUI/OmANKk", "uqs8Gd"];
+// Group / overflow activity-mark labels (_pt / hJn). The single-agent gJn row
+// (`<name> is working` / Typing…) moved to working-status-phrases-renderer-patch
+// (0.71.2 CP phrases, no bot-name prefix); see that module's tests for gJn.
+// Translations for _pt/hJn are byte-sourced from official Grok Bot 0.66.0
+// (Q5ywLe, yQopUI, OmANKk, uqs8Gd).
+const ACTIVITY_LABEL_IDS = ["rbijNi/Q5ywLe/yQopUI/OmANKk", "uqs8Gd"];
 
 function activityLabelSource() {
   return ACTIVITY_LABEL_IDS.map(
@@ -140,27 +140,22 @@ test("activity label follows the selected locale in both languages", () => {
     names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
   // new Function parses the replacements, so a brace/paren slip in the rewritten
   // minified functions fails here rather than as a black screen after packaging.
-  const { gJn, _pt, hJn } = new Function(
+  const { _pt, hJn } = new Function(
     "RLocT",
     "qGe",
     "jGe",
-    `${activityLabelSource()};return {gJn,_pt,hJn};`,
+    `${activityLabelSource()};return {_pt,hJn};`,
   )(RLocT, 3, jGe);
   const agent = (name) => ({ name });
   const roster = (n) => Array.from({ length: n }, (_, i) => agent(`Bot${i + 1}`));
 
   locale = "zh-CN";
-  assert.equal(gJn("working", "Grok Node"), "Grok Node 正在工作", "rbijNi drops the is/are copula");
-  assert.equal(gJn("working", "  "), null, "a blank name still yields no label");
-  assert.equal(gJn("typing", "Grok Node"), "正在输入…", "PxYAul");
   assert.equal(_pt("working", [agent("工作管家")], "Grok Node"), "工作管家 正在工作");
   assert.equal(_pt("typing", [agent("工作管家")], "Grok Node"), "工作管家 正在输入", "yQopUI");
   assert.equal(_pt("working", [agent("A"), agent("B")], "Grok Node"), "A and B 正在工作", "Q5ywLe");
   assert.equal(hJn(roster(6)), "Bot1, Bot2, Bot3 and 另外 3 个", "uqs8Gd puts the counter after the noun");
 
   locale = "en";
-  assert.equal(gJn("working", "Grok Node"), "Grok Node is working", "English must be byte-unchanged");
-  assert.equal(gJn("typing", "Grok Node"), "Typing…");
   assert.equal(_pt("working", [agent("工作管家")], "Grok Node"), "工作管家 is working");
   assert.equal(_pt("typing", [agent("A"), agent("B")], "Grok Node"), "A and B are typing", "OmANKk");
   assert.equal(hJn(roster(6)), "Bot1, Bot2, Bot3 and 3 others");
@@ -169,23 +164,24 @@ test("activity label follows the selected locale in both languages", () => {
 
 test("activity label patch leaves no raw English copy in the rendered row", async () => {
   const { patched } = patchOriginalMainI18n(baseSource());
-  assert.ok(patched.includes('`${t} ${RLocT("is working","正在工作")}`'), "mark label must branch");
-  assert.ok(!patched.includes("`${t} is working`"), "raw mark label must be gone");
-  assert.ok(!patched.includes('return"Typing…"'), "bare-return Typing… must be gone");
+  // gJn's name-prefixed "is working" / bare Typing… are owned by the
+  // working-status-phrases pass (runs earlier); main-i18n only rewrites _pt/hJn.
   assert.ok(!patched.includes("are ${s}"), "raw group predicate must be gone");
   assert.ok(!patched.includes('is ${s}`'), "raw single predicate must be gone");
   assert.ok(!patched.includes('${s} ${s===1?"other":"others"}'), "raw overflow count must be gone");
   assert.ok(patched.includes("RLocOthersCount"), "overflow count must route through a localized helper");
+  assert.ok(patched.includes('RLocT("working","正在工作")'), "_pt working predicate must branch");
+  assert.ok(patched.includes('RLocT("typing","正在输入")'), "_pt typing predicate must branch");
 });
 
 test("activity label anchors are fail-closed on the pinned chunk", async () => {
   // Each row is anchored byte-exact, so a chunk that renames the minified
   // helpers or reshapes the predicate must stop packaging rather than ship a
   // half-localized row. Removing the match has to throw, not silently skip.
-  const gJn = MAIN_I18N_LOCAL_ANCHORED.find((entry) => entry.id === "rbijNi/PxYAul");
-  assert.throws(() => applyAnchored("const unrelated=1;", gJn.anchor, gJn.replacement), /missing|ambiguous/);
+  const group = MAIN_I18N_LOCAL_ANCHORED.find((entry) => entry.id === "rbijNi/Q5ywLe/yQopUI/OmANKk");
+  assert.throws(() => applyAnchored("const unrelated=1;", group.anchor, group.replacement), /missing|ambiguous/);
   assert.throws(
-    () => applyAnchored(gJn.anchor + NL + gJn.anchor, gJn.anchor, gJn.replacement),
+    () => applyAnchored(group.anchor + NL + group.anchor, group.anchor, group.replacement),
     /missing|ambiguous/,
   );
   for (const id of ACTIVITY_LABEL_IDS) {
@@ -194,6 +190,11 @@ test("activity label anchors are fail-closed on the pinned chunk", async () => {
     assert.ok(entry.anchor.startsWith("function "), "anchor must be a whole function: " + id);
     assert.ok(entry.replacement.includes("RLocT("), "replacement must branch on locale: " + id);
   }
+  assert.equal(
+    MAIN_I18N_LOCAL_ANCHORED.find((row) => row.id === "rbijNi/PxYAul"),
+    undefined,
+    "gJn row must stay retired (owned by working-status-phrases)",
+  );
 });
 
 // The activity-verb row: the "Searching the web" / "Thinking" line that `dse`
