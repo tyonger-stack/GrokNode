@@ -59,6 +59,7 @@ test("native p3n mounts original settings with shared overview and preserves nod
     })));
     const settings = pane.querySelector(".sand-agent-settings"),pool=pane.querySelector(".sand-box-vnc-pool");
     assert.ok(settings);assert.ok(pool);
+    assert.ok(pane.querySelector("[data-r-info-pane-hero]"));
     const library = document.createElement("section");library.className="sand-agent-library sand-78zum5";library.textContent="Library";
     const routines = pane.querySelector("ul.sand-routine__list").parentElement;
     routines.insertAdjacentElement("afterend",library);
@@ -71,7 +72,8 @@ test("native p3n mounts original settings with shared overview and preserves nod
       assert.equal(visible(library),tab==="library");assert.equal(visible(pool),tab==="computer");
       assert.equal(visible(pane.querySelector('[aria-label="Agent description"]')),tab==="other");
       assert.equal(visible(pane.querySelector('[data-r-agent-model]')),tab==="other");
-      assert.equal(visible(pane.querySelector('[aria-label="Agent name"]')),tab==="details");
+      assert.ok(visible(pane.querySelector('[data-r-info-pane-hero] [aria-label="Agent name"]')));
+      assert.equal(visible(pane.querySelector('.sand-agent-settings [aria-label="Agent name"]')),tab==="other");
       assert.equal(pane.querySelector(".sand-agent-settings"),settings);assert.equal(pane.querySelector(".sand-box-vnc-pool"),pool);
     }
     pane.querySelector('[data-r-tab="details"]').click();

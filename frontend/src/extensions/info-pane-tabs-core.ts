@@ -20,6 +20,8 @@ export const COMPUTER_POOL_SELECTOR = ".sand-box-vnc-pool";
 export const OTHER_CARD_SELECTOR = ".sand-agent-settings__card";
 export const OTHER_MODEL_SELECTOR = "[data-r-agent-model]";
 export const OTHER_DESC_SELECTOR = '[aria-label="Agent description"]';
+export const OTHER_FORM_SELECTOR = ".sand-agent-settings";
+export const HERO_SELECTOR = "[data-r-info-pane-hero]";
 export const TABBAR_ID = "sand-info-pane-tabs";
 export const TAB_ATTR = "data-r-tabs-tab";
 export const HIDE_MARK = "data-r-tabs-hidden";
@@ -59,6 +61,7 @@ export interface TabNodes {
   readonly pool: Element | null;
   readonly cards: Element[];
   readonly desc: Element | null;
+  readonly settings: Element | null;
 }
 export function collectTabNodes(pane: Element): TabNodes {
   return {
@@ -66,6 +69,7 @@ export function collectTabNodes(pane: Element): TabNodes {
     pool: pane.querySelector(COMPUTER_POOL_SELECTOR),
     cards: Array.from(pane.querySelectorAll(OTHER_CARD_SELECTOR)),
     desc: pane.querySelector(OTHER_DESC_SELECTOR),
+    settings: pane.querySelector(OTHER_FORM_SELECTOR),
   };
 }
 function markHide(el: Element): void {
@@ -83,7 +87,7 @@ function resetHidden(pane: Element): void {
 }
 function keepOnly(root: Element, targets: readonly Element[]): void {
   for (const child of Array.from(root.children)) {
-    if (child.id === TABBAR_ID || child.matches('.sand-info-pane__top')) continue;
+    if (child.id === TABBAR_ID || child.matches('.sand-info-pane__top') || child.matches(HERO_SELECTOR)) continue;
     if (targets.some(target => target === child || target.contains(child))) continue;
     if (targets.some(target => child.contains(target))) keepOnly(child, targets);
     else markHide(child);
@@ -105,13 +109,14 @@ export function applyTab(pane: Element, tab: InfoPaneTabId): void {
   const nodes = collectTabNodes(pane);
   const overview = pane.querySelector('[data-r-info-pane-overview]') ?? pane;
   if (tab === "library" && nodes.library == null || tab === "computer" && nodes.pool == null ||
-      tab === "other" && nodes.cards.length === 0 && nodes.desc == null) return;
+      tab === "other" && nodes.settings == null && nodes.cards.length === 0 && nodes.desc == null) return;
   resetHidden(pane);
   const description = descriptionParts(pane, nodes.desc);
   if (tab === "details") {
     if (nodes.library != null) markHide(nodes.library);
     const comp = computerPart(pane, nodes.pool);
     if (comp != null) markHide(comp);
+    if (nodes.settings != null) markHide(nodes.settings);
     for (const card of nodes.cards) markHide(card);
     for (const part of description) markHide(part);
     pane.setAttribute(TAB_ATTR, tab);
@@ -129,12 +134,12 @@ export function applyTab(pane: Element, tab: InfoPaneTabId): void {
     pane.setAttribute(TAB_ATTR, tab);
     return;
   }
-  const anchor = nodes.cards[0] ?? nodes.desc ?? null;
-  if (anchor == null) return;
-  const keep = new Set<Element>();
-  for (const card of nodes.cards) keep.add(card);
-  for (const part of description) keep.add(part);
-  keepOnly(overview, [...keep]);
+  const keep: Element[] = [];
+  if (nodes.settings != null) keep.push(nodes.settings);
+  for (const card of nodes.cards) keep.push(card);
+  for (const part of description) keep.push(part);
+  if (keep.length === 0) return;
+  keepOnly(overview, keep);
   pane.setAttribute(TAB_ATTR, tab);
 }
 export function readStoredTab(storage: Storage | null): InfoPaneTabId {

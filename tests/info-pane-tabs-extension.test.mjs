@@ -35,6 +35,7 @@ function fixtureDocument() {
   const document = window.document;
   document.body.innerHTML = [
     '<div class="sand-info-pane"><div class="sand-info-pane__inner">',
+    '<div data-r-info-pane-hero=""><div data-r-hero-text=""><input aria-label="Agent name" value="Bot 名"></div></div>',
     '<div class="sand-agent-settings">',
     '<div class="identity-fields">',
     '<div class="sand-agent-identity"><span>Bot 名</span></div>',
@@ -80,8 +81,9 @@ test("详情页：藏资料库与电脑区及设置卡片，留身份与例行�
     assert.equal(document.querySelectorAll(".sand-agent-settings__card")[1].hidden, true);
     assert.equal(vis(document, '[aria-label="Agent description"]'), false);
     assert.equal(vis(document, '.description-heading'), false);
-    assert.equal(vis(document, '[aria-label="Agent name"]'), true);
-    assert.equal(vis(document, ".sand-agent-identity"), true);
+    assert.equal(vis(document, ".sand-agent-settings"), false);
+    assert.equal(vis(document, "[data-r-info-pane-hero]"), true);
+    assert.equal(vis(document, ".sand-agent-identity"), false);
     assert.equal(vis(document, "ul.sand-routine__list"), true);
   } finally {
     window.close();
@@ -94,6 +96,7 @@ test("资料库页：只留资料库分节", async () => {
     const pane = paneOf(document);
     core.applyTab(pane, "library");
     assert.equal(vis(document, "section.sand-agent-library"), true);
+    assert.equal(vis(document, "[data-r-info-pane-hero]"), true);
     assert.equal(vis(document, ".routine-wrap"), false);
     assert.equal(vis(document, ".comp-wrap"), false);
     assert.equal(vis(document, ".sand-agent-settings"), false);
@@ -108,6 +111,7 @@ test("电脑页：只留电脑区", async () => {
     const pane = paneOf(document);
     core.applyTab(pane, "computer");
     assert.equal(vis(document, ".comp-wrap"), true);
+    assert.equal(vis(document, "[data-r-info-pane-hero]"), true);
     assert.equal(vis(document, ".routine-wrap"), false);
     assert.equal(vis(document, "section.sand-agent-library"), false);
     assert.equal(vis(document, ".sand-agent-settings"), false);
@@ -125,8 +129,10 @@ test("其他页：留设置卡片与描述，藏身份兄弟节点", async () =>
     assert.equal(document.querySelectorAll(".sand-agent-settings__card")[1].hidden, false);
     assert.equal(vis(document, '[aria-label="Agent description"]'), true);
     assert.equal(vis(document, '.description-heading'), true);
-    assert.equal(vis(document, '[aria-label="Agent name"]'), false);
-    assert.equal(vis(document, ".sand-agent-identity"), false);
+    assert.equal(vis(document, ".sand-agent-settings"), true);
+    assert.equal(vis(document, "[data-r-info-pane-hero]"), true);
+    assert.equal(document.querySelector('.sand-agent-settings [aria-label="Agent name"]').closest("[hidden]"), null);
+    assert.equal(vis(document, ".sand-agent-identity"), true);
     assert.equal(vis(document, ".routine-wrap"), false);
     assert.equal(vis(document, "section.sand-agent-library"), false);
     assert.equal(vis(document, ".comp-wrap"), false);
@@ -174,6 +180,7 @@ test("入口行为：建栏一次、点击切换、非 Bot 面不建栏", async 
     window.__sandInfoPaneTabsSync();
     window.__sandInfoPaneTabsSync();
     assert.equal(document.querySelectorAll("#sand-info-pane-tabs").length, 1);
+    assert.equal(document.querySelector("#sand-info-pane-tabs").previousElementSibling?.getAttribute("data-r-info-pane-hero"), "");
     const labels = Array.from(document.querySelectorAll('#sand-info-pane-tabs [role="tab"]')).map((b) => b.textContent);
     assert.deepEqual(labels, ["详情", "资料库", "电脑", "其他"]);
     const compBtn = document.querySelector('#sand-info-pane-tabs [data-r-tab="computer"]');
@@ -273,7 +280,8 @@ test('窄栏键盘：方向键环绕、Home/End、焦点与选中一致，mutati
   await withEntry(async ({ window, document, pane }) => {
     pane.style.width = '180px';
     const bar = document.querySelector('#sand-info-pane-tabs');
-    assert.equal(window.getComputedStyle(bar).overflowX, 'auto');
+    assert.equal(window.getComputedStyle(bar).position, 'sticky');
+    assert.equal(window.getComputedStyle(bar).justifyContent, 'center');
     for (const [from, key, expected] of [
       ['details', 'ArrowLeft', 'other'], ['other', 'ArrowRight', 'details'],
       ['details', 'End', 'other'], ['other', 'Home', 'details'],
