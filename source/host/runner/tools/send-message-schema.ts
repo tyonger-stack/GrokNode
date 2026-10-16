@@ -33,7 +33,7 @@ export function refineSendMessage(value: SendMessageInput): SendMessageIssue[] {
 const objectSchema = z.object({
   type: z.enum(SEND_MESSAGE_TYPES).describe(SEND_MESSAGE_TYPE_DESCRIPTION),
   content: z.string().trim().optional().describe("Required when type is text. The message to show to the user."),
-  url: z.string().trim().optional().describe("Required when type is attachment. Use file:// for local files or https:// for remote files and standalone media."),
+  url: z.string().trim().optional().describe("Required when type is attachment. Use file:// for local files or https:// for remote files and standalone media. Audio files (.mp3, .m4a, .wav, .ogg, .aac, .flac, .opus, .weba) are supported the same way as other non-image attachments."),
   images: z.array(z.object({
     url: z.string().trim().min(1).describe("file:// or https:// URL of the image."),
     alt: z.string().trim().optional().describe("Optional short description of this image, shown on hover and as its fullscreen caption."),

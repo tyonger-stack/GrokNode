@@ -4,6 +4,7 @@ import {
   isConversationTooLargeRefusal,
   isFirstTokenStallError,
   isProviderCapacityError,
+  isStreamIdleError,
   isTransientStreamError,
 } from "../../runner/transient-stream-error.js";
 
@@ -227,6 +228,8 @@ export function agentRunErrorKindOf(error: unknown, hasBackendDetail = findBacke
   if (isProviderCapacityError(error)) return "provider_overloaded";
   if (hasBackendDetail) return undefined;
   if (errorChainIncludes(error, isFirstTokenStallError)) return "first_token_stall";
+  // Official maps mid-stream idle to the same user-facing opaque wire copy.
+  if (errorChainIncludes(error, isStreamIdleError)) return "opaque_wire_failure";
   if (isConversationTooLargeRefusal(error)) return "conversation_too_large";
   if (findBackendConnectError(error, false) != null || isTransientStreamError(error)) return "opaque_wire_failure";
   return "unknown_failure";

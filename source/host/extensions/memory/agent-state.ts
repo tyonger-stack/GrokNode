@@ -7,12 +7,48 @@ import { describeTrigger } from "../../../shared/automation-schedule.js";
 import { triggerHasWebhookMember, type AutomationTrigger } from "../../../shared/automations.js";
 import { buildWebhookUrl, deleteWebhookCredential, generateWebhookKey, resolveWebhookListenerPort, webhookCredentialExists, webhookCredentialPath, writeWebhookCredential } from "../../automations/webhook-credentials.js";
 import { CANONICAL_AVATAR_FILENAME, invalidateAvatarDataUrlCache, listConventionalAvatarFilenames, sniffAvatarMimeType } from "../../agents/agent-avatar.js";
+import { editSandProfile, type SandProfileEdit } from "../../agents/agent-profile.js";
 import { isBoxRootPath } from "../../box/box-transfer.js";
 import { FileMemoryStore, getProjectDir, getProjectMemoryShardDir, getUserMemoryShardDir, projectDirExists, type MemoryKind } from "./memory-service.js";
 
-export type StateWriteResult = { ok: true; message: string } | { ok: false; message: string };
-const ok = (message: string): StateWriteResult => ({ ok: true, message }), fail = (message: string): StateWriteResult => ({ ok: false, message });
+/** Matches runner `StateWriteResult` (`detail`/`reason`); `message` kept for older call sites. */
+export type StateWriteResult =
+  | { ok: true; detail: string; message: string }
+  | { ok: false; reason: string; message: string };
+const ok = (text: string): StateWriteResult => ({ ok: true, detail: text, message: text });
+const fail = (text: string): StateWriteResult => ({ ok: false, reason: text, message: text });
 const blank = (value?: string | null): boolean => value == null || value.trim().length === 0;
+
+/** Official `SAND_PROFILE_UPDATE_FIELD_LABELS` / `changedSandProfileFields` / `refuseSandProfileUpdate`. */
+const SAND_PROFILE_UPDATE_FIELD_LABELS = {
+  name: "name",
+  description: "description",
+  title: "title",
+  avatarShape: "avatar shape",
+  avatarColor: "avatar color",
+} as const;
+type SandProfileUpdateField = keyof typeof SAND_PROFILE_UPDATE_FIELD_LABELS;
+
+function changedSandProfileFields(patch: SandProfileEdit): SandProfileUpdateField[] {
+  const fields: SandProfileUpdateField[] = [];
+  for (const field of Object.keys(SAND_PROFILE_UPDATE_FIELD_LABELS) as SandProfileUpdateField[]) {
+    if (patch[field] !== undefined) fields.push(field);
+  }
+  return fields;
+}
+
+function refuseSandProfileUpdate(patch: SandProfileEdit): StateWriteResult | null {
+  if (changedSandProfileFields(patch).length === 0) {
+    return fail("nothing to change. Pass at least one of name, description, title, avatar_shape, or avatar_color.");
+  }
+  if (patch.name !== undefined && blank(patch.name)) return fail("a blank name is not allowed.");
+  return null;
+}
+
+function describeSandProfileUpdate(patch: SandProfileEdit): string {
+  const labels = changedSandProfileFields(patch).map((field) => SAND_PROFILE_UPDATE_FIELD_LABELS[field]);
+  return `Updated your ${labels.join(", ")}.`;
+}
 export const MEMORY_NOTE_PREFIX = "Note: ";
 export const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const immediateDebounce = { name: "sand-agent-state-memory-shard", wrap: <T extends (...args: never[]) => unknown>(fn: T) => Object.assign(fn, { dispose() {} }) };
@@ -24,7 +60,9 @@ interface MembershipPort { read(): ReadonlySet<string>; join(slug: string): bool
 export interface AgentStateDeps {
   agentId: string; agentDir: string; sandRoot: string; memory: MemoryPort; membership: MembershipPort; channels: { remove(platform: string): boolean };
   automations: AutomationPort; workflows: WorkflowPort; now?: () => number;
-  readProfile(): Record<string, string> | null; writeProfile(profile: Record<string, string>): void; writeSettings(settings: Record<string, boolean>): void;
+  /** Optional; profile writes go through `editSandProfile(agentDir)` like official 0.71.2. */
+  readProfile?(): Record<string, string> | null; writeProfile?(profile: Record<string, string>): void;
+  writeSettings?(settings: Record<string, boolean>): void;
   readBoxFile?(path: string): Promise<Uint8Array>; onAvatarChanged?(): void;
 }
 function shardFor(deps: AgentStateDeps, scope: "agent" | "user" | "project", project?: string): { store: MemoryPort; label: string } | StateWriteResult {
@@ -63,8 +101,30 @@ export function createSandAgentState(deps: AgentStateDeps) {
     async deleteAutomation({ id }: { id: string }) { const name = deps.automations.get(id)?.name ?? id; if (!deps.automations.remove(id)) return fail(`no routine with folder "${id}" exists.`); await deleteWebhookCredential(join(deps.agentDir, "automations", id)).catch(() => undefined); return ok(`Deleted routine "${name}" (folder ${id}).`); },
     async writeWorkflow(args: { id?: string; name: string; description?: string; body: string }) { const spec = { name: args.name, description: args.description ?? "", body: args.body, trigger: null }, value = args.id == null ? deps.workflows.create(spec) : deps.workflows.update(args.id, spec); return value == null ? fail(args.id == null ? "the workflow could not be saved — a name and a non-empty body are both required." : `no workflow with id "${args.id}" exists, or the new fields were invalid. Cursor-managed skills cannot be edited.`) : ok(`${args.id == null ? "Saved" : "Updated"} workflow "${value.name}" (id ${value.id}).`); },
     async deleteWorkflow({ id }: { id: string }) { return deps.workflows.remove(id) ? ok(`Deleted workflow ${id}.`) : fail(`no workflow with id "${id}" exists, or it is a Cursor-managed skill, which cannot be deleted.`); },
-    async updateProfile(args: { name?: string; description?: string }) { if (args.name === undefined && args.description === undefined) return fail("nothing to change — pass at least one of name or description."); if (args.name !== undefined && blank(args.name)) return fail("a blank name is not allowed."); const current = deps.readProfile() ?? {}; deps.writeProfile({ ...current, ...(args.name === undefined ? {} : { name: args.name.trim() }), ...(args.description === undefined ? {} : { description: args.description.trim() }) }); return ok(`Updated your ${[args.name !== undefined ? "name" : "", args.description !== undefined ? "description" : ""].filter(Boolean).join(", ")}.`); },
-    async updateSettings(args: { hiddenFromSidebar?: boolean; notifyOnAgentUpdates?: boolean }) { const update = { ...(args.hiddenFromSidebar === undefined ? {} : { hiddenFromSidebar: args.hiddenFromSidebar }), ...(args.notifyOnAgentUpdates === undefined ? {} : { notifyOnAgentUpdates: args.notifyOnAgentUpdates }) }; if (Object.keys(update).length === 0) return fail("nothing to change — pass at least one setting field."); deps.writeSettings(update); return ok(`Updated your settings: ${Object.keys(update).join(", ")}.`); },
+    async updateProfile(args: SandProfileEdit) {
+      const refusal = refuseSandProfileUpdate(args);
+      if (refusal !== null) return refusal;
+      editSandProfile(deps.agentDir, args);
+      deps.writeProfile?.({
+        ...(deps.readProfile?.() ?? {}),
+        ...(args.name === undefined ? {} : { name: args.name.trim() }),
+        ...(args.description === undefined ? {} : { description: args.description.trim() }),
+        ...(args.title === undefined ? {} : { title: args.title.trim() }),
+        ...(args.avatarShape === undefined ? {} : { avatarShape: args.avatarShape.trim() }),
+        ...(args.avatarColor === undefined ? {} : { avatarColor: args.avatarColor.trim() }),
+      });
+      return ok(describeSandProfileUpdate(args));
+    },
+    async updateSettings(args: { hiddenFromSidebar?: boolean; notifyOnAgentUpdates?: boolean }) {
+      const update = {
+        ...(args.hiddenFromSidebar === undefined ? {} : { hiddenFromSidebar: args.hiddenFromSidebar }),
+        ...(args.notifyOnAgentUpdates === undefined ? {} : { notifyOnAgentUpdates: args.notifyOnAgentUpdates }),
+      };
+      if (Object.keys(update).length === 0) return fail("nothing to change — pass at least one setting field.");
+      if (deps.writeSettings == null) return fail("settings writes are unavailable in this session.");
+      deps.writeSettings(update);
+      return ok(`Updated your settings: ${Object.keys(update).join(", ")}.`);
+    },
     async disconnectChannel({ platform }: { platform: string }) { return deps.channels.remove(platform) ? ok(`Disconnected ${platform}. The connector closes the live connection within a few seconds.`) : fail(`${platform} is not connected.`); },
     async createProject({ slug, name, description }: { slug: string; name: string; description?: string }) { const id = slug.trim(); if (!isSafeFolderId(id)) return fail(`"${id}" is not a valid project slug — use a short kebab-case id.`); if (blank(name)) return fail("a project needs a non-empty name."); const path = getProjectDir(deps.sandRoot, id), existed = projectDirExists(deps.sandRoot, id); if (!existed) { await mkdir(path, { recursive: true }); await writeFile(join(path, "project.md"), serializeWorkflowFile({name:name.trim(),description:description?.trim()??"",body:"",trigger:null}), "utf8"); } return deps.membership.join(id) ? ok(existed ? `Joined existing project "${id}" (create-is-join; project.md left as-is).` : `Created and joined project "${name.trim()}" (folder ${id}).`) : fail(`could not join project "${id}" — the slug is not path-safe.`); },
     async joinProject({ slug }: { slug: string }) { const id = slug.trim(); if (!isSafeFolderId(id)) return fail(`"${id}" is not a valid project slug — use a short kebab-case id.`); if (!projectDirExists(deps.sandRoot, id)) return fail(`no project "${id}" exists. Create it first (action "create").`); return deps.membership.join(id) ? ok(`Joined project "${id}".`) : fail(`could not join project "${id}".`); },

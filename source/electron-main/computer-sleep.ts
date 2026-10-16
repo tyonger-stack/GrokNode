@@ -1,3 +1,6 @@
+// Local preview park only — not official cloud `Wake computer` (HIBERNATED box).
+// Decision 2026-10-17: ship this semantics; do not wire EnsureSandBox wake.
+
 export type ComputerPreviewState = "awake" | "asleep";
 
 export interface ComputerPreviewController {

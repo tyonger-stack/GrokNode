@@ -31,7 +31,8 @@ export const LOCAL_DOCKER_WORKSPACE_VOLUME = `${LOCAL_DOCKER_BOX_CONTAINER}-work
 export const LOCAL_DOCKER_DATA_VOLUME = `${LOCAL_DOCKER_BOX_CONTAINER}-data`;
 export const LOCAL_DOCKER_GATEWAY_URL = "http://127.0.0.1:1340";
 export const LOCAL_DOCKER_OWNER_LABEL = "com.grok-bot.local-vm=1";
-export const LOCAL_DOCKER_SCHEMA_VERSION = "6";
+// v7: SCREEN_WIDTH/HEIGHT 1920×1200 (P2-8 / 0.68.1). Forces recreate so Xvfb picks up geometry.
+export const LOCAL_DOCKER_SCHEMA_VERSION = "7";
 const READY_TIMEOUT_MS = 180_000;
 
 export interface LocalDockerStatus {
@@ -474,6 +475,10 @@ async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnec
       // swaps it in, replacing whatever we mounted. Do not remove this env
       // when "cleaning up" the docker run arguments.
       "--env", "SAND_BOX_AUTO_UPDATE=0",
+      // P2-8: official 0.68.1/0.71.2 computer display. start-desktop.sh reads these
+      // for box-xvfb (`SCREEN_WIDTH:-1280` / `SCREEN_HEIGHT:-800` defaults).
+      "--env", "SCREEN_WIDTH=1920",
+      "--env", "SCREEN_HEIGHT=1200",
       "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1", "--env", "SAND_TREE_SITTER_NODE_DEPS=/home/box/deps", "--env", "NODE_PATH=/home/box/deps", "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0", "--env", "SAND_HOST_PORT=1340", "--env", `SAND_GATEWAY_TOKEN=${token}`,
       "--publish", "127.0.0.1:1337:1337", "--publish", "127.0.0.1:1339:1339", "--publish", "127.0.0.1:1340:1340",
       "--publish", "127.0.0.1:6080:6080", "--publish", "127.0.0.1:6081:6081", "--publish", "127.0.0.1:8790:8790",

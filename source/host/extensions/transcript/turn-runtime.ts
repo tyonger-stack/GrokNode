@@ -10,6 +10,7 @@ import {
   isFirstTokenStallError,
   isProviderCapacityError,
   isRetryableProviderError,
+  isStreamIdleError,
   isTransientStreamError,
   serverRetryAfterMsFromError,
 } from "../../runner/transient-stream-error.js";
@@ -289,7 +290,7 @@ export function incidentKindOf(
   classified: Record<string, unknown>,
 ): TurnIncidentKind {
   const code = String(classified.code ?? "");
-  if (code === "SAND-E0401" || code === "SAND-E0408") return "stalled";
+  if (code === "SAND-E0401" || code === "SAND-E0408" || code === "SAND-E0417") return "stalled";
   if (code === "SAND-E0405" || code === "SAND-E0407") return "failed";
   return "failed";
 }
@@ -324,6 +325,7 @@ export function classifyAgentError(error: unknown): Record<string, unknown> {
     return SandError.providerOverloaded({ connectCode: connectCodeOf(error) });
   }
   if (isFirstTokenStallError(error)) return SandError.firstTokenStall();
+  if (isStreamIdleError(error)) return SandError.streamIdleStall();
   if (isContextOverflowDeadEnd(error)) return SandError.contextWindowOverflow();
   if (isConversationTooLargeRefusal(error)) {
     return SandError.conversationTooLarge();

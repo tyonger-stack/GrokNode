@@ -318,8 +318,15 @@ export function createProductionTurnRunShellAdapter(
       // anything that already streamed settles as-is. A reaction counts as
       // output - the turn did something visible even without text.
       const outputProduced = { value: false };
+      // Declared before markOutput so each visible chunk can restart the
+      // mid-stream idle deadline (official StreamIdleError path).
+      const deadlineHooks: {
+        disarm?: (() => void) | undefined;
+        reset?: (() => void) | undefined;
+      } = {};
       const markOutput = (): void => {
         outputProduced.value = true;
+        deadlineHooks.reset?.();
       };
       owned.updateRelay.callbacks = {
         ...callbacks,
@@ -343,12 +350,8 @@ export function createProductionTurnRunShellAdapter(
       // The dormant retry/checkpoint boundary (stream-attempt.ts) wired at its
       // intended join point. Per-attempt contexts are children of the run
       // context, so a user stop still cancels everything while an engine-level
-      // first-token stall only cancels the current attempt. resumeFrom is
-      // forwarded by identity - the agent layer owns resume semantics.
-      const deadlineHooks: {
-        disarm?: (() => void) | undefined;
-        reset?: (() => void) | undefined;
-      } = {};
+      // first-token / mid-stream idle stall only cancels the current attempt.
+      // resumeFrom is forwarded by identity - the agent layer owns resume semantics.
       const attemptHost: StreamAttemptHost<
         Context,
         ConversationStateStructureMessage,

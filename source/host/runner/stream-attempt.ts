@@ -1,4 +1,15 @@
-import { FirstTokenStallError, isRetryableProviderError, isTransientStreamError, resolveFirstTokenStallDeadlineMs, resolveOverloadStreamRetryPolicy, runWithTransientRetry, shouldRetryTurnAttempt, type RetryPolicy } from "./transient-stream-error.js";
+import {
+  FirstTokenStallError,
+  isRetryableProviderError,
+  isTransientStreamError,
+  resolveFirstTokenStallDeadlineMs,
+  resolveOverloadStreamRetryPolicy,
+  resolveStreamIdleDeadlineMs,
+  runWithTransientRetry,
+  shouldRetryTurnAttempt,
+  StreamIdleError,
+  type RetryPolicy,
+} from "./transient-stream-error.js";
 
 export interface StreamAttemptHost<Context, Checkpoint, State> {
   readonly ctx: { readonly canceled: boolean; withCancel(): readonly [Context, (reason: { intentional: boolean; reason: string }) => void] };
@@ -35,22 +46,58 @@ export function createStreamAttempt<Context, Checkpoint, State>(host: StreamAtte
     };
     let stream: Promise<State>;
     try { stream = host.startStream(attemptCtx, resumeStreamFrom, persist); } catch (error) { settle(); throw error; }
-    const base = resolveFirstTokenStallDeadlineMs();
-    if (base <= 0) {
+    const firstTokenBase = resolveFirstTokenStallDeadlineMs();
+    const idleBase = resolveStreamIdleDeadlineMs();
+    if (firstTokenBase <= 0 && idleBase <= 0) {
       try { const state = await stream; if (checkpointFailure != null) throw checkpointFailure; return state; }
       catch (error) { throw checkpointFailure ?? error; } finally { settle(); }
     }
-    const deadlineMs = base * 2 ** retriesPerformed;
+    const firstTokenDeadlineMs = firstTokenBase * 2 ** retriesPerformed;
     return new Promise<State>((resolve, reject) => {
       let settled = false, deadlineFired = false;
-      const onDeadline = (): void => {
-        if (settled || host.getStreamOutputProduced()) return;
-        settled = true; deadlineFired = true; settle(); cancelAttempt({ intentional: false, reason: "first-token stall" });
-        void Promise.allSettled(operations).then((results) => reject(checkpointFailure ?? results.find((result) => result.status === "rejected")?.reason ?? new FirstTokenStallError(deadlineMs)));
+      let idleTimer: { cancel(): void; restart(): void } | null = null;
+      const rejectDeadline = (error: Error): void => {
+        void Promise.allSettled(operations).then((results) => reject(checkpointFailure ?? results.find((result) => result.status === "rejected")?.reason ?? error));
       };
-      const timer = host.createDeadlineTimer(onDeadline, deadlineMs);
-      const disarm = (): void => { settled = true; timer.cancel(); host.clearDeadlineHookIf(disarm, reset); };
-      const reset = (): void => { if (!settled && !host.getStreamOutputProduced()) timer.restart(); };
+      const onFirstTokenDeadline = (): void => {
+        if (settled) return;
+        if (host.getStreamOutputProduced()) {
+          // Output arrived while this timer was armed — switch to mid-stream idle.
+          armIdle();
+          return;
+        }
+        if (firstTokenBase <= 0) return;
+        settled = true; deadlineFired = true; settle(); cancelAttempt({ intentional: false, reason: "first-token stall" });
+        rejectDeadline(new FirstTokenStallError(firstTokenDeadlineMs));
+      };
+      const onIdleDeadline = (): void => {
+        if (settled || !host.getStreamOutputProduced()) return;
+        settled = true; deadlineFired = true; settle(); cancelAttempt({ intentional: false, reason: "stream idle stall" });
+        rejectDeadline(new StreamIdleError(idleBase));
+      };
+      const firstTokenTimer = firstTokenBase > 0
+        ? host.createDeadlineTimer(onFirstTokenDeadline, firstTokenDeadlineMs)
+        : { cancel() {}, restart() {} };
+      const armIdle = (): void => {
+        if (idleBase <= 0 || idleTimer != null || settled) return;
+        firstTokenTimer.cancel();
+        idleTimer = host.createDeadlineTimer(onIdleDeadline, idleBase);
+      };
+      const disarm = (): void => {
+        settled = true;
+        firstTokenTimer.cancel();
+        idleTimer?.cancel();
+        host.clearDeadlineHookIf(disarm, reset);
+      };
+      const reset = (): void => {
+        if (settled) return;
+        if (host.getStreamOutputProduced()) {
+          armIdle();
+          idleTimer?.restart();
+          return;
+        }
+        if (firstTokenBase > 0) firstTokenTimer.restart();
+      };
       host.setDeadlineHooks(disarm, reset);
       void stream.then((state) => { if (deadlineFired) return; disarm(); settle(); checkpointFailure == null ? resolve(state) : reject(checkpointFailure); }, (error) => { if (deadlineFired) return; disarm(); settle(); reject(checkpointFailure ?? error); });
     });

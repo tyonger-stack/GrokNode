@@ -90,3 +90,30 @@ test("retry-after on ai-sdk response headers paces the retry", () => {
   assert.equal(classified.code, "SAND-E0408");
   assert.equal(classified.retryAfterMs, 5_000);
 });
+
+test("content-policy blocks are never retryable (official name set)", () => {
+  for (const name of [
+    "AnthropicContentPolicyBlockedError",
+    "GrokContentPolicyBlockedError",
+    "ResponsesContentPolicyBlockedError",
+    "MetaSafetyIdentifierBlockedError",
+    "OpenAICyberPolicyRequestBlockedError",
+    "OpenAICyberPolicySafetyIdentifierBlockedError",
+  ]) {
+    const error = Object.assign(new Error("blocked"), { name, isRetryable: true, retryable: true });
+    assert.equal(transient.isProviderContentPolicyBlock(error), true, name);
+    assert.equal(transient.isRetryableProviderError(error), false, name);
+    assert.equal(transient.shouldRetryTurnAttempt({ canceled: false, error, streamOutputProduced: false, resumeCheckpointAvailable: false }), false, name);
+  }
+});
+
+test("StreamIdleError classifies as streamIdleStall and retries only with a resume checkpoint", () => {
+  const error = new transient.StreamIdleError(90_000);
+  assert.equal(error.message, "The model stopped responding mid-reply.");
+  assert.equal(transient.isStreamIdleError(error), true);
+  assert.equal(runtime.classifyAgentError(error).code, "SAND-E0417");
+  assert.equal(transient.shouldRetryTurnAttempt({ canceled: false, error, streamOutputProduced: true, resumeCheckpointAvailable: false }), false);
+  assert.equal(transient.shouldRetryTurnAttempt({ canceled: false, error, streamOutputProduced: true, resumeCheckpointAvailable: true }), true);
+  assert.equal(transient.resolveStreamIdleDeadlineMs({}), 90_000);
+  assert.equal(transient.resolveStreamIdleDeadlineMs({ SAND_STREAM_IDLE_DEADLINE_MS: "0" }), 0);
+});

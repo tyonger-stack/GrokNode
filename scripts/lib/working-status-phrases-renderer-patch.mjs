@@ -17,10 +17,9 @@
 // phraseDraw from activityElapsedMs at the SJn call site
 // (`Math.min(.999, (elapsedMs ?? 0) / 180000)` — same 0..1 draw domain as TP).
 //
-// P2-2 (MsZyH5 "Waiting on results" / waiting_on_command): 0.18's host never
-// emits a textKind on activity (renderer has no textKind reads; host maps Await
-// tools to Ja("waiting","Waiting on a command") only). So the bb map path is
-// not ported — report only. sand_hide_working_dot is untouched.
+// P2-2 (MsZyH5): landed in waiting-on-results-renderer-patch.mjs — rewrites the
+// Ja("waiting") literal to "Waiting on results" (bb.textKind path still unused
+// on 0.18; Await tools already go through Ja). sand_hide_working_dot untouched.
 //
 // Ordering: runs before the four i18n passes. MAIN_I18N_LOCAL_ANCHORED's gJn
 // entry is updated to match the post-this-patch bytes (Typing already RLocT'd

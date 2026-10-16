@@ -46,3 +46,33 @@ export function writeSandProfileFile(path: string, profile: SandAgentProfile): v
   writeFileSync(temporary, serialized, "utf8");
   renameSync(temporary, path);
 }
+
+export interface SandProfileEdit {
+  readonly name?: string;
+  readonly description?: string;
+  readonly title?: string;
+  readonly avatarShape?: string;
+  readonly avatarColor?: string;
+}
+
+function keptProfileName(current: SandAgentProfile | null): string {
+  const name = current?.name?.trim() ?? "";
+  return name.length > 0 ? name : "Grok";
+}
+
+/**
+ * Official 0.71.2 `editSandProfile` (host-main.cjs): merge a partial profile write into
+ * `profile.json`, keeping unset fields. Empty `title` clears the role chip.
+ */
+export function editSandProfile(agentDir: string, edit: SandProfileEdit): void {
+  const path = getSandProfilePath(agentDir);
+  const current = readSandProfileFile(path);
+  const name = edit.name?.trim() ?? "";
+  writeSandProfileFile(path, {
+    name: name.length > 0 ? name : keptProfileName(current),
+    description: edit.description?.trim() ?? current?.description ?? "",
+    title: edit.title?.trim() ?? current?.title ?? "",
+    avatarShape: edit.avatarShape?.trim() ?? current?.avatarShape ?? "",
+    avatarColor: edit.avatarColor?.trim() ?? current?.avatarColor ?? "",
+  });
+}

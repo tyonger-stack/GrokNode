@@ -332,14 +332,13 @@ export function createHostGatewayApi(
 
     listAgents: () => method(manager, "listAgents")(),
     countAgents: () => method(manager, "countAgentsOnDisk")(),
-    searchAgents: async (args: any) =>
-      await method(deps.extensions.api("content-search"), "isEnabled")()
-        ? method(manager, "searchAgents")(args.query, args.limit)
-        : [],
-    searchMedia: async (args: any) =>
-      await method(deps.extensions.api("content-search"), "isEnabled")()
-        ? method(manager, "searchMedia")(args.query, args.limit)
-        : [],
+    // Official 0.71.2: searchAgents/searchMedia always reach the manager (FTS
+    // index is always built). Do not gate on sand_global_search — that gate
+    // hid Messages/Files tabs and emptied RPC results when Statsig returned false.
+    searchAgents: (args: any) =>
+      method(manager, "searchAgents")(args.query, args.limit),
+    searchMedia: (args: any) =>
+      method(manager, "searchMedia")(args.query, args.limit),
     createAgent: (args: any) => {
       const nonce = args.clientNonce;
       if (nonce == null || nonce.length === 0) return mintAgent(args);
@@ -431,8 +430,9 @@ export function createHostGatewayApi(
     listAllAutomations: () => method(manager, "listAllAutomations")(),
     isAgentNetworkEnabled: () =>
       method(deps.extensions.api("experiments"), "isAgentNetworkEnabled")(),
-    isGlobalSearchEnabled: () =>
-      method(deps.extensions.api("content-search"), "isEnabled")(),
+    // Official 0.71.2 hardcodes this true so the Cmd-K palette keeps the
+    // Messages / Files / Links / Routines tabs (renderer MJt → globalSearchGate).
+    isGlobalSearchEnabled: async () => true,
     isEgressTunnelAvailable: async () =>
       process.env.SAND_EGRESS_TUNNEL_ENABLED === "1",
 

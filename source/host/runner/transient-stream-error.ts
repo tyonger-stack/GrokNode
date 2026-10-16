@@ -6,7 +6,36 @@ export const TRANSPORT_ERRNO_CODES = new Set([...TRANSIENT_ERRNO_CODES, "ENOTFOU
 const UNAVAILABLE_HTTP_STATUSES = new Set([429, 502, 503, 504]);
 export const TRANSIENT_MESSAGE_TOKENS = ["econnreset", "etimedout", "epipe", "econnaborted", "econnrefused", "enetreset", "enetunreach", "ehostunreach", "socket hang up", "premature close", "stream closed", "closed stream", "connection reset", "connection closed", "connection terminated", "network error", "the operation was aborted", "[aborted]", "[unavailable]", "[deadline_exceeded]"];
 
-interface ErrorLike { readonly statusCode?: unknown; readonly isRetryable?: unknown; readonly responseHeaders?: unknown; readonly code?: unknown; readonly message?: unknown; readonly cause?: unknown; readonly errors?: unknown; readonly name?: unknown; readonly reason?: unknown; readonly isStepRetriesExhausted?: unknown; readonly isConversationTooLarge?: unknown; readonly isTranscriptAppendAfterCheckpointError?: unknown; readonly retryable?: unknown; readonly terminal?: unknown; readonly displayInfo?: unknown; readonly metadata?: unknown }
+/** Official 0.71.2 provider content-policy error names — never retry (would repeat the block). */
+export const SERVER_PROVIDER_CONTENT_POLICY_BLOCK_ERROR_NAMES = new Set([
+  "AnthropicContentPolicyBlockedError",
+  "GrokContentPolicyBlockedError",
+  "ResponsesContentPolicyBlockedError",
+  "MetaSafetyIdentifierBlockedError",
+  "OpenAICyberPolicyRequestBlockedError",
+  "OpenAICyberPolicySafetyIdentifierBlockedError",
+]);
+
+interface ErrorLike {
+  readonly statusCode?: unknown;
+  readonly isRetryable?: unknown;
+  readonly responseHeaders?: unknown;
+  readonly code?: unknown;
+  readonly message?: unknown;
+  readonly cause?: unknown;
+  readonly errors?: unknown;
+  readonly name?: unknown;
+  readonly reason?: unknown;
+  readonly isStepRetriesExhausted?: unknown;
+  readonly isConversationTooLarge?: unknown;
+  readonly isTranscriptAppendAfterCheckpointError?: unknown;
+  readonly retryable?: unknown;
+  readonly terminal?: unknown;
+  readonly displayInfo?: unknown;
+  readonly metadata?: unknown;
+  readonly isFirstTokenStall?: unknown;
+  readonly isStreamIdleStall?: unknown;
+}
 function asErrorLike(value: unknown): ErrorLike | null { return typeof value === "object" && value != null ? value : null; }
 function children(error: ErrorLike): unknown[] { return [error.cause, ...(Array.isArray(error.errors) ? error.errors : [])].filter((value) => value != null); }
 function visit(error: unknown, predicate: (value: ErrorLike) => boolean, seen = new Set<unknown>()): boolean {
@@ -21,12 +50,16 @@ export function isTransientStreamError(error: unknown): boolean {
   if (typeof error === "string") return messageLooksTransient(error);
   return visit(error, (value) => typeof value.code === "string" && TRANSIENT_ERRNO_CODES.has(value.code.toUpperCase()) || typeof value.message === "string" && messageLooksTransient(value.message));
 }
+export function isProviderContentPolicyBlock(error: unknown): boolean {
+  return visit(error, (value) => typeof value.name === "string" && SERVER_PROVIDER_CONTENT_POLICY_BLOCK_ERROR_NAMES.has(value.name));
+}
 export function isConversationTooLargeRefusal(error: unknown): boolean { return visit(error, (value) => value.isConversationTooLarge === true); }
 export function isContextOverflowDeadEnd(error: unknown): boolean {
   return visit(error, (value) => value.name === "InputTokenLimitError" || ((value.isStepRetriesExhausted === true || value.name === "StepRetriesExhaustedError") && value.reason === "summarization-retries"));
 }
 export function isRetryableProviderError(error: unknown): boolean {
-  if (isContextOverflowDeadEnd(error) || isConversationTooLargeRefusal(error)) return false;
+  if (error == null) return false;
+  if (isProviderContentPolicyBlock(error) || isContextOverflowDeadEnd(error) || isConversationTooLargeRefusal(error)) return false;
   const retryable = isTransientStreamError(error) || visit(error, (value) => value.retryable === true || value.isRetryable === true);
   if (!retryable) return false;
   return !visit(error, (value) => value.terminal === true || value.name === "NonRetriableError" || value.name === "ActionRequiredError");
@@ -62,10 +95,29 @@ export class FirstTokenStallError extends Error {
   readonly isFirstTokenStall = true;
   constructor(deadlineMs: number) { super(`The model provider did not start responding within ${Math.round(deadlineMs / 1_000)}s.`); this.name = "FirstTokenStallError"; }
 }
-export function isFirstTokenStallError(error: unknown): boolean { return error instanceof FirstTokenStallError || asErrorLike(error)?.name === "FirstTokenStallError" || (asErrorLike(error) as { isFirstTokenStall?: unknown } | null)?.isFirstTokenStall === true; }
+export function isFirstTokenStallError(error: unknown): boolean {
+  return error instanceof FirstTokenStallError || asErrorLike(error)?.name === "FirstTokenStallError" || asErrorLike(error)?.isFirstTokenStall === true;
+}
+
+/** Mid-stream silence after the model already produced output (official 0.71 StreamIdleError). */
+export class StreamIdleError extends Error {
+  readonly isStreamIdleStall = true;
+  readonly idleDeadlineMs: number;
+  constructor(deadlineMs: number) {
+    super("The model stopped responding mid-reply.");
+    this.name = "StreamIdleError";
+    this.idleDeadlineMs = deadlineMs;
+  }
+}
+export function isStreamIdleError(error: unknown): boolean {
+  return error instanceof StreamIdleError || asErrorLike(error)?.name === "StreamIdleError" || asErrorLike(error)?.isStreamIdleStall === true;
+}
+
 export function shouldRetryTurnAttempt(input: { canceled: boolean; error: unknown; streamOutputProduced: boolean; resumeCheckpointAvailable: boolean; automationIsRetryable?: (error: unknown) => boolean }): boolean {
   if (input.canceled || asErrorLike(input.error)?.isTranscriptAppendAfterCheckpointError === true) return false;
   if (isModelStreamWallClockLimitError(input.error)) return false;
+  // Official: mid-stream idle only re-enters from a resume checkpoint.
+  if (isStreamIdleError(input.error)) return input.resumeCheckpointAvailable;
   const safe = !input.streamOutputProduced || input.resumeCheckpointAvailable;
   if (safe && (isRetryableProviderError(input.error) || isFirstTokenStallError(input.error))) return true;
   return input.automationIsRetryable?.(input.error) ?? false;
@@ -119,7 +171,10 @@ export const DEFAULT_OVERLOAD_STREAM_RETRY_MAX_ATTEMPTS = 3;
 export const DEFAULT_OVERLOAD_STREAM_RETRY_BASE_DELAY_MS = 750;
 export const DEFAULT_OVERLOAD_STREAM_RETRY_MAX_DELAY_MS = 6_000;
 export const DEFAULT_FIRST_TOKEN_STALL_DEADLINE_MS = 150_000;
+/** Official experiment fallback `idleDeadlineMs: 9e4`. */
+export const DEFAULT_STREAM_IDLE_DEADLINE_MS = 90_000;
 function readIntEnv(env: NodeJS.ProcessEnv, name: string, fallback: number, min: number): number { const parsed = Number.parseInt(env[name]?.trim() ?? "", 10); return Number.isFinite(parsed) && parsed >= min ? parsed : fallback; }
 export function resolveAutomationStreamRetryPolicy(overrides: Partial<RetryPolicy> = {}, env: NodeJS.ProcessEnv = process.env): RetryPolicy { return { maxAttempts: readIntEnv(env, "SAND_AUTOMATION_STREAM_RETRY_ATTEMPTS", 4, 1), baseDelayMs: readIntEnv(env, "SAND_AUTOMATION_STREAM_RETRY_BASE_MS", 1_000, 0), maxDelayMs: readIntEnv(env, "SAND_AUTOMATION_STREAM_RETRY_MAX_MS", 15_000, 0), ...overrides }; }
 export function resolveOverloadStreamRetryPolicy(overrides: Partial<RetryPolicy> = {}, env: NodeJS.ProcessEnv = process.env): RetryPolicy { return { maxAttempts: readIntEnv(env, "SAND_OVERLOAD_STREAM_RETRY_ATTEMPTS", 3, 1), baseDelayMs: readIntEnv(env, "SAND_OVERLOAD_STREAM_RETRY_BASE_MS", 750, 0), maxDelayMs: readIntEnv(env, "SAND_OVERLOAD_STREAM_RETRY_MAX_MS", 6_000, 0), ...overrides }; }
 export function resolveFirstTokenStallDeadlineMs(env: NodeJS.ProcessEnv = process.env): number { return readIntEnv(env, "SAND_FIRST_TOKEN_STALL_DEADLINE_MS", DEFAULT_FIRST_TOKEN_STALL_DEADLINE_MS, 0); }
+export function resolveStreamIdleDeadlineMs(env: NodeJS.ProcessEnv = process.env): number { return readIntEnv(env, "SAND_STREAM_IDLE_DEADLINE_MS", DEFAULT_STREAM_IDLE_DEADLINE_MS, 0); }

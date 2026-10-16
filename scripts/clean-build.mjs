@@ -53,10 +53,14 @@ import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
 import { applyTeachGateRestorePatch } from "./lib/teach-gate-restore-patch.mjs";
 import { applyGrokMainAgentGatePatch } from "./lib/grok-main-agent-gate-patch.mjs";
 import { applyBotColorGatePatch } from "./lib/bot-color-gate-patch.mjs";
+import { apply0712GateEcosystemPatch } from "./lib/0712-gate-ecosystem-patch.mjs";
 import { applyMainAgentRendererPatch } from "./lib/main-agent-renderer-patch.mjs";
 import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
 import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-patch.mjs";
+import { applyShapePickerPatch } from "./lib/shape-picker-patch.mjs";
+import { applyOriginalRendererComputerControl } from "./lib/computer-control-renderer-patch.mjs";
+import { applyOriginalRendererWaitingOnResults } from "./lib/waiting-on-results-renderer-patch.mjs";
 import { applyOriginalRendererViewUnread } from "./lib/view-unread-renderer-patch.mjs";
 import { applyOriginalRendererScrollToBottom } from "./lib/scroll-to-bottom-renderer-patch.mjs";
 import { applyOriginalRendererDownloadAll } from "./lib/download-all-renderer-patch.mjs";
@@ -65,6 +69,7 @@ import { applyOriginalRendererReadFailureRetry } from "./lib/read-failure-retry-
 import { applyOriginalRendererSidebarRenameMenu } from "./lib/sidebar-rename-menu-renderer-patch.mjs";
 import { applyOriginalRendererSidebarHiddenSection } from "./lib/sidebar-hidden-section-renderer-patch.mjs";
 import { applyOriginalRendererFailureCopy } from "./lib/failure-copy-renderer-patch.mjs";
+import { applyOriginalRendererCouldntReachComfort } from "./lib/couldnt-reach-comfort-renderer-patch.mjs";
 import { applyOriginalRendererWidgetMultiselect } from "./lib/widget-multiselect-renderer-patch.mjs";
 import { applyOriginalRendererWorkingStatusPhrases } from "./lib/working-status-phrases-renderer-patch.mjs";
 import { applyOriginalRendererPromptAutoLists } from "./lib/prompt-auto-lists-renderer-patch.mjs";
@@ -354,7 +359,14 @@ export async function buildFidelityReconstructedAsar({
   // only in the sense that it, too, emits no RLocT calls — it appends English strings that
   // match the settings surface's own hardcoded English.
   await applyBotColorSettingsPatch({ stageRoot });
+  // 0.64+/0.71 avatar shape picker: 13 official shapes (5+5+3) + engine. Same MAIN
+  // chunk as main-agent; must precede computer-sleep (which appends asleep-stage
+  // bytes) and i18n (picker emits RLocT label helpers resolved at runtime).
+  await applyShapePickerPatch({ stageRoot });
   await applyComputerSleepRendererPatch({ stageRoot });
+  // 0.70.2/0.71.2 fullscreen Watching → Take control. Emits RLocT; before i18n.
+  // Anchors (gbn / DAe isInteractive) do not overlap computer-sleep's entry append.
+  await applyOriginalRendererComputerControl({ stageRoot });
   // 0.71.2 View → "View Unread": MAIN chunk roster filter + menu event subscribe. No RLocT.
   // Must precede i18n only so later passes see a stable chunk; anchors do not overlap them.
   await applyOriginalRendererViewUnread({ stageRoot });
@@ -377,10 +389,15 @@ export async function buildFidelityReconstructedAsar({
   await applyOriginalRendererSidebarHiddenSection({ stageRoot });
   // Its RLocT calls rely on the runtime main-i18n appends to the main chunk.
   await applyOriginalRendererFailureCopy({ stageRoot });
+  // P0-5: align couldnt-reach dialog comfort (LDzo5u / wUMeMd / Vi957D) to official
+  // Bot wording BEFORE main-i18n pairs match the patched English literals.
+  await applyOriginalRendererCouldntReachComfort({ stageRoot });
   // Widget view chunk (view-CIFdOvCz.js); order-free vs main-chunk failure-copy. Must precede extra-i18n (keeps its English anchors).
   await applyOriginalRendererWidgetMultiselect({ stageRoot });
   // Replaces gJn before main-i18n; MAIN_I18N_LOCAL_ANCHORED no longer owns gJn.
   await applyOriginalRendererWorkingStatusPhrases({ stageRoot });
+  // P2-2 MsZyH5: Ja("waiting") literal → Waiting on results (before main-i18n table).
+  await applyOriginalRendererWaitingOnResults({ stageRoot });
   // 0.71.2 prompt `-` / `1.` auto-lists (hft StarterKit). No RLocT; must stay before i18n
   // only for ordering consistency with other 0712 UI patches. Strips list Enter shortcuts.
   await applyOriginalRendererPromptAutoLists({ stageRoot });
@@ -401,6 +418,10 @@ export async function buildFidelityReconstructedAsar({
   // Also also last: one more NEW entry in the same bundled FLAGS table, with its own
   // anchor check. Independent of both passes above (they assert on their own gate names).
   await applyBotColorGatePatch({ stageRoot });
+  // 0.71 documents/pages/multiplayer/canvas FLAGS ecosystem: inserts 11 entries (2 pinned
+  // ON from Statsig, 9 kept OFF). Same table, own gate-name already-present guard; must
+  // run after the three passes above so their names are not mistaken for ours.
+  await apply0712GateEcosystemPatch({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);

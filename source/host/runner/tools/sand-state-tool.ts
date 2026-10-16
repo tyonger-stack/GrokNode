@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { GITHUB_EVENT_KINDS, LINEAR_EVENT_CASES, PAGERDUTY_EVENT_CASES, SENTRY_EVENT_CASES } from "../../../shared/automations.js";
+import { GROK_BOT_MARK_COLORS, GROK_BOT_MARK_SHAPES } from "../../../shared/agents/grok-bot-mark.js";
 import { slugifyWorkflowName } from "../../../shared/workflow-model.js";
 import { stateWriteOk, type StateWriteResult } from "../agent-state.js";
 import { defineCommunicateTool } from "./communicate-tool.js";
@@ -22,7 +23,9 @@ export const OPERATIONS = {
     write: 'save or rewrite a reusable skill (name, description, body; id to rewrite). The description is REQUIRED and is what a reader uses to decide whether the skill applies, so write it as "use this when …". A workflow has no trigger — a saved task that runs on a schedule is a routine.',
     delete: "(id). Cursor-managed skills can't be edited or deleted.",
   },
-  profile: { set: "your name and/or description. For your picture use target avatar." },
+  profile: {
+    set: 'your name, description, title (short role chip beside your name, e.g. "Designer" — not the chat title), avatar_shape, and/or avatar_color. For a custom picture file use target avatar.',
+  },
   settings: { set: "hidden_from_sidebar, notify_on_updates. Only the fields you pass change." },
   channel: { disconnect: "(platform). The connector closes the live connection within a few seconds." },
   project: {
@@ -51,6 +54,9 @@ export interface SandStateUpdate {
   readonly project?: string;
   readonly id?: string;
   readonly name?: string;
+  readonly title?: string;
+  readonly avatar_shape?: (typeof GROK_BOT_MARK_SHAPES)[number];
+  readonly avatar_color?: (typeof GROK_BOT_MARK_COLORS)[number];
   readonly prompt?: string;
   readonly schedule?: string;
   readonly trigger?: StoredTrigger | readonly StoredTrigger[];
@@ -140,6 +146,9 @@ export const sandUpdateStateParameters = z.object({
   project: z.string().trim().min(1).optional().describe('Project slug. Required for memory when scope is "project", and for every project action.'),
   id: z.string().trim().min(1).optional().describe("The routine's folder or the workflow's id. Required for every routine action except create, and for workflow delete. Omit on a workflow write to create a new one."),
   name: z.string().trim().min(1).optional().describe("routine/workflow/project create: its name. Required on create and on a workflow write; on routine update, omit to keep the current name. profile: your new name."),
+  title: z.string().trim().optional().describe('profile set only. The short role label shown as a chip beside your name ("Designer"), not the chat title, which is your name. Pass "" to clear it.'),
+  avatar_shape: z.enum(GROK_BOT_MARK_SHAPES).optional().describe("profile set only. The shape of your default mark in the sidebar."),
+  avatar_color: z.enum(GROK_BOT_MARK_COLORS).optional().describe("profile set only. The color of your default mark in the sidebar."),
   prompt: z.string().trim().min(1).optional().describe("routine only. What you should do each time it fires, written to your future self. Write it as an INTENT, not a frozen tool recipe: a connector's schema can change between fires, so describe the goal and let each run look the tool up. Required on create; on update, omit to keep the current prompt."),
   schedule: z.string().trim().min(1).optional().describe(`routine only. Shorthand for a cron trigger \u2014 "0 7 * * *", "@daily", "@every 2h" \u2014 interpreted in the user's local time. An hour with no minute takes the current minute off the <timestamp>: asked at 1:32, "daily at 2" is "32 2 * * *". Use this OR trigger, never both. On update, omit (with trigger) to keep the current fire condition.`),
   trigger: triggerSchema.optional(),
@@ -179,7 +188,13 @@ export interface SandStateWriter {
   deleteAutomation(args: { id: string }): Promise<Outcome>;
   writeWorkflow(args: { id?: string; name: string; description: string; body: string }): Promise<Outcome>;
   deleteWorkflow(args: { id: string }): Promise<Outcome>;
-  updateProfile(args: { name?: string; description?: string }): Promise<Outcome>;
+  updateProfile(args: {
+    name?: string;
+    description?: string;
+    title?: string;
+    avatarShape?: string;
+    avatarColor?: string;
+  }): Promise<Outcome>;
   updateSettings(args: { hiddenFromSidebar?: boolean; notifyOnAgentUpdates?: boolean }): Promise<Outcome>;
   disconnectChannel(args: { platform: string }): Promise<Outcome>;
   createProject(args: { slug: string; name: string; description?: string }): Promise<Outcome>;
@@ -297,7 +312,13 @@ export async function applySandStateUpdate(args: SandStateUpdate, deps: SandStat
     case "routine.delete": return deps.state.deleteAutomation({ id: need(args.id, "id", args) });
     case "workflow.write": return writeWorkflow(args, deps);
     case "workflow.delete": return deps.state.deleteWorkflow({ id: need(args.id, "id", args) });
-    case "profile.set": return deps.state.updateProfile({ ...(args.name == null ? {} : { name: args.name }), ...(args.description == null ? {} : { description: args.description }) });
+    case "profile.set": return deps.state.updateProfile({
+      ...(args.name == null ? {} : { name: args.name }),
+      ...(args.description == null ? {} : { description: args.description }),
+      ...(args.title == null ? {} : { title: args.title }),
+      ...(args.avatar_shape == null ? {} : { avatarShape: args.avatar_shape }),
+      ...(args.avatar_color == null ? {} : { avatarColor: args.avatar_color }),
+    });
     case "settings.set": return deps.state.updateSettings({ ...(args.hidden_from_sidebar == null ? {} : { hiddenFromSidebar: args.hidden_from_sidebar }), ...(args.notify_on_updates == null ? {} : { notifyOnAgentUpdates: args.notify_on_updates }) });
     case "channel.disconnect": return deps.state.disconnectChannel({ platform: need(args.platform, "platform", args) });
     case "project.create": return deps.state.createProject({ slug: need(args.project, "project", args), name: need(args.name, "name", args), ...(args.description == null ? {} : { description: args.description }) });

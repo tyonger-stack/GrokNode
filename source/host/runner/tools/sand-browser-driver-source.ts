@@ -1,4 +1,4 @@
-export const SAND_BROWSER_DRIVER_VERSION = 2;
+export const SAND_BROWSER_DRIVER_VERSION = 3;
 export const SAND_BROWSER_DRIVER_BOX_DIR = "/tmp/.sand-browser";
 export const SAND_BROWSER_DRIVER_BOX_PATH = SAND_BROWSER_DRIVER_BOX_DIR + "/driver-v" + String(SAND_BROWSER_DRIVER_VERSION) + ".mjs";
 export const SAND_BROWSER_RESULT_MARKER = "__SAND_BROWSER_RESULT__";
@@ -687,6 +687,42 @@ const OPS = {
   screenshot: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
     return { page, viewId, summary: "Took a screenshot", fullPage: request.fullPage === true };
+  },
+  // Official 0.71.2: Playwright run-code saves top-level page.pdf() Blobs under
+  // /workspace/browser-pdfs (RUN_CODE_INTRO_REST). Dedicated op for this driver.
+  pdf: async ({ request, context, state }) => {
+    const { page, viewId } = await resolvePage(request, context, state);
+    const pdfDir = "/workspace/browser-pdfs";
+    mkdirSync(pdfDir, { recursive: true });
+    const title = await page.title().catch(() => "");
+    const slug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48);
+    const base = slug.length > 0 ? slug : "page";
+    const filename = base + "-" + String(Date.now()) + ".pdf";
+    const outPath = pdfDir + "/" + filename;
+    const bytes = await page.pdf({
+      printBackground: request.printBackground !== false,
+      preferCSSPageSize: true,
+    });
+    writeFileSync(outPath, bytes);
+    // Heuristic page count (Type/Page objects); official receipt includes page count + size.
+    const asText = Buffer.from(bytes).toString("latin1");
+    const pageCount = Math.max(1, (asText.match(/\/Type\s*\/Page\b/g) || []).length);
+    return {
+      page,
+      viewId,
+      summary: "Saved PDF",
+      data: JSON.stringify({
+        path: outPath,
+        pageCount,
+        sizeBytes: bytes.length,
+        url: page.url(),
+        title,
+      }),
+    };
   },
   drag: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
