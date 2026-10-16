@@ -7,7 +7,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { AttachmentBytesResult } from "../../../contracts/desktop-bridge";
-import { LibraryStageCloseButton, LibraryStageIconButton } from "../../library/stage-icon-button";
+import { SandIconButton } from "../../../ui/sand-kit-primitives";
 
 export const PDFJS_ASSET = "/upstream/assets/pdf-WLgSwHwh.js";
 export const PDF_WORKER_FILENAME = "pdf.worker.min-qwK7q_zL.mjs";
@@ -19,12 +19,13 @@ export const PDF_PAGE_ROOT_MARGIN = "400px 0px";
 
 // @evidence index-UbX-y3il.js#lkn; declarations ship in index-lCyB53CO.css.
 export const FILE_VIEWER_CLASSES = {
-  root: "sand-file-viewer sand-ixxii4 sand-10a8y8t sand-fo81ep sand-78zum5 sand-6s0dn4 sand-l56j7k sand-1gkjlqi sand-9f619 sand-1846v19 sand-lvsv26 sand-482pwi",
-  panel: "sand-file-viewer__panel sand-1n2onr6 sand-78zum5 sand-dt5ytf sand-h8yej3 sand-5yr21d sand-1wmrhtn sand-mz0i5r sand-2lwn1j sand-hojbe8 sand-b3r6kr sand-vvtkfd sand-qjedn3 sand-1y0btm7 sand-fnq37j sand-anlk42 sand-tyxrsu",
-  header: "sand-file-viewer__header sand-78zum5 sand-6s0dn4 sand-1v2ro7d sand-2lah0s sand-9f619 sand-1y1aw1k sand-wib8y2 sand-nm25rq sand-j9b1aj sand-1hkp6id sand-1q0q8m5 sand-1kp61ed sand-s6r99b",
-  toolbar: "sand-file-viewer__toolbar sand-78zum5 sand-6s0dn4 sand-167g77z sand-8x9d4c sand-2lah0s",
+  root: "sand-file-viewer sand-ixxii4 sand-10a8y8t sand-fo81ep sand-78zum5 sand-6s0dn4 sand-l56j7k sand-9f619 sand-1846v19",
+  panel: "sand-file-viewer__panel sand-1n2onr6 sand-78zum5 sand-dt5ytf sand-h8yej3 sand-5yr21d sand-1wmrhtn sand-mz0i5r sand-2lwn1j sand-hojbe8 sand-b3r6kr sand-10e981r sand-qjedn3 sand-1y0btm7 sand-17tbahu sand-anlk42",
+  header: "sand-file-viewer__header sand-78zum5 sand-6s0dn4 sand-1v2ro7d sand-2lah0s sand-9f619 sand-1y1aw1k sand-wib8y2 sand-f7dkkf sand-pdmqnj sand-1hkp6id sand-1q0q8m5 sand-1vu50b0 sand-1qj4qm9",
+  title: "sand-78zum5 sand-dt5ytf sand-12mrbbr sand-euugli sand-1iyjqo2 sand-s83m0k",
+  toolbar: "sand-file-viewer__toolbar sand-78zum5 sand-6s0dn4 sand-167g77z sand-vc5jky sand-2lah0s",
   actions: "sand-file-viewer__actions sand-78zum5 sand-6s0dn4 sand-167g77z sand-2lah0s",
-  body: "sand-file-viewer__body sand-1n2onr6 sand-1iyjqo2 sand-2lwn1j sand-78zum5 sand-dt5ytf sand-vvtkfd sand-w2csxc sand-1odjw0f",
+  body: "sand-file-viewer__body sand-1n2onr6 sand-1iyjqo2 sand-2lwn1j sand-78zum5 sand-dt5ytf sand-10e981r",
 } as const;
 
 function documentBaseUrl(): string {
@@ -394,7 +395,7 @@ function OpenPdfAttachmentViewer({ source, name, onClose, readBytes, onDownload,
   const titleId = useId();
   return createPortal(<div aria-labelledby={titleId} aria-modal="true" className={FILE_VIEWER_CLASSES.root} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} role="dialog">
     <section className={FILE_VIEWER_CLASSES.panel}>
-      <header className={FILE_VIEWER_CLASSES.header}><div><h2 id={titleId}>{name}</h2>{pages > 0 ? <span>{pages} {pages === 1 ? "page" : "pages"}</span> : null}</div><div className={FILE_VIEWER_CLASSES.toolbar}><button aria-label="Zoom out" onClick={() => setZoom((value) => clamp(value - 0.25, 0.5, 4))} type="button">−</button><span aria-label={`Page ${currentPage} of ${pages}`}>{pages > 0 ? `${currentPage} / ${pages}` : ""}</span><button aria-label="Zoom in" onClick={() => setZoom((value) => clamp(value + 0.25, 0.5, 4))} type="button">+</button></div><div className={FILE_VIEWER_CLASSES.actions}><LibraryStageIconButton aria-label="Download file" icon="arrow-bracket-to-down" onClick={() => { void onDownload(); }} title="下载" /><LibraryStageCloseButton aria-label="Close preview" onClick={onClose} /></div></header>
+      <header className={FILE_VIEWER_CLASSES.header}><div className={FILE_VIEWER_CLASSES.title}><h2 id={titleId}>{name}</h2>{pages > 0 ? <span>{pages} {pages === 1 ? "page" : "pages"}</span> : null}</div><div className={FILE_VIEWER_CLASSES.toolbar}><button aria-label="Zoom out" onClick={() => setZoom((value) => clamp(value - 0.25, 0.5, 4))} type="button">−</button><span aria-label={`Page ${currentPage} of ${pages}`}>{pages > 0 ? `${currentPage} / ${pages}` : ""}</span><button aria-label="Zoom in" onClick={() => setZoom((value) => clamp(value + 0.25, 0.5, 4))} type="button">+</button></div><div className={FILE_VIEWER_CLASSES.actions}><SandIconButton aria-label="下载" icon="desktop-download" onClick={() => { void onDownload(); }} shape="square" size="sm" variant="ghost" /><SandIconButton aria-label="关闭" icon="close" onClick={onClose} shape="square" size="sm" variant="ghost" /></div></header>
       {content}
     </section>
   </div>, document.body);

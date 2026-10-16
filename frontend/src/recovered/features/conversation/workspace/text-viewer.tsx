@@ -34,7 +34,7 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AttachmentBytesResult } from "../../../contracts/desktop-bridge";
 import { FILE_VIEWER_CLASSES } from "./pdf-viewer";
-import { LibraryStageCloseButton, LibraryStageIconButton } from "../../library/stage-icon-button";
+import { SandIconButton } from "../../../ui/sand-kit-primitives";
 
 export const TEXT_PREVIEW_BYTE_CAP = 4 * 1024 * 1024;
 const TRUNCATE_AT_BYTES = 1_000_000;
@@ -209,15 +209,15 @@ function OpenTextAttachmentViewer({ source, name, onClose, readBytes, onDownload
     >
       <section className={FILE_VIEWER_CLASSES.panel}>
         <header className={FILE_VIEWER_CLASSES.header}>
-          <div>
+          <div className={FILE_VIEWER_CLASSES.title}>
             <h2 id={titleId}>{name}</h2>
           </div>
           <div className={FILE_VIEWER_CLASSES.toolbar}>
             <button aria-label="Toggle line wrap" onClick={() => setWrap((value) => !value)} title="Toggle line wrap" type="button">↵</button>
           </div>
           <div className={FILE_VIEWER_CLASSES.actions}>
-            <LibraryStageIconButton aria-label="Download file" icon="arrow-bracket-to-down" onClick={() => { void onDownload(); }} title="下载" />
-            <LibraryStageCloseButton aria-label="Close preview" onClick={onClose} />
+            <SandIconButton aria-label="下载" icon="desktop-download" onClick={() => { void onDownload(); }} shape="square" size="sm" variant="ghost" />
+            <SandIconButton aria-label="关闭" icon="close" onClick={onClose} shape="square" size="sm" variant="ghost" />
           </div>
         </header>
         <div ref={attachWrapRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>

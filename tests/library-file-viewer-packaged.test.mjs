@@ -95,14 +95,14 @@ window.showPreview = async (kind) => {
  check(getComputedStyle(panel).display==='flex','viewer panel CSS missing');
  check(getComputedStyle(panel).color===(window.previewTheme==='dark'?'rgb(252, 252, 252)':'rgb(20, 20, 20)'),'viewer foreground CSS missing');
  check(panel.getBoundingClientRect().height>100 && body.getBoundingClientRect().height>0,'viewer layout collapsed');
- const close=dialog.querySelector('[aria-label="Close preview"]'), closeStyle=getComputedStyle(close);
- check(closeStyle.width==='36px' && closeStyle.height==='36px','official stage button dimensions');
- check(closeStyle.borderRadius==='9999px' && closeStyle.borderTopStyle==='solid','official elevated circle style');
- check(close.title==='关闭' && close.hasAttribute('data-stage-resting-focus'),'close tooltip and focus marker');
- check(close.querySelector('[data-icon-name="close"]')?.style.fontSize==='16px','official lg close glyph');
+ const close=dialog.querySelector('[aria-label="关闭"]'), closeStyle=getComputedStyle(close); const download=dialog.querySelector('[aria-label="下载"]');
+ check(closeStyle.width==='24px' && closeStyle.height==='24px','official sm icon button dimensions');
+ check(closeStyle.borderRadius==='6px' && closeStyle.borderTopStyle==='none','official square ghost button style');
+ check(close.title==='关闭' && download?.title==='下载','download and close tooltips');
+ check(close.querySelector('[data-icon-name="close"]')?.dataset.iconName==='close' && download?.querySelector('[data-icon-name]')?.dataset.iconName==='desktop-download','official close and download glyphs');
  check(document.fonts.check('16px cursor-icons'),'close icon font is loaded');
  if(kind==='pdf') check(getComputedStyle(document.querySelector('.sand-pdf-page__text')).position==='absolute','PDF text CSS missing');
- dialog.querySelector('[aria-label="Download file"]').click();
+ dialog.querySelector('[aria-label="下载"]').click();
  await Promise.resolve();
  const rect=close.getBoundingClientRect();
  const result={kind,title:dialog.querySelector('h2').textContent,reads:[...reads],downloads,position:getComputedStyle(dialog).position,panelDisplay:getComputedStyle(panel).display,bodyHeight:body.getBoundingClientRect().height,bodyText:body.innerText,audioPlaying:kind==='audio'?!document.querySelector('audio').paused:undefined,close:{width:closeStyle.width,height:closeStyle.height,title:close.title,borderRadius:closeStyle.borderRadius,x:rect.x,y:rect.y,w:rect.width,h:rect.height}};
@@ -110,7 +110,7 @@ window.showPreview = async (kind) => {
  return result;
 };
 window.setPreviewTheme=theme=>{let style=document.getElementById('qa-theme');if(!style){style=document.createElement('style');style.id='qa-theme';document.head.append(style)}style.textContent=buildRuntimeThemeCss(theme);window.previewTheme=theme};
-window.closeButtonHover=()=>getComputedStyle(document.querySelector('[aria-label="Close preview"]')).backgroundImage;
+window.closeButtonHover=()=>getComputedStyle(document.querySelector('[aria-label="关闭"]')).backgroundColor;
 `.replaceAll("PDF_FIXTURE", JSON.stringify(pdfBytes())).replaceAll("DOCX_FIXTURE", JSON.stringify(docxFixture));
 
 test("pinned file viewers including DOCX and text render visible overlays from a packaged file renderer", { timeout: 90000, skip: pinnedViewerAssetsAvailable ? false : "pinned viewer assets not hydrated" }, async () => {
@@ -129,8 +129,8 @@ test("pinned file viewers including DOCX and text render visible overlays from a
   }
   const built = await build({ stdin: { contents: renderer, resolveDir: root, loader: "tsx" }, bundle: true, format: "esm", platform: "browser", outfile: path.join(rendererRoot, "assets/preview.js"), loader: { ".css": "empty" }, metafile: true });
   await fs.writeFile(path.join(evidence, "bundle-inputs.json"), JSON.stringify(built.metafile, null, 2));
-  const stageButtonCss = await fs.readFile(path.join(root, "frontend/src/recovered/features/library/stage-icon-button.css"), "utf8");
-  await fs.writeFile(path.join(rendererRoot, "index.html"), '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="./assets/index-lCyB53CO.css"><style>' + stageButtonCss + '</style></head><body><div id="root"></div><script type="module" src="./assets/preview.js"></script></body></html>');
+  const fileStageCss = await fs.readFile(path.join(root, "frontend/src/recovered/features/library/file-stage.css"), "utf8");
+  await fs.writeFile(path.join(rendererRoot, "index.html"), '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="./assets/index-lCyB53CO.css"><style>' + fileStageCss + '</style></head><body><div id="root"></div><script type="module" src="./assets/preview.js"></script></body></html>');
   const archive = path.join(evidence, "app.asar");
   await createPackage(stage, archive);
   await fs.writeFile(path.join(evidence, "manifest.json"), JSON.stringify({ assets: manifest, archive: { path: archive, sha256: hash(await fs.readFile(archive)) } }, null, 2));
@@ -162,8 +162,8 @@ app.whenReady().then(async()=>{
    win.webContents.sendInputEvent({type:'mouseMove',x:Math.round(preview.close.x+preview.close.w/2),y:Math.round(preview.close.y+preview.close.h/2)});
    await win.webContents.executeJavaScript('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
    const hover=await win.webContents.executeJavaScript('window.closeButtonHover()');
-   if(hover==='none') throw new Error('stage close hover missing: '+close.matches(':hover')+' '+JSON.stringify(rect));
-   preview.close.hoverImage=hover;
+   if(hover==='rgba(0, 0, 0, 0)') throw new Error('official ghost close hover missing: '+hover);
+   preview.close.hoverBackground=hover;
    fs.writeFileSync(${JSON.stringify(evidence)}+'/'+theme+'-'+kind+'-hover.png',(await win.webContents.capturePage()).toPNG());
    win.webContents.sendInputEvent({type:'mouseMove',x:0,y:0});
    await win.webContents.executeJavaScript('window.closePreview()');

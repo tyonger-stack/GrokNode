@@ -13,7 +13,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { AttachmentBytesResult } from "../../../contracts/desktop-bridge";
 import { convertDocxToHtml } from "./docx-convert";
 import { FILE_VIEWER_CLASSES } from "./pdf-viewer";
-import { LibraryStageCloseButton, LibraryStageIconButton } from "../../library/stage-icon-button";
+import { SandIconButton } from "../../../ui/sand-kit-primitives";
 
 export const DOCX_BYTE_CAP = 8 * 1024 * 1024;
 
@@ -116,12 +116,12 @@ function OpenDocxAttachmentViewer({ source, name, onClose, readBytes, onDownload
     >
       <section className={FILE_VIEWER_CLASSES.panel}>
         <header className={FILE_VIEWER_CLASSES.header}>
-          <div>
+          <div className={FILE_VIEWER_CLASSES.title}>
             <h2 id={titleId}>{name}</h2>
           </div>
           <div className={FILE_VIEWER_CLASSES.actions}>
-            <LibraryStageIconButton aria-label="Download file" icon="arrow-bracket-to-down" onClick={() => { void onDownload(); }} title="下载" />
-            <LibraryStageCloseButton aria-label="Close preview" onClick={onClose} />
+            <SandIconButton aria-label="下载" icon="desktop-download" onClick={() => { void onDownload(); }} shape="square" size="sm" variant="ghost" />
+            <SandIconButton aria-label="关闭" icon="close" onClick={onClose} shape="square" size="sm" variant="ghost" />
           </div>
         </header>
         {body}

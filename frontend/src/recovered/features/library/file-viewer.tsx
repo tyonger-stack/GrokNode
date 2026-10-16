@@ -4,7 +4,7 @@ import { FILE_VIEWER_CLASSES, PdfAttachmentViewer, type PdfAttachmentViewerProps
 import { SpreadsheetViewer, type SpreadsheetViewerProps } from "../conversation/workspace/spreadsheet-viewer";
 import type { MediaResolver } from "../conversation/workspace/media-viewer";
 import { TextAttachmentViewer, useTextBytes, type TextAttachmentViewerProps } from "../conversation/workspace/text-viewer";
-import { LibraryStageCloseButton, LibraryStageIconButton } from "./stage-icon-button";
+import { SandIconButton } from "../../ui/sand-kit-primitives";
 import "./file-stage.css";
 
 /**
@@ -54,10 +54,10 @@ function FileDialog({ name, onClose, onDownload, children }: {
   return <div aria-labelledby={titleId} aria-modal="true" className={FILE_VIEWER_CLASSES.root} role="dialog">
     <section className={FILE_VIEWER_CLASSES.panel}>
       <header className={FILE_VIEWER_CLASSES.header}>
-        <div><h2 id={titleId}>{name}</h2></div>
+        <div className={FILE_VIEWER_CLASSES.title}><h2 id={titleId}>{name}</h2></div>
         <div className={FILE_VIEWER_CLASSES.actions}>
-          <LibraryStageIconButton aria-label="Download file" icon="arrow-bracket-to-down" onClick={() => { void onDownload(); }} title="下载" />
-          <LibraryStageCloseButton aria-label="Close preview" onClick={onClose} />
+          <SandIconButton aria-label="下载" icon="desktop-download" onClick={() => { void onDownload(); }} shape="square" size="sm" variant="ghost" />
+          <SandIconButton aria-label="关闭" icon="close" onClick={onClose} shape="square" size="sm" variant="ghost" />
         </div>
       </header>
       <div className={FILE_VIEWER_CLASSES.body}>{children}</div>
