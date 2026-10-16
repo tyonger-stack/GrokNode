@@ -12,6 +12,7 @@ import { GROK_NODE_DOCKER_CONTAINER, isGrokNodePackagedApp } from "../../shared/
 import type { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
 import type { RecreateResult } from "./box-recreate-commands.js";
 import type { GatewayConnection } from "./gateway-descriptor-cache.js";
+import { libraryDockerForwardingArgs, resolveLibraryDockerForwarding, type LibraryDockerForwarding } from "./library-docker-config.js";
 
 // PINNED BY DIGEST — do not "upgrade" back to the moving :sand-box-latest tag.
 // 2026-10-01: the upstream image moved the host launch path from
@@ -441,7 +442,41 @@ async function localAuthMountArguments(): Promise<string[]> {
   return mounts;
 }
 
+export function buildLocalDockerBoxRunArgs(args: {
+  readonly token: string;
+  readonly hostBundle: LocalHostBundle;
+  readonly authMounts: readonly string[];
+  readonly library: LibraryDockerForwarding | null;
+}): string[] {
+  const { token, hostBundle, authMounts, library } = args;
+  return [
+    "run", "--detach", "--name", LOCAL_DOCKER_BOX_CONTAINER,
+    "--label", LOCAL_DOCKER_OWNER_LABEL, "--label", `com.grok-bot.local-vm.host-sha256=${hostBundle.sha256}`,
+    "--label", `com.grok-bot.local-vm.box-exec-daemon-sha256=${hostBundle.boxExecDaemonSha256}`,
+    "--label", `com.grok-bot.local-vm.schema-version=${LOCAL_DOCKER_SCHEMA_VERSION}`,
+    "--platform", "linux/amd64", "--restart", "unless-stopped",
+    "--env", "SAND_SUPERVISOR_ENABLED=1",
+    // SAND_BOX_AUTO_UPDATE=0 is LOAD-BEARING: it is the only opt-out the
+    // upstream supervisor's shouldBootFetchHostBundle() honours. Without it,
+    // a freshly booted container whose image-baked host matches the image
+    // git-sha fetches the newest upstream host bundle from the vendor S3 and
+    // swaps it in, replacing whatever we mounted. Do not remove this env
+    // when "cleaning up" the docker run arguments.
+    "--env", "SAND_BOX_AUTO_UPDATE=0",
+    "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1", "--env", "SAND_TREE_SITTER_NODE_DEPS=/home/box/deps", "--env", "NODE_PATH=/home/box/deps", "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0", "--env", "SAND_HOST_PORT=1340", "--env", `SAND_GATEWAY_TOKEN=${token}`,
+    "--publish", "127.0.0.1:1337:1337", "--publish", "127.0.0.1:1339:1339", "--publish", "127.0.0.1:1340:1340",
+    "--publish", "127.0.0.1:6080:6080", "--publish", "127.0.0.1:6081:6081", "--publish", "127.0.0.1:8790:8790",
+    "--volume", `${LOCAL_DOCKER_WORKSPACE_VOLUME}:/workspace`, "--volume", `${LOCAL_DOCKER_DATA_VOLUME}:/home/box/sand-data`,
+    "--mount", `type=bind,src=${hostBundle.path},dst=/home/box/sand-host/host-main.cjs,readonly`,
+    "--mount", `type=bind,src=${dirname(hostBundle.boxExecDaemonPath)},dst=/home/box/box-exec-daemon,readonly`,
+    ...authMounts,
+    ...(library == null ? [] : libraryDockerForwardingArgs(library)),
+    LOCAL_DOCKER_BOX_IMAGE_DIGEST,
+  ];
+}
+
 async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnection> {
+  const libraryForwarding = resolveLibraryDockerForwarding(process.env);
   const token = await readOrCreateToken(settingsPath);
   const hostBundle = await stageCurrentHostBundle(settingsPath);
   const daemon = await runDocker(["info", "--format", "{{.ServerVersion}}"]).catch(() => ({ ok: false, output: "Docker is not installed." }));
@@ -460,29 +495,7 @@ async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnec
     if (!started.ok) throw new Error(`Could not start the local Docker VM: ${started.output}`);
   } else if (!current.exists) {
     const authMounts = await localAuthMountArguments();
-    const created = await runDocker([
-      "run", "--detach", "--name", LOCAL_DOCKER_BOX_CONTAINER,
-      "--label", LOCAL_DOCKER_OWNER_LABEL, "--label", `com.grok-bot.local-vm.host-sha256=${hostBundle.sha256}`,
-      "--label", `com.grok-bot.local-vm.box-exec-daemon-sha256=${hostBundle.boxExecDaemonSha256}`,
-      "--label", `com.grok-bot.local-vm.schema-version=${LOCAL_DOCKER_SCHEMA_VERSION}`,
-      "--platform", "linux/amd64", "--restart", "unless-stopped",
-      "--env", "SAND_SUPERVISOR_ENABLED=1",
-      // SAND_BOX_AUTO_UPDATE=0 is LOAD-BEARING: it is the only opt-out the
-      // upstream supervisor's shouldBootFetchHostBundle() honours. Without it,
-      // a freshly booted container whose image-baked host matches the image
-      // git-sha fetches the newest upstream host bundle from the vendor S3 and
-      // swaps it in, replacing whatever we mounted. Do not remove this env
-      // when "cleaning up" the docker run arguments.
-      "--env", "SAND_BOX_AUTO_UPDATE=0",
-      "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1", "--env", "SAND_TREE_SITTER_NODE_DEPS=/home/box/deps", "--env", "NODE_PATH=/home/box/deps", "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0", "--env", "SAND_HOST_PORT=1340", "--env", `SAND_GATEWAY_TOKEN=${token}`,
-      "--publish", "127.0.0.1:1337:1337", "--publish", "127.0.0.1:1339:1339", "--publish", "127.0.0.1:1340:1340",
-      "--publish", "127.0.0.1:6080:6080", "--publish", "127.0.0.1:6081:6081", "--publish", "127.0.0.1:8790:8790",
-      "--volume", `${LOCAL_DOCKER_WORKSPACE_VOLUME}:/workspace`, "--volume", `${LOCAL_DOCKER_DATA_VOLUME}:/home/box/sand-data`,
-      "--mount", `type=bind,src=${hostBundle.path},dst=/home/box/sand-host/host-main.cjs,readonly`,
-      "--mount", `type=bind,src=${dirname(hostBundle.boxExecDaemonPath)},dst=/home/box/box-exec-daemon,readonly`,
-      ...authMounts,
-      LOCAL_DOCKER_BOX_IMAGE_DIGEST,
-    ]);
+    const created = await runDocker(buildLocalDockerBoxRunArgs({ token, hostBundle, authMounts, library: libraryForwarding }));
     if (!created.ok) throw new Error(`Could not create the local Docker VM: ${created.output}`);
   }
   const deadline = Date.now() + READY_TIMEOUT_MS;

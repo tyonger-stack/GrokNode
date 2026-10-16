@@ -1,0 +1,36 @@
+.sand-library-stage-icon-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--sand-border-tertiary-translucent, var(--sand-border-weak));
+  border-radius: 9999px;
+  background-color: var(--sand-bg-elevated);
+  background-image: none;
+  color: var(--sand-icon-primary, var(--sand-text-primary));
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: .12s;
+  transition-timing-function: ease-out;
+  outline-width: 0;
+  outline-style: none;
+  outline-color: var(--sand-border-focus-primary, var(--sand-border-focus));
+  outline-offset: 1px;
+  -webkit-app-region: no-drag;
+}
+.sand-library-stage-icon-button:hover:not(:disabled) {
+  background-image: linear-gradient(var(--sand-bg-hover, var(--sand-fill-ghost-hover)), var(--sand-bg-hover, var(--sand-fill-ghost-hover)));
+}
+.sand-library-stage-icon-button:focus-visible {
+  outline-style: solid;
+  outline-width: 2px;
+}
+.sand-library-stage-icon-button:disabled {
+  color: var(--sand-icon-quaternary, var(--sand-text-tertiary));
+  cursor: default;
+}

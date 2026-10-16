@@ -44,6 +44,7 @@ import { applyOriginalRendererSkillDetail } from "./lib/skill-detail-renderer-pa
 import { applyOriginalRendererTeachSuccessPath } from "./lib/teach-success-path-renderer-patch.mjs";
 import { applyOriginalRendererInfoPaneSplit } from "./lib/info-pane-split-renderer-patch.mjs";
 import { applyOriginalRendererAgentModel } from "./lib/agent-model-renderer-patch.mjs";
+import { applyOriginalRendererComputerUpdate } from "./lib/computer-update-renderer-patch.mjs";
 import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patch.mjs";
 import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
@@ -324,6 +325,13 @@ export async function buildFidelityReconstructedAsar({
   // Experimental per-bot model card in the bot properties panel (h3n). Its labels are
   // already RLocT calls, so it needs the RLocT runtime that main-i18n appends below.
   await applyOriginalRendererAgentModel({ stageRoot });
+  // Settings → 更新 → "Grok Node 的电脑": this build runs the box from a digest-pinned
+  // image, so no newer image can ever be offered and the section always shows official's
+  // up-to-date card (primary-coloured title, the shared-computer sentence, the blue
+  // check-circle banner). It pins the two inputs that decide that card and rewrites the
+  // group's strings through RLocT, so — like every pass that emits RLocT — it must land
+  // before the i18n passes below, which append the RLocT runtime to this same chunk.
+  await applyOriginalRendererComputerUpdate({ stageRoot });
   await applyMainAgentRendererPatch({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });

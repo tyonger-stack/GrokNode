@@ -22,6 +22,7 @@ import { hostUpgradeExtension } from "./extensions/host-upgrade/extension.js";
 import { inferenceExtension, type InferenceExtensionContext } from "./extensions/inference/extension.js";
 import { createInferenceProductionExtras } from "./extensions/inference/production.js";
 import { createLocalExecExtension } from "./extensions/local-exec/extension.js";
+import { libraryExtension } from "./extensions/library/extension.js";
 import { localToolPermissionExtension } from "./extensions/local-tool-permission/extension.js";
 import { managedSetupExtension, type ManagedSetupContext } from "./extensions/managed-setup/extension.js";
 import { createManagedSetupProductionExtras } from "./extensions/managed-setup/production.js";
@@ -102,6 +103,7 @@ export function createRecoveredProductionExtensionRegistry<Host extends { log(me
     [HostExtensions.BrowserUa]: bind(browserUaExtension),
     [HostExtensions.Inference]: bind(inferenceExtension, context => createInferenceProductionExtras(context as Parameters<typeof createInferenceProductionExtras>[0])),
     [HostExtensions.LocalExec]: bind(createLocalExecExtension(bindings.localExecCodec)),
+    [HostExtensions.Library]: bind(libraryExtension),
     [HostExtensions.LocalToolPermission]: bind(localToolPermissionExtension),
     [HostExtensions.Attachments]: bind(attachmentsExtension),
     [HostExtensions.ForeverBox]: bind(foreverBoxExtension),

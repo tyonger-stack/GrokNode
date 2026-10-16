@@ -32,6 +32,7 @@ type ExistingMainRpcCoreDeps = Pick<MainEdgeWiringDeps,
   | "experiments"
   | "getComputerUseModelOverride"
   | "getAutomationWebhookCredential"
+  | "callLibrary"
 >;
 
 type MainRpcResolverDeps = Omit<MainEdgeWiringDeps,
@@ -188,6 +189,14 @@ function createExistingMainRpcCoreDeps(
     startRpcTraceWindow: () => context.requireExperiments().startRpcTraceWindow(),
   };
   const getComputerUseModelOverride = () => context.requireExperiments().getComputerUseModelOverride();
+  const callLibrary = async (method: string, args: Record<string, unknown>) => {
+    const legs = context.coordinatorLegs.legs as Record<string, (first?: unknown) => Promise<unknown>>;
+    const credential = await legs.libraryMainCredential?.();
+    if (typeof credential !== "string" || credential.length === 0) throw new Error("Library service credential is unavailable.");
+    const leg = legs[method];
+    if (typeof leg !== "function") throw new Error(`Library method ${method} is not connected.`);
+    return leg({ ...args, credential });
+  };
   const getAutomationWebhookCredential = requireFunction(
     supplied.getAutomationWebhookCredential === undefined
       ? ((agentId: string, automationId: string) => context.coordinatorLegs.legs.getAutomationWebhookCredential!({ id: agentId, automationId }) as Promise<unknown>)
@@ -237,6 +246,7 @@ function createExistingMainRpcCoreDeps(
     experiments,
     getComputerUseModelOverride,
     getAutomationWebhookCredential,
+    callLibrary,
     syncHostSettingsToBox,
     probeBoxEndpoint,
     broadcast,

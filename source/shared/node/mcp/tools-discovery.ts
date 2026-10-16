@@ -23,6 +23,7 @@ import {
   type McpResultFactory,
 } from "./mcp-image-assets.js";
 import { toJsonArgs } from "./mcp-validation.js";
+import { notifyLibraryMcpResult } from "../../library/mcp-result-hook.js";
 
 export const MCP_TOOLS_CACHE_TTL_MS = 24 * 60 * 60 * 1_000;
 export const TOOLS_DISCOVERY_DEADLINE_MS = 120_000;
@@ -530,6 +531,15 @@ export function createMcpToolsDiscovery(
         );
       }
       const raw = await executeToolRaw(args, auditIdentity);
+      notifyLibraryMcpResult({
+        providerIdentifier: args.providerIdentifier,
+        toolName: args.toolName,
+        ...(args.toolCallId === undefined ? {} : { toolCallId: args.toolCallId }),
+        ...(auditIdentity?.agentId === undefined ? {} : { agentId: auditIdentity.agentId }),
+        displayName,
+        args: args.args,
+        raw,
+      });
       return applyCustomInstructionsToMcpResult(
         raw,
         displayName,

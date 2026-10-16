@@ -1,4 +1,7 @@
-// D17 账户编辑表单的类名必须与官方 0.66 逐字相同 —— 门禁化 `scripts/verify-d17-classnames.mjs`。
+// D17 账户编辑表单的类名必须与**本机安装的官方 Grok Bot** 逐字相同 —— 门禁化
+// `scripts/verify-d17-classnames.mjs`。对拍目标随官方升级走（2026-10-05 起 0.66，
+// 2026-10-11 起 0.68.1）：脚本侧按特征（mcp_multi_account + BJ7R7v 同函数）发现
+// 官方锚，官方 chunk 改名/组件搬家/混淆名更换不再需要改本守卫。
 //
 // 这条守卫存在的理由：类名拼错一个字母，样式**照常生效**（匹配上了别的规则），
 // 看起来「有样式」，实际几何全错，而且没有任何既有自检会报。
@@ -27,9 +30,9 @@ function runScript(args) {
   return spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", timeout: 60000 });
 }
 
-// 官方 0.66 是这个比对的事实来源。缺它就没有可比对象 —— 明确跳过而不是假装通过。
+// 官方 app 是这个比对的事实来源。缺它就没有可比对象 —— 明确跳过而不是假装通过。
 const skip = !existsSync(OFFICIAL_APP)
-  ? "官方 0.66 不在本机（/Applications/Grok Bot.app），无法做逐字比对"
+  ? "官方 Grok Bot 不在本机（/Applications/Grok Bot.app），无法做逐字比对"
   : !existsSync(DEPLOYED_APP)
     ? "部署版不在本机（/Applications/Grok Node.app），无法判定 0.18 能否解析类名"
     : false;

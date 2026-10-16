@@ -76,6 +76,8 @@ import {
 } from "./sand-activity.js";
 import { connectorCardEmissionToMessage } from "./runner/tools/box-help-tool.js";
 import { createAgentPromptSession } from "./extensions/inference/extension.js";
+import { LIBRARY_MAIN_STORE } from "./extensions/library/extension.js";
+import { captureLibraryMcpExecution } from "../shared/library/mcp-result-hook.js";
 import { CONNECTOR_MANIFESTS } from "../shared/channels.js";
 import { parseStoredTrigger } from "./automations/automation-trigger.js";
 import { listenerPlatformsInTrigger } from "./automations/listener-integrations.js";
@@ -2105,10 +2107,50 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                     ? {}
                     : { ackToken: turn.ackToken }),
                 });
-                return hooks.transport.lastSentMessageId?.();
+                const messageId = hooks.transport.lastSentMessageId?.();
+                const library = extensions.api("library");
+                const acknowledge = method(library, "acknowledgePublishedLinks");
+                const credentialOf = method(library, "mainCredential");
+                const content = typeof message.content === "string" ? message.content : typeof message.url === "string" ? message.url : "";
+                if (acknowledge !== undefined && credentialOf !== undefined && typeof messageId === "string" && messageId.length > 0 && content.includes("https://")) {
+                  acknowledge({ credential: credentialOf(), agentId, storeId: LIBRARY_MAIN_STORE, messageId, content, publishedAtMs: timestampMs }, AbortSignal.timeout(5000));
+                }
+                return messageId;
               },
             },
       }),
+      createNativeArtifactToolInputs: () => {
+        const library = extensions.api("library");
+        const publish = method(library, "publishNativeArtifact");
+        const credentialOf = method(library, "mainCredential");
+        const pending = method(library, "pendingPublications");
+        const executionBaseOf = method(library, "executionBase");
+        if (publish === undefined || credentialOf === undefined || executionBaseOf === undefined) throw new TypeError("production Library native publisher is not bound");
+        const credential = credentialOf();
+        const queued = pending?.({ credential, agentId, storeId: LIBRARY_MAIN_STORE }, AbortSignal.timeout(5000)) ?? [];
+        for (const item of queued) {
+          const timestampMs = Date.now();
+          const messageId = dependencies.sendMessage.onSendMessage({ type: "text", content: item.event.url }, timestampMs);
+          if (typeof messageId === "string" && messageId.length > 0) {
+            method(library, "acknowledgePublishedLinks")?.({ credential, agentId, storeId: LIBRARY_MAIN_STORE, messageId, content: item.event.url, publishedAtMs: timestampMs }, AbortSignal.timeout(5000));
+          }
+        }
+        return {
+          nativeArtifacts: {
+            resolveExecutionBase: () => executionBaseOf({ agentId }, AbortSignal.timeout(120000)),
+            publish: (input, execution) => publish({
+              input,
+              execution: {
+                credential: typeof execution.credential === "string" ? execution.credential : credential,
+                agentId: execution.agentId,
+                storeId: execution.storeId,
+                toolCallId: execution.toolCallId,
+                idempotencyKey: execution.idempotencyKey,
+              },
+            }, execution.signal),
+          },
+        };
+      },
       createSendToAgentToolInputs: () => ({
         dependencies: dependencies.sendToAgent,
       }),
@@ -2831,8 +2873,19 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 createMcpExecutor === undefined || createMcpStateExecutor === undefined
                   ? undefined
                   : {
-                      createExecutor: (persistImage, spillLargeText, auditIdentity) =>
-                        createMcpExecutor(persistImage, spillLargeText, auditIdentity),
+                      createExecutor: (persistImage, spillLargeText, auditIdentity) => {
+                        const inner = createMcpExecutor(persistImage, spillLargeText, auditIdentity);
+                        const library = extensions.api("library");
+                        const capture = method(library, "runMcpExecution");
+                        const credentialOf = method(library, "mainCredential");
+                        return capture === undefined || credentialOf === undefined ? inner : captureLibraryMcpExecution({
+                          service: { mainCredential: credentialOf, runMcpExecution: capture },
+                          agentId: auditIdentity.agentId,
+                          storeId: LIBRARY_MAIN_STORE,
+                          connectorAccountOf: args => (args.providerIdentifier ?? args.serverIdentifier ?? "default"),
+                          inner,
+                        });
+                      },
                       createStateExecutor: () => createMcpStateExecutor(),
                       ...(resolveNeedsAuthSlot === undefined
                         ? {}

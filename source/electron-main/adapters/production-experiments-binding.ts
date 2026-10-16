@@ -1,3 +1,4 @@
+import { resolveLibraryFeatureGate } from "../../shared/library/feature-gates.js";
 import type { ElectronProductionAdapterBindings } from "../production-adapters.js";
 import type { ProductionExperimentsService } from "../main-production-services.js";
 import { startSandRpcTraceWindow } from "../../shared/node/cursor-backend/rpc-tracing.js";
@@ -23,7 +24,7 @@ export function createElectronProductionExperimentsBinding(): ElectronProduction
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         getSnapshot: () => snapshot,
         getFeatureFlagOverridesRecord: () => ({}),
-        checkFeatureGate: (_name: string) => false,
+        checkFeatureGate: (name: string) => resolveLibraryFeatureGate(name) ?? false,
         getDynamicConfig: (_name: string) => ({}),
         hasLiveStatsigBootstrap: () => false,
         getFlagsAgeMs: () => undefined,

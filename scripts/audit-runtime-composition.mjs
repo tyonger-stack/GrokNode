@@ -37,6 +37,7 @@ const requiredElectronProductionAreas = new Set([
   "mainRpc",
   "updaterInstaller",
   "mediaProtocol",
+  "canvasProtocol",
   "accountOAuth",
   "experiments",
   "mcpOAuth",

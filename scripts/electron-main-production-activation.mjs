@@ -219,6 +219,7 @@ import { createElectronProductionNativeBindings } from "./source/electron-main/m
 import { createElectronProductionAvatarImagesBinding } from "./source/electron-main/adapters/avatar-images.ts";
 import { createElectronProductionImageContextMenuBinding } from "./source/electron-main/adapters/avatar-images.ts";
 import { createElectronProductionLocalAccountBinding } from "./source/electron-main/adapters/account-edge.ts";
+import { createElectronProductionLibraryCanvasBinding } from "./source/electron-main/library-canvas-protocol.ts";
 import { composeElectronProductionCoordinatorBindings, createElectronProductionServiceFactories } from "./source/electron-main/production-adapters.ts";
 
 const coordinatorBindings = composeElectronProductionCoordinatorBindings(
@@ -232,6 +233,7 @@ const adapters = {
   avatarImages: createElectronProductionAvatarImagesBinding(),
   imageContextMenu: createElectronProductionImageContextMenuBinding(),
   localAccount: createElectronProductionLocalAccountBinding(),
+  canvasProtocol: createElectronProductionLibraryCanvasBinding(),
 ${adapterKeys.filter(key => key !== "coordinator" && key !== "ipc").map(key => `  ${key}: ${expression(bindings, `adapters.${key}`)},`).join("\n")}
   ...coordinatorBindings,
 };

@@ -1,0 +1,557 @@
+{
+  "_provenance": {
+    "note": "Frozen task-1 golden contract for the original Grok Bot 0.68.1 Library. Every observed item cites the exact source offset in the byte-identical extracts under .omo/evidence/grok-node-library/task-1-{R,E,M,F,D}.txt. verification=observed means frozen from that offset; plan-stated means taken from the agreed plan matrix and still requiring a runtime probe; probe means bounded unknown with an explicit probe owned by a later task.",
+    "asarSha256": "a4662991353e61761558fb6fcbe6c9a3298dd17df5d9e9f9f3eba98cf016a834",
+    "chunks": {
+      "R": {
+        "file": "dist/renderer/assets/index-ByKx0M82.js",
+        "sha256": "df12e610a991666f90081984460c22636409f4a80a7c690ef94f1b327092c8df"
+      },
+      "E": {
+        "file": "dist/renderer/assets/index.eager-app-aiFqpW8R.js",
+        "sha256": "eacc26cdb08b53e7ad5e1543ef4b76da377ecc1d833b4d62e1f170fb00169eee"
+      },
+      "M": {
+        "file": "dist/electron-main/main-app.cjs",
+        "sha256": "07788f359a9b5727c67a51a03c6e8877a3be37e2941fcf0c912df6ca784fbd0f"
+      },
+      "F": {
+        "file": "dist/renderer/assets/chunk-fullscreen-file-viewer-body-Bh3wEvoz.js",
+        "sha256": "667bd36bfe4a37f422b0db613a33be9379ab3ee099892f597c22ffbf4e3cb6e7"
+      },
+      "D": {
+        "file": "dist/renderer/assets/chunk-document-page-7wYDMWxd.js",
+        "sha256": "058c63cdb10dc81b183ec67f3054d4a1019344b22a7eb4b33cd29e78b6a2ecd0"
+      }
+    }
+  },
+  "gates": [
+    {
+      "gate": "sand_simplified_right_pane",
+      "wiring": "qOe: gate on renders simplified overview with BW media section, else classic",
+      "verification": "observed",
+      "ref": "R qOe"
+    },
+    {
+      "gate": "grok_bot_library_v2",
+      "wiring": "BW: gate on renders CG v2 container, else LW pages section plus iG v1 media list; usage reported via ms()",
+      "verification": "observed",
+      "ref": "R BW@1824319"
+    },
+    {
+      "gate": "grok_bot_library_pages",
+      "wiring": "LW: gate off renders null (v1 pages section hidden); usage reported",
+      "verification": "observed",
+      "ref": "R LW"
+    },
+    {
+      "gate": "grok_bot_documents_ui",
+      "wiring": "BW v2 includeDocuments flag (canvases+documents vs canvases); page visibility flows",
+      "verification": "observed",
+      "ref": "R BW@1824319"
+    },
+    {
+      "gate": "grok_bot_library_external_docs",
+      "wiring": "BW v2 includeExternalDocs flag; external section only when on",
+      "verification": "observed",
+      "ref": "R BW@1824319"
+    }
+  ],
+  "sources": [
+    "transcript-media",
+    "linked-pages",
+    "external-docs"
+  ],
+  "branches": [
+    "v1media",
+    "v1pages",
+    "v2merge",
+    "page-rows",
+    "external-rows",
+    "ordinary-files",
+    "native-doc",
+    "canvas",
+    "native-share"
+  ],
+  "v1media": {
+    "pipeline": "raw transcript entries -> XRe -> FRe items -> ZF groups -> oG/dG group rows; viewers via rG (rb visual, uh file)",
+    "classifiers": {
+      "QF": "ORe(entry) ? returned-artifact : zRe(entry) ? user-upload : bot; only bot entries contribute",
+      "zRe": "kind user-attachment OR (kind message AND role user)",
+      "RS": "QF(entry) non-bot wins; else Ay(source) in exc-set ? user-upload : sae(source) non-null ? returned-artifact : bot",
+      "excSet": "$Re collects Ay(file_path) of user-attachments plus Ay(url) of user message images; Ay trims, returns non-file URLs as-is, else decoded pathname"
+    },
+    "dedup": "first forward occurrence per kind-prefix + source wins; keys visual:<source>, file:<source>, link:<url>; final array reversed for display",
+    "idTemplates": {
+      "image": "<entryId>:visual:<source>",
+      "video": "<entryId>:visual:<source>",
+      "file": "<entryId>:file:<source>",
+      "link": "<entryId>:link:<url>"
+    },
+    "nameRule": "MS(name, source): blank name falls back to source basename",
+    "videoRule": "B4(source) true renders kind video, else image (extension mapping probe U6)",
+    "groups": {
+      "order": [
+        "today",
+        "week",
+        "older"
+      ],
+      "today": "timestampMs >= local midnight today",
+      "week": "timestampMs >= local midnight six days earlier and before today",
+      "unknownTimestamp": "null timestamp sorts into older",
+      "constants": "TS=5 initial reveal, OS=5 pages reveal, c7=5 v2 reveal (E mUe=5 exported as c7)",
+      "history": "IntersectionObserver sentinel, QRe(loadable|loading) gate, at most PRe=10 loadOlder calls per visible run; transcript page size probe U5"
+    },
+    "states": [
+      "loading",
+      "loadable",
+      "failed",
+      "exhausted"
+    ],
+    "verification": "observed",
+    "refs": [
+      "R PS@1579244 MRe QF@1580279 RS@1580355 excSet@1579923 FRe@1581347 ZF URe@1588108 KRe XRe@1588297 oG@1589513 JRe/QRe/ZRe dG rG@1591721 TS/PRe/RRe/ERe@1579191",
+      "E mUe/PA fUe fce/dce/Sn/Y6 mFe"
+    ]
+  },
+  "v1pages": {
+    "rule": "only non-streaming send-message entries yield page refs (fce returns null when streaming); refs resolved via resolveLibraryPages per input ref to found/absent/failed",
+    "reveal": "initial OS=5 rows, +OS per click; independent retry that never clears other sources",
+    "verification": "observed",
+    "refs": [
+      "E fce/dce WP/jP",
+      "R fG SG OS rx xG xh"
+    ]
+  },
+  "v2merge": {
+    "rule": "pages plus external-docs plus media merged, timestamp descending with null as -Infinity; equal timestamps order page (0) before external-doc (1) before media (2) per PA, then key.localeCompare",
+    "keyFormats": {
+      "page": "Sn(ref): canvas:<storeId>:<canvasId> | active-user-store-canvas:<canvasId> | document:<storeId>:<documentId>",
+      "external-doc": "gce(doc) = doc:<key>",
+      "media": "media:<itemId>"
+    },
+    "pageSort": "Y6: updatedAtMs descending, null -Infinity, tie Sn localeCompare",
+    "reveal": "initial c7=5 per time group, +c7 per click; per-source local failure and retry preserve the other sources",
+    "verification": "observed",
+    "refs": [
+      "E Ace@1093984 yUe@1094174 PA/Sn/gce/Y6/mUe",
+      "R NG AG@1612859 IG SUe"
+    ]
+  },
+  "externalDocs": {
+    "query": "N1e scoped per accountSlot + agentId (scope key joined by newline), concurrent callers share one snapshot; listGrokBotLibraryDocs read side",
+    "validation": "SJt: kind must equal document, non-empty key and externalId, https URL only, lastAction created|edited, positive integer first/lastTouchedAtMs; unknown provider normalizes to other via M1e lookup (observed members include notion google-docs google-sheets google-slides google-drive onedrive sharepoint figma; full list probe U9)",
+    "sort": "T1e: lastTouchedAtMs descending, tie key.localeCompare",
+    "row": "wG renders title (kEe: doc title, else link metadata title, else provider name), age meta, provider lead; the ONLY action is opening the real external URL; no edit/delete/share/export menus exist on this row",
+    "actions": [
+      "openUrl"
+    ],
+    "verification": "observed",
+    "refs": [
+      "M SJt@1859345 N1e@1859771 T1e hJt/AJt/yJt/D1e mJt gJt M1e",
+      "R wG@1607896 kEe jG/dae/cae",
+      "E hce/pce/gce/mce linkMetadata"
+    ]
+  },
+  "ordinaryFiles": {
+    "formats": [
+      "image",
+      "video",
+      "pdf",
+      "markdown",
+      "text",
+      "html",
+      "json",
+      "table",
+      "audio",
+      "docx",
+      "unknown"
+    ],
+    "viewerMap": {
+      "image/video": "is lightbox with sources/captions/startIndex",
+      "pdf": "Nn",
+      "markdown/text": "ds with isMarkdown flag",
+      "html": "un",
+      "json": "wn",
+      "table": "Mn",
+      "audio": "os plus download action",
+      "docx": "cn",
+      "unknown": "download action plus file detail card"
+    },
+    "typeFallback": "URe(item) = gu(source), unknown source classification falls back to gu(name); null item kind is unknown",
+    "download": "dn wires downloadName + href into a download action plus a downloadAttachment call with path and suggestedName; cancel and partial-response behavior probe U2",
+    "visualToolbar": "runtime observed download and close controls on media 1/12; full visual toolbar button set probe U1",
+    "verification": "observed",
+    "refs": [
+      "F dn@9495 Nn@41126 Pl@71272 zn@71634",
+      "R rG rb/uh sG URe",
+      "runtime-actions.json preview 1/12"
+    ]
+  },
+  "nativeDoc": {
+    "read": "k1e.getDocument: store read of documents/<documentId>/source.md first; group-chat fallback only when caller passed groupChatId and the store read is absent; missing otherwise throws DocumentNotFoundError",
+    "editRight": "getDocumentEditRight resolves USER-store ownership via eQ listAgentStores paging; non-owner read-only",
+    "save": "saveDocument writes source, returns title; D controller wh carries locator/source/editable/onChange/onEditAttempt/groupChatId with adjacent constant bh=2000 (save debounce; blur-flush wiring probe for task 11)",
+    "titleRule": "L1e: first non-empty source line, leading '# ' stripped",
+    "visibility": "wJt read maps PRIVATE->private TEAM_VIEW->team PUBLIC->public UNSPECIFIED->unknown; LYt write maps only team-view->TEAM_VIEW else PRIVATE; echo unrecognized throws",
+    "assets": {
+      "path": "documents/<documentId>/assets/<name>; names validated by A1e, max 20, concurrency IYt=4",
+      "fetch": "deadline CYt=10000ms, streaming 5242880-byte (5MiB) cap with cancel",
+      "sniff": "magic bytes PNG/JPEG/WebP/GIF only",
+      "statuses": [
+        "ready(bytes/contentType/etag)",
+        "missing",
+        "failed(reason)",
+        "too_large(sizeBytes)",
+        "not_image"
+      ],
+      "cache": "ETag LRU RYt budget kYt=64MiB, If-None-Match, 304 reuses cached entry",
+      "locatorValidation": "invalid storeId (nE/Jse) or documentId (xy) returns empty assets"
+    },
+    "verification": "observed",
+    "refs": [
+      "M k1e@1843877 eQ@1842040 L1e/LYt/I1e/UYt/v1e/C1e/NYt b1e/S1e/TYt/RYt/wYt/A1e/Y1e nQ/EJt/PYt tQ/CYt/IYt/kYt",
+      "D wh bh=2e3@229816"
+    ]
+  },
+  "canvas": {
+    "locators": [
+      {
+        "kind": "store",
+        "fields": [
+          "storeId",
+          "canvasId"
+        ]
+      },
+      {
+        "kind": "active-user-store",
+        "fields": [
+          "canvasId"
+        ]
+      }
+    ],
+    "idValidation": "bare UUID qH; store-scoped Jse store-<uuid>; dashboard/user/automation roots under /cursor/stores",
+    "protocol": "sand-canvas scheme, host frame; K1e rejects non-conforming URLs (400); disabled protocol answers 404; canceled reads answer 499; ready answers 200 via dHe; failures render themed page via GJt",
+    "urls": [
+      "sand-canvas://frame/user/<canvasId>?theme=...&rev=...",
+      "sand-canvas://frame/store/<encodedStoreId>/<canvasId>?theme=...&room=...&rev=..."
+    ],
+    "share": "getShare/setVisibility with visibility echo check (unrecognized echo throws); O6 menu carries artifactType canvas|document with title/href/share/copy/onApply; row menu offers Open always and Share only when eligible",
+    "verification": "observed",
+    "refs": [
+      "M K1e HJt@1873394 AHe@1873970 JtSub $1e qH/Jse",
+      "R xG/rx/xh/Jp O6 mG/uEe/hG/pG/_2"
+    ]
+  },
+  "ipc": {
+    "surface": "dune-rpc main methods block (Jv)",
+    "methods": [
+      {
+        "method": "getCanvasShare",
+        "args": {
+          "locator": "CanvasLocator"
+        }
+      },
+      {
+        "method": "setCanvasVisibility",
+        "args": {
+          "locator": "CanvasLocator",
+          "visibility": "write-only private|team-view"
+        }
+      },
+      {
+        "method": "getDocument",
+        "args": {
+          "locator": "DocumentLocator",
+          "groupChatId": "optional"
+        }
+      },
+      {
+        "method": "getDocumentEditRight",
+        "args": {
+          "locator": "DocumentLocator"
+        }
+      },
+      {
+        "method": "saveDocument",
+        "args": {
+          "locator": "DocumentLocator",
+          "source": "string"
+        }
+      },
+      {
+        "method": "resolveLibraryPages",
+        "args": {
+          "refs": "PageRef[]",
+          "includeDocuments": "boolean"
+        }
+      },
+      {
+        "method": "listLibraryPages",
+        "args": {
+          "includeDocuments": "boolean"
+        }
+      },
+      {
+        "method": "listLibraryDocs",
+        "args": {
+          "agentId": "string"
+        }
+      },
+      {
+        "method": "setDocumentVisibility",
+        "args": {
+          "locator": "DocumentLocator",
+          "visibility": "write-only private|team-view"
+        }
+      },
+      {
+        "method": "getDocumentAssets",
+        "args": {
+          "locator": "DocumentLocator",
+          "names": "string[]",
+          "groupChatId": "optional"
+        }
+      }
+    ],
+    "adjacent": [
+      {
+        "method": "openExternal",
+        "args": {
+          "url": "string"
+        },
+        "note": "external-doc and copy/open row actions route through here"
+      }
+    ],
+    "verification": "observed",
+    "refs": [
+      "M Jv methods @1770294"
+    ]
+  },
+  "shareRules": {
+    "displayMap": "_2: team-view shows team else private",
+    "eligibility": "canvas needs mG share present; document needs pG non-null (private|team only; public|unknown yield no Share menu)",
+    "writeValues": "only private and team-view are writable; no public write option exists",
+    "canShareToTeam": "gates the team option; echoed and re-validated server side",
+    "verification": "observed",
+    "refs": [
+      "R _2@1595857 pG uEe hG",
+      "M LYt/I1e/wJt"
+    ]
+  },
+  "history": {
+    "sentinel": "IntersectionObserver entry runs cancellable read while QRe(olderHistory) stays loadable|loading",
+    "maxCalls": "PRe=10 loadOlder calls per visible run",
+    "pageSize": "plan states default 100 transcript rows per page; NOT pinned in the R/E extracts (probe U5)",
+    "verification": "observed-except-pageSize",
+    "refs": [
+      "R JRe/QRe/ZRe/YRe ox",
+      "E Zu/tl/SMe snapshotsFor/loadOlder"
+    ]
+  },
+  "derivedGolden": {
+    "note": "Frozen expected outputs of the independently transcribed original rules over tests/fixtures/library-parity-raw-transcript.json (single Date.now() materialization).",
+    "mediaReversedIds": [
+      "e_md:visual:file:///home/box/agent-data/agents/agent-1/attachments/md.webp",
+      "e_file:file:file:///home/box/agent-data/agents/agent-1/attachments/report.pdf",
+      "e_inject:visual:file:///home/box/agent-data/agents/agent-1/attachments/evil.webp",
+      "e_link:link:https://example.com/reports/q3.pdf",
+      "e_null:visual:file:///home/box/agent-data/agents/agent-1/attachments/imgC.webp",
+      "e_today:visual:file:///home/box/agent-data/agents/agent-1/attachments/clip.mp4",
+      "e_dup:visual:file:///home/box/agent-data/agents/agent-1/attachments/imgB.png",
+      "e_old:visual:file:///home/box/agent-data/agents/agent-1/attachments/imgA.webp"
+    ],
+    "mediaKinds": [
+      "image",
+      "file",
+      "image",
+      "link",
+      "image",
+      "video",
+      "image",
+      "image"
+    ],
+    "mediaNames": [
+      "mdpic",
+      "report.pdf",
+      "[evil](https://evil.example/pwn) <script>alert(1)</script>",
+      "",
+      "BJSM",
+      "SSNIHQPL",
+      "imgB.png",
+      "HgJXYXWJ"
+    ],
+    "groupKeys": [
+      "today",
+      "week",
+      "older"
+    ],
+    "groupCounts": {
+      "today": 5,
+      "week": 1,
+      "older": 2
+    },
+    "assumptions": [
+      "B4 .mp4 source classifies video (mapping probe U6)",
+      "e_link https attachment passes bN/b_e/nae predicates (probe U8); file twin suppressed by source===link rule",
+      "e_inject image kept with verbatim alt (injection probe: never parsed as link/ref)",
+      "e_malformed message:null guarded in transcription; original BRe would throw TypeError (documented hardening deviation)"
+    ]
+  },
+  "v2tieExpectedKeys": [
+    "document:store-s1:doc-9",
+    "doc:b-key",
+    "media:m1",
+    "media:m2"
+  ],
+  "sjtValidExpected": {
+    "key": "n-key",
+    "provider": "notion",
+    "externalId": "ext-1",
+    "url": "https://notion.so/x1",
+    "title": "TITLE",
+    "createdByBot": true,
+    "lastAction": "created",
+    "firstTouchedAtMs": 100,
+    "lastTouchedAtMs": 200
+  },
+  "t1eExpectedKeys": [
+    "k3",
+    "k1",
+    "k2"
+  ],
+  "scopeGuards": {
+    "note": "Gate states never remove branches. All four gate combinations below require the identical full branch list; any scope cutter that drops branches for a gate-off combination violates this contract.",
+    "combos": [
+      "v2off-pagesoff",
+      "v2off-pageson",
+      "v2on-docsoff-extoff",
+      "v2on-docson-exton"
+    ],
+    "requiredBranches": [
+      "v1media",
+      "v1pages",
+      "v2merge",
+      "page-rows",
+      "external-rows",
+      "ordinary-files",
+      "native-doc",
+      "canvas",
+      "native-share"
+    ]
+  },
+  "unknowns": [
+    {
+      "id": "U1",
+      "item": "file visual (lightbox rb) toolbar full button set",
+      "known": "runtime observed download and close controls on media 1/12",
+      "probe": "CUA/CDP open media preview, enumerate toolbar controls and their actions",
+      "owner": "task 10"
+    },
+    {
+      "id": "U2",
+      "item": "download cancel and partial-response behavior",
+      "known": "dn wires downloadName+href and a downloadAttachment(path,suggestedName) call",
+      "probe": "cancel a large download mid-flight, record response and UI state",
+      "owner": "task 10"
+    },
+    {
+      "id": "U3",
+      "item": "external-doc first registration producer (write chain)",
+      "known": "listGrokBotLibraryDocs read side plus SJt validation; original external registry write remains UNKNOWN",
+      "probe": "trace connector success-result boundary for the first listGrokBotLibraryDocs write",
+      "owner": "task 6 follow-up"
+    },
+    {
+      "id": "U4",
+      "item": "original backend host, blob/document physical storage and database type",
+      "known": "client locators and cache paths only; Node uses its own catalog design",
+      "probe": "none available read-only; stays UNKNOWN by design",
+      "owner": "none"
+    },
+    {
+      "id": "U5",
+      "item": "history transcript page size (plan states 100 rows)",
+      "known": "sentinel + QRe gate + PRe=10 cap observed; page-size literal not pinned in extracts",
+      "probe": "integration: page through loadOlder and record row counts",
+      "owner": "task 9"
+    },
+    {
+      "id": "U6",
+      "item": "source extension to media-kind mapping (B4/gu tables)",
+      "known": "format list and unknown-fallback rule observed; exact mapping table lives outside the R/E extracts",
+      "probe": "feed each format fixture through preview, record kinds",
+      "owner": "task 10"
+    },
+    {
+      "id": "U7",
+      "item": "ORe returned-artifact classifier detail",
+      "known": "outcome observed: tool-call/mcp-app/notice/event/feedback/voice-call entries yield zero BRe items; QF non-bot entries never contribute",
+      "probe": "none blocking; classifier internals stay unexpanded",
+      "owner": "none"
+    },
+    {
+      "id": "U8",
+      "item": "attachment URL predicates bN/b_e/nae exact rules",
+      "known": "branch shapes observed (filter, media|file gate, link parse); predicate internals not in extracts",
+      "probe": "attachment fixtures per scheme through BRe/LRe equivalents",
+      "owner": "task 10"
+    },
+    {
+      "id": "U9",
+      "item": "full M1e known-provider list",
+      "known": "observed members include notion google-docs google-sheets google-slides google-drive onedrive sharepoint figma; unknown values safely normalize to other",
+      "probe": "enumerate provider strings from connector traffic",
+      "owner": "task 6 follow-up"
+    }
+  ],
+  "r7aExpected": [
+    {
+      "kind": "video",
+      "id": "r7a_localvideo:visual:file:///a/clip.mp4",
+      "timestampMs": null,
+      "source": "file:///a/clip.mp4",
+      "name": "Clip"
+    },
+    {
+      "kind": "image",
+      "id": "r7a_imageslink:visual:/a/structured.webp",
+      "timestampMs": null,
+      "source": "/a/structured.webp",
+      "name": "structured.webp"
+    },
+    {
+      "kind": "link",
+      "id": "r7a_textlink:link:https://example.com/",
+      "timestampMs": null,
+      "url": "https://example.com/"
+    },
+    {
+      "kind": "link",
+      "id": "r7a_http:link:http://example.com/a.png",
+      "timestampMs": null,
+      "url": "http://example.com/a.png"
+    },
+    {
+      "kind": "file",
+      "id": "r7a_http:file:HTTP://Example.com/a.png",
+      "timestampMs": null,
+      "source": "HTTP://Example.com/a.png",
+      "name": "a.png"
+    },
+    {
+      "kind": "image",
+      "id": "r7a_assistant:visual:file:///a/assistant.png",
+      "timestampMs": null,
+      "source": "file:///a/assistant.png",
+      "name": "Assistant"
+    },
+    {
+      "kind": "file",
+      "id": "r7a_pdf:file:file:///a/My%20Report.pdf",
+      "timestampMs": null,
+      "source": "file:///a/My%20Report.pdf",
+      "name": "My Report.pdf"
+    }
+  ]
+}

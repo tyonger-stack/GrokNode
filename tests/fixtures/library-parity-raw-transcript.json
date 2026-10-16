@@ -1,0 +1,386 @@
+{
+  "_provenance": {
+    "note": "Raw-transcript inputs for the task-1 Library parity golden contract. Entry shapes follow the observed original snapshot (artifacts/rea-library-2026-10-11-0681/runtime-target-metadata.json) and the extractor semantics in R (kN/BRe/LRe/zS, E mFe) and E (fce/dce). Synthetic agent ids, timestamps and locators; NOT production data.",
+    "asarSha256": "a4662991353e61761558fb6fcbe6c9a3298dd17df5d9e9f9f3eba98cf016a834",
+    "materialization": "entries carry tsOffsetMs (ms relative to Date.now()); the test computes timestampMs = Date.now() + tsOffsetMs, null stays null. Grouping is deterministic in any timezone except runs inside the first 30 min after local midnight (e_today offset)."
+  },
+  "observedRealShape": {
+    "note": "Verbatim field shape of one observed original snapshot entry (bot image). Shape and field assertions only, never grouping.",
+    "entryKind": "send-message",
+    "entryId": "t27s6",
+    "seq": 164,
+    "timestampMs": 1790832818044,
+    "messageType": "text",
+    "image": {
+      "url": "file:///home/box/agent-data/agents/2925ac1e-1bae-49df-abaf-8cc648ff6217/attachments/a46669fd35c0bdd3bbde465e8a6d11c5060344bdfc26028dbe2a4aaaefe7f6fc.webp",
+      "alt": "YBOCJNSLOKDYLPBNZNOJXDG",
+      "width": 1280,
+      "height": 800
+    }
+  },
+  "entries": [
+    {
+      "id": "e_old",
+      "kind": "send-message",
+      "tsOffsetMs": -2592000000,
+      "message": {
+        "type": "text",
+        "content": "v2 HgJX",
+        "images": [
+          {
+            "url": "file:///home/box/agent-data/agents/agent-1/attachments/imgA.webp",
+            "alt": "HgJXYXWJ",
+            "width": 1280,
+            "height": 800
+          }
+        ]
+      }
+    },
+    {
+      "id": "e_user_attach",
+      "kind": "user-attachment",
+      "tsOffsetMs": -2591900000,
+      "file_path": "file:///home/box/agent-data/agents/agent-1/attachments/shared.webp",
+      "file_name": "shared.webp"
+    },
+    {
+      "id": "e_user_msg",
+      "kind": "message",
+      "role": "user",
+      "tsOffsetMs": -2591800000,
+      "images": [
+        {
+          "url": "file:///home/box/agent-data/agents/agent-1/attachments/shared.webp"
+        }
+      ]
+    },
+    {
+      "id": "e_dup",
+      "kind": "send-message",
+      "tsOffsetMs": -259200000,
+      "message": {
+        "type": "text",
+        "content": "AZJPTKOF",
+        "images": [
+          {
+            "url": "file:///home/box/agent-data/agents/agent-1/attachments/imgA.webp",
+            "alt": "HgJXYXWJ",
+            "width": 1280,
+            "height": 800
+          },
+          {
+            "url": "file:///home/box/agent-data/agents/agent-1/attachments/imgB.png",
+            "alt": "   ",
+            "width": 640,
+            "height": 480
+          }
+        ]
+      }
+    },
+    {
+      "id": "e_excl",
+      "kind": "send-message",
+      "tsOffsetMs": -172800000,
+      "message": {
+        "type": "text",
+        "content": "VTLXBTEOCPCEOF",
+        "images": [
+          {
+            "url": "file:///home/box/agent-data/agents/agent-1/attachments/shared.webp",
+            "alt": "MXBMPPGH",
+            "width": 1280,
+            "height": 800
+          }
+        ]
+      }
+    },
+    {
+      "id": "e_today",
+      "kind": "send-message",
+      "tsOffsetMs": -1800000,
+      "message": {
+        "type": "text",
+        "content": "BZJM",
+        "images": [
+          {
+            "url": "file:///home/box/agent-data/agents/agent-1/attachments/clip.mp4",
+            "alt": "SSNIHQPL",
+            "width": 1280,
+            "height": 720
+          }
+        ]
+      }
+    },
+    {
+      "id": "e_null",
+      "kind": "send-message",
+      "tsOffsetMs": null,
+      "message": {
+        "type": "text",
+        "content": "VNIJSJCUQ",
+        "images": [
+          {
+            "url": "file:///home/box/agent-data/agents/agent-1/attachments/imgC.webp",
+            "alt": "BJSM",
+            "width": 800,
+            "height": 600
+          }
+        ]
+      }
+    },
+    {
+      "id": "e_stream",
+      "kind": "send-message",
+      "streaming": true,
+      "tsOffsetMs": -3600000,
+      "message": {
+        "type": "text",
+        "content": "[page](sand-doc://store/doc-9)",
+        "images": []
+      }
+    },
+    {
+      "id": "e_link",
+      "kind": "send-message",
+      "tsOffsetMs": -7200000,
+      "message": {
+        "type": "attachment",
+        "url": "https://example.com/reports/q3.pdf"
+      }
+    },
+    {
+      "id": "e_malformed",
+      "kind": "send-message",
+      "tsOffsetMs": -9000000,
+      "message": null
+    },
+    {
+      "id": "e_inject",
+      "kind": "send-message",
+      "tsOffsetMs": -9900000,
+      "message": {
+        "type": "text",
+        "content": "hi",
+        "images": [
+          {
+            "url": "file:///home/box/agent-data/agents/agent-1/attachments/evil.webp",
+            "alt": "[evil](https://evil.example/pwn) <script>alert(1)</script>",
+            "width": 100,
+            "height": 100
+          }
+        ]
+      }
+    },
+    {
+      "id": "e_file",
+      "kind": "send-message",
+      "tsOffsetMs": -1200000,
+      "message": {
+        "type": "attachment",
+        "url": "file:///home/box/agent-data/agents/agent-1/attachments/report.pdf"
+      }
+    },
+    {
+      "id": "e_md",
+      "kind": "send-message",
+      "tsOffsetMs": -600000,
+      "message": {
+        "type": "text",
+        "content": "see ![mdpic](file:///home/box/agent-data/agents/agent-1/attachments/md.webp)",
+        "images": []
+      }
+    },
+    {
+      "id": "e_cloud",
+      "kind": "send-message",
+      "tsOffsetMs": -300000,
+      "author": {
+        "kind": "cloud-agent"
+      },
+      "message": {
+        "type": "text",
+        "content": "agent work",
+        "images": [
+          {
+            "url": "file:///home/box/agent-data/agents/agent-1/attachments/cloud.webp",
+            "alt": "Cloud"
+          }
+        ]
+      }
+    }
+  ],
+  "v2tie": {
+    "note": "Equal-timestamp inputs for the v2 merge order: page before external-doc before media, then key.localeCompare.",
+    "timestampMs": 1790832818044,
+    "pages": [
+      {
+        "kind": "document",
+        "storeId": "store-s1",
+        "documentId": "doc-9",
+        "updatedAtMs": 1790832818044,
+        "title": "XJRLYNCU"
+      }
+    ],
+    "externalDocs": [
+      {
+        "key": "b-key",
+        "provider": "notion",
+        "externalId": "ext-2",
+        "url": "https://notion.so/x2",
+        "title": "EXT-b",
+        "createdByBot": true,
+        "lastAction": "edited",
+        "firstTouchedAtMs": 1790832817000,
+        "lastTouchedAtMs": 1790832818044
+      }
+    ],
+    "media": [
+      {
+        "id": "m2",
+        "timestampMs": 1790832818044,
+        "source": "file:///a/m2.webp",
+        "name": "m2"
+      },
+      {
+        "id": "m1",
+        "timestampMs": 1790832818044,
+        "source": "file:///a/m1.webp",
+        "name": "m1"
+      }
+    ]
+  },
+  "r7aCounterexamples": [
+    {
+      "id": "r7a_pdf",
+      "kind": "send-message",
+      "message": {
+        "type": "attachment",
+        "url": "file:///a/My%20Report.pdf",
+        "file_name": " "
+      }
+    },
+    {
+      "id": "r7a_assistant",
+      "kind": "message",
+      "role": "assistant",
+      "content": "![Assistant](file:///a/assistant.png)",
+      "images": []
+    },
+    {
+      "id": "r7a_returned",
+      "kind": "send-message",
+      "message": {
+        "type": "text",
+        "content": "![returned](/workspace/cloud-agent-artifacts/bc-123/image.png)"
+      }
+    },
+    {
+      "id": "r7a_returned_file",
+      "kind": "send-message",
+      "message": {
+        "type": "attachment",
+        "url": "file:///workspace/cloud-agent-artifacts/bc-123/report.pdf"
+      }
+    },
+    {
+      "id": "r7a_cloud",
+      "kind": "send-message",
+      "cloudAgentArtifacts": [
+        {}
+      ],
+      "message": {
+        "type": "attachment",
+        "url": "/a/cloud.pdf"
+      }
+    },
+    {
+      "id": "r7a_fromagent",
+      "kind": "message",
+      "role": "assistant",
+      "fromAgent": {},
+      "content": "![remote](/a/remote.png)"
+    },
+    {
+      "id": "r7a_user",
+      "kind": "user-attachment",
+      "file_path": "file:///a/User%20Pic.png"
+    },
+    {
+      "id": "r7a_dedup",
+      "kind": "send-message",
+      "message": {
+        "type": "text",
+        "content": "uploaded image",
+        "images": [
+          {
+            "url": "/a/User Pic.png"
+          }
+        ]
+      }
+    },
+    {
+      "id": "r7a_http",
+      "kind": "send-message",
+      "message": {
+        "type": "attachment",
+        "url": "HTTP://Example.com/a.png"
+      }
+    },
+    {
+      "id": "r7a_textlink",
+      "kind": "send-message",
+      "message": {
+        "type": "text",
+        "content": "[Read](https://Example.com)"
+      }
+    },
+    {
+      "id": "r7a_streamlink",
+      "kind": "send-message",
+      "streaming": true,
+      "message": {
+        "type": "text",
+        "content": "https://stream.example/"
+      }
+    },
+    {
+      "id": "r7a_imageslink",
+      "kind": "send-message",
+      "message": {
+        "type": "text",
+        "content": "https://images.example/",
+        "images": [
+          {
+            "url": "/a/structured.webp"
+          }
+        ]
+      }
+    },
+    {
+      "id": "r7a_sand",
+      "kind": "send-message",
+      "message": {
+        "type": "attachment",
+        "url": "sand://a/picture.png"
+      }
+    },
+    {
+      "id": "r7a_localvideo",
+      "kind": "send-message",
+      "message": {
+        "type": "attachment",
+        "url": "file:///a/clip.mp4",
+        "file_name": " Clip "
+      }
+    },
+    {
+      "id": "r7a_duplicate",
+      "kind": "send-message",
+      "message": {
+        "type": "attachment",
+        "url": "file:///a/My%20Report.pdf",
+        "file_name": "later"
+      }
+    }
+  ]
+}

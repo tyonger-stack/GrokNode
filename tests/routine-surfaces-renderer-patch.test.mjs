@@ -5,6 +5,8 @@ import test from "node:test";
 import { parse } from "acorn";
 import { patchOriginalRoutineSurfaces } from "../scripts/lib/routine-surfaces-renderer-patch.mjs";
 import { patchOriginalWebhookTriggerFormGuard } from "../scripts/lib/router-renderer-patch.mjs";
+import { patchOriginalLibraryHost } from "../scripts/lib/library-host-renderer-patch.mjs";
+import { applyPair } from "../scripts/lib/i18n-patch-engine.mjs";
 
 const bundlePath = path.resolve(import.meta.dirname, "../src/app/dist/renderer/assets/index-UbX-y3il.js");
 const bundle = await readFile(bundlePath, "utf8").catch(() => null);
@@ -32,6 +34,35 @@ test("routine surfaces patch fails closed when an anchor is missing or repeated"
   assert.throws(() => patchOriginalRoutineSurfaces("function K2n(n){}"), /anchor must appear exactly once/);
   const guarded = patchOriginalWebhookTriggerFormGuard(bundle);
   assert.throws(() => patchOriginalRoutineSurfaces(patchOriginalRoutineSurfaces(guarded)), /anchor must appear exactly once/);
+});
+
+test("compact empty layout rejects missing or duplicate wrapper, root and mount anchors", { skip: bundleSkip }, () => {
+  const anchors = [
+    /1:\{className:"sand-78zum5 sand-dt5ytf sand-17d4w8g [^"]+"\}\}\[!!Cmt\(x\)<<0\]\.className/,
+    /v=\{className:"sand-78zum5 sand-dt5ytf sand-6s0dn4 sand-l56j7k [^"]+"\},e\[10\]=v/,
+    /N=p\.jsxs\("div",\{className:v\.className,children:\[b,x\]\}\)/,
+  ];
+  for (const pattern of anchors) {
+    const anchor = bundle.match(pattern)?.[0];
+    assert.ok(anchor, `real compact layout anchor: ${pattern}`);
+    assert.throws(() => patchOriginalRoutineSurfaces(bundle.replace(anchor, "")), /known-empty routine .* anchor must appear exactly once/);
+    assert.throws(() => patchOriginalRoutineSurfaces(bundle + anchor), /known-empty routine .* anchor must appear exactly once/);
+  }
+});
+
+test("compact routines compose before Library host and routine i18n without changing empty-state eligibility", { skip: bundleSkip }, () => {
+  const routines = patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(bundle));
+  const getFunction = (source, name) => {
+    const node = parse(source, { ecmaVersion: "latest", sourceType: "module" }).body.find((node) => node.type === "FunctionDeclaration" && node.id.name === name);
+    assert.ok(node, name);
+    return source.slice(node.start, node.end);
+  };
+  for (const name of ["Cmt", "c2", "_2n"]) assert.equal(getFunction(routines, name), getFunction(bundle, name), `${name} stays unchanged`);
+  const { patched } = applyPair(patchOriginalLibraryHost(routines, "/* sand-library-host */"), "Routines are recurring tasks this agent runs on a schedule.", "例行任务是这个智能体按计划重复执行的任务。", "PROP");
+  assert.doesNotThrow(() => parse(patched, { ecmaVersion: "latest", sourceType: "module" }));
+  assert.ok(patched.includes('minHeight:72,flex:"none",gap:3'));
+  assert.ok(patched.includes('p.jsx(__sandLibraryHostNS.RLibraryHost,{agentId:t.id})'));
+  assert.ok(patched.includes('RLocT("Routines are recurring tasks this agent runs on a schedule.","例行任务是这个智能体按计划重复执行的任务。")'));
 });
 
 test("routine detail keeps 0.59 copy, the webhook card gate, and the create path on the upstream editor", () => {

@@ -5,6 +5,9 @@
 // 「最接近」长得像答案，但不是答案。本版改为：把 className **语义绑定到具体元素**
 // （标签名 + aria-label 消息 id + 平衡括号取到的真实 props），再逐字比对。
 //
+// 2026-10-11 对拍目标升级 0.66→0.68.1：官方锚改为特征发现（见 FEATURE_MARKER 注释），
+// 表单槽位判据改为「最近带 className 的 div 祖先」（上游把变体下沉到了显示态 span）。
+//
 // 用法：node scripts/verify-d17-classnames.mjs [--selftest]
 // 纯离线：只读官方 asar 字节 + 本地源码，不需要 app 运行、不需要 CDP。
 import { readFileSync } from "node:fs";
@@ -13,24 +16,42 @@ import { dirname, resolve } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OFFICIAL_ASAR = "/Applications/Grok Bot.app/Contents/Resources/app.asar";
-// 账户多账号组件所在的官方 chunk。0.66 官方该组件在懒加载 chunk 里，不在 eager 主 chunk ——
-// 只扫主 chunk 会误判「官方没有这些类名」。
-const OFFICIAL_CHUNK = "dist/renderer/assets/chunk-plugin-detail-view-tZskkHRA.js";
-const OFFICIAL_COMPONENT = "ve"; // 组件函数名（承载 mcp_multi_account 的多账户行 + 内联编辑表单）
+// 官方锚**不写死** chunk 哈希名与混淆组件名 —— 0.66→0.68.1 时两样都换过（组件搬出
+// plugin-detail-view chunk 进了 chunk-view，ve()→ho()），写死必然随官方升级腐烂。
+// 改按特征发现：renderer chunk 里「同一函数体内同时含 mcp_multi_account（多账户行
+// 特征）与 BJ7R7v（重命名输入框 aria-label 消息 id）」的函数声明，全 asar 恰好一处
+// （0.68.1 实测：含 marker 的 chunk 两个，含 BJ7R7v 的 30+ 个，交集且同函数的仅一个）。
+const FEATURE_MARKER = "mcp_multi_account";
+const INPUT_ARIA_ID = "BJ7R7v";
 
 // ── asar 读取 ────────────────────────────────────────────────────────────────
-/** 从 asar 里读一个 packed 文件。offset 在 JSON 里是字符串，必须走 BigInt，否则会静默读出错误字节。 */
-function readFromAsar(asarPath, path) {
-  const b = readFileSync(asarPath);
-  const dataStart = 8 + b.readUInt32LE(4);
-  const jsonLen = b.readUInt32LE(12);
-  const header = JSON.parse(b.subarray(16, 16 + jsonLen).toString("utf8"));
-  let node = header;
+// 头只解析一次并缓存：发现阶段要遍历几十个 renderer chunk，39 MB asar 逐次重读纯属浪费。
+// offset 在 JSON 里是字符串，必须走 BigInt，否则会静默读出错误字节。
+const asarCache = new Map();
+function asarOf(asarPath) {
+  if (!asarCache.has(asarPath)) {
+    const b = readFileSync(asarPath);
+    const dataStart = 8 + b.readUInt32LE(4);
+    const jsonLen = b.readUInt32LE(12);
+    const header = JSON.parse(b.subarray(16, 16 + jsonLen).toString("utf8"));
+    asarCache.set(asarPath, { b, dataStart, header });
+  }
+  return asarCache.get(asarPath);
+}
+/** 取 asar 内某路径的 header 节点（目录或文件），不存在返回 null。 */
+function asarNode(asarPath, path) {
+  let node = asarOf(asarPath).header;
   for (const seg of path.split("/")) {
     if (!node.files?.[seg]) return null;
     node = node.files[seg];
   }
-  if (node.offset === undefined) return null;
+  return node;
+}
+/** 从 asar 里读一个 packed 文件。 */
+function readFromAsar(asarPath, path) {
+  const node = asarNode(asarPath, path);
+  if (node?.offset === undefined) return null;
+  const { b, dataStart } = asarOf(asarPath);
   const at = Number(BigInt(dataStart) + BigInt(node.offset));
   return b.subarray(at, at + node.size).toString("utf8");
 }
@@ -306,8 +327,16 @@ function selftest() {
   eq("夹具⑦ 槽位取到 div 变体", slot7 && parseClassNames(propRaw(slot7, "className")?.value), [["slotA"], ["slotB"]]);
   eq("夹具⑦ 最近的 div 但非变体 → 不选中", nearestAncestor(input7.parent, (p) => p.tag === `"div"`) === slot7, true);
 
-  // ⑧ 三元两个分支的 id 都要取到
-  eq("夹具⑧ 三元 aria-label 两分支", ariaLabelIds({ props: `{"aria-label":V!=null?c({id:"a"}):c({id:"b"}),"aria-expanded":V!=null}` }), ["a", "b"]);
+  // ⑨ 表单槽位新判据（0.68.1）：最近的**带 className 的 div** 祖先 ——
+  //    外层无 className 的 wrapper div 必须被跳过，不能当槽位
+  const fixture9 = `n.jsxs("div",{children:[n.jsxs("div",{className:g("slot"),children:[n.jsxs("span",{className:g("row"),children:[n.jsx("input",{})]})]})]})`;
+  const tree9 = buildJsxTree(scanJsxCalls(fixture9));
+  const input9 = tree9.find((c) => c.tag === `"input"`);
+  const slot9 = nearestAncestor(input9.parent, (p) => p.tag === `"div"` && propRaw(p, "className") != null);
+  eq("夹具⑨ 槽位取到带 className 的 div（跳过无 className 的 wrapper）", slot9 && parseClassNames(propRaw(slot9, "className")?.value)?.join(""), "slot");
+
+  // ⑩ 三元两个分支的 id 都要取到
+  eq("夹具⑩ 三元 aria-label 两分支", ariaLabelIds({ props: `{"aria-label":V!=null?c({id:"a"}):c({id:"b"}),"aria-expanded":V!=null}` }), ["a", "b"]);
 
   console.log(fails === 0 ? "\n✅ 自检全绿" : `\n❌ 自检 ${fails} 项失败`);
   return fails === 0;
@@ -318,22 +347,46 @@ if (process.argv.includes("--selftest")) {
 }
 
 // ── 真实校验 ──────────────────────────────────────────────────────────────────
-const official = readFromAsar(OFFICIAL_ASAR, OFFICIAL_CHUNK);
-if (official == null) {
-  console.error(`❌ 读不到官方 chunk：${OFFICIAL_CHUNK}`);
+/**
+ * 特征发现官方锚：遍历 renderer chunk，返回「函数体内同时含两个特征」的函数声明。
+ * 不再依赖 chunk 哈希名与混淆组件名。⚠️ 同一 chunk 内短名可在不同模块作用域重用，
+ * extractFunction 只取首个同名声明 —— 所以这里返回**命中的那个函数对象**，不是名字，
+ * 后续直接用它的 body，避免「发现的是第二个 ho()、抽的是第一个」的错位。
+ */
+function discoverOfficialTarget() {
+  const assets = asarNode(OFFICIAL_ASAR, "dist/renderer/assets");
+  const names = Object.keys(assets?.files ?? {}).filter((n) => n.endsWith(".js"));
+  const hits = [];
+  for (const name of names) {
+    const src = readFromAsar(OFFICIAL_ASAR, `dist/renderer/assets/${name}`);
+    if (src == null || !src.includes(FEATURE_MARKER)) continue;
+    for (const m of src.matchAll(/function ([A-Za-z_$][\w$]*)\(/g)) {
+      const fn = extractFunction(src, m[1]);
+      if (fn && fn.text.includes(FEATURE_MARKER) && fn.text.includes(INPUT_ARIA_ID)) {
+        hits.push({ chunk: name, component: m[1], fn });
+      }
+    }
+  }
+  return hits;
+}
+
+const hits = discoverOfficialTarget();
+if (hits.length !== 1) {
+  console.error(
+    `❌ 官方锚定位到 ${hits.length} 处（应恰 1 处）: ` +
+      (hits.map((h) => `${h.chunk}#${h.component}()`).join(", ") || "无") +
+      ` —— 特征组合 ${FEATURE_MARKER} + ${INPUT_ARIA_ID} 不再唯一，判据需人工复核`,
+  );
   process.exit(2);
 }
-const ve = extractFunction(official, OFFICIAL_COMPONENT);
-if (ve == null) {
-  console.error(`❌ 官方 chunk 里找不到组件 ${OFFICIAL_COMPONENT}()`);
-  process.exit(2);
-}
+const { chunk: OFFICIAL_CHUNK, component: OFFICIAL_COMPONENT, fn: ve } = hits[0];
+const official = readFromAsar(OFFICIAL_ASAR, `dist/renderer/assets/${OFFICIAL_CHUNK}`);
 console.log(`官方 ${OFFICIAL_CHUNK}  ${official.length} B`);
 console.log(`${OFFICIAL_COMPONENT}() 体 ${ve.bodyStart}-${ve.bodyEnd}（${ve.text.length} B）`);
 console.log(`体后紧邻：${JSON.stringify(official.slice(ve.bodyEnd, ve.bodyEnd + 40))}\n`);
 
 const tree = buildJsxTree(scanJsxCalls(ve.text));
-console.log(`ve() 内 jsx 调用 ${tree.length} 处\n`);
+console.log(`${OFFICIAL_COMPONENT}() 内 jsx 调用 ${tree.length} 处\n`);
 
 // ── 语义绑定：靠「JSX 树的直接父子关系」+ aria-label 消息 id 定位元素 ──────────
 // 关键：不按「离哪个类名近 / 重合度最高」猜 —— 那套启发式在实测中把非编辑态 span 当成输入框、
@@ -346,10 +399,15 @@ const input = tree.find((c) => c.tag === `"input"` && hasAriaId(c, INPUT_IDS));
 const button = tree.find((c) => c.tag === `"button"` && hasAriaId(c, BTN_IDS));
 // 账户名行 = input 的直接父 span（不是外层那个 span —— 两层都含 input 的 aria-label）
 const nameRow = input?.parent;
-// 表单槽位 = 沿父链向上最近的 div，且它的 className 是「按状态切变体」形态
-// （[!!fs<<0]）。⚠️ 不能写死成「直接父」：官方在账户名行与槽位之间还隔了一层 span。
-// 附加的变体断言是 fail-closed 的保险：若取错层，这里会因「非变体形态」而报错。
-const formSlot = nearestAncestor(nameRow, (p) => p.tag === `"div"` && variantCount(p) >= 2);
+// 表单槽位 = 沿父链向上最近的**带 className 的 div** 祖先。⚠️ 不能写死成「直接父」：
+// 官方在账户名行与槽位之间还隔了 span 层。判据沿革：
+//   0.66：槽位 div 的 className 是「按连接态切变体」形态（[!!fs<<0] 两态各 9 类），
+//         变体形态本身当时兼作防取错层的保险。
+//   0.68.1：上游把槽位 div 静态化成固定 9 类配方（与 0.66 变体 0 逐字相同），把状态
+//         变体下沉到 input 的兄弟显示态 span 上 —— 「div+变体」判据因此扑空（0 个变体）。
+// 新判据「最近带 className 的 div」在两个版本下都唯一：外层 wrapper div 无 className，
+// 分隔线 div 不是账户名行的祖先。变体数降级为汇报信息，不再是判据。
+const formSlot = nearestAncestor(nameRow, (p) => p.tag === `"div"` && propRaw(p, "className") != null);
 
 function officialClasses(call, label, extra = "") {
   if (call == null) {
@@ -361,7 +419,7 @@ function officialClasses(call, label, extra = "") {
     console.log(`❌ ${label}: 取不到 className`);
     return null;
   }
-  console.log(`✅ ${label}: ${call.tag} @ve${call.at}${extra}`);
+  console.log(`✅ ${label}: ${call.tag} @${OFFICIAL_COMPONENT}${call.at}${extra}`);
   return Array.isArray(parsed[0]) ? parsed : [parsed];
 }
 
@@ -369,7 +427,10 @@ const OFFICIAL = {
   DETAIL_ACCOUNT_NAME_ROW_CLASSES: officialClasses(nameRow, "账户名行 span（input 的直接父）"),
   DETAIL_ACCOUNT_FORM_INPUT_CLASSES: officialClasses(input, "重命名输入框 input", ` aria-label=[${input ? ariaLabelIds(input).join(",") : ""}]`),
   DETAIL_ACCOUNT_SAVE_CLASSES: officialClasses(button, "编辑/保存 button（同一个元素两态）", ` aria-label=[${button ? ariaLabelIds(button).join(",") : ""}]`),
-  DETAIL_ACCOUNT_FORM_SLOT_CLASSES: officialClasses(formSlot, `表单槽位 div（${formSlot ? variantCount(formSlot) : 0} 个状态变体）`),
+  DETAIL_ACCOUNT_FORM_SLOT_CLASSES: officialClasses(
+    formSlot,
+    `表单槽位 div（${formSlot ? (variantCount(formSlot) >= 2 ? `${variantCount(formSlot)} 个状态变体` : "静态配方") : "未定位"}）`,
+  ),
 };
 
 // 我们实现里的配方（从源码抠，避免手抄）
@@ -428,9 +489,10 @@ for (const [name, variants] of Object.entries(OFFICIAL)) {
   }
   // 通过条件是**与指定变体的集合完全相等**，不是「我方 ⊆ 官方」，也不是「匹配任一变体」。
   // ① 旧判据用子集 ⇒「少抄」静默通过，而少抄正是当初把 3 个类剔掉的错误形状。
-  // ② 「匹配任一变体」也不行：官方那个槽位 div 是 `[!!fs<<0]`（按是否 connected 切两态），
+  // ② 「匹配任一变体」也不行：0.66 的槽位 div 是 `[!!fs<<0]`（按是否 connected 切两态），
   //    两个变体都 9 类、只差一个类，于是「抄成了另一个状态」会被判成完全对齐（变异 M4 实测 exit 0）。
   //    本实现只渲染未连接态，因此显式绑定变体 0；变体 1 的差异列为**已知缺口**打印出来。
+  //    （0.68.1 静态化后槽位只有一组，此历史风险对该组消失，但变体形态的三组仍按同一规则绑定。）
   const officialSet = variants[0];
   const diff = [
     ...officialSet.filter((c) => !ours.includes(c)),
