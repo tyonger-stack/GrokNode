@@ -43,6 +43,12 @@ import { createDevGatewayOfflineControl } from "./dev/dev-gateway-offline.js";
 import { createDevRestartExit, maybeDevLoginFromEnv, registerDevWiring, type IpcMainPort } from "./dev/dev-wiring.js";
 import { SandProductAnalytics } from "../shared/node/analytics/product-analytics.js";
 import { registerElectronProductionVncTrust, type ElectronProductionVncTrustDeps } from "./vnc/vnc-trust.js";
+import {
+  attachMainWindowMouseHistory,
+  installMouseHistoryNavigation,
+  type HistoryBrowserWindow,
+  type MouseHistoryDebouncer,
+} from "./history-mouse-navigation.js";
 import { registerProductionTelemetryIpc } from "./telemetry/production-telemetry-ipc.js";
 import type { SecureStorageCodec } from "./secrets/secret-store.js";
 import { recordLocalToolApproval as persistLocalToolApproval, clearLocalToolApprovals as clearPersistedLocalToolApprovals } from "../host/local-exec/local-tool-approvals.js";
@@ -480,7 +486,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
     return { induced: Reflect.get(result, "induced") as boolean };
   });
   type ProductionClientPauseControl = ReturnType<typeof createSandClientPauseControl<BoxConnectionInfo, { readonly preserveData: boolean; readonly force?: boolean }, RecreateResult, unknown>>;
-  let runtime: ElectronMainRuntime | undefined, settings: ProductionSettingsService | undefined, mainEdge: (MainEdge & Partial<ProductionDisposable>) | undefined, account: ProductionAccountService | undefined, localAccount: unknown, ensureTranscriptionManager: (() => Promise<unknown>) | undefined, experiments: ProductionExperimentsService | undefined, update: ProductionUpdateService | undefined, mcp: ProductionMcpService | undefined, telemetry: ProductionTelemetryService | undefined, notifications: ProductionNotificationsService | undefined, coordinator: ProductionCoordinatorService | undefined, egressTunnelController: EgressTunnelController | undefined, context: ProductionServiceContext | undefined, secretsStores: ReturnType<typeof createSecretsStores> | undefined, boxRecovery: ReturnType<typeof createProductionBoxRecovery> | undefined, clientPauseControl: ProductionClientPauseControl | undefined, boxVisibilityTracker: SandBoxVisibilityTracker | undefined, desktopMetricsRuntime: DesktopMetricsRuntime | undefined, productAnalytics: SandProductAnalytics | undefined, vncTrust: ReturnType<typeof registerElectronProductionVncTrust> | undefined;
+  let runtime: ElectronMainRuntime | undefined, settings: ProductionSettingsService | undefined, mainEdge: (MainEdge & Partial<ProductionDisposable>) | undefined, account: ProductionAccountService | undefined, localAccount: unknown, ensureTranscriptionManager: (() => Promise<unknown>) | undefined, experiments: ProductionExperimentsService | undefined, update: ProductionUpdateService | undefined, mcp: ProductionMcpService | undefined, telemetry: ProductionTelemetryService | undefined, notifications: ProductionNotificationsService | undefined, coordinator: ProductionCoordinatorService | undefined, egressTunnelController: EgressTunnelController | undefined, context: ProductionServiceContext | undefined, secretsStores: ReturnType<typeof createSecretsStores> | undefined, boxRecovery: ReturnType<typeof createProductionBoxRecovery> | undefined, clientPauseControl: ProductionClientPauseControl | undefined, boxVisibilityTracker: SandBoxVisibilityTracker | undefined, desktopMetricsRuntime: DesktopMetricsRuntime | undefined, productAnalytics: SandProductAnalytics | undefined, vncTrust: ReturnType<typeof registerElectronProductionVncTrust> | undefined, mouseHistoryDebouncer: MouseHistoryDebouncer | undefined;
   let sessionDeathSettlement: ReturnType<typeof wireDesktopUncleanExitSettlement> | undefined;
   const desktopLifecycle = createDesktopLifecycleReporter();
   const disposeLocalExecLifecycleReporter = installLocalExecLifecycleReporter(desktopLifecycle.reportDesktopLocalExecLifecycle);
@@ -750,6 +756,12 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
       ensureTranscriptionManager = bindings.services.createTranscriptionManager(base);
       context = { ...base, attachments, avatarImages, localAccount, ensureTranscriptionManager };
       mainEdge = bindings.services.createMainEdge(context); if (typeof mainEdge.emit !== "function") throw new Error("Electron production main-edge binding did not provide emit()."); if (typeof mainEdge.dispose === "function") track(mainEdge as MainEdge & ProductionDisposable);
+      // 0.71.2 $Ae / gMt: Logitech mouse back/forward → mouse-history-navigation (main-app.cjs @1642554)
+      mouseHistoryDebouncer = installMouseHistoryNavigation({
+        app: bindings.native.app as unknown as Parameters<typeof installMouseHistoryNavigation>[0]["app"],
+        ipcMain: bindings.native.ipcMain as unknown as Parameters<typeof installMouseHistoryNavigation>[0]["ipcMain"],
+        emitNavigation: (direction) => requireValue(mainEdge, "main-edge").emit("mouse-history-navigation", { direction }),
+      });
       update = track(requireDisposable(await bindings.services.createUpdate(context), "update"));
       track(requireDisposable(bindings.services.registerMedia(context), "media"));
       account = track(requireDisposable(await bindings.services.createAccount(context), "account"));
@@ -871,6 +883,13 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
           });
           if (sessionDeathSettlement != null) settleUncleanExitOnSessionEnd(window, sessionDeathSettlement);
           installBoxVisibilityDocumentReset(window.webContents, () => boxVisibilityTracker?.abandonAll());
+          if (mouseHistoryDebouncer != null && mainEdge != null) {
+            attachMainWindowMouseHistory(
+              window as unknown as HistoryBrowserWindow,
+              (direction) => mainEdge!.emit("mouse-history-navigation", { direction }),
+              mouseHistoryDebouncer,
+            );
+          }
           bindings.services.onWindowCreated?.(window, context!);
         },
         dispose: () => void disposeGraph(),
