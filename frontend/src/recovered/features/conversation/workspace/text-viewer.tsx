@@ -34,7 +34,7 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AttachmentBytesResult } from "../../../contracts/desktop-bridge";
 import { FILE_VIEWER_CLASSES } from "./pdf-viewer";
-import { LibraryStageCloseButton } from "../../library/stage-icon-button";
+import { LibraryStageCloseButton, LibraryStageIconButton } from "../../library/stage-icon-button";
 
 export const TEXT_PREVIEW_BYTE_CAP = 4 * 1024 * 1024;
 const TRUNCATE_AT_BYTES = 1_000_000;
@@ -216,7 +216,7 @@ function OpenTextAttachmentViewer({ source, name, onClose, readBytes, onDownload
             <button aria-label="Toggle line wrap" onClick={() => setWrap((value) => !value)} title="Toggle line wrap" type="button">↵</button>
           </div>
           <div className={FILE_VIEWER_CLASSES.actions}>
-            <button aria-label="Download file" onClick={() => { void onDownload(); }} title="Download file" type="button">⇩</button>
+            <LibraryStageIconButton aria-label="Download file" icon="arrow-bracket-to-down" onClick={() => { void onDownload(); }} title="下载" />
             <LibraryStageCloseButton aria-label="Close preview" onClick={onClose} />
           </div>
         </header>

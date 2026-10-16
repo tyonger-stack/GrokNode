@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useId, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { AttachmentBytesResult } from "../../../contracts/desktop-bridge";
 import { FILE_VIEWER_CLASSES, resolveShippedViewerAsset } from "./pdf-viewer";
-import { LibraryStageCloseButton } from "../../library/stage-icon-button";
+import { LibraryStageCloseButton, LibraryStageIconButton } from "../../library/stage-icon-button";
 import {
   createSpreadsheetPreviewController,
   parseSpreadsheetBytes,
@@ -168,7 +168,7 @@ export function SpreadsheetViewer({ source, name, isOpen, onClose, onDownload, r
       <header className={FILE_VIEWER_CLASSES.header}>
         <div><h2 id={titleId}>{name}</h2>{rowCount == null ? null : <span>{rowCount.toLocaleString()} {rowCount === 1 ? "row" : "rows"}</span>}</div>
         {sheets.length > 1 ? <div className={FILE_VIEWER_CLASSES.toolbar}>{sheets.map((sheet, index) => <button aria-pressed={index === selectedSheet} key={`${sheet.name}-${index}`} onClick={() => setSelectedSheet(index)} type="button">{sheet.name}</button>)}</div> : null}
-        <div className={FILE_VIEWER_CLASSES.actions}><a aria-label="Download file" download={name} href={source} onClick={() => { void onDownload(); }}>⇩</a><LibraryStageCloseButton aria-label="Close preview" onClick={onClose} /></div>
+        <div className={FILE_VIEWER_CLASSES.actions}><LibraryStageIconButton aria-label="Download file" icon="arrow-bracket-to-down" onClick={() => { void onDownload(); }} title="下载" /><LibraryStageCloseButton aria-label="Close preview" onClick={onClose} /></div>
       </header>
       <SpreadsheetBody downloadName={name} onDownload={onDownload} selectedSheet={selectedSheet} setSelectedSheet={setSelectedSheet} snapshot={snapshot} source={source} />
     </section>

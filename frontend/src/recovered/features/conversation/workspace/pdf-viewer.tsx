@@ -7,7 +7,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { AttachmentBytesResult } from "../../../contracts/desktop-bridge";
-import { LibraryStageCloseButton } from "../../library/stage-icon-button";
+import { LibraryStageCloseButton, LibraryStageIconButton } from "../../library/stage-icon-button";
 
 export const PDFJS_ASSET = "/upstream/assets/pdf-WLgSwHwh.js";
 export const PDF_WORKER_FILENAME = "pdf.worker.min-qwK7q_zL.mjs";
@@ -394,7 +394,7 @@ function OpenPdfAttachmentViewer({ source, name, onClose, readBytes, onDownload,
   const titleId = useId();
   return createPortal(<div aria-labelledby={titleId} aria-modal="true" className={FILE_VIEWER_CLASSES.root} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} role="dialog">
     <section className={FILE_VIEWER_CLASSES.panel}>
-      <header className={FILE_VIEWER_CLASSES.header}><div><h2 id={titleId}>{name}</h2>{pages > 0 ? <span>{pages} {pages === 1 ? "page" : "pages"}</span> : null}</div><div className={FILE_VIEWER_CLASSES.toolbar}><button aria-label="Zoom out" onClick={() => setZoom((value) => clamp(value - 0.25, 0.5, 4))} type="button">−</button><span aria-label={`Page ${currentPage} of ${pages}`}>{pages > 0 ? `${currentPage} / ${pages}` : ""}</span><button aria-label="Zoom in" onClick={() => setZoom((value) => clamp(value + 0.25, 0.5, 4))} type="button">+</button></div><div className={FILE_VIEWER_CLASSES.actions}><button aria-label="Download file" onClick={() => { void onDownload(); }} type="button">⇩</button><LibraryStageCloseButton aria-label="Close preview" onClick={onClose} /></div></header>
+      <header className={FILE_VIEWER_CLASSES.header}><div><h2 id={titleId}>{name}</h2>{pages > 0 ? <span>{pages} {pages === 1 ? "page" : "pages"}</span> : null}</div><div className={FILE_VIEWER_CLASSES.toolbar}><button aria-label="Zoom out" onClick={() => setZoom((value) => clamp(value - 0.25, 0.5, 4))} type="button">−</button><span aria-label={`Page ${currentPage} of ${pages}`}>{pages > 0 ? `${currentPage} / ${pages}` : ""}</span><button aria-label="Zoom in" onClick={() => setZoom((value) => clamp(value + 0.25, 0.5, 4))} type="button">+</button></div><div className={FILE_VIEWER_CLASSES.actions}><LibraryStageIconButton aria-label="Download file" icon="arrow-bracket-to-down" onClick={() => { void onDownload(); }} title="下载" /><LibraryStageCloseButton aria-label="Close preview" onClick={onClose} /></div></header>
       {content}
     </section>
   </div>, document.body);

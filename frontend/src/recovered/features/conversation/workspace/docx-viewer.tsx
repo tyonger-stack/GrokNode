@@ -13,7 +13,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { AttachmentBytesResult } from "../../../contracts/desktop-bridge";
 import { convertDocxToHtml } from "./docx-convert";
 import { FILE_VIEWER_CLASSES } from "./pdf-viewer";
-import { LibraryStageCloseButton } from "../../library/stage-icon-button";
+import { LibraryStageCloseButton, LibraryStageIconButton } from "../../library/stage-icon-button";
 
 export const DOCX_BYTE_CAP = 8 * 1024 * 1024;
 
@@ -120,7 +120,7 @@ function OpenDocxAttachmentViewer({ source, name, onClose, readBytes, onDownload
             <h2 id={titleId}>{name}</h2>
           </div>
           <div className={FILE_VIEWER_CLASSES.actions}>
-            <button aria-label="Download file" onClick={() => { void onDownload(); }} title="Download file" type="button">⇩</button>
+            <LibraryStageIconButton aria-label="Download file" icon="arrow-bracket-to-down" onClick={() => { void onDownload(); }} title="下载" />
             <LibraryStageCloseButton aria-label="Close preview" onClick={onClose} />
           </div>
         </header>

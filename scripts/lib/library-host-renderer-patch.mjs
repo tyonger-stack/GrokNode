@@ -92,6 +92,9 @@ const LIBRARY_CSS_DIR = path.join(repoRoot, "frontend/src/recovered/features/lib
 export const LIBRARY_CSS_SCOPES = Object.freeze([
   ".sand-agent-library",
   ".sand-library",
+  ".sand-file-viewer",
+  ".sand-text-viewer",
+  ".sand-docx-viewer",
   ".library-canvas",
   ".library-document",
   ".library-page",

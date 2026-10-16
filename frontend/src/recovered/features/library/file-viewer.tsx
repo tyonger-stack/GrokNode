@@ -4,7 +4,8 @@ import { FILE_VIEWER_CLASSES, PdfAttachmentViewer, type PdfAttachmentViewerProps
 import { SpreadsheetViewer, type SpreadsheetViewerProps } from "../conversation/workspace/spreadsheet-viewer";
 import type { MediaResolver } from "../conversation/workspace/media-viewer";
 import { TextAttachmentViewer, useTextBytes, type TextAttachmentViewerProps } from "../conversation/workspace/text-viewer";
-import { LibraryStageCloseButton } from "./stage-icon-button";
+import { LibraryStageCloseButton, LibraryStageIconButton } from "./stage-icon-button";
+import "./file-stage.css";
 
 /**
  * Task 10: port of the original fullscreen file dispatch (F Pl/zn).
@@ -55,7 +56,7 @@ function FileDialog({ name, onClose, onDownload, children }: {
       <header className={FILE_VIEWER_CLASSES.header}>
         <div><h2 id={titleId}>{name}</h2></div>
         <div className={FILE_VIEWER_CLASSES.actions}>
-          <button aria-label="Download file" onClick={() => { void onDownload(); }} type="button">⇩</button>
+          <LibraryStageIconButton aria-label="Download file" icon="arrow-bracket-to-down" onClick={() => { void onDownload(); }} title="下载" />
           <LibraryStageCloseButton aria-label="Close preview" onClick={onClose} />
         </div>
       </header>
