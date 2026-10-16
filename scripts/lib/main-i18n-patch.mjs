@@ -60,7 +60,8 @@ export const MAIN_I18N_PAIRS = [
   // ships rather than anything authored here. PANEL because each literal only ever
   // appears inside an injected JSX prop object.
   ["Add selection to prompt", "将所选内容添加到提示词", "WWv1+v", "PANEL"],
-  ["Add to prompt", "添加到提示词", "9D9gK1", "PANEL"],
+  // 0.71.2 renames the selection toolbar button (jo1zkp); hotkey action label WWv1+v stays.
+  ["Add to chat", "添加到聊天", "jo1zkp", "PANEL"],
   ["Selection actions", "所选内容操作", "6kt/Ns", "PANEL"],
   ["Adjust photo", "调整照片", "gY2AXq", "FULL"],
   ["Agents in this exchange", "此交流中的智能体", "2DO+PC", "FULL"],
