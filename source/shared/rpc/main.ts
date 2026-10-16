@@ -43,6 +43,8 @@ export const MAIN_METHOD_TABLE = {
   clearLocalToolApprovals: { args: "none" },
   getSidebarCollapsed: { args: "none" },
   setSidebarCollapsed: { args: "object" },
+  // 0.71.2: mirror renderer unread-only filter onto the native View menu checkbox.
+  setUnreadFilterMenuChecked: { args: "object" },
   pickAvatarSource: { args: "none" },
   pickAvatarFile: { args: "none" },
   generateAgentAvatarImage: { args: "object" },
