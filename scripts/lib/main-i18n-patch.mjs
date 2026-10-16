@@ -1181,12 +1181,10 @@ export const MAIN_I18N_LOCAL_ANCHORED = [
     anchor: "function ept(n){const e=new Date(n),t=new Date,s=FIn(e);if(ZTe(e,t))return`Today ${s}`;const r=new Date(t);return r.setDate(t.getDate()-1),ZTe(e,r)?`Yesterday ${s}`:e.getFullYear()===t.getFullYear()?`${DIn.format(e)} ${s}`:`${RIn.format(e)} ${s}`}",
     replacement: "function ept(n){const e=new Date(n),t=new Date,s=FIn(e);if(ZTe(e,t))return`${RLocT(\"Today\",\"今天\")} ${s}`;const r=new Date(t);return r.setDate(t.getDate()-1),ZTe(e,r)?`${RLocT(\"Yesterday\",\"昨天\")} ${s}`:e.getFullYear()===t.getFullYear()?`${DIn.format(e)} ${s}`:`${RIn.format(e)} ${s}`}",
   },
-  {
-    id: "rbijNi/PxYAul",
-    note: "activity-mark label: `<name> is working` and its `Typing…` sibling",
-    anchor: "function gJn(n,e){if(n===\"working\"){const t=e?.trim();return t!=null&&t.length>0?`${t} is working`:null}return\"Typing…\"}",
-    replacement: "function gJn(n,e){if(n===\"working\"){const t=e?.trim();return t!=null&&t.length>0?`${t} ${RLocT(\"is working\",\"正在工作\")}`:null}return(RLocT(\"Typing…\",\"正在输入…\"))}",
-  },
+  // gJn (`<name> is working` / Typing…) moved to
+  // scripts/lib/working-status-phrases-renderer-patch.mjs (0.71.2 CP phrases,
+  // no bot-name prefix; Typing already RLocT'd there). Do not re-anchor here —
+  // the pristine gJn bytes no longer exist after that pass.
   {
     id: "rbijNi/Q5ywLe/yQopUI/OmANKk",
     note: "activity-mark label for one and for many members; official zh collapses the is/are and working/typing distinction into a bare predicate",
