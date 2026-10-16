@@ -4,10 +4,14 @@ import path from "node:path";
 import vm from "node:vm";
 import test from "node:test";
 import { parse } from "acorn";
-import { patchOriginalAutoReviewApproval } from "../scripts/lib/auto-review-renderer-patch.mjs";
+import {
+  patchAutoReviewSettingsOpener,
+  patchOriginalAutoReviewApproval,
+} from "../scripts/lib/auto-review-renderer-patch.mjs";
 
 const rendererDir = path.resolve(import.meta.dirname, "../src/app/dist/renderer/assets");
 const RENDERER_ANCHOR = "async function de(t,e){if(e===void 0)";
+const SETTINGS_OPENER_ANCHOR = "k1=I0t.actions;function xRn";
 
 async function findRendererSource() {
   let entries;
@@ -24,11 +28,25 @@ async function findRendererSource() {
   return null;
 }
 
+async function findRegistrySource() {
+  try {
+    const text = await readFile(path.join(rendererDir, "index-UbX-y3il.js"), "utf8");
+    if (text.includes(SETTINGS_OPENER_ANCHOR)) return text;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 const found = await findRendererSource();
 const source = found?.text ?? null;
+const registrySource = await findRegistrySource();
 const bundleSkip = found
   ? false
   : "src/app/dist is gitignored and only exists after `npm run bootstrap` (macOS DMG mount); bundle assertions skipped.";
+const registrySkip = registrySource
+  ? false
+  : "src/app/dist registry chunk missing; settings-opener assertions skipped.";
 
 const syntheticSource = [
   'function ne(t){switch(t.status){case"ready":return t.value;default:return}}',
@@ -43,6 +61,8 @@ const syntheticSource = [
   "function we(t){return t}",
 ].join("\n");
 
+const syntheticRegistry = 'const I0t={actions:{open(){}}},Uf={settings:(n)=>({kind:"settings",...n})};k1=I0t.actions;function xRn(){return 1}';
+
 test("renderer patch applies to the anchor fixture and stays fail-closed", () => {
   const patched = patchOriginalAutoReviewApproval(syntheticSource);
   assert.ok(patched.includes("Always allow all Shell commands on this local Docker VM."));
@@ -51,6 +71,12 @@ test("renderer patch applies to the anchor fixture and stays fail-closed", () =>
   assert.ok(patched.includes('role:"alert"'));
   assert.ok(patched.includes("setArError"));
   assert.ok(patched.includes("throw error"));
+  assert.ok(patched.includes("data-sand-auto-review-edit-rule"));
+  assert.ok(patched.includes('sand-open-settings'));
+  assert.ok(patched.includes('section:"general"'));
+  assert.ok(patched.includes("Edit rule"));
+  assert.ok(patched.includes("编辑规则"));
+  assert.ok(patched.includes('u==="always"'));
   assert.ok(!patched.includes(RENDERER_ANCHOR), "patched fixture must not retain the original loader");
   assert.throws(() => patchOriginalAutoReviewApproval(patched), /missing or ambiguous/);
 });
@@ -58,6 +84,122 @@ test("renderer patch applies to the anchor fixture and stays fail-closed", () =>
 test("patched anchor fixture still parses as a module", () => {
   const patched = patchOriginalAutoReviewApproval(syntheticSource);
   assert.doesNotThrow(() => parse(patched, { sourceType: "module", ecmaVersion: "latest" }));
+});
+
+test("settings opener patch wires sand-open-settings to Uf.settings({section})", () => {
+  const patched = patchAutoReviewSettingsOpener(syntheticRegistry);
+  assert.ok(patched.includes('window.addEventListener("sand-open-settings"'));
+  assert.ok(patched.includes("k1.open(Uf.settings({section:s}))"));
+  assert.throws(() => patchAutoReviewSettingsOpener(patched), /missing or ambiguous/);
+  assert.doesNotThrow(() => parse(patched, { sourceType: "module", ecmaVersion: "latest" }));
+});
+
+test("settings opener event opens general by default and honors section detail", () => {
+  const opened = [];
+  let listener = null;
+  const k1 = {
+    open(target) {
+      opened.push(target);
+    },
+  };
+  const Uf = {
+    settings(n) {
+      return { entrypoint: "settings", ...n };
+    },
+  };
+  const window = {
+    addEventListener(type, fn) {
+      listener = { type, fn };
+    },
+  };
+  // Mirror the injected listener body from SETTINGS_OPENER_AFTER.
+  window.addEventListener("sand-open-settings", function (ev) {
+    try {
+      const s =
+        ev && ev.detail && typeof ev.detail.section === "string" && ev.detail.section.length > 0
+          ? ev.detail.section
+          : "general";
+      k1.open(Uf.settings({ section: s }));
+    } catch {
+      /* ignore */
+    }
+  });
+  assert.equal(listener.type, "sand-open-settings");
+  listener.fn({ detail: {} });
+  listener.fn({ detail: { section: "usage" } });
+  assert.deepEqual(opened, [
+    { entrypoint: "settings", section: "general" },
+    { entrypoint: "settings", section: "usage" },
+  ]);
+  // Patched source must still carry the same open call shape.
+  const patched = patchAutoReviewSettingsOpener(syntheticRegistry);
+  assert.ok(patched.includes("k1.open(Uf.settings({section:s}))"));
+});
+
+test("Edit rule button is gated on always and dispatches sand-open-settings", () => {
+  const patched = patchOriginalAutoReviewApproval(syntheticSource);
+  const start = patched.indexOf('u==="always"?C.jsx("button"');
+  assert.ok(start >= 0, "always-gated Edit rule button missing");
+  const end = patched.indexOf("}):null", start) + "}):null".length;
+  const expr = patched.slice(start, end);
+  const events = [];
+  const C = {
+    jsx(_type, props) {
+      return props;
+    },
+  };
+  const buttonFor = (u) => {
+    const fn = new Function(
+      "u",
+      "C",
+      "RLocT",
+      "window",
+      `return (${expr});`,
+    );
+    return fn(u, C, (en) => en, {
+      dispatchEvent(ev) {
+        events.push(ev);
+      },
+    });
+  };
+  assert.equal(buttonFor("approved"), null);
+  assert.equal(buttonFor("denied"), null);
+  const btn = buttonFor("always");
+  assert.equal(btn.type, "button");
+  assert.equal(btn["data-sand-auto-review-edit-rule"], true);
+  assert.equal(btn["aria-label"], "Edit rule");
+  assert.equal(btn.children, "Edit rule");
+  btn.onClick();
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "sand-open-settings");
+  assert.equal(events[0].detail.section, "general");
+});
+
+test("mutation: dropping Edit rule gate is detected by the always-path assertion", () => {
+  const patched = patchOriginalAutoReviewApproval(syntheticSource);
+  const mutated = patched.replace('u==="always"?C.jsx("button"', 'false?C.jsx("button"');
+  assert.notEqual(mutated, patched);
+  assert.throws(() => {
+    assert.ok(mutated.includes('u==="always"?C.jsx("button"'), "Edit rule must stay gated on always");
+  }, /Edit rule must stay gated/);
+});
+
+test("mutation: settings opener without k1.open is detected", () => {
+  const patched = patchAutoReviewSettingsOpener(syntheticRegistry);
+  const broken = patched.replace("k1.open(Uf.settings({section:s}))", "/*no-op*/");
+  assert.notEqual(broken, patched);
+  assert.throws(() => {
+    assert.ok(broken.includes("k1.open(Uf.settings({section:s}))"), "opener must call k1.open");
+  }, /opener must call k1\.open/);
+});
+
+test("mutation: removing Edit rule label fails the official zh assertion", () => {
+  const patched = patchOriginalAutoReviewApproval(syntheticSource);
+  const mutated = patched.replaceAll("编辑规则", "EDIT_RULE_ZH_REMOVED");
+  assert.notEqual(mutated, patched);
+  assert.throws(() => {
+    assert.ok(mutated.includes("编辑规则"), "must keep official 0.71 zh for 0doodQ");
+  }, /must keep official/);
 });
 
 function harness(bundleText) {
@@ -102,6 +244,22 @@ test(`packaged missing-rule and persistence errors stay actionable without singl
   assert.equal(resolved, 0);
   assert.equal(h.changes.at(-1).cleared, true);
   assert.ok(h.patched.includes('role:"alert"'));
+});
+
+test(`packaged approval includes Edit rule on always path (${found?.name ?? "bundle missing"})`, { skip: bundleSkip }, () => {
+  const patched = patchOriginalAutoReviewApproval(source);
+  assert.ok(patched.includes("data-sand-auto-review-edit-rule"));
+  assert.ok(patched.includes('sand-open-settings'));
+  assert.ok(patched.includes("编辑规则"));
+  assert.ok(patched.includes('u==="always"?C.jsx("button"'));
+  assert.throws(() => patchOriginalAutoReviewApproval(patched), /missing or ambiguous/);
+});
+
+test(`packaged registry opens settings from sand-open-settings (${found ? "index-UbX-y3il.js" : "bundle missing"})`, { skip: registrySkip }, () => {
+  const patched = patchAutoReviewSettingsOpener(registrySource);
+  assert.ok(patched.includes('window.addEventListener("sand-open-settings"'));
+  assert.ok(patched.includes("k1.open(Uf.settings({section:s}))"));
+  assert.throws(() => patchAutoReviewSettingsOpener(patched), /missing or ambiguous/);
 });
 
 test(`renderer patch fails closed on missing anchors (${found?.name ?? "bundle missing"})`, { skip: bundleSkip }, () => {
