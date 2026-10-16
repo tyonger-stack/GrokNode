@@ -8,21 +8,23 @@
 //     · PS  @1579315  日历午夜边界：PS(now, daysBack) = 本地时区往前 daysBack 天的 0 点
 //     · MRe @1579345  bucketFor：null→older；≥PS(now,0)→today；≥PS(now,6)→week；否则 older
 //                      —— 是日历午夜 6 天前，不是滚动 168h，也不是 ISO 自然周
-//     · TS  @1579197  渐进揭示每批 5 条（0.70.2 aC @1763513；$S @1582225 是缩略图 24px）
+//     · TS  @1579197  v1 媒体揭示每批 5 条（oG y+TS）；OS @1594610 v1 页面每批 5 条；
+//       c7（E mUe=5 经 w6 as c7）v2 每批 5 条；$S=24 @1582225 是缩略图尺寸 px
+//      （height:$S,width:$S），不是揭示条数
 //     · FRe @1581347  transcript→items 投影：三类抽取（视觉/文件/链接）、
 //                      kind 前缀去重 Set 跨全量共享、首次出现胜出、结果 toReversed()（新→旧）
 //
 // 与还原版的边界差异（刻意记录）：
 //   1. 数据源：官方从 transcript store（kk(agentId)）拿结构化 entries；0.18 基线没有
 //      该 store 的桥面，本实现从会话 DOM 采集（形状均为 0.18 chunk 实测）：
-//        文件芯片  原生 button 或 [role="button"]，aria-label 以 Open 开头
+//        文件芯片  [role="button"][aria-label^="Open "]
 //        媒体芯片  [aria-label="Media preview"]（img/video 缩略）
 //        链接卡片  a[href^="http"]
-//        日分隔符  [class*="sand-transcript-time-separator"] 或生产虚拟化的
-//                  sand-kit-timestamp（datetime 优先，两者都带 datetime 属性）
+//        日分隔符  [class*="sand-transcript-time-separator"]（datetime 优先）
 //      —— 只覆盖已加载 DOM；接 host 侧 listAgentDocuments 时换数据源即可。
-//   2. 本项目资料范围是对话中的文件，双方附件均纳入，不以消息作者排除用户上传。
-//      DOM 适配不具备官方 bot/user-upload/returned-artifact 三路的完整来源元数据。
+//   2. 归属三分法的 DOM 近似：官方是 bot/user-upload/returned-artifact 三路 + 逐 source
+//      防洗白（RS）；DOM 侧以 data-role="user" 判 user-upload，returned-artifact 探测
+//      （sae）在提取区间之外、无 DOM 等价物，归并为 bot。
 //   3. 视觉条目（image/video）的时间粒度同样来自日分隔符（官方为逐 entry timestampMs）。
 
 export type LibraryBucket = "today" | "week" | "older";
@@ -49,9 +51,8 @@ export type LibraryItem = LibraryMediaItem | LibraryLinkItem;
 export const LIBRARY_GROUP_ORDER: readonly LibraryBucket[] = ["today", "week", "older"] as const;
 /** `ERe` @1579238 — 「本周」窗口 7 天（配合 PS 得到 6–7 天的日历跨度）。 */
 export const LIBRARY_WEEK_DAYS = 7;
-/** `TS` @1579197（0.70.2 `aC` @1763513）— 渐进揭示每批条数；`$S` 是缩略图像素不是分页。 */
+/** `TS`/`OS`/`c7` = 5 — v1 媒体 / v1 页面 / v2 揭示每批条数。 */
 export const LIBRARY_REVEAL_PAGE_SIZE = 5;
-export const LIBRARY_FILE_SELECTOR = 'button[aria-label^="Open "], [role="button"][aria-label^="Open "]';
 export const BUCKET_LABELS: Readonly<Record<LibraryBucket, string>> = { today: "今天", week: "本周", older: "更早" };
 
 /** `PS` @1579315 — nowMs 往前 daysBack 天的本地午夜。 */
@@ -110,6 +111,13 @@ function isVideoSource(source: string): boolean {
   return /\.(mp4|mov|m4v|webm)(?:[?#]|$)/i.test(source);
 }
 
+function isUserSide(element: Element, root: ParentNode): boolean {
+  for (let node: Element | null = element; node != null && node !== root; node = node.parentElement) {
+    if (node.getAttribute("data-role") === "user") return true;
+  }
+  return false;
+}
+
 interface RawDomItem {
   readonly kind: "image" | "video" | "file" | "link";
   readonly source: string;
@@ -122,19 +130,16 @@ function collectRawItems(root: ParentNode): RawDomItem[] {
   const raw: RawDomItem[] = [];
   let currentMs: number | null = null;
   let seq = 0;
-  // 日分隔符两种形状都要认：0.18 恢复态的 sand-transcript-time-separator，与生产
-  // 0.68/0.70 虚拟化 transcript 的 sand-kit-timestamp（都带 datetime 属性；后者
-  // 2026-10-13 活体实测）。sand-row-timestamp（每条消息的行内时间）刻意不认 ——
-  // 它会每条消息刷一次 currentMs，而它相对芯片的 DOM 顺序不稳定。
   const candidates = root.querySelectorAll(
-    `[class*="sand-transcript-time-separator"], [class*="sand-kit-timestamp"], ${LIBRARY_FILE_SELECTOR}, [aria-label="Media preview"], a[href^="http"]`,
+    '[class*="sand-transcript-time-separator"], [role="button"][aria-label^="Open "], [aria-label="Media preview"], a[href^="http"]',
   );
   for (const element of candidates) {
     if (element.closest('[class*="sand-agent-library"]') != null) continue;
-    if (typeof element.className === "string" && (element.className.includes("sand-transcript-time-separator") || element.className.includes("sand-kit-timestamp"))) {
+    if (typeof element.className === "string" && element.className.includes("sand-transcript-time-separator")) {
       currentMs = parseSeparatorMs(element);
       continue;
     }
+    if (isUserSide(element, root)) continue;
     const ariaLabel = element.getAttribute("aria-label");
     if (ariaLabel === "Media preview") {
       const src = element.querySelector("img")?.getAttribute("src") ?? element.querySelector("video")?.getAttribute("src") ?? null;

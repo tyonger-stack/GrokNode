@@ -30,21 +30,11 @@ NG           ←  三路合并: linked.pages + media.items + externalDocs
 |---|---|---|
 | `RRe` | `["today","week","older"]` | @1579209 |
 | `ERe` | `7` | @1579238 |
-| `TS` | `5`（每组渐进揭示卡片数） | @1579197 |
+| `TS` | `5`（v1 媒体揭示每批条数，oG `y+TS`） | @1579197 |
+| `OS` | `5`（v1 页面揭示每批条数） | @1594610 |
+| `c7` | `5`（v2 揭示每批条数，E `mUe=5` 经 `w6 as c7`） | @1093984 |
+| `$S` | `24`（缩略图尺寸 px，`height:$S,width:$S`，非揭示条数） | @1582225 |
 | `rEe` | `1e3`（loading 提示延迟） | @1594600 |
-
-> **2026-10-14 复核更正（`$S` 不是揭示批量）**：本表原先记 `$S = 24`（每批揭示卡片数），
-> 这是误读。`$S` 是 Library 卡片缩略图的 width/height 像素（@1588049
-> `r.jsx("img",{height:$S,width:$S,src:r,…})`），与分页无关。真正的揭示批量是
-> `TS = 5`，出现在分组卡片 `oG` 的揭示分页里（@1589691 `c=f_(d,TS,a)`、
-> @1589856 `const _=y+TS,I=d.slice(y,_)` → `c.setCount(_)`）。
->
-> 双版本交叉验证（防止又是 symbol 漂移误判）：0.68.1 `index-ByKx0M82.js`
-> `const TS=5,PRe=10,RRe=[...],ERe=7` @1579197 ↔ 0.70.2 `index-CjjO5fU0.js`
-> `const aC=5,eHe=10,tHe=[...],nHe=7` @1763513。四个常量一一对应、值一致，
-> 说明揭示语义两版未变，`TS → aC` 只是改名。批量 5 也解释了 0.70.2 里
-> `n.items.slice(0,k)` + `k<n.items.length ? "Show more" : null` 的形状：
-> 每 5 条一批、按组独立分页（不是全局一次拉全部）。
 
 ## 4. 分组边界（与直觉不同，重点）
 
@@ -100,7 +90,7 @@ QF(entry) = ORe(entry) ? "returned-artifact"
 | 条目种类 | 仅 file | **image / video / file / link** |
 | 归属判定 | 仅 `role === "assistant"` | **bot / user-upload / returned-artifact 三分** |
 | 数据源 | 单路 transcript | **三路合并：pages + transcript + external docs** |
-| 渐进揭示 | 无 | **`TS = 5` 按组分页 + 高度捕获 FLIP** |
+| 渐进揭示 | 无 | **每批 5 条（TS/OS/c7）+ 高度捕获 FLIP；`$S = 24` 是缩略图尺寸 px** |
 
 第三组 key 那个错尤其值得记：产物里 `grep Earlier` 有 2 次命中，容易误判为 `earlier`；
 真值是 `older`，另两次命中来自无关上下文。
@@ -134,21 +124,8 @@ QF(entry) = ORe(entry) ? "returned-artifact"
 
 ## 11. 挂载位变更（2026-10-11，用户定案：例行任务正下方）
 
-资料库分节改挂**例行任务分区容器之后**（用户截图定案），不再追加 info-pane 末尾。
+资料库由概览组件 `p3n` 在完整例行任务 wrapper 之后、`D2n` 之前渲染 `p.jsx(RLibraryHost,{agentId:t.id})`。空、加载和 null 例行任务仍渲染 `K2n`，所以这个槽位一直在。设置页和详情页走另一条分支，不挂资料库。
 
-锚点链（全部 locale 无关，源 `index-UbX-y3il.js` @2734249/@2774922 逐字节核对）：
+生产补丁是 `scripts/lib/library-host-renderer-patch.mjs`。注入块使用本 chunk 的 `S` / `p` / `Wr.createPortal`，不调用 `createRoot`，也不观察 DOM。锚点必须恰好出现一次，缺失或重复都 fail-closed。
 
-```
-pane 内例行任务分区容器（styled-div，无稳定类名）
-├─ 标题行: span.sand-info-pane__section-heading（文案随 locale 变，不可作锚点）
-│          + button[data-routine-row="new"]（Create Routine ➕）
-└─ K2n 输出: ul.sand-routine__list（非空） / div.sand-routine__empty（空态）
-              ← 从此稳定子锚点回溯 parentElement 得分区容器
-```
-
-- 插入位：分区容器 `nextSibling` 位 ⇒ 例行任务与后续分区导航（D2n）之间。
-- 同步守卫：条目签名（挂载位 + 分钟取整 now + 条目 id@timestamp 列表）不变且分节在位
-  ⇒ 跳过重建。止住「重建→自身 MutationObserver→再重建」的 300ms 自持循环，
-  同时保住「显示更多」的揭示进度不被周期性回滚。
-- 回归：tests/library-extension.test.mjs 第 3 用例断言 previousElementSibling/nextElementSibling
-  精确位置 + 幂等；尾部 finally 停观察者再关窗（断言抛错也不挂起进程）。
+回归：`tests/library-renderer-patch.test.mjs`、`tests/library-mount.test.mjs`、`tests/library-extension.test.mjs`、`tests/info-pane-split-renderer-patch.test.mjs`。

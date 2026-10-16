@@ -6,8 +6,7 @@ import { spawn } from 'node:child_process';
 import { parse } from 'acorn';
 import { build } from 'esbuild';
 import { patchOriginalRoutineSurfaces } from '../scripts/lib/routine-surfaces-renderer-patch.mjs';
-const LIBRARY_ANCHOR = 'onOpenRoutine:Ie=>_({kind:"existing",id:Ie})})]}),k.length>0?p.jsx(D2n,{counts:I,onOpenSection:J,sections:k}):null';
-function patchOriginalLibraryHost(source){if(source.split(LIBRARY_ANCHOR).length!==2)throw new Error("QA library insertion anchor");return source.replace(LIBRARY_ANCHOR,LIBRARY_ANCHOR.replace("k.length>0?","p.jsx(__sandLibraryHostNS.RLibraryHost,{agentId:t.id}),k.length>0?"));}
+import { patchOriginalLibraryHost } from '../scripts/lib/library-host-renderer-patch.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const electron = process.env.R12_ELECTRON ?? (await import('electron')).default;

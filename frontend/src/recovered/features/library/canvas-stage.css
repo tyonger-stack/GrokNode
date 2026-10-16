@@ -1,0 +1,37 @@
+/* Official 0.70.2 index-CjjO5fU0.js: xg stage header = [fa close] [oL title] [actions].
+ * R2.stage supplies the outer body; the header is its three-part row. */
+.library-canvas-stage {
+  width: calc(100vw - 48px);
+  height: calc(100vh - 48px);
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--cursor-bg-primary);
+  color: var(--cursor-text-primary);
+}
+.library-canvas-stage__body { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.library-canvas-stage__header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.library-canvas-stage__title { min-width: 0; }
+.library-canvas-stage__title h2 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.library-canvas-stage h2, .library-page-share h2 { margin: 0; font-size: 16px; font-weight: 500; }
+.library-canvas-stage small, .library-page-share p { color: var(--cursor-text-secondary); }
+.library-canvas-stage__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.library-canvas-frame { position: relative; flex: 1; min-height: 0; }
+.library-canvas-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
+.library-canvas-frame__loading { position: absolute; inset: 0; display: grid; place-items: center; }
+.library-page-share { display: flex; flex-direction: column; gap: 12px; color: var(--cursor-text-primary); }
+.library-page-share p { margin: 0; font-size: 13px; }
+.library-page-share [role="alert"] { color: var(--cursor-text-danger); }
+.library-page-share__links { display: flex; gap: 8px; }
+.library-page-share-anchor { position: absolute; width: 0; height: 0; }

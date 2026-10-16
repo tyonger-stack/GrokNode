@@ -12,6 +12,8 @@ import { createPortal } from "react-dom";
 import { useEffect, useId, useRef, useState } from "react";
 import type { AttachmentBytesResult } from "../../../contracts/desktop-bridge";
 import { convertDocxToHtml } from "./docx-convert";
+import { FILE_VIEWER_CLASSES } from "./pdf-viewer";
+import { LibraryStageCloseButton } from "../../library/stage-icon-button";
 
 export const DOCX_BYTE_CAP = 8 * 1024 * 1024;
 
@@ -76,24 +78,24 @@ function OpenDocxAttachmentViewer({ source, name, onClose, readBytes, onDownload
   const body = (() => {
     switch (state.status) {
       case "loading":
-        return <div aria-live="polite" className="sand-file-viewer__body" role="status">Loading document…</div>;
+        return <div aria-live="polite" className={FILE_VIEWER_CLASSES.body} role="status">Loading document…</div>;
       case "too-large":
         return (
-          <div className="sand-file-viewer__body" role="alert">
+          <div className={FILE_VIEWER_CLASSES.body} role="alert">
             <strong>Document too large to preview</strong>
             <span>This document is over {Math.round(DOCX_BYTE_CAP / 1024 / 1024)} MB. Download it to open in another app.</span>
             <button onClick={() => { void onDownload(); }} type="button">Download</button>
           </div>
         );
       case "error":
-        return <div className="sand-file-viewer__body" role="alert"><strong>Couldn&apos;t read this document</strong><span>{state.message}</span><button onClick={() => { void onDownload(); }} type="button">Download</button></div>;
+        return <div className={FILE_VIEWER_CLASSES.body} role="alert"><strong>Couldn&apos;t read this document</strong><span>{state.message}</span><button onClick={() => { void onDownload(); }} type="button">Download</button></div>;
       default:
         return (
           <>
             {/* mammoth already escaped the text and sanitizeDocumentHtml reduced
                 the result to the upstream tag/attribute table, so this is the
                 first innerHTML in the viewer and the only place it is allowed. */}
-            <div className="sand-file-viewer__body sand-docx-viewer__body" dangerouslySetInnerHTML={{ __html: state.html }} />
+            <div className={`${FILE_VIEWER_CLASSES.body} sand-docx-viewer__body`} dangerouslySetInnerHTML={{ __html: state.html }} />
             {state.messages.length > 0 ? (
               <p className="sand-file-viewer__body sand-docx-viewer__notes">
                 {state.messages.length} formatting {state.messages.length === 1 ? "hint" : "hints"} from Word were not applied.
@@ -108,18 +110,18 @@ function OpenDocxAttachmentViewer({ source, name, onClose, readBytes, onDownload
     <div
       aria-labelledby={titleId}
       aria-modal="true"
-      className="sand-file-viewer"
+      className={FILE_VIEWER_CLASSES.root}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       role="dialog"
     >
-      <section className="sand-file-viewer__panel">
-        <header className="sand-file-viewer__header">
+      <section className={FILE_VIEWER_CLASSES.panel}>
+        <header className={FILE_VIEWER_CLASSES.header}>
           <div>
             <h2 id={titleId}>{name}</h2>
           </div>
-          <div className="sand-file-viewer__actions">
+          <div className={FILE_VIEWER_CLASSES.actions}>
             <button aria-label="Download file" onClick={() => { void onDownload(); }} title="Download file" type="button">⇩</button>
-            <button aria-label="Close preview" onClick={onClose} title="Close preview" type="button">×</button>
+            <LibraryStageCloseButton aria-label="Close preview" onClick={onClose} />
           </div>
         </header>
         {body}

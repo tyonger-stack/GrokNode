@@ -7,6 +7,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { AttachmentBytesResult } from "../../../contracts/desktop-bridge";
+import { LibraryStageCloseButton } from "../../library/stage-icon-button";
 
 export const PDFJS_ASSET = "/upstream/assets/pdf-WLgSwHwh.js";
 export const PDF_WORKER_FILENAME = "pdf.worker.min-qwK7q_zL.mjs";
@@ -16,14 +17,28 @@ export const PDFJS_BUILD = "f56dc8601";
 export const PDF_PREVIEW_BYTE_CAP = 25 * 1024 * 1024;
 export const PDF_PAGE_ROOT_MARGIN = "400px 0px";
 
+// @evidence index-UbX-y3il.js#lkn; declarations ship in index-lCyB53CO.css.
+export const FILE_VIEWER_CLASSES = {
+  root: "sand-file-viewer sand-ixxii4 sand-10a8y8t sand-fo81ep sand-78zum5 sand-6s0dn4 sand-l56j7k sand-1gkjlqi sand-9f619 sand-1846v19 sand-lvsv26 sand-482pwi",
+  panel: "sand-file-viewer__panel sand-1n2onr6 sand-78zum5 sand-dt5ytf sand-h8yej3 sand-5yr21d sand-1wmrhtn sand-mz0i5r sand-2lwn1j sand-hojbe8 sand-b3r6kr sand-vvtkfd sand-qjedn3 sand-1y0btm7 sand-fnq37j sand-anlk42 sand-tyxrsu",
+  header: "sand-file-viewer__header sand-78zum5 sand-6s0dn4 sand-1v2ro7d sand-2lah0s sand-9f619 sand-1y1aw1k sand-wib8y2 sand-nm25rq sand-j9b1aj sand-1hkp6id sand-1q0q8m5 sand-1kp61ed sand-s6r99b",
+  toolbar: "sand-file-viewer__toolbar sand-78zum5 sand-6s0dn4 sand-167g77z sand-8x9d4c sand-2lah0s",
+  actions: "sand-file-viewer__actions sand-78zum5 sand-6s0dn4 sand-167g77z sand-2lah0s",
+  body: "sand-file-viewer__body sand-1n2onr6 sand-1iyjqo2 sand-2lwn1j sand-78zum5 sand-dt5ytf sand-vvtkfd sand-w2csxc sand-1odjw0f",
+} as const;
+
 function documentBaseUrl(): string {
   if (typeof document !== "undefined") return document.baseURI;
   if (typeof location !== "undefined") return location.href;
   return "http://localhost/";
 }
 
-export function resolvePdfWorkerUrl(runtimeAssetUrl = PDFJS_ASSET, baseUrl = documentBaseUrl()): string {
-  const runtimeUrl = new URL(runtimeAssetUrl, baseUrl);
+export function resolveShippedViewerAsset(filename: string, baseUrl = documentBaseUrl()): string {
+  return new URL(`${new URL(baseUrl).protocol === "file:" ? "./assets/" : "/upstream/assets/"}${filename}`, baseUrl).href;
+}
+
+export function resolvePdfWorkerUrl(runtimeAssetUrl?: string, baseUrl = documentBaseUrl()): string {
+  const runtimeUrl = new URL(runtimeAssetUrl ?? resolveShippedViewerAsset("pdf-WLgSwHwh.js", baseUrl), baseUrl);
   return new URL(PDF_WORKER_FILENAME, runtimeUrl).href;
 }
 
@@ -76,18 +91,14 @@ export type PdfDocumentSnapshot =
   | { readonly status: "error" }
   | { readonly status: "ready"; readonly doc: PdfDocument; readonly baseSize: PdfViewport };
 
-let workerConfigured = false;
-
 export async function loadShippedPdfRuntime(): Promise<PdfRuntime> {
-  const module = await import(/* @vite-ignore */ PDFJS_ASSET) as PdfRuntimeModule;
+  const runtimeUrl = resolveShippedViewerAsset("pdf-WLgSwHwh.js");
+  const module = await import(/* @vite-ignore */ runtimeUrl) as PdfRuntimeModule;
   const runtime = module.default?.getDocument == null ? module : module.default;
   if (runtime.getDocument == null || runtime.GlobalWorkerOptions == null || runtime.TextLayer == null) {
     throw new Error("Shipped PDF runtime is unavailable.");
   }
-  if (!workerConfigured) {
-    runtime.GlobalWorkerOptions.workerSrc = resolvePdfWorkerUrl(PDFJS_ASSET, import.meta.url);
-    workerConfigured = true;
-  }
+  runtime.GlobalWorkerOptions.workerSrc = resolvePdfWorkerUrl(runtimeUrl);
   return runtime as PdfRuntime;
 }
 
@@ -294,10 +305,10 @@ function PdfPage({ doc, pageNumber, baseSize, displayScale, textLayerScale, root
 
   const width = pageSize.width * displayScale;
   const height = pageSize.height * displayScale;
-  return <div className="sand-pdf-page" ref={setPageElementRef} style={{ width, height }}>
-    {intersecting && imageUrl != null ? <img alt="" aria-hidden src={imageUrl} /> : null}
+  return <div className="sand-pdf-page sand-1n2onr6 sand-83z2og sand-a7y4k sand-1cum3z5 sand-b3r6kr sand-2lah0s" ref={setPageElementRef} style={{ width, height }}>
+    {intersecting && imageUrl != null ? <img alt="" aria-hidden className="sand-10l6tqk sand-10a8y8t sand-1lliihq" src={imageUrl} style={{ width, height }} /> : null}
     {intersecting ? <div className="sand-pdf-page__text" ref={textElementRef} /> : null}
-    <span aria-hidden className="sand-pdf-page__badge">{pageNumber}</span>
+    <span aria-hidden className="sand-pdf-page__badge sand-10l6tqk sand-1nrll8i sand-qo3gd sand-uuh30 sand-1nn3v0j sand-1120s5i sand-163pfp sand-y13l1i sand-149ho13 sand-8qq8ib sand-60d0xz sand-47corl sand-htitgo">{pageNumber}</span>
   </div>;
 }
 
@@ -325,8 +336,8 @@ function PdfDocumentPages({ documentState, zoom, onPage, viewportRef }: { docume
     viewport.addEventListener("scroll", onScroll, { passive: true });
     return () => viewport.removeEventListener("scroll", onScroll);
   }, [viewportElement]);
-  return <div className="sand-file-viewer__body" ref={setViewportRef}>
-    <div>{Array.from({ length: doc.numPages }, (_, index) => <PdfPage baseSize={baseSize} displayScale={displayScale} doc={doc} key={index} pageNumber={index + 1} pageRef={(element) => { pageRefs.current[index] = element; }} root={viewportElement} textLayerScale={displayScale} />)}</div>
+  return <div className={FILE_VIEWER_CLASSES.body} ref={setViewportRef}>
+    <div className="sand-78zum5 sand-dt5ytf sand-6s0dn4 sand-ou54vl sand-1cnzs8 sand-84yb8i sand-nm25rq sand-yfqnmn">{Array.from({ length: doc.numPages }, (_, index) => <PdfPage baseSize={baseSize} displayScale={displayScale} doc={doc} key={index} pageNumber={index + 1} pageRef={(element) => { pageRefs.current[index] = element; }} root={viewportElement} textLayerScale={displayScale} />)}</div>
   </div>;
 }
 
@@ -374,16 +385,16 @@ function OpenPdfAttachmentViewer({ source, name, onClose, readBytes, onDownload,
   }, [currentPage]);
   const pages = documentState.status === "ready" ? documentState.doc.numPages : 0;
   const content = bytes.status === "too-large"
-    ? <div className="sand-file-viewer__body" role="alert"><strong>PDF too large to preview</strong><span>This PDF is too large to preview here. Download it to open in your PDF reader.</span><button onClick={() => { void onDownload(); }} type="button">Download</button></div>
+    ? <div className={FILE_VIEWER_CLASSES.body} role="alert"><strong>PDF too large to preview</strong><span>This PDF is too large to preview here. Download it to open in your PDF reader.</span><button onClick={() => { void onDownload(); }} type="button">Download</button></div>
     : bytes.status === "missing" || documentState.status === "error"
-      ? <div className="sand-file-viewer__body" role="alert"><strong>{bytes.status === "missing" ? "File unavailable" : "Couldn't render this PDF"}</strong>{documentState.status === "error" ? <button onClick={() => { void onDownload(); }} type="button">Download</button> : null}</div>
+      ? <div className={FILE_VIEWER_CLASSES.body} role="alert"><strong>{bytes.status === "missing" ? "File unavailable" : "Couldn't render this PDF"}</strong>{documentState.status === "error" ? <button onClick={() => { void onDownload(); }} type="button">Download</button> : null}</div>
       : documentState.status !== "ready"
-        ? <div aria-live="polite" className="sand-file-viewer__body" role="status">Loading PDF…</div>
+        ? <div aria-live="polite" className={FILE_VIEWER_CLASSES.body} role="status">Loading PDF…</div>
         : <PdfDocumentPages documentState={documentState} onPage={setCurrentPage} viewportRef={setViewportRef} zoom={zoom} />;
   const titleId = useId();
-  return createPortal(<div aria-labelledby={titleId} aria-modal="true" className="sand-file-viewer" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} role="dialog">
-    <section className="sand-file-viewer__panel">
-      <header className="sand-file-viewer__header"><div><h2 id={titleId}>{name}</h2>{pages > 0 ? <span>{pages} {pages === 1 ? "page" : "pages"}</span> : null}</div><div className="sand-file-viewer__toolbar"><button aria-label="Zoom out" onClick={() => setZoom((value) => clamp(value - 0.25, 0.5, 4))} type="button">−</button><span aria-label={`Page ${currentPage} of ${pages}`}>{pages > 0 ? `${currentPage} / ${pages}` : ""}</span><button aria-label="Zoom in" onClick={() => setZoom((value) => clamp(value + 0.25, 0.5, 4))} type="button">+</button></div><div className="sand-file-viewer__actions"><button aria-label="Download file" onClick={() => { void onDownload(); }} type="button">⇩</button><button aria-label="Close preview" onClick={onClose} type="button">×</button></div></header>
+  return createPortal(<div aria-labelledby={titleId} aria-modal="true" className={FILE_VIEWER_CLASSES.root} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} role="dialog">
+    <section className={FILE_VIEWER_CLASSES.panel}>
+      <header className={FILE_VIEWER_CLASSES.header}><div><h2 id={titleId}>{name}</h2>{pages > 0 ? <span>{pages} {pages === 1 ? "page" : "pages"}</span> : null}</div><div className={FILE_VIEWER_CLASSES.toolbar}><button aria-label="Zoom out" onClick={() => setZoom((value) => clamp(value - 0.25, 0.5, 4))} type="button">−</button><span aria-label={`Page ${currentPage} of ${pages}`}>{pages > 0 ? `${currentPage} / ${pages}` : ""}</span><button aria-label="Zoom in" onClick={() => setZoom((value) => clamp(value + 0.25, 0.5, 4))} type="button">+</button></div><div className={FILE_VIEWER_CLASSES.actions}><button aria-label="Download file" onClick={() => { void onDownload(); }} type="button">⇩</button><LibraryStageCloseButton aria-label="Close preview" onClick={onClose} /></div></header>
       {content}
     </section>
   </div>, document.body);

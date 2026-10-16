@@ -2,8 +2,8 @@ import { buildBotTemplateRendererExtension } from "./bot-template-renderer-exten
 import { buildChannelStatusRendererExtension } from "./channel-status-renderer-extension.mjs";
 import { buildPluginsDockRendererExtension } from "./plugins-dock-renderer-extension.mjs";
 import { buildWebhookCredentialRendererExtension } from "./webhook-credential-renderer-extension.mjs";
-import { buildLibraryRendererExtension } from "./library-renderer-extension.mjs";
 import { buildInfoPaneTabsRendererExtension, patchNativeInfoPaneTabs } from "./info-pane-tabs-renderer-extension.mjs";
+import { buildLibraryHostBundle, patchOriginalLibraryHost } from "./library-host-renderer-patch.mjs";
 import { patchOriginalAutoReviewApproval } from "./auto-review-renderer-patch.mjs";
 import { patchOriginalRoutineSurfaces } from "./routine-surfaces-renderer-patch.mjs";
 import { createHash } from "node:crypto";
@@ -257,8 +257,8 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const channelStatusExtension = await buildChannelStatusRendererExtension();
   const pluginsDockExtension = await buildPluginsDockRendererExtension();
   const webhookCredentialExtension = await buildWebhookCredentialRendererExtension();
-  const libraryExtension = await buildLibraryRendererExtension();
   const infoPaneTabsExtension = await buildInfoPaneTabsRendererExtension();
+  const libraryHostBundle = await buildLibraryHostBundle();
   const approvalName = "view-QqBtBG74.js";
   const approvalTarget = path.join(assetsRoot, approvalName);
   const approvalCandidate = { name: approvalName, target: approvalTarget, source: await readFile(approvalTarget, "utf8") };
@@ -274,7 +274,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     transformsByFile.set(candidate.name, entry);
   };
   for (const [role, candidate, transform] of [
-    ["registry", registryCandidates[0], (source) => patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source)))],
+    ["registry", registryCandidates[0], (source) => patchOriginalLibraryHost(patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source))), libraryHostBundle)],
     ["panel", panelCandidates[0], patchOriginalSettingsPanel],
     ["approval", approvalCandidate, patchOriginalAutoReviewApproval],
   ]) {
@@ -283,7 +283,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const changes = [];
   for (const { candidate, roles, transforms } of transformsByFile.values()) {
     const isRegistry = roles.includes("registry");
-    const registryExtensions = isRegistry ? "\n;" + [botTemplateExtension, channelStatusExtension, pluginsDockExtension, webhookCredentialExtension, libraryExtension, infoPaneTabsExtension].join("\n;") : "";
+    const registryExtensions = isRegistry ? "\n;" + [botTemplateExtension, channelStatusExtension, pluginsDockExtension, webhookCredentialExtension, infoPaneTabsExtension].join("\n;") : "";
     let patched = candidate.source;
     let aboutVersionDialectUsed = null;
     for (const transform of transforms) patched = transform(patched);

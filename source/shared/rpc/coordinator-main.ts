@@ -22,7 +22,21 @@ export const COORDINATOR_MAIN_METHOD_TABLE = {
   setDevGatewayOffline: { args: "object" },
   setGatewayPaused: { args: "object" },
   runAgentWebhookAutomation: { args: "object" },
-  getAutomationWebhookCredential: { args: "object" }
+  getAutomationWebhookCredential: { args: "object" },
+  libraryMainCredential: { args: "none" },
+  resolveLibraryPages: { args: "object" },
+  listLibraryPages: { args: "object" },
+  listLibraryDocs: { args: "object" },
+  getDocument: { args: "object" },
+  getDocumentEditRight: { args: "object" },
+  saveDocument: { args: "object" },
+  setDocumentVisibility: { args: "object" },
+  getDocumentAssets: { args: "object" },
+  getCanvasShare: { args: "object" },
+  setCanvasVisibility: { args: "object" },
+  getCanvasPayload: { args: "object" },
+  getLibraryTranscript: { args: "object" },
+  getLibraryOrigin: { args: "none" }
 } as const;
 
 export type CoordinatorMainMethod = keyof typeof COORDINATOR_MAIN_METHOD_TABLE;

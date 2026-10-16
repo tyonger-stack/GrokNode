@@ -13,6 +13,7 @@ import { getLocalInferenceCliStatus } from "../shared/node/inference-router-loca
 import { isSandBoxRuntime } from "../shared/box-runtime.js";
 import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_MAC_FORWARDER_PORT, effortSupportedByModel, isOpenRouterProxyMode, listOpenRouterProxyModels, normalizeOpenRouterReasoningEffort, openRouterEffortOptionsFor, readOpenRouterModelReasoning, probeOpenRouterChannel, resolveOpenRouterBaseUrl } from "../shared/node/openrouter-proxy.js";
 import { mergeOpenRouterChannelStatus, normalizeOpenRouterChannelStatus } from "../shared/openrouter-channel-status.js";
+import { decodeLibraryJson } from "../shared/library/json-bytes.js";
 import { getLocalDockerStatus, probeLocalDockerRelay, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
 import { createComputerPreviewController } from "./computer-sleep.js";
 import type { ComputerPreviewController } from "./computer-sleep.js";
@@ -73,6 +74,8 @@ export interface MainEdgeDeps {
   readonly ensureTranscriptionManager: () => Promise<UnknownRecord>;
     /** Resolves a webhook routine's wake URL and stored key through the coordinator; null when the routine is not webhook-triggered. */
     readonly getAutomationWebhookCredential: (agentId: string, automationId: string) => Promise<unknown>;
+    /** Injects the host Library credential. Renderer arguments are not authorization. */
+    readonly callLibrary?: (method: string, args: UnknownRecord) => Promise<unknown>;
   readonly platform: NodeJS.Platform;
   readonly delay?: (milliseconds: number) => Promise<void>;
   readonly detectTimeZone?: () => string | null | undefined;
@@ -101,6 +104,14 @@ function previewAgentId(value: unknown): string {
   const agentId = req(value).agentId;
   invariant(typeof agentId === "string" && agentId.trim().length > 0, "A Bot ID is required for preview sleep state.");
   return agentId;
+}
+async function libraryEdge(deps: MainEdgeDeps, method: string, raw: unknown): Promise<unknown> {
+  if (deps.callLibrary === undefined) throw new Error("Library service is not connected.");
+  const args = req(raw);
+  delete args.credential;
+  delete args.principal;
+  delete args.providerOrigin;
+  return decodeLibraryJson(await deps.callLibrary(method, args));
 }
 function detectTimeZone(): string | null { const value = Intl.DateTimeFormat().resolvedOptions().timeZone; return value.length > 0 ? value : null; }
 const sleep = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -381,6 +392,19 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       invariant(typeof automationId === "string" && automationId.length > 0, "A routine folder id is required.");
       return deps.getAutomationWebhookCredential(agentId, automationId);
     },
+    resolveLibraryPages: (raw) => libraryEdge(deps, "resolveLibraryPages", raw),
+    listLibraryPages: (raw) => libraryEdge(deps, "listLibraryPages", raw),
+    listLibraryDocs: (raw) => libraryEdge(deps, "listLibraryDocs", raw),
+    getDocument: (raw) => libraryEdge(deps, "getDocument", raw),
+    getDocumentEditRight: (raw) => libraryEdge(deps, "getDocumentEditRight", raw),
+    saveDocument: (raw) => libraryEdge(deps, "saveDocument", raw),
+    setDocumentVisibility: (raw) => libraryEdge(deps, "setDocumentVisibility", raw),
+    getDocumentAssets: (raw) => libraryEdge(deps, "getDocumentAssets", raw),
+    getCanvasShare: (raw) => libraryEdge(deps, "getCanvasShare", raw),
+    setCanvasVisibility: (raw) => libraryEdge(deps, "setCanvasVisibility", raw),
+    getCanvasPayload: (raw) => libraryEdge(deps, "getCanvasPayload", raw),
+    getLibraryTranscript: (raw) => libraryEdge(deps, "getLibraryTranscript", raw),
+    getLibraryOrigin: (raw) => libraryEdge(deps, "getLibraryOrigin", raw),
 
     getEgressTunnelEnabled: () => invoke(deps.boxToggleStore, "getEgressTunnelEnabled"),
     setEgressTunnelEnabled: (raw) => { const enabled = req(raw).enabled === true; invoke(deps.boxToggleStore, "setEgressTunnelEnabled", enabled); invoke(egressController(deps), "setEnabled", enabled); deps.emitEgressTunnelChanged(enabled); return enabled; },
@@ -426,6 +450,15 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     resolveAttachmentMedia: (raw) => invoke(deps.attachments, "resolveMedia", req(raw).source), readAttachmentText: (raw) => invoke(deps.attachments, "readText", req(raw).path), readAttachmentBytes: (raw) => invoke(deps.attachments, "readBytes", req(raw).path, req(raw).maxBytes), stageAttachmentBytes: (raw) => invoke(deps.attachments, "stageBytes", req(raw).filename, req(raw).bytes), downloadAttachment: (raw) => invoke(deps.attachments, "download", req(raw).path, req(raw).suggestedName), commitStagedAttachments: (raw) => invoke(deps.attachments, "commitStaged", req(raw).paths, req(raw).filenames), discardStagedAttachment: (raw) => invoke(deps.attachments, "discardStaged", req(raw).path), getLinkMetadata: (raw) => invoke(deps.attachments, "getLinkMetadata", req(raw).url),
     transcribeAudio: async (raw) => { const request = req(raw); const audio = request.audio instanceof Uint8Array ? request.audio : request.audio instanceof ArrayBuffer ? new Uint8Array(request.audio) : null; invariant(audio != null && audio.length > 0, "transcribeAudio requires non-empty audio bytes."); const mimeType = typeof request.mimeType === "string" && request.mimeType.length > 0 ? request.mimeType : "audio/webm"; const language = typeof request.language === "string" && request.language.length > 0 ? request.language : undefined; const manager = await deps.ensureTranscriptionManager(); return await Promise.resolve(invoke(manager, "transcribe", { audio, mimeType, ...(language === undefined ? {} : { language }) })); },
     getExperimentsSnapshot: async () => invoke(req(await Promise.resolve(invoke(deps.experiments, "ensureService"))), "getSnapshot"),
+    checkFeatureGate: async (raw) => {
+      const name = req(raw).name;
+      invariant(typeof name === "string" && name.length > 0, "checkFeatureGate requires a name.");
+      const experiments = deps.experiments;
+      if (typeof experiments.checkFeatureGate === "function") return await experiments.checkFeatureGate(name);
+      const service = req(await Promise.resolve(invoke(experiments, "ensureService")));
+      if (typeof service.checkFeatureGate === "function") return await service.checkFeatureGate(name);
+      return false;
+    },
     applyFeatureFlagOverride: async (raw) => { const service = req(await Promise.resolve(invoke(deps.experiments, "ensureService"))); invoke(service, "applyFeatureFlagOverrideCommand", req(raw).command); },
     refreshFeatureFlags: async () => { const service = req(await Promise.resolve(invoke(deps.experiments, "ensureService"))); await Promise.resolve(invoke(service, "refreshNow")); },
     startRpcTraceWindow: async () => { const service = req(await Promise.resolve(invoke(deps.experiments, "ensureService"))); const snapshot = req(invoke(service, "getSnapshot")); if (snapshot.featureFlags == null || invoke(deps.experiments, "isTelemetryDisabled") === true) return false; return invoke(deps.experiments, "startRpcTraceWindow"); },

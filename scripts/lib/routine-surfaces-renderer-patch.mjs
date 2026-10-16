@@ -16,6 +16,7 @@ const EMPTY_SECTION_AFTER = '1:{className:"sand-78zum5 sand-dt5ytf sand-17d4w8g"
 const EMPTY_ROOT_BEFORE = 'v={className:"sand-78zum5 sand-dt5ytf sand-6s0dn4 sand-l56j7k sand-1v2ro7d sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-yamay9 sand-1l90r2v"},e[10]=v';
 const EMPTY_ROOT_AFTER = 'v={className:"sand-78zum5 sand-dt5ytf sand-6s0dn4 sand-l56j7k"},e[10]=v';
 const EMPTY_MOUNT_BEFORE = 'N=p.jsxs("div",{className:v.className,children:[b,x]})';
+// Native single-row section: 18px heading + 6px gap + 2 × 18px text + 2 × 6px row padding.
 const EMPTY_MOUNT_AFTER = 'N=p.jsxs("div",{className:v.className,style:{minHeight:72,flex:"none",gap:3},children:[b,x]})';
 
 const COMPONENT_SOURCE = String.raw`

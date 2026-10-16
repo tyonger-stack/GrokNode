@@ -54,6 +54,10 @@ export const ELECTRON_PRODUCTION_AREA_EVIDENCE = Object.freeze({
     recoveredProviders: ["source/electron-main/media/media-protocol.ts"],
     injectedPorts: ["electron.protocol", "coordinator attachment reader"],
   },
+  canvasProtocol: {
+    recoveredProviders: ["source/electron-main/library-canvas-protocol.ts"],
+    injectedPorts: ["electron.protocol", "coordinator canvas legs"],
+  },
   accountOAuth: {
     recoveredProviders: ["source/electron-main/adapters/account-oauth.ts"],
     injectedPorts: ["local logged-out account state"],
@@ -116,6 +120,10 @@ export interface ElectronProductionAdapterBindings {
     killLocalExecDaemon?(): Promise<void>;
   };
   readonly mediaProtocol: {
+    registerScheme(): void;
+    register(context: ProductionServiceContext): ProductionDisposable;
+  };
+  readonly canvasProtocol: {
     registerScheme(): void;
     register(context: ProductionServiceContext): ProductionDisposable;
   };
@@ -261,7 +269,7 @@ export function createElectronProductionServiceFactories(
 ): ElectronProductionServiceFactories {
   const requirements: Readonly<Record<keyof ElectronProductionAdapterBindings, readonly string[]>> = {
     secureStorage: ["initialize", "getMachineId"], settings: ["create"], attachmentGateway: ["create"], avatarImages: ["create"], localAccount: ["create", "createTranscriptionManager"], mainRpc: ["create"],
-    updaterInstaller: ["create"], mediaProtocol: ["registerScheme", "register"], accountOAuth: ["create"],
+    updaterInstaller: ["create"], mediaProtocol: ["registerScheme", "register"], canvasProtocol: ["registerScheme", "register"], accountOAuth: ["create"],
     experiments: ["create"], mcpOAuth: ["create"], telemetry: ["create"], notifications: ["create"], coordinator: ["create"],
     ipc: ["register"], windowLifecycle: ["onWindowCreated"], imageContextMenu: ["register"],
   };
@@ -284,6 +292,8 @@ export function createElectronProductionServiceFactories(
     createUpdate: (context) => adapters.updaterInstaller.create(context),
     registerMediaScheme: () => adapters.mediaProtocol.registerScheme(),
     registerMedia: (context) => adapters.mediaProtocol.register(context),
+    registerLibraryCanvasScheme: () => adapters.canvasProtocol.registerScheme(),
+    registerLibraryCanvas: (context) => adapters.canvasProtocol.register(context),
     createAccount: (context) => adapters.accountOAuth.create(context),
     createExperiments: (context) => adapters.experiments.create(context),
     createMcp: (context) => adapters.mcpOAuth.create(context),

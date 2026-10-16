@@ -4,6 +4,7 @@ import {
   parseCoordinatorTranscriptWindowRequest,
 } from "../shared/rpc/coordinator.js";
 import type { BotTemplateManualContents } from "../shared/bot-template.js";
+import { encodeLibraryJson } from "../shared/library/json-bytes.js";
 import { bindAgentBoxPrewarmPort } from "./attachment-runtime-ports.js";
 import { applyLocalBotTemplateContents } from "./extensions/transcript/local-bot-template-contents.js";
 import type { SandAgentDb } from "./extensions/session/agent-db.js";
@@ -94,6 +95,11 @@ export function createHostGatewayApi(
   const telemetry = deps.extensions.api("telemetry");
   const sharing = deps.extensions.api("cross-user-sharing");
   const boxPrewarm = bindAgentBoxPrewarmPort(deps.extensions.api("forever-box"));
+    const library = deps.extensions.api("library");
+    const libraryCall = (name: string) => {
+      const target = method(library, name);
+      return async (args: any) => encodeLibraryJson(await target(args, AbortSignal.timeout(120000)));
+    };
   const now = deps.now ?? Date.now;
   const createAgentMintsByNonce = new Map<string, Promise<any>>();
   const mainSettings = z.object({ mainAgentId: z.string().nullable().optional(), defaultMainAgentId: z.string().nullable().optional(), pinnedAgentIds: z.array(z.string()).optional() });
@@ -697,6 +703,20 @@ export function createHostGatewayApi(
     readAttachmentImage: (args: any) => method(attachments, "readImage")(args),
     readAttachmentText: (args: any) => method(attachments, "readText")(args),
     readAttachmentChunk: (args: any) => method(attachments, "readChunk")(args),
+    libraryMainCredential: () => method(library, "mainCredential")(),
+    getLibraryOrigin: () => method(library, "getLibraryOrigin")(),
+    resolveLibraryPages: (args: any) => libraryCall("resolveLibraryPages")(args),
+    listLibraryPages: (args: any) => libraryCall("listLibraryPages")(args),
+    listLibraryDocs: (args: any) => libraryCall("listLibraryDocs")(args),
+    getDocument: (args: any) => libraryCall("getDocument")(args),
+    getDocumentEditRight: (args: any) => libraryCall("getDocumentEditRight")(args),
+    saveDocument: (args: any) => libraryCall("saveDocument")(args),
+    setDocumentVisibility: (args: any) => libraryCall("setDocumentVisibility")(args),
+    getDocumentAssets: (args: any) => libraryCall("getDocumentAssets")(args),
+    getCanvasShare: (args: any) => libraryCall("getCanvasShare")(args),
+    getLibraryTranscript: (args: any) => libraryCall("getLibraryTranscript")(args),
+    setCanvasVisibility: (args: any) => libraryCall("setCanvasVisibility")(args),
+    getCanvasPayload: (args: any) => libraryCall("getCanvasPayload")(args),
     getHostSettings: () => method(settings, "getHostSettings")(),
     setHostSettings: (args: any) => {
       const localMcpChanged = args.localMcpServers !== undefined && JSON.stringify(method(settings, "getLocalMcpServers")()) !== JSON.stringify(args.localMcpServers);

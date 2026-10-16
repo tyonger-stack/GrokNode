@@ -411,6 +411,8 @@ export interface ElectronProductionServiceFactories {
   createUpdate(context: ProductionServiceContext): Promise<ProductionUpdateService> | ProductionUpdateService;
   registerMediaScheme(): void;
   registerMedia(context: ProductionServiceContext): ProductionDisposable;
+  registerLibraryCanvasScheme(): void;
+  registerLibraryCanvas(context: ProductionServiceContext): ProductionDisposable;
   createAccount(context: ProductionServiceContext): Promise<ProductionAccountService> | ProductionAccountService;
   createExperiments(context: ProductionServiceContext): Promise<ProductionExperimentsService> | ProductionExperimentsService;
   createMcp(context: ProductionServiceContext): Promise<ProductionMcpService> | ProductionMcpService;
@@ -455,7 +457,7 @@ export interface ElectronMainProductionComposition {
 }
 
 function requireFactoryBindings(factories: ElectronProductionServiceFactories): void {
-  const required = ["initializeSecureStorage", "getMachineId", "createSettings", "createAttachments", "createAvatarImages", "createLocalAccount", "createTranscriptionManager", "createMainEdge", "createUpdate", "registerMediaScheme", "registerMedia", "createAccount", "createExperiments", "createMcp", "createTelemetry", "createNotifications", "createCoordinator", "registerIpc"] as const;
+  const required = ["initializeSecureStorage", "getMachineId", "createSettings", "createAttachments", "createAvatarImages", "createLocalAccount", "createTranscriptionManager", "createMainEdge", "createUpdate", "registerMediaScheme", "registerMedia", "registerLibraryCanvasScheme", "registerLibraryCanvas", "createAccount", "createExperiments", "createMcp", "createTelemetry", "createNotifications", "createCoordinator", "registerIpc"] as const;
   const missing = required.filter((name) => typeof factories[name] !== "function");
   if (missing.length > 0) throw new Error(`Incomplete Electron production service graph: ${missing.join(", ")}.`);
 }
@@ -467,6 +469,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
   const resources = resolveElectronProductionResources({ moduleDir: bindings.moduleDir, app: bindings.native.app, env, metadata, ...(bindings.attachProdBoxPreferencePath == null ? {} : { attachProdBoxPreferencePath: bindings.attachProdBoxPreferencePath }) });
   const startupTracker = createDesktopStartupTracker({ monotonicNow: bindings.startup.monotonicNow ?? (() => performance.now()), translated: platform === "darwin" ? bindings.native.app.runningUnderARM64Translation === true ? "true" : "false" : "unknown", report: bindings.startup.report, scheduleStuck: bindings.startup.scheduleStuck, captureFailure: bindings.startup.captureFailure });
   bindings.services.registerMediaScheme();
+  bindings.services.registerLibraryCanvasScheme();
   const windowStatePersistence = createWindowStatePersistence({ app: bindings.native.app, screen: bindings.native.screen, env, captureWarning: (message) => bindings.reportFailure("window-state", "persistence", new Error(message)) });
   const coordinatorLegs = createCoordinatorMainLegs({ onProblem: (problem) => bindings.reportFailure("coordinator", "main-legs", new Error(problem)), reportFailure: (leg, error) => bindings.reportFailure("coordinator", leg, error) });
   const connectorEgress = createEgressConnectionObserver<BoxConnectionInfo>();
@@ -750,6 +753,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
       mainEdge = bindings.services.createMainEdge(context); if (typeof mainEdge.emit !== "function") throw new Error("Electron production main-edge binding did not provide emit()."); if (typeof mainEdge.dispose === "function") track(mainEdge as MainEdge & ProductionDisposable);
       update = track(requireDisposable(await bindings.services.createUpdate(context), "update"));
       track(requireDisposable(bindings.services.registerMedia(context), "media"));
+      track(requireDisposable(bindings.services.registerLibraryCanvas(context), "library-canvas"));
       account = track(requireDisposable(await bindings.services.createAccount(context), "account"));
       accountLifecycle.deliverStatus(await account.getStatus());
       accountStatusUnsubscribe = account.subscribe(() => {

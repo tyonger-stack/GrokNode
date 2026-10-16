@@ -130,6 +130,11 @@ export function prepareReconstructedElectronMainArtifactFallback(source, { dev =
   return applyReconstructedUpdaterGuard(prepared);
 }
 
+export async function copySourceAppForStaging(source, destination) {
+  // Worktrees can link dist to the pinned baseline; staging must own its bytes.
+  await cp(source, destination, { recursive: true, dereference: true, preserveTimestamps: true });
+}
+
 export async function buildAsar({
   pack = true,
   buildRoot = buildDir,
@@ -143,7 +148,7 @@ export async function buildAsar({
 
   await rm(buildRoot, { recursive: true, force: true });
   await mkdir(buildRoot, { recursive: true });
-  await cp(sourceAppDir, stageRoot, { recursive: true, dereference: false, preserveTimestamps: true });
+  await copySourceAppForStaging(sourceAppDir, stageRoot);
 
   if (process.env.GROK_BOT_BUILD_DEV_APP === "1") {
     const stagedPackagePath = path.join(stageRoot, "package.json");

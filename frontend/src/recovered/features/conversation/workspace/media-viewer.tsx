@@ -7,6 +7,7 @@ import { PdfAttachmentViewer, type PdfBytesResolver } from "./pdf-viewer";
 import { TextAttachmentViewer } from "./text-viewer";
 import { DocxAttachmentViewer } from "./docx-viewer";
 import type { TranscriptAdjacency } from "./transcript-adjacency";
+import "../../library/media-viewer.css";
 
 // @evidence src/app/dist/renderer/assets/view-DPSBrvyV.js#byteOffset=0 (user-attachment media/file leaf)
 // @evidence src/app/dist/renderer/assets/view-DPSBrvyV.js#SHA256=5bf28224da62a9042885e9da60e3fce82ed544846f470241ed6bcf4e12e64040
@@ -82,7 +83,7 @@ function MediaThumbnail({ source, resolveMedia }: { source: string; resolveMedia
   return <div aria-hidden className="sand-media-viewer__thumb-fallback" data-state={state} />;
 }
 
-function MediaViewer({ attachments, startIndex, resolveMedia, onClose, restoreFocus }: { attachments: readonly MediaViewerAttachment[]; startIndex: number; resolveMedia: MediaResolver; onClose: () => void; restoreFocus: () => void }) {
+export function MediaViewer({ attachments, startIndex, resolveMedia, onClose, restoreFocus, onDownload }: { attachments: readonly MediaViewerAttachment[]; startIndex: number; resolveMedia: MediaResolver; onClose: () => void; restoreFocus: () => void; onDownload?: (attachment: MediaViewerAttachment) => void | Promise<unknown> }) {
   const [index, setIndex] = useState(() => clamp(startIndex, 0, Math.max(0, attachments.length - 1)));
   const [media, setMedia] = useState<AttachmentMedia | null>(null);
   const [loading, setLoading] = useState(true);
@@ -187,7 +188,10 @@ function MediaViewer({ attachments, startIndex, resolveMedia, onClose, restoreFo
 
   return createPortal(
     <div aria-label={title} aria-modal="true" className="sand-media-viewer" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} onPointerCancel={onPointerUp} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} role="dialog">
-      <div className="sand-media-viewer__top-bar"><button aria-label="Close media preview" className="sand-media-viewer__close" onClick={onClose} type="button">×</button></div>
+      <div className="sand-media-viewer__top-bar">
+        {current == null || onDownload == null ? null : <button aria-label="Download file" className="sand-media-viewer__download" onClick={() => { void onDownload(current); }} style={{ pointerEvents: "auto" }} type="button">Download</button>}
+        <button aria-label="Close media preview" className="sand-media-viewer__close" onClick={onClose} type="button">×</button>
+      </div>
       <div className="sand-media-viewer__column">
         <div className="sand-media-viewer__media-cell" onDoubleClick={fit} onWheel={onWheel}>
           {total > 1 ? <button aria-label="Previous media" className="sand-media-viewer__nav" onClick={() => setIndex((value) => (value - 1 + total) % total)} style={{ left: "18px" }} type="button">‹</button> : null}

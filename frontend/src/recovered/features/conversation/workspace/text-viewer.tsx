@@ -33,6 +33,8 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AttachmentBytesResult } from "../../../contracts/desktop-bridge";
+import { FILE_VIEWER_CLASSES } from "./pdf-viewer";
+import { LibraryStageCloseButton } from "../../library/stage-icon-button";
 
 export const TEXT_PREVIEW_BYTE_CAP = 4 * 1024 * 1024;
 const TRUNCATE_AT_BYTES = 1_000_000;
@@ -197,26 +199,25 @@ function OpenTextAttachmentViewer({ source, name, onClose, readBytes, onDownload
     }
   })();
 
-
   return createPortal(
     <div
       aria-labelledby={titleId}
       aria-modal="true"
-      className="sand-file-viewer"
+      className={FILE_VIEWER_CLASSES.root}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       role="dialog"
     >
-      <section className="sand-file-viewer__panel">
-        <header className="sand-file-viewer__header">
+      <section className={FILE_VIEWER_CLASSES.panel}>
+        <header className={FILE_VIEWER_CLASSES.header}>
           <div>
             <h2 id={titleId}>{name}</h2>
           </div>
-          <div className="sand-file-viewer__toolbar">
+          <div className={FILE_VIEWER_CLASSES.toolbar}>
             <button aria-label="Toggle line wrap" onClick={() => setWrap((value) => !value)} title="Toggle line wrap" type="button">↵</button>
           </div>
-          <div className="sand-file-viewer__actions">
+          <div className={FILE_VIEWER_CLASSES.actions}>
             <button aria-label="Download file" onClick={() => { void onDownload(); }} title="Download file" type="button">⇩</button>
-            <button aria-label="Close preview" onClick={onClose} title="Close preview" type="button">×</button>
+            <LibraryStageCloseButton aria-label="Close preview" onClick={onClose} />
           </div>
         </header>
         <div ref={attachWrapRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>

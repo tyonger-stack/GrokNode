@@ -1,6 +1,8 @@
 import { createPortal } from "react-dom";
 import { useEffect, useId, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { AttachmentBytesResult } from "../../../contracts/desktop-bridge";
+import { FILE_VIEWER_CLASSES, resolveShippedViewerAsset } from "./pdf-viewer";
+import { LibraryStageCloseButton } from "../../library/stage-icon-button";
 import {
   createSpreadsheetPreviewController,
   parseSpreadsheetBytes,
@@ -25,10 +27,7 @@ export interface SpreadsheetRuntimeModule {
 }
 
 export async function loadShippedSpreadsheetRuntime(): Promise<SpreadsheetRuntime> {
-  const base = import.meta.env?.DEV === true && typeof window !== "undefined"
-    ? new URL("/upstream/assets/", window.location.href)
-    : new URL("./", import.meta.url);
-  const module = await import(/* @vite-ignore */ new URL(XLSX_RUNTIME_ASSET, base).href) as SpreadsheetRuntimeModule;
+  const module = await import(/* @vite-ignore */ resolveShippedViewerAsset(XLSX_RUNTIME_ASSET)) as SpreadsheetRuntimeModule;
   if (typeof module.read !== "function" || typeof module.utils?.sheet_to_json !== "function") throw new Error("The shipped spreadsheet parser is unavailable.");
   return module;
 }
@@ -97,7 +96,7 @@ function SpreadsheetTable({ sheet }: { sheet: SpreadsheetSheet }) {
   return <>
     <div className="sand-1iyjqo2 sand-2lwn1j">
       <div className="sand-c7ga6q sand-13qp9f6">
-        <table className="sand-1mwwwfo sand-1ct8sxb sand-ss6m8b sand-19aaqeu sand-1hx0egp">
+        <table className="sand-1mwwwfo sand-1ct8sxb sand-ss6m8b sand-tyxrsu sand-1hx0egp">
           <thead><tr>
             <th aria-hidden="true" />
             {Array.from({ length: columnCount }, (_, column) => <th data-cell="" data-col={column} data-row={-1} key={`header-${column}`} onClick={() => selectCell(-1, column)} title={header[column]?.length > 0 ? header[column] : undefined}>{header[column] ?? ""}</th>)}
@@ -130,12 +129,12 @@ function SpreadsheetBody({ snapshot, onDownload, source, downloadName, selectedS
   readonly selectedSheet: number;
   readonly setSelectedSheet: (index: number) => void;
 }) {
-  if (snapshot.status === "loading" || snapshot.status === "idle") return <div aria-live="polite" className="sand-file-viewer__body" role="status">Loading spreadsheet…</div>;
-  if (snapshot.status === "too-large") return <div className="sand-file-viewer__body"><FileViewerState action={<a download={downloadName} href={source} onClick={() => { void onDownload(); }}>Download</a>} detail="This spreadsheet is too large to preview here. Download it to open it in full." title="Spreadsheet too large to preview" /></div>;
-  if (snapshot.status === "missing") return <div className="sand-file-viewer__body"><FileViewerState title="File unavailable" /></div>;
-  if (snapshot.status === "error") return <div className="sand-file-viewer__body"><FileViewerState title="Couldn't read this spreadsheet" /></div>;
+  if (snapshot.status === "loading" || snapshot.status === "idle") return <div aria-live="polite" className={FILE_VIEWER_CLASSES.body} role="status">Loading spreadsheet…</div>;
+  if (snapshot.status === "too-large") return <div className={FILE_VIEWER_CLASSES.body}><FileViewerState action={<a download={downloadName} href={source} onClick={() => { void onDownload(); }}>Download</a>} detail="This spreadsheet is too large to preview here. Download it to open it in full." title="Spreadsheet too large to preview" /></div>;
+  if (snapshot.status === "missing") return <div className={FILE_VIEWER_CLASSES.body}><FileViewerState title="File unavailable" /></div>;
+  if (snapshot.status === "error") return <div className={FILE_VIEWER_CLASSES.body}><FileViewerState title="Couldn't read this spreadsheet" /></div>;
   const sheet = snapshot.sheets[selectedSheet] ?? null;
-  return <div className="sand-file-viewer__body">
+  return <div className={FILE_VIEWER_CLASSES.body}>
     {sheet == null ? <FileViewerState title="File unavailable" /> : <SpreadsheetTable sheet={sheet} />}
   </div>;
 }
@@ -164,12 +163,12 @@ export function SpreadsheetViewer({ source, name, isOpen, onClose, onDownload, r
   }, [isOpen, onClose]);
   if (!isOpen) return null;
   const rowCount = sheets[selectedSheet] == null ? null : Math.max(0, sheets[selectedSheet].totalRows - 1);
-  return createPortal(<div aria-labelledby={titleId} aria-modal="true" className="sand-file-viewer" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} role="dialog">
-    <section className="sand-file-viewer__panel">
-      <header className="sand-file-viewer__header">
+  return createPortal(<div aria-labelledby={titleId} aria-modal="true" className={FILE_VIEWER_CLASSES.root} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} role="dialog">
+    <section className={FILE_VIEWER_CLASSES.panel}>
+      <header className={FILE_VIEWER_CLASSES.header}>
         <div><h2 id={titleId}>{name}</h2>{rowCount == null ? null : <span>{rowCount.toLocaleString()} {rowCount === 1 ? "row" : "rows"}</span>}</div>
-        {sheets.length > 1 ? <div className="sand-file-viewer__toolbar">{sheets.map((sheet, index) => <button aria-pressed={index === selectedSheet} key={`${sheet.name}-${index}`} onClick={() => setSelectedSheet(index)} type="button">{sheet.name}</button>)}</div> : null}
-        <div className="sand-file-viewer__actions"><a aria-label="Download file" download={name} href={source} onClick={() => { void onDownload(); }}>⇩</a><button aria-label="Close preview" onClick={onClose} type="button">×</button></div>
+        {sheets.length > 1 ? <div className={FILE_VIEWER_CLASSES.toolbar}>{sheets.map((sheet, index) => <button aria-pressed={index === selectedSheet} key={`${sheet.name}-${index}`} onClick={() => setSelectedSheet(index)} type="button">{sheet.name}</button>)}</div> : null}
+        <div className={FILE_VIEWER_CLASSES.actions}><a aria-label="Download file" download={name} href={source} onClick={() => { void onDownload(); }}>⇩</a><LibraryStageCloseButton aria-label="Close preview" onClick={onClose} /></div>
       </header>
       <SpreadsheetBody downloadName={name} onDownload={onDownload} selectedSheet={selectedSheet} setSelectedSheet={setSelectedSheet} snapshot={snapshot} source={source} />
     </section>

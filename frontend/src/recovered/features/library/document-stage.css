@@ -1,0 +1,48 @@
+/* Official 0.70.2 index-CjjO5fU0.js: xg header = [fa close] [oL title] [actions]. */
+.library-document-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  color: var(--cursor-text-primary);
+}
+.library-document-stage__header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.library-document-stage__title { min-width: 0; }
+.library-document-stage__title h2 {
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 16px;
+  font-weight: 500;
+}
+.library-document-stage__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--cursor-text-secondary);
+  font-size: var(--cursor-font-size-sm);
+}
+.library-document-body {
+  min-height: 0;
+}
+.library-document-body .ProseMirror {
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.library-document-body .ProseMirror p {
+  margin: 0 0 0.75em;
+}
+.library-document-body img[data-rte-image-blocked] {
+  cursor: pointer;
+}
+.library-document-stage [role="alert"] {
+  color: var(--cursor-text-danger);
+}

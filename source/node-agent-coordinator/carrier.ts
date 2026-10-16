@@ -23,6 +23,23 @@ export function isPortLike(value: unknown): value is PortLike {
   return typeof candidate.postMessage === "function" && typeof candidate.on === "function";
 }
 
+/**
+ * Re-wrap a foreign message port (Electron utility-process parentPort) as a
+ * plain PortLike. The guard alone does not narrow Electron's declared
+ * ParentPort (no optional start), so call sites use this exact surface.
+ * Methods stay bound to the original port, preserving call semantics.
+ */
+export function asPortLike(value: unknown): PortLike | null {
+  if (!isPortLike(value)) return null;
+  const port: PortLike = {
+    postMessage: value.postMessage.bind(value),
+    on: value.on.bind(value),
+  };
+  if (typeof value.close === "function") port.close = value.close.bind(value);
+  if (typeof value.start === "function") port.start = value.start.bind(value);
+  return port;
+}
+
 export interface CarrierIntakeHandlers {
   readonly onControlFrame: (value: unknown) => void;
   readonly onDataFrame: (value: unknown) => void;
@@ -140,11 +157,11 @@ export function adoptParentPort(_parentPort: PortLike, handoff: { readonly data:
 }
 
 export function adoptCarrier(): Promise<CarrierIntake> {
-  const parentPort = (process as NodeJS.Process & { readonly parentPort?: unknown }).parentPort;
-  if (parentPort != null && isPortLike(parentPort)) {
+  const port = asPortLike((process as NodeJS.Process & { readonly parentPort?: unknown }).parentPort);
+  if (port != null) {
     return new Promise((resolve) => {
-      parentPort.on("message", (event) => resolve(adoptParentPort(parentPort, { data: event.data, ports: event.ports ?? [] })));
-      parentPort.start?.();
+      port.on("message", (event) => resolve(adoptParentPort(port, { data: event.data, ports: event.ports ?? [] })));
+      port.start?.();
     });
   }
   return Promise.resolve(adoptForkIpc(process.argv));

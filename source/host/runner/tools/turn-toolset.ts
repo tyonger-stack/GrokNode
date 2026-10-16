@@ -60,6 +60,10 @@ import {
   type BoxHelpDependencies,
 } from "./box-help-tool.js";
 import {
+  createPublishNativeArtifactTool,
+  type TurnNativeArtifactToolFactoryInput,
+} from "./turn-native-artifacts.js";
+import {
   createGenerateImageTool,
   type GenerateImageToolDependencies,
 } from "../../../packages/agent/tools/core/generate-image.js";
@@ -523,6 +527,7 @@ export interface TurnToolFactories {
   task?(): TurnTool;
   multitask?(): TurnTool;
   sendMessage?(): TurnTool;
+  nativeArtifacts?(): TurnTool;
   sendToAgent?(): TurnTool;
   reaction?(): TurnTool;
   createAgent?(): TurnTool;
@@ -595,7 +600,6 @@ export interface TurnBrowserToolFactoryInput {
 export interface TurnFileTransferToolFactoryInput {
   readonly controller: FileTransferController;
 }
-
 export interface TurnBoxHelpToolFactoryInput {
   readonly dependencies: BoxHelpDependencies<unknown>;
 }
@@ -675,6 +679,7 @@ export interface TurnToolsetFactoryInputs {
   readonly browser?: TurnBrowserToolFactoryInput;
   readonly screenshot?: TurnComputerToolFactoryInput;
   readonly fileTransfer?: TurnFileTransferToolFactoryInput;
+  readonly nativeArtifacts?: TurnNativeArtifactToolFactoryInput;
   readonly requestBoxHelp?: TurnBoxHelpToolFactoryInput;
   readonly generateImage?: TurnGenerateImageToolFactoryInput;
   readonly webSearch?: TurnWebSearchToolFactoryInput;
@@ -725,6 +730,10 @@ export interface TurnToolsetHostFactoryProvider {
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
   ) => TurnFileTransferToolFactoryInput;
+  readonly createNativeArtifactToolInputs?: (
+    turn: TurnToolsetTurnInput,
+    props: TurnToolsetBuildProps,
+  ) => TurnNativeArtifactToolFactoryInput;
   readonly createRequestBoxHelpToolInputs?: (
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
@@ -931,7 +940,11 @@ export function createTurnFileTransferToolFactory(
 ): () => readonly TurnTool[] {
   return () => createFileTransferTools(input.controller).map(asTurnTool);
 }
-
+export function createTurnNativeArtifactToolFactory(
+  input: TurnNativeArtifactToolFactoryInput,
+): () => TurnTool {
+  return () => asTurnTool(createPublishNativeArtifactTool(input.nativeArtifacts));
+}
 export function createTurnBoxHelpToolFactory(
   input: TurnBoxHelpToolFactoryInput,
 ): () => TurnTool {
@@ -1061,7 +1074,7 @@ export function createTurnToolsetFactories(
   "task" | "mcpMeta" | "computer" | "browser" | "screenshot"
   | "fileTransfer" | "requestBoxHelp" | "generateImage" | "webSearch" | "webFetch" | "externalAwait"
   | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead"
-  | "sendMessage" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState"
+  | "sendMessage" | "nativeArtifacts" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState"
   | "subagentManagement"
   | "mcpManagement" | "cloudAgent"
 > {
@@ -1120,6 +1133,9 @@ export function createTurnToolsetFactories(
     ...(input.sendMessage === undefined
       ? {}
       : { sendMessage: createTurnSendMessageToolFactory(input.sendMessage) }),
+    ...(input.nativeArtifacts === undefined
+      ? {}
+      : { nativeArtifacts: createTurnNativeArtifactToolFactory(input.nativeArtifacts) }),
     ...(input.sendToAgent === undefined
       ? {}
       : { sendToAgent: createTurnSendToAgentToolFactory(input.sendToAgent) }),
@@ -1217,6 +1233,9 @@ export function createTurnToolsetFactoriesForTurn(
     ...(provider.createSendMessageToolInputs === undefined
       ? {}
       : { sendMessage: provider.createSendMessageToolInputs(turn, props) }),
+    ...(provider.createNativeArtifactToolInputs === undefined
+      ? {}
+      : { nativeArtifacts: provider.createNativeArtifactToolInputs(turn, props) }),
     ...(provider.createSendToAgentToolInputs === undefined
       ? {}
       : { sendToAgent: provider.createSendToAgentToolInputs(turn, props) }),
@@ -1376,6 +1395,8 @@ export function buildTurnTools(
   if (!host.isSubagentRunner) {
     const sendMessage = factories.sendMessage?.();
     if (sendMessage !== undefined) tools.push(sendMessage);
+    const nativeArtifacts = factories.nativeArtifacts?.();
+    if (nativeArtifacts !== undefined) tools.push(nativeArtifacts);
     const sendToAgent = factories.sendToAgent?.();
     if (sendToAgent !== undefined) tools.push(sendToAgent);
     const reaction = factories.reaction?.();
