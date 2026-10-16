@@ -46,6 +46,7 @@ import { applyOriginalRendererTeachSuccessPath } from "./lib/teach-success-path-
 import { applyOriginalRendererInfoPaneSplit } from "./lib/info-pane-split-renderer-patch.mjs";
 import { applyOriginalRendererAgentModel } from "./lib/agent-model-renderer-patch.mjs";
 import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patch.mjs";
+import { applyHardwareAccelerationSettingsPatch } from "./lib/hardware-acceleration-settings-patch.mjs";
 import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
@@ -379,6 +380,9 @@ export async function buildFidelityReconstructedAsar({
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
   await applyOriginalRendererLanguagePatch({ stageRoot });
+  // Hardware acceleration toggle: lands in Sa()'s `r` slot after Language (Fragment).
+  // Depends on the Language Sa slot rewrite above; independent of i18n (bilingual inline).
+  await applyHardwareAccelerationSettingsPatch({ stageRoot });
   // Last among the chunk-mutating passes: the flip touches one gate-fallback token in the
   // renderer chunk and the host bundle's bundled FLAGS default, neither of which the i18n
   // passes read or write. It must land before the packaging audit snapshots the stage.

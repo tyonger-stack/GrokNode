@@ -69,6 +69,10 @@ export const MAIN_METHOD_TABLE = {
   // 强调色 = Bot 颜色 (bot color in chat); same whitelist discipline as the entries below.
   getHostBotColorInChat: { args: "none" },
   setHostBotColorInChat: { args: "object" },
+  // Hardware acceleration (0.71.2 getHardwareAcceleration / setHardwareAccelerationEnabled / relaunchDesktop).
+  getHardwareAcceleration: { args: "none" },
+  setHardwareAccelerationEnabled: { args: "object" },
+  relaunchDesktop: { args: "none" },
   // Preview display state only; the box and host continue running.
   getComputerSleepState: { args: "none" },
   sleepComputer: { args: "none" },

@@ -9,6 +9,8 @@ import { desktopMessages } from "./i18n/desktop-messages.js";
 import { installRendererCrashRecovery } from "./renderer-crash-recovery.js";
 import { createDevToolsGate, createDevToolsMembershipResolver } from "./devtools-gate.js";
 import { isGrokNodePackagedApp } from "../shared/node/grok-node-identity.js";
+import { applyHardwareAccelerationPolicy } from "../shared/node/hardware-acceleration.js";
+import { SandSettingsStore } from "../shared/node/settings/sand-settings-store.js";
 import {
   createHostWindowChords,
   type HostInputEvent,
@@ -261,14 +263,20 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
   });
   deps.startup.bootstrapBeforeSingleInstance();
 
-  deps.app.disableHardwareAcceleration();
+  // Hardware acceleration: 0.71.2 AF() — only disable (+ disable-gpu) when the resolved
+  // preference is false. Platform default is enabled on darwin/win32. Must run before ready.
+  const settingsPath = join(getSandRootDir(), "settings.json");
+  applyHardwareAccelerationPolicy({
+    app: deps.app,
+    storedPreference: new SandSettingsStore(settingsPath).getHardwareAccelerationEnabled(),
+    platform,
+  });
   deps.app.commandLine.appendSwitch("no-sandbox");
-  deps.app.commandLine.appendSwitch("disable-gpu");
   try {
     applyChromiumLocaleFromPreference({
       appendSwitch: (name, value) => deps.app.commandLine.appendSwitch(name, value),
       readFile: (path) => readFileSync(path, "utf8"),
-      settingsPath: join(getSandRootDir(), "settings.json"),
+      settingsPath,
     });
   } catch {
     // Locale sync must never break startup; Chromium falls back to the OS language.
