@@ -197,7 +197,6 @@ function OpenTextAttachmentViewer({ source, name, onClose, readBytes, onDownload
     }
   })();
 
-  const charCount = state.status === "ready" ? state.text.length : 0;
 
   return createPortal(
     <div
@@ -211,19 +210,13 @@ function OpenTextAttachmentViewer({ source, name, onClose, readBytes, onDownload
         <header className="sand-file-viewer__header">
           <div>
             <h2 id={titleId}>{name}</h2>
-            {charCount > 0 ? (
-              <span>
-                {charCount.toLocaleString()} characters
-                {state.status === "ready" && state.truncated ? " (truncated)" : ""}
-              </span>
-            ) : null}
           </div>
           <div className="sand-file-viewer__toolbar">
-            <button aria-label="Toggle line wrap" onClick={() => setWrap((value) => !value)} type="button">↵</button>
+            <button aria-label="Toggle line wrap" onClick={() => setWrap((value) => !value)} title="Toggle line wrap" type="button">↵</button>
           </div>
           <div className="sand-file-viewer__actions">
-            <button aria-label="Download file" onClick={() => { void onDownload(); }} type="button">⇩</button>
-            <button aria-label="Close preview" onClick={onClose} type="button">×</button>
+            <button aria-label="Download file" onClick={() => { void onDownload(); }} title="Download file" type="button">⇩</button>
+            <button aria-label="Close preview" onClick={onClose} title="Close preview" type="button">×</button>
           </div>
         </header>
         <div ref={attachWrapRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>

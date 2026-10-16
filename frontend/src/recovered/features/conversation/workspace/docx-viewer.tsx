@@ -118,8 +118,8 @@ function OpenDocxAttachmentViewer({ source, name, onClose, readBytes, onDownload
             <h2 id={titleId}>{name}</h2>
           </div>
           <div className="sand-file-viewer__actions">
-            <button aria-label="Download file" onClick={() => { void onDownload(); }} type="button">⇩</button>
-            <button aria-label="Close preview" onClick={onClose} type="button">×</button>
+            <button aria-label="Download file" onClick={() => { void onDownload(); }} title="Download file" type="button">⇩</button>
+            <button aria-label="Close preview" onClick={onClose} title="Close preview" type="button">×</button>
           </div>
         </header>
         {body}

@@ -1,15 +1,21 @@
 /* @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#pdf-viewer-selectors */
-.sand-file-viewer { position: fixed; inset: 0; z-index: 4000; display: flex; overflow: hidden; background: rgba(13, 15, 12, .96); }
-.sand-file-viewer__panel { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; margin: 16px; overflow: hidden; color: #d9ded4; background: #171916; border: 1px solid #343832; border-radius: 10px; }
-.sand-file-viewer__header { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 8px 12px; border-bottom: 1px solid #343832; }
-.sand-file-viewer__header h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
-.sand-file-viewer__header span { color: #858d80; font-size: 10px; }
+.sand-file-viewer { position: fixed; inset: 0; z-index: 4000; display: flex; overflow: hidden; background: #0b0c0a; }
+.sand-file-viewer__panel { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; margin: 0; overflow: hidden; color: #eef3e7; background: #0b0c0a; border: 0; border-radius: 0; }
+.sand-file-viewer__header { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 16px; border-bottom: 0; }
+.sand-file-viewer__header h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; }
+.sand-file-viewer__header span { color: #858d80; font-size: 12px; }
 .sand-file-viewer__toolbar, .sand-file-viewer__actions { display: flex; align-items: center; gap: 4px; }
-.sand-file-viewer__toolbar { margin: auto; }
-.sand-file-viewer__toolbar button, .sand-file-viewer__actions button { display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 7px; color: #d9ded4; background: #20231f; border: 1px solid #343832; border-radius: 7px; cursor: pointer; font: inherit; }
-.sand-file-viewer__toolbar button:hover, .sand-file-viewer__toolbar button:focus-visible, .sand-file-viewer__actions button:hover, .sand-file-viewer__actions button:focus-visible { color: #eef3e7; background: #292d26; outline: 1px solid #a9c85d; outline-offset: 1px; }
+.sand-file-viewer__toolbar { margin-left: auto; }
+.sand-file-viewer__toolbar button, .sand-file-viewer__actions button { display: grid; place-items: center; min-width: 32px; height: 32px; padding: 0 8px; color: #a9b0a6; background: transparent; border: 0; border-radius: 8px; cursor: pointer; font: inherit; font-size: 14px; }
+.sand-file-viewer__toolbar button:hover, .sand-file-viewer__actions button:hover { color: #eef3e7; background: #ffffff14; }
+.sand-file-viewer__toolbar button:focus-visible, .sand-file-viewer__actions button:focus-visible { color: #eef3e7; outline: 2px solid #8a8f87; outline-offset: 1px; }
 .sand-file-viewer__body { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 24px; }
 .sand-file-viewer__body > div { display: grid; justify-items: center; gap: 16px; min-width: max-content; width: 100%; }
+.sand-text-viewer__body { display: block; padding: 32px 24px 64px; }
+.sand-text-viewer__body > * { max-width: 760px; margin-inline: auto; width: 100%; }
+.sand-text-viewer__body--plain { max-width: 960px; margin-inline: auto; width: 100%; box-sizing: border-box; }
+.sand-docx-viewer__body { display: block; padding: 32px 24px 64px; }
+.sand-docx-viewer__body > * { max-width: 760px; margin-inline: auto; }
 .sand-pdf-page { position: relative; overflow: hidden; flex: 0 0 auto; background: #fff; box-shadow: 0 2px 16px rgba(0, 0, 0, .32); }
 .sand-pdf-page > img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .sand-pdf-page__text { position: absolute; inset: 0; text-align: initial; overflow: clip; opacity: 1; line-height: 1; -webkit-text-size-adjust: none; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; z-index: 1; }

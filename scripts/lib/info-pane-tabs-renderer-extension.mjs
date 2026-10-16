@@ -34,9 +34,12 @@ export function patchNativeInfoPaneTabs(source) {
   // 0.71.2's top bar (ax) closes the pane with the "close" glyph, not 0.18's
   // chevrons-right; keep the tooltip-carrying icon button otherwise unchanged.
   const CLOSE_BEFORE = 'p.jsx(fr,{"aria-label":"Close details",icon:"chevrons-right",iconSize:zwe,onClick:c,title:"Close details"})';
-  const CLOSE_AFTER = 'p.jsx(fr,{"aria-label":"Close details",icon:"close",iconSize:zwe,onClick:c,title:"Close details"})';
+  const CLOSE_AFTER = 'p.jsx(fr,{"aria-label":"Close details",icon:"close",iconSize:zwe,onClick:c,shape:"circle",title:"Close details",variant:"secondary"})';
+  const GEAR_BEFORE = '"data-info-row":"settings",icon:"settings-gear",iconSize:zwe,onClick:l})';
+  const GEAR_AFTER = '"data-info-row":"settings",icon:"settings-gear",iconSize:zwe,onClick:l,shape:"circle",variant:"secondary"})';
   if (patched.split(CLOSE_BEFORE).length !== 2) throw new Error("Info-pane tabs: native close button drifted.");
-  const repatched = patched.replace(CLOSE_BEFORE, CLOSE_AFTER);
+  if (patched.split(GEAR_BEFORE).length !== 2) throw new Error("Info-pane tabs: native settings button drifted.");
+  const repatched = patched.replace(CLOSE_BEFORE, CLOSE_AFTER).replace(GEAR_BEFORE, GEAR_AFTER);
   parse(patched, { ecmaVersion: "latest", sourceType: "module" });
   parse(repatched, { ecmaVersion: "latest", sourceType: "module" });
   return repatched;
