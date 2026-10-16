@@ -1,4 +1,8 @@
-import { installApplicationMenu, type ApplicationMenuElectronPort } from "./application-menu.js";
+import {
+  installApplicationMenu,
+  type ApplicationMenuElectronPort,
+  type ApplicationMenuHandle,
+} from "./application-menu.js";
 import { resolveLocale, type LanguagePreference, type SupportedLocale } from "../shared/node/i18n/locale.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -465,18 +469,24 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
         const systemTags = deps.app.getPreferredSystemLanguages?.() ?? [];
         return resolveLocale(preference, systemTags);
       };
-      const installMenu = (): void =>
-        installApplicationMenu(
+      // 0.71.2: checkbox state lives across View-menu rebuilds (locale / DevTools gate).
+      let applicationMenu: ApplicationMenuHandle | undefined;
+      const installMenu = (): void => {
+        applicationMenu = installApplicationMenu(
           {
             applyWindowShortcut: hostChords.applyWindowShortcut,
             canUseDevTools: devToolsGate.isAllowed,
             emitOpenAbout: () => services?.mainEdge.emit("open-about", {}),
             emitOpenFeedback: () => services?.mainEdge.emit("open-feedback", {}),
+            emitUnreadFilterMenuClicked: (isChecked) =>
+              services?.mainEdge.emit("unread-filter-menu-clicked", { isChecked }),
+            initialUnreadFilterChecked: applicationMenu?.isUnreadFilterChecked() === true,
             locale: resolveMenuLocale(),
             platform,
           },
           deps.menu,
         );
+      };
       installMenu();
       services.registerImageContextMenu?.();
       devToolsGate.subscribe(installMenu);

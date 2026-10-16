@@ -57,6 +57,7 @@ import { applyMainAgentRendererPatch } from "./lib/main-agent-renderer-patch.mjs
 import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
 import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-patch.mjs";
+import { applyOriginalRendererViewUnread } from "./lib/view-unread-renderer-patch.mjs";
 import { applyOriginalRendererScrollToBottom } from "./lib/scroll-to-bottom-renderer-patch.mjs";
 import { applyOriginalRendererDownloadAll } from "./lib/download-all-renderer-patch.mjs";
 import { applyOriginalRendererUndeliveredSend } from "./lib/undelivered-send-renderer-patch.mjs";
@@ -353,6 +354,9 @@ export async function buildFidelityReconstructedAsar({
   // match the settings surface's own hardcoded English.
   await applyBotColorSettingsPatch({ stageRoot });
   await applyComputerSleepRendererPatch({ stageRoot });
+  // 0.71.2 View → "View Unread": MAIN chunk roster filter + menu event subscribe. No RLocT.
+  // Must precede i18n only so later passes see a stable chunk; anchors do not overlap them.
+  await applyOriginalRendererViewUnread({ stageRoot });
   // 0.71.2 transcript "Scroll to bottom" button: edits the MAIN chunk's view builder and
   // transcript plane, and emits an RLocT call, so it must precede the i18n passes.
   await applyOriginalRendererScrollToBottom({ stageRoot });

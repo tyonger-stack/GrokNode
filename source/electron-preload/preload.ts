@@ -206,6 +206,13 @@ export function createDesktopPreloadBridge(options: {
     onDevBoxRebuild: (listener: (payload: unknown) => void) => subscribe("dev-box-rebuild", listener),
     onOpenFeedback: (listener: () => void) => subscribe("open-feedback", () => listener()),
     onOpenAbout: (listener: () => void) => subscribe("open-about", () => listener()),
+    // 0.71.2 View → View Unread: main emits on checkbox click; renderer mirrors back via setUnreadFilterMenuChecked.
+    onUnreadFilterMenuClicked: (listener: (payload: { readonly isChecked: boolean }) => void) =>
+      subscribe("unread-filter-menu-clicked", (payload) => {
+        if (typeof payload?.isChecked === "boolean") listener({ isChecked: payload.isChecked });
+      }),
+    setUnreadFilterMenuChecked: (args: { readonly isChecked: boolean }) =>
+      edge("setUnreadFilterMenuChecked", { isChecked: args?.isChecked === true }),
     submitFeedback: (payload: unknown) => edge("submitFeedback", payload),
     onWidgetGallery: (listener: (payload: unknown) => void) => subscribeIpc(ipc, "sand:dev-widget-gallery", listener),
     onForceOnboarding: (listener: () => void) => subscribe("force-onboarding", () => listener()),

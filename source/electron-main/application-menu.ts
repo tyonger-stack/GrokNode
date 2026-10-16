@@ -18,9 +18,11 @@ export type ApplicationMenuRole =
 export interface ApplicationMenuItem {
   readonly label?: string;
   readonly role?: ApplicationMenuRole;
-  readonly type?: "separator";
+  readonly type?: "separator" | "checkbox";
+  readonly checked?: boolean;
   readonly accelerator?: string;
-  readonly click?: () => void;
+  /** Electron MenuItem click; checkbox items receive the item so callers can read `.checked`. */
+  readonly click?: (() => void) | ((item: { readonly checked?: boolean }) => void);
   readonly submenu?: readonly ApplicationMenuItem[];
 }
 
@@ -36,6 +38,8 @@ export interface ApplicationMenuOptions {
   readonly canUseDevTools: () => boolean;
   readonly emitOpenAbout: () => void;
   readonly emitOpenFeedback: () => void;
+  readonly emitUnreadFilterMenuClicked: (isChecked: boolean) => void;
+  readonly isUnreadFilterChecked: () => boolean;
   readonly platform?: NodeJS.Platform;
   /**
    * Resolved locale for the labels the template owns. macOS auto-localises
@@ -43,6 +47,27 @@ export interface ApplicationMenuOptions {
    * `hide`, …); we only translate the labels we add ourselves.
    */
   readonly locale?: SupportedLocale;
+}
+
+export interface ApplicationMenuHandle {
+  readonly reinstall: () => void;
+  readonly setUnreadFilterChecked: (isChecked: boolean) => void;
+  readonly isUnreadFilterChecked: () => boolean;
+}
+
+/**
+ * Late-bound menu handle so MainEdge can sync the View → View Unread checkbox
+ * (0.71.2 `applicationMenu.setUnreadFilterChecked`) before/after install.
+ */
+let unreadFilterMenuBinding: ApplicationMenuHandle | null = null;
+
+export function bindUnreadFilterApplicationMenu(handle: ApplicationMenuHandle | null): void {
+  unreadFilterMenuBinding = handle;
+}
+
+/** RPC entry: mirror renderer `sidebarUnreadOnly` onto the native checkbox. */
+export function setApplicationMenuUnreadFilterChecked(isChecked: boolean): void {
+  unreadFilterMenuBinding?.setUnreadFilterChecked(isChecked);
 }
 
 export function buildApplicationMenuTemplate(
@@ -73,11 +98,20 @@ export function buildApplicationMenuTemplate(
     submenu: [isMac ? { role: "close", label: labels.closeWindow } : { role: "quit" }],
   });
   template.push({ role: "editMenu" });
+  // 0.71.2 View order (main-app.cjs ~@1709708): Reload → separator → View Unread
+  // checkbox → (DevTools) → separator → fullscreen.
   const viewSubmenu: ApplicationMenuItem[] = [
     {
       label: labels.reload,
       accelerator: "CmdOrCtrl+R",
       click: () => options.applyWindowShortcut("reload"),
+    },
+    { type: "separator" },
+    {
+      label: labels.viewUnread,
+      type: "checkbox",
+      checked: options.isUnreadFilterChecked(),
+      click: (item) => options.emitUnreadFilterMenuClicked(item?.checked === true),
     },
   ];
   if (options.canUseDevTools()) {
@@ -125,9 +159,41 @@ export function buildApplicationMenuTemplate(
 }
 
 export function installApplicationMenu(
-  options: ApplicationMenuOptions,
+  options: Omit<ApplicationMenuOptions, "isUnreadFilterChecked" | "emitUnreadFilterMenuClicked"> & {
+    readonly emitUnreadFilterMenuClicked: (isChecked: boolean) => void;
+    /** Seed for the checkbox when re-binding after a prior install (locale / DevTools). */
+    readonly initialUnreadFilterChecked?: boolean;
+  },
   electron: ApplicationMenuElectronPort,
-): void {
-  const template = buildApplicationMenuTemplate(options, electron);
-  electron.setApplicationMenu(electron.buildFromTemplate(template));
+): ApplicationMenuHandle {
+  let unreadFilterChecked = options.initialUnreadFilterChecked === true;
+  const buildOptions = (): ApplicationMenuOptions => ({
+    applyWindowShortcut: options.applyWindowShortcut,
+    canUseDevTools: options.canUseDevTools,
+    emitOpenAbout: options.emitOpenAbout,
+    emitOpenFeedback: options.emitOpenFeedback,
+    ...(options.platform === undefined ? {} : { platform: options.platform }),
+    ...(options.locale === undefined ? {} : { locale: options.locale }),
+    isUnreadFilterChecked: () => unreadFilterChecked,
+    emitUnreadFilterMenuClicked: (isChecked) => {
+      unreadFilterChecked = isChecked;
+      options.emitUnreadFilterMenuClicked(isChecked);
+    },
+  });
+  const reinstall = (): void => {
+    const template = buildApplicationMenuTemplate(buildOptions(), electron);
+    electron.setApplicationMenu(electron.buildFromTemplate(template));
+  };
+  const handle: ApplicationMenuHandle = {
+    reinstall,
+    setUnreadFilterChecked: (isChecked) => {
+      if (unreadFilterChecked === isChecked) return;
+      unreadFilterChecked = isChecked;
+      reinstall();
+    },
+    isUnreadFilterChecked: () => unreadFilterChecked,
+  };
+  reinstall();
+  bindUnreadFilterApplicationMenu(handle);
+  return handle;
 }

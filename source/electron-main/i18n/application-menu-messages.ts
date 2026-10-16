@@ -9,6 +9,8 @@ import type { SupportedLocale } from "../../shared/node/i18n/locale.js";
 export interface ApplicationMenuMessages {
   readonly file: string;
   readonly reload: string;
+  /** 0.71.2 main-core id `5G1/yr` = "View Unread". */
+  readonly viewUnread: string;
   readonly toggleDeveloperTools: string;
   readonly toggleFullScreen: string;
   readonly helpCenter: string;
@@ -22,6 +24,7 @@ export interface ApplicationMenuMessages {
 const EN: ApplicationMenuMessages = {
   file: "File",
   reload: "Reload",
+  viewUnread: "View Unread",
   toggleDeveloperTools: "Toggle Developer Tools",
   toggleFullScreen: "Toggle Full Screen",
   helpCenter: "Help Center",
@@ -41,6 +44,8 @@ const EN: ApplicationMenuMessages = {
 const ZH_CN: ApplicationMenuMessages = {
   file: "文件",
   reload: "重新加载",
+  // 0.71.2 locales/zh-CN messages.cjs id `5G1/yr`.
+  viewUnread: "查看未读",
   toggleDeveloperTools: "切换开发者工具",
   toggleFullScreen: "切换全屏",
   helpCenter: "帮助中心",
