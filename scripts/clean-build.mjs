@@ -63,6 +63,7 @@ import { applyOriginalRendererDownloadAll } from "./lib/download-all-renderer-pa
 import { applyOriginalRendererUndeliveredSend } from "./lib/undelivered-send-renderer-patch.mjs";
 import { applyOriginalRendererReadFailureRetry } from "./lib/read-failure-retry-renderer-patch.mjs";
 import { applyOriginalRendererSidebarRenameMenu } from "./lib/sidebar-rename-menu-renderer-patch.mjs";
+import { applyOriginalRendererSidebarHiddenSection } from "./lib/sidebar-hidden-section-renderer-patch.mjs";
 import { applyOriginalRendererFailureCopy } from "./lib/failure-copy-renderer-patch.mjs";
 import { applyOriginalRendererWidgetMultiselect } from "./lib/widget-multiselect-renderer-patch.mjs";
 import { applyOriginalRendererWorkingStatusPhrases } from "./lib/working-status-phrases-renderer-patch.mjs";
@@ -371,6 +372,9 @@ export async function buildFidelityReconstructedAsar({
   // 0.71.2 "Rename chat / Rename Bot" sidebar context-menu entry. Emits RLocT calls, so it
   // must land before main-i18n appends the RLocT runtime.
   await applyOriginalRendererSidebarRenameMenu({ stageRoot });
+  // 0.71.2 inline Hidden Bots section + "Show in sidebar". Depends on the rename pass's
+  // post-patch fcn/udn memo sizes; emits RLocT, so it must precede main-i18n.
+  await applyOriginalRendererSidebarHiddenSection({ stageRoot });
   // Its RLocT calls rely on the runtime main-i18n appends to the main chunk.
   await applyOriginalRendererFailureCopy({ stageRoot });
   // Widget view chunk (view-CIFdOvCz.js); order-free vs main-chunk failure-copy. Must precede extra-i18n (keeps its English anchors).
