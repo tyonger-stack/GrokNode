@@ -11,13 +11,20 @@ import { fileURLToPath } from "node:url";
 // (b) the frozen fixtures tests/fixtures/library-parity-*.json.
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const evDir = path.join(repoRoot, ".omo", "evidence", "grok-node-library");
+const evidenceUnavailable = ![ "task-1-R.txt", "task-1-E.txt", "task-1-M.txt", "task-1-F.txt", "task-1-D.txt" ]
+  .every((name) => existsSync(path.join(evDir, name)));
 const rawFixture = JSON.parse(readFileSync(path.join(repoRoot, "tests", "fixtures", "library-parity-raw-transcript.json"), "utf8"));
 const golden = JSON.parse(readFileSync(path.join(repoRoot, "tests", "fixtures", "library-parity-golden.json"), "utf8"));
-const R = readFileSync(path.join(evDir, "task-1-R.txt"), "utf8");
-const E = readFileSync(path.join(evDir, "task-1-E.txt"), "utf8");
-const M = readFileSync(path.join(evDir, "task-1-M.txt"), "utf8");
-const F = readFileSync(path.join(evDir, "task-1-F.txt"), "utf8");
-const D = readFileSync(path.join(evDir, "task-1-D.txt"), "utf8");
+const R = evidenceUnavailable ? "" : readFileSync(path.join(evDir, "task-1-R.txt"), "utf8");
+const E = evidenceUnavailable ? "" : readFileSync(path.join(evDir, "task-1-E.txt"), "utf8");
+const M = evidenceUnavailable ? "" : readFileSync(path.join(evDir, "task-1-M.txt"), "utf8");
+const F = evidenceUnavailable ? "" : readFileSync(path.join(evDir, "task-1-F.txt"), "utf8");
+const D = evidenceUnavailable ? "" : readFileSync(path.join(evDir, "task-1-D.txt"), "utf8");
+function parityTest(name, options, implementation) {
+  const callback = typeof options === "function" ? options : implementation;
+  const settings = typeof options === "object" && options !== null ? options : {};
+  test(name, { ...settings, skip: evidenceUnavailable || settings.skip }, callback);
+}
 function sha256File(p) { return createHash("sha256").update(readFileSync(p)).digest("hex"); }
 function sliceOf(text, start, end) { return text.slice(start, end); }
 function fnSlice(text, name, len) { const i = text.indexOf("function " + name + "("); assert.notEqual(i, -1, name + " not found"); return text.slice(i, i + len); }
@@ -230,7 +237,7 @@ function materialize(entries, now) {
   });
 }
 
-test("extracts are byte-identical to the frozen original chunks", function () {
+parityTest("extracts are byte-identical to the frozen original chunks", function () {
   assert.equal(sha256File(path.join(evDir, "task-1-R.txt")), golden._provenance.chunks.R.sha256);
   assert.equal(sha256File(path.join(evDir, "task-1-E.txt")), golden._provenance.chunks.E.sha256);
   assert.equal(sha256File(path.join(evDir, "task-1-M.txt")), golden._provenance.chunks.M.sha256);
@@ -238,11 +245,11 @@ test("extracts are byte-identical to the frozen original chunks", function () {
   assert.equal(sha256File(path.join(evDir, "task-1-D.txt")), golden._provenance.chunks.D.sha256);
 });
 
-test("original ASAR identity holds when the app is present", {skip: !existsSync("/Applications/Grok Bot.app/Contents/Resources/app.asar")}, function () {
+parityTest("original ASAR identity holds when the app is present", {skip: !existsSync("/Applications/Grok Bot.app/Contents/Resources/app.asar")}, function () {
   assert.equal(sha256File("/Applications/Grok Bot.app/Contents/Resources/app.asar"), golden._provenance.asarSha256);
 });
 
-test("FRe derivation anchors: dedup keys, link branch, display reversal", function () {
+parityTest("FRe derivation anchors: dedup keys, link branch, display reversal", function () {
   const src = sliceOf(R, 1581347, 1582219);
   assert.ok(src.indexOf("function FRe") === 0);
   assert.ok(src.includes("visual:"));
@@ -252,7 +259,7 @@ test("FRe derivation anchors: dedup keys, link branch, display reversal", functi
   assert.ok(src.includes("u.source===d"));
 });
 
-test("grouping anchors: constants, MRe week rule, ZF order, reveal steps", function () {
+parityTest("grouping anchors: constants, MRe week rule, ZF order, reveal steps", function () {
   assert.ok(sliceOf(R, 1579191, 1579244).includes("TS=5"));
   assert.ok(sliceOf(R, 1579191, 1579244).includes("PRe=10"));
   assert.ok(sliceOf(R, 1579191, 1579244).includes('RRe=["today","week","older"]'));
@@ -271,14 +278,14 @@ test("grouping anchors: constants, MRe week rule, ZF order, reveal steps", funct
   assert.ok(R.includes("w6 as c7"));
 });
 
-test("classifier anchors: QF RS exc-set zS BRe outcomes", function () {
+parityTest("classifier anchors: QF RS exc-set zS BRe outcomes", function () {
   assert.ok(sliceOf(R, 1580279, 1580473).includes("returned-artifact"));
   assert.ok(sliceOf(R, 1580279, 1580473).includes("user-upload"));
   assert.ok(sliceOf(R, 1579923, 1580123).includes("user-attachment"));
   assert.ok(fnSlice(R, "BRe", 700).includes('"tool-call"'));
   assert.ok(fnSlice(R, "URe", 120).includes("unknown"));
 });
-test("media-rule anchors: ORe cloud, BRe files, link extraction, helper chain", function () {
+parityTest("media-rule anchors: ORe cloud, BRe files, link extraction, helper chain", function () {
   assert.ok(sliceOf(R, 1580123, 1580279).includes("cloud-agent"));
   assert.ok(sliceOf(R, 1580123, 1580279).includes("cloudAgentArtifacts"));
   const bre = fnSlice(R, "BRe", 700);
@@ -304,7 +311,7 @@ test("media-rule anchors: ORe cloud, BRe files, link extraction, helper chain", 
   assert.ok(R.includes("bU as Md") && E.includes("o0 as bU"));
 });
 
-test("gates route but never cut scope", function () {
+parityTest("gates route but never cut scope", function () {
   const bw = fnSlice(R, "BW", 1257);
   assert.ok(bw.includes("grok_bot_library_v2"));
   assert.ok(bw.includes("grok_bot_documents_ui"));
@@ -320,7 +327,7 @@ test("gates route but never cut scope", function () {
   assert.equal(golden.gates.length, 5);
 });
 
-test("external-doc row exposes open-URL only, page rows keep Open plus conditional Share", function () {
+parityTest("external-doc row exposes open-URL only, page rows keep Open plus conditional Share", function () {
   const wg = sliceOf(R, 1607896, 1608806);
   assert.ok(wg.includes("function wG"));
   assert.ok(wg.includes("onOpen"));
@@ -332,7 +339,7 @@ test("external-doc row exposes open-URL only, page rows keep Open plus condition
   assert.deepEqual(golden.externalDocs.actions, ["openUrl"]);
 });
 
-test("v2 merge anchors: comparator, key formats, page sort", function () {
+parityTest("v2 merge anchors: comparator, key formats, page sort", function () {
   const aceSrc = sliceOf(E, 1093984, 1094174);
   assert.ok(aceSrc.includes("NEGATIVE_INFINITY"));
   assert.ok(aceSrc.includes("localeCompare"));
@@ -344,7 +351,7 @@ test("v2 merge anchors: comparator, key formats, page sort", function () {
   assert.ok(fnSlice(E, "fce", 300).includes("streaming"));
 });
 
-test("SJt validation and T1e sort anchors", function () {
+parityTest("SJt validation and T1e sort anchors", function () {
   const sj = fnSlice(M, "SJt", 700);
   assert.ok(sj.includes("gJt"));
   assert.ok(sj.includes("lastAction"));
@@ -356,7 +363,7 @@ test("SJt validation and T1e sort anchors", function () {
   assert.ok(M.includes("M1e="));
 });
 
-test("asset service anchors: limits, sniffing, five statuses, ETag cache", function () {
+parityTest("asset service anchors: limits, sniffing, five statuses, ETag cache", function () {
   const capRegion = M.slice(M.indexOf("function b1e("), M.indexOf("function b1e(") + 2600);
   assert.ok(capRegion.includes("5242880"));
   assert.ok(M.includes("CYt=1e4"));
@@ -372,7 +379,7 @@ test("asset service anchors: limits, sniffing, five statuses, ETag cache", funct
   assert.ok(M.slice(M.indexOf("getDocumentAssets("), M.indexOf("getDocumentAssets(") + 800).includes("slice(0,20)"));
 });
 
-test("IPC method table: all ten library methods plus adjacent openExternal", function () {
+parityTest("IPC method table: all ten library methods plus adjacent openExternal", function () {
   const jv = M.slice(M.indexOf("Jv=Uo"), M.indexOf("Jv=Uo") + 1600);
   const expected = ["getCanvasShare", "setCanvasVisibility", "getDocument", "getDocumentEditRight", "saveDocument", "resolveLibraryPages", "listLibraryPages", "listLibraryDocs", "setDocumentVisibility", "getDocumentAssets", "openExternal"];
   for (const m of expected) assert.ok(jv.includes(m + ":k().args"), m + " missing from Jv block");
@@ -380,7 +387,7 @@ test("IPC method table: all ten library methods plus adjacent openExternal", fun
   assert.equal(golden.ipc.methods.length, 10);
 });
 
-test("native doc and canvas anchors: controller, debounce, protocol, echo errors", function () {
+parityTest("native doc and canvas anchors: controller, debounce, protocol, echo errors", function () {
   assert.ok(sliceOf(D, 229800, 229900).includes("bh=2e3"));
   const wh = fnSlice(D, "wh", 500);
   assert.ok(wh.includes("locator"));
@@ -397,13 +404,13 @@ test("native doc and canvas anchors: controller, debounce, protocol, echo errors
   assert.ok(o6.includes("onApply"));
 });
 
-test("viewer format map covers all elevenzn branches", function () {
+parityTest("viewer format map covers all elevenzn branches", function () {
   const zn = fnSlice(F, "zn", 2900);
   for (const k of golden.ordinaryFiles.formats) assert.ok(zn.includes('"' + k + '"'), k + " missing from zn switch");
   assert.ok(fnSlice(F, "dn", 929).includes("suggestedName"));
 });
 
-test("behavioral: v1 derivation over the raw fixture matches golden", function () {
+parityTest("behavioral: v1 derivation over the raw fixture matches golden", function () {
   const now = Date.now();
   const entries = materialize(rawFixture.entries, now);
   const derived = deriveMedia(entries);
@@ -417,7 +424,7 @@ test("behavioral: v1 derivation over the raw fixture matches golden", function (
   assert.deepEqual(counts, golden.derivedGolden.groupCounts);
 });
 
-test("behavioral: v2 tie order, SJt, T1e, streaming gate", function () {
+parityTest("behavioral: v2 tie order, SJt, T1e, streaming gate", function () {
   const tie = rawFixture.v2tie;
   const merged = mergeV2(tie.pages, tie.externalDocs, tie.media);
   assert.deepEqual(merged.map(function (m) { return m.key; }), golden.v2tieExpectedKeys);
@@ -439,7 +446,7 @@ test("behavioral: v2 tie order, SJt, T1e, streaming gate", function () {
   assert.equal(fceGate(rawFixture.entries[0]), "refs");
 });
 
-test("behavioral: observed real shape carries the original media fields", function () {
+parityTest("behavioral: observed real shape carries the original media fields", function () {
   const o = rawFixture.observedRealShape;
   assert.equal(o.entryKind, "send-message");
   assert.equal(o.messageType, "text");
@@ -448,7 +455,7 @@ test("behavioral: observed real shape carries the original media fields", functi
   assert.equal(o.image.width, 1280);
 });
 
-test("probes: malformed input is contained, injection alt stays verbatim text", function () {
+parityTest("probes: malformed input is contained, injection alt stays verbatim text", function () {
   const now = Date.now();
   const entries = materialize(rawFixture.entries, now);
   const malformed = entries.filter(function (e) { return e.id === "e_malformed"; });
@@ -462,6 +469,6 @@ test("probes: malformed input is contained, injection alt stays verbatim text", 
   assert.equal(derived.filter(function (d) { return d.id.indexOf("e_inject") === 0 && d.kind !== "image"; }).length, 0);
 });
 
-test("R7a independent oracle matches executed original counterexamples", () => {
+parityTest("R7a independent oracle matches executed original counterexamples", () => {
   assert.deepEqual(deriveMedia(rawFixture.r7aCounterexamples), golden.r7aExpected);
 });

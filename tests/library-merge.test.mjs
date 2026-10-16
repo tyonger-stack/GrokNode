@@ -35,7 +35,9 @@ test("v2 tie keeps page, external-doc, media, then key order", async () => {
 test("media groups follow local midnights with null in older", async () => {
   const merge = await loadModule("library-merge.ts");
   const media = await loadModule("transcript-media.ts");
-  const now = Date.now();
+  const nowDate = new Date();
+  nowDate.setHours(12, 1, 2, 3);
+  const now = nowDate.getTime();
   const entries = rawFixture.entries.map((entry) => ({
     ...entry,
     timestampMs: entry.tsOffsetMs == null ? null : now + entry.tsOffsetMs,

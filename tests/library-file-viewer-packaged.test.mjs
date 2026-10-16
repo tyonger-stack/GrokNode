@@ -155,10 +155,12 @@ app.whenReady().then(async()=>{
    (theme==='light'?previews:darkPreviews).push(preview);
    await win.webContents.executeJavaScript('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
    fs.writeFileSync(${JSON.stringify(evidence)}+'/'+(theme==='light'?'':theme+'-')+kind+'.png',(await win.webContents.capturePage()).toPNG());
+   win.focus();
+   win.webContents.focus();
    win.webContents.sendInputEvent({type:'mouseMove',x:Math.round(preview.close.x+preview.close.w/2),y:Math.round(preview.close.y+preview.close.h/2)});
    await win.webContents.executeJavaScript('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
    const hover=await win.webContents.executeJavaScript('window.closeButtonHover()');
-   if(hover==='none') throw new Error('stage close hover missing');
+   if(hover==='none') throw new Error('stage close hover missing: '+close.matches(':hover')+' '+JSON.stringify(rect));
    preview.close.hoverImage=hover;
    fs.writeFileSync(${JSON.stringify(evidence)}+'/'+theme+'-'+kind+'-hover.png',(await win.webContents.capturePage()).toPNG());
    win.webContents.sendInputEvent({type:'mouseMove',x:0,y:0});
@@ -169,7 +171,7 @@ app.whenReady().then(async()=>{
   clearTimeout(timer);win.destroy();app.exit(0);
  } catch(error) {fs.writeFileSync(${JSON.stringify(path.join(evidence, "failure.json"))},JSON.stringify({error:String(error),stack:error.stack,console:errors},null,2));clearTimeout(timer);win?.destroy();app.exit(1)}
 });`);
-  const electron = process.env.ELECTRON_BINARY ?? path.resolve(root, "../../grok-bot-0.18-reconstructed/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron");
+  const electron = process.env.ELECTRON_BINARY ?? path.resolve(root, "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron");
   const log = [];
   const exit = await new Promise((resolve, reject) => {
     const child = spawn(electron, [main], { env: { ...process.env, ELECTRON_RUN_AS_NODE: "" }, stdio: ["ignore", "pipe", "pipe"] });
