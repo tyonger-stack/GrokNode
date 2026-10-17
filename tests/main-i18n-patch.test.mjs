@@ -14,7 +14,7 @@ import {
   MAIN_I18N_LOCAL_ANCHORED,
   MAIN_I18N_GAPS,
 } from "../scripts/lib/main-i18n-patch.mjs";
-import { applyAnchored } from "../scripts/lib/i18n-patch-engine.mjs";
+import { applyAnchored, applyPair } from "../scripts/lib/i18n-patch-engine.mjs";
 
 const NL = String.fromCharCode(10);
 
@@ -66,6 +66,9 @@ test("main-i18n patch appends prelude and branches every pair literal", async ()
   assert.ok(patched.includes("云端智能体"), "cloud-agent arm must branch to 006KCk wording");
   assert.ok(patched.includes("回复你的消息") || patched.includes("RLocMessageTarget(e)"), "dynamic reply label must be localized");
   assert.ok(patched.includes('name:n.id===uc?RLocT("Unassigned","未分组")'), "section display name must branch without changing the stored name");
+  assert.ok(patched.includes('n.name===VPt?RLocT("New section","新建分组")'), "move-to section list must show the default section name in Chinese");
+  assert.ok(patched.includes('name:o.id!==uc&&o.name===VPt?RLocT("New section","新建分组"):o.name'), "sidebar section header must map the stored default name at display time");
+  assert.ok(patched.includes('VPt') && !patched.includes('VPt=(RLocT('), "the stored default section name must stay English");
   assert.ok(patched.includes('RLocDateLocale=RLocBoot()==="zh-CN"'), "date formatting must follow the selected locale");
   assert.ok(!patched.includes('return"Cloud agent"'), "raw cloud-agent arm must be gone");
   assert.ok(patched.includes("function RLocFromPref("), "locale resolver must be appended");
@@ -330,6 +333,41 @@ test("activity-verb anchors are fail-closed", () => {
     !activityVerbEntry("qIhBkq").anchor.includes("Messaging another assistant"),
     "the narrow anchor must not span a literal a pair already rewrote",
   );
+});
+
+test("sidebar and message menu labels added 2026-10-17 branch to Chinese and leave logic untouched", () => {
+  const source = [
+    "const anchor=sand.navigateBack;",
+    "function Fct(n,e){return n?\"New section\":e>1?`Move ${e} agents to new section`:\"Move to new section\"}",
+    "i=p.jsx(It.Item,{leading:r,onSelect:()=>s(t),children:\"Duplicate\"});",
+    "tt=i?p.jsx(It.Item,{leading:p.jsx(bt,{name:\"chat-bubbles\",size:\"base\"}),onSelect:()=>{u(),_()},children:\"Start a thread\"}):null;",
+    "const J=\"Edit Avatar\",O=\"bottom\",_=s,B=\"Edit agent avatar\",R=1;",
+    "const uc=\"__agents__\",VPt=\"New section\";",
+    "if(n===\"Duplicate\")x();",
+  ].join(NL);
+  const pick = (table, en) => table.find((row) => row[0] === en);
+  const rows = [
+    [pick(MAIN_I18N_061_PAIRS, "Move to new section"), "移至新分组"],
+    [pick(MAIN_I18N_LOCAL_PAIRS, "Duplicate"), "创建副本"],
+    [pick(MAIN_I18N_LOCAL_PAIRS, "Start a thread"), "开始线程"],
+    [pick(MAIN_I18N_LOCAL_PAIRS, "Edit agent avatar"), "编辑 Bot 头像"],
+  ];
+  let patched = source;
+  for (const [row, zh] of rows) {
+    assert.ok(row != null, "row must exist for " + zh);
+    assert.equal(row[1], zh);
+    const mode = row.length === 4 ? row[3] : row[2];
+    const r = applyPair(patched, row[0], row[1], mode);
+    assert.equal(r.hits, 1, "exactly one display site for " + row[0]);
+    patched = r.patched;
+  }
+  assert.ok(patched.includes(':(RLocT("Move to new section","移至新分组"))}'));
+  assert.ok(patched.includes('children:(RLocT("Duplicate","创建副本"))'));
+  assert.ok(patched.includes('children:(RLocT("Start a thread","开始线程"))'));
+  assert.ok(patched.includes('B=(RLocT("Edit agent avatar","编辑 Bot 头像"))'));
+  assert.ok(patched.includes('if(n==="Duplicate")'), "comparison sites stay English");
+  assert.ok(patched.includes('VPt="New section"'), "stored default section name stays English");
+  assert.ok(patched.includes("`Move ${e} agents to new section`"), "template text stays raw");
 });
 
 test("main-i18n patch is fail-closed when a pair anchor is missing", async () => {

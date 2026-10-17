@@ -515,6 +515,10 @@ export const MAIN_I18N_061_PAIRS = [
   ["This recreates Grok Bot's computer and reconnects. Your Bots, files, and logins are kept, but installed apps and packages are removed.", "这会重新创建 Grok Bot 的电脑并重新连接。你的 Bot、文件和登录信息都会保留，但已安装的应用和软件包会被移除。", "wUMeMd", "PANEL"],
   ["The recovery couldn't finish, so Grok Bot's computer may still be unreachable. Your Bots, files, and logins are safe.", "恢复未能完成，Grok Bot 的电脑可能仍然无法连接。你的 Bot、文件和登录信息都是安全的。", "Vi957D", "PANEL"],
   ["Couldn't read file", "无法读取文件", "OZ1zWg", "PANEL"],
+  // Sidebar row menu "Move to new section" (0.18 Fct ternary else-branch). Official 0.71.2
+  // Dunqdd (index.eager-app-DSuGVQNC.js EN plural "0"/"one" form; zh-CN chunk-agents-Dl43u0z-.js
+  // "移至新分组"). The batch form `Move ${e} agents to new section` is template text and stays raw.
+  ["Move to new section", "移至新分组", "Dunqdd", "FULL"],
   ["Creating Grok Bot's computer", "正在创建 Grok Bot 的电脑", "OKLYXO", "PANEL"],
   ["Dashboard Watcher", "仪表盘监测助手", "N8fzyU", "PANEL"],
   ["Data Scientist", "数据分析助手", "xS4YuF", "PANEL"],
@@ -702,6 +706,14 @@ export const MAIN_I18N_LOCAL_PAIRS = [
   ["Reply to attachment…", "回复附件…", "PANEL"],
   ["Reply to file…", "回复文件…", "PANEL"],
   ["Reply to link…", "回复链接…", "PANEL"],
+  // 0.18-only labels with no counterpart in the 0.59.1 / 0.61.0 / 0.68.1 / 0.71.2 catalogs
+  // (checked 2026-10-17). Translated under explicit user authorization (2026-10-17); wording
+  // reuses existing official zh vocabulary: 54oFso "Create a copy" -> 创建副本,
+  // ruoKG4 "Start a chat" -> 开始聊天 with e66y2Z "Thread" -> 线程, 5XRPbV "Edit Avatar" -> 编辑头像
+  // with "Bot" for agent (as in 重命名 Bot / 从侧边栏隐藏 Bot).
+  ["Duplicate", "创建副本", "PROP"],
+  ["Start a thread", "开始线程", "PROP"],
+  ["Edit agent avatar", "编辑 Bot 头像", "PANEL"],
 ];
 
 export const MAIN_I18N_GAPS = [
@@ -1182,7 +1194,17 @@ export const MAIN_I18N_LOCAL_ANCHORED = [
     id: "EbMPZJ",
     note: "section display name without changing stored section data",
     anchor: "function f0n(n){return{id:n.id,name:n.id===uc?vNe:n.name}}",
-    replacement: "function f0n(n){return{id:n.id,name:n.id===uc?RLocT(\"Unassigned\",\"未分组\"):n.name}}",
+    replacement: "function f0n(n){return{id:n.id,name:n.id===uc?RLocT(\"Unassigned\",\"未分组\"):n.name===VPt?RLocT(\"New section\",\"新建分组\"):n.name}}",
+  },
+  {
+    // Official 0.71.2 stores the English default ("New section", Oo) and maps it at display
+    // time (og -> SagCAA). 0.18 keeps VPt="New section" as the stored default; the sidebar
+    // header reads the Cct section view-model, so the stored name is mapped there and the
+    // persisted section data stays untouched.
+    id: "SagCAA",
+    note: "default new-section name localized at display time in the sidebar section view-model",
+    anchor: "return t.map(o=>({id:o.id,name:o.name,isSynthetic:o.id===uc,",
+    replacement: "return t.map(o=>({id:o.id,name:o.id!==uc&&o.name===VPt?RLocT(\"New section\",\"新建分组\"):o.name,isSynthetic:o.id===uc,",
   },
   {
     id: "GjJ5lX/nN16ve",
