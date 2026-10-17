@@ -8,9 +8,8 @@ export interface SandInferenceRouterUsageProvider {
   readonly cacheReadTokens: number;
   readonly cacheWriteTokens: number;
   readonly lastUsedAt: string | null;
-  // Last observed quota-exhaustion for this provider (null when never seen).
-  // Written by the failure path only; never touched by the success counter,
-  // so a quota event stays visible until the next one overwrites it.
+  // Active observed quota-exhaustion for this provider. A successful request
+  // or endpoint change clears the warning while preserving usage counters.
   readonly quotaExhaustedAt: string | null;
   readonly quotaExhaustedModel: string | null;
 }

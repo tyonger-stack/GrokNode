@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { COMPONENT_SOURCE } from "../scripts/lib/router-renderer-patch.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -49,12 +50,44 @@ test("quota event stamps time and model without touching counters", async () => 
   assert.ok(typeof usage.quotaExhaustedAt === "string" && usage.quotaExhaustedAt.length > 0);
   assert.equal(usage.quotaExhaustedModel, "zai/glm-5.3-flash");
 
-  // A later success keeps the counters moving but preserves the stamp until
-  // the next quota event overwrites it.
+  // A later success recovers the current quota status without losing usage.
   store.recordInferenceUsage("openrouter", { inputTokens: 1 });
   const again = store.getInferenceRouterUsage().providers.openrouter;
   assert.equal(again.requests, 2);
-  assert.equal(again.quotaExhaustedModel, "zai/glm-5.3-flash");
+  assert.equal(again.quotaExhaustedAt, null);
+  assert.equal(again.quotaExhaustedModel, null);
+});
+
+test("legacy quota warnings older than the latest success are cleared on load", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "quota-recovered-"));
+  const file = path.join(dir, "settings.json");
+  const usage = emptySandInferenceRouterUsage();
+  usage.providers.openrouter = {
+    ...usage.providers.openrouter, requests: 5767, inputTokens: 1407012000,
+    lastUsedAt: "2026-10-16T21:34:02.828Z",
+    quotaExhaustedAt: "2026-10-06T14:08:52.543Z", quotaExhaustedModel: "old-model",
+  };
+  await writeFile(file, JSON.stringify({ version: 1, inferenceRouterUsage: usage }));
+
+  const current = new SandSettingsStore(file).getInferenceRouterUsage().providers.openrouter;
+
+  assert.equal(current.quotaExhaustedAt, null);
+  assert.equal(current.quotaExhaustedModel, null);
+  assert.equal(current.requests, 5767);
+  assert.equal(current.inputTokens, 1407012000);
+});
+
+test("changing the endpoint resets its quota warning but resaving the same endpoint does not", async () => {
+  const store = await makeStore();
+  store.setOpenRouterBaseUrl("https://old.example/v1");
+  store.recordQuotaExhausted("openrouter", "old-model");
+  store.setOpenRouterBaseUrl("https://old.example/v1/");
+  assert.equal(store.getInferenceRouterUsage().providers.openrouter.quotaExhaustedModel, "old-model");
+
+  store.setOpenRouterBaseUrl("https://new.example/v1");
+
+  assert.equal(store.getInferenceRouterUsage().providers.openrouter.quotaExhaustedAt, null);
+  assert.equal(store.getInferenceRouterUsage().providers.openrouter.quotaExhaustedModel, null);
 });
 
 test("quota fields survive a settings reload (parse whitelist)", async () => {
@@ -97,4 +130,68 @@ test("quota model is clamped and blank models become null", async () => {
   assert.equal(store.getInferenceRouterUsage().providers.openrouter.quotaExhaustedModel, null);
   store.recordQuotaExhausted("openrouter", "x".repeat(500));
   assert.equal(store.getInferenceRouterUsage().providers.openrouter.quotaExhaustedModel?.length, 256);
+});
+
+function mountRouterState(read) {
+  const window = new EventTarget();
+  window.desktop = { agent: { getInferenceRouter: read } };
+  let state;
+  let effect;
+  let poll;
+  let cleared = false;
+  const updates = [];
+  const de = {
+    useState(initial) {
+      state = initial;
+      return [state, (next) => {
+        state = typeof next === "function" ? next(state) : next;
+        for (const resolve of updates.splice(0)) resolve(state);
+      }];
+    },
+    useEffect(callback) { effect = callback; },
+  };
+  const hook = new Function("de", "window", "document", "setInterval", "clearInterval", COMPONENT_SOURCE + ";return RRouterState;")(
+    de, window, { visibilityState: "visible" },
+    (callback) => { poll = callback; return 1; },
+    () => { cleared = true; },
+  );
+  hook();
+  const stop = effect();
+  return { window, stop, poll: () => poll(), next: () => new Promise((resolve) => updates.push(resolve)), get state() { return state; }, get cleared() { return cleared; } };
+}
+
+test("an open router panel refreshes recovered quota and stops polling after unmount", { timeout: 1000 }, async () => {
+  let calls = 0;
+  const runtime = mountRouterState(async () => ({ provider: "openrouter", usage: { quotaExhaustedAt: calls++ === 0 ? "old-warning" : null } }));
+  try {
+    await runtime.next();
+    assert.equal(runtime.state.usage.quotaExhaustedAt, "old-warning");
+
+    const refreshed = runtime.next();
+    runtime.poll();
+    await refreshed;
+
+    assert.equal(runtime.state.usage.quotaExhaustedAt, null);
+  } finally { runtime.stop(); }
+  assert.equal(runtime.cleared, true);
+  const beforeFocus = calls;
+  runtime.window.dispatchEvent(new Event("focus"));
+  assert.equal(calls, beforeFocus);
+});
+
+test("a stale usage response cannot restore an alarm after a newer refresh", { timeout: 1000 }, async () => {
+  let resolveOld;
+  const old = new Promise((resolve) => { resolveOld = resolve; });
+  let calls = 0;
+  const runtime = mountRouterState(() => ++calls === 1 ? old : Promise.resolve({ provider: "openrouter", usage: { quotaExhaustedAt: null } }));
+  try {
+    const refreshed = runtime.next();
+    runtime.window.dispatchEvent(new Event("focus"));
+    await refreshed;
+
+    resolveOld({ provider: "openrouter", usage: { quotaExhaustedAt: "old-warning" } });
+    await old;
+
+    assert.equal(runtime.state.usage.quotaExhaustedAt, null);
+  } finally { runtime.stop(); }
 });

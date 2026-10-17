@@ -159,6 +159,10 @@ function parseSettings(value: unknown): SandStoredSettings | null {
         const count = (key: string): number => Number.isSafeInteger(record[key]) && (record[key] as number) >= 0 ? record[key] as number : 0;
         const textOrNull = (key: string): string | null => typeof record[key] === "string" && (record[key] as string).length > 0 ? (record[key] as string).slice(0, 256) : null;
         usage.providers[provider] = { requests: count("requests"), inputTokens: count("inputTokens"), outputTokens: count("outputTokens"), cacheReadTokens: count("cacheReadTokens"), cacheWriteTokens: count("cacheWriteTokens"), lastUsedAt: typeof record.lastUsedAt === "string" ? record.lastUsedAt : null, quotaExhaustedAt: typeof record.quotaExhaustedAt === "string" ? record.quotaExhaustedAt : null, quotaExhaustedModel: textOrNull("quotaExhaustedModel") };
+        const parsed = usage.providers[provider];
+        if (parsed.lastUsedAt !== null && parsed.quotaExhaustedAt !== null && Date.parse(parsed.lastUsedAt) > Date.parse(parsed.quotaExhaustedAt)) {
+          usage.providers[provider] = { ...parsed, quotaExhaustedAt: null, quotaExhaustedModel: null };
+        }
       }
     }
     result.inferenceRouterUsage = usage;
@@ -259,7 +263,19 @@ export class SandSettingsStore {
   setOpenRouterAgentEfforts(value: unknown): void { const next = normalizeOpenRouterAgentEfforts(value); this.update((s) => { const { openRouterAgentEfforts: _old, ...rest } = s; return Object.keys(next).length === 0 ? rest : { ...rest, openRouterAgentEfforts: next }; }); }
   setOpenRouterAgentModels(value: unknown): void { const next = normalizeOpenRouterAgentModels(value); this.update((s) => { const { openRouterAgentModels: _old, ...rest } = s; return Object.keys(next).length === 0 ? rest : { ...rest, openRouterAgentModels: next }; }); }
   getOpenRouterBaseUrl(): string | undefined { return this.load().openRouterBaseUrl; }
-  setOpenRouterBaseUrl(value?: string): void { this.update((s) => { const { openRouterBaseUrl: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed ? { ...rest, openRouterBaseUrl: normalizeOpenRouterBaseUrl(trimmed) } : rest; }); }
+  setOpenRouterBaseUrl(value?: string): void {
+    const trimmed = value?.trim();
+    const next = trimmed ? normalizeOpenRouterBaseUrl(trimmed) : undefined;
+    this.update((s) => {
+      const { openRouterBaseUrl: previous, ...rest } = s;
+      const usage = s.inferenceRouterUsage;
+      const current = previous === next || usage === undefined ? rest : {
+        ...rest,
+        inferenceRouterUsage: { ...usage, providers: { ...usage.providers, openrouter: { ...usage.providers.openrouter, quotaExhaustedAt: null, quotaExhaustedModel: null } } },
+      };
+      return next === undefined ? current : { ...current, openRouterBaseUrl: next };
+    });
+  }
   getOpenRouterEffort(): OpenRouterReasoningEffort | undefined { return this.load().openRouterEffort; }
   setOpenRouterEffort(value?: string | null): void { this.update((s) => { const { openRouterEffort: _old, ...rest } = s; const effort = normalizeOpenRouterReasoningEffort(value); return effort == null ? rest : { ...rest, openRouterEffort: effort }; }); }
   getWebhookListenerPort(): number | undefined { return this.load().webhookListenerPort; }
@@ -272,7 +288,7 @@ export class SandSettingsStore {
     this.update((settings) => {
       const current = settings.inferenceRouterUsage ?? emptySandInferenceRouterUsage();
       const previous = current.providers[provider];
-      return { ...settings, inferenceRouterUsage: { schemaVersion: 1, providers: { ...current.providers, [provider]: { requests: previous.requests + 1, inputTokens: previous.inputTokens + safe(usage.inputTokens), outputTokens: previous.outputTokens + safe(usage.outputTokens), cacheReadTokens: previous.cacheReadTokens + safe(usage.cacheReadTokens), cacheWriteTokens: previous.cacheWriteTokens + safe(usage.cacheWriteTokens), lastUsedAt: new Date().toISOString(), quotaExhaustedAt: previous.quotaExhaustedAt, quotaExhaustedModel: previous.quotaExhaustedModel } } } };
+      return { ...settings, inferenceRouterUsage: { schemaVersion: 1, providers: { ...current.providers, [provider]: { requests: previous.requests + 1, inputTokens: previous.inputTokens + safe(usage.inputTokens), outputTokens: previous.outputTokens + safe(usage.outputTokens), cacheReadTokens: previous.cacheReadTokens + safe(usage.cacheReadTokens), cacheWriteTokens: previous.cacheWriteTokens + safe(usage.cacheWriteTokens), lastUsedAt: new Date().toISOString(), quotaExhaustedAt: null, quotaExhaustedModel: null } } } };
     });
   }
   /** Records a quota-exhaustion event without touching the success counters:

@@ -90,8 +90,8 @@ function recordRoutedUsage(provider: RoutedProvider, usage: UsageRecord): void {
 // Quota-exhaustion is visible only at request time (no upstream exposes a
 // balance query): when a request dies with a quota failure, stamp it into
 // the usage store so the Settings → Router → Usage panel can show it. The
-// success counters are untouched — a quota event must stay visible until
-// the next event, not inflate request counts. Codex errors are plain-text
+// success counters are untouched; a later success clears the warning.
+// Codex errors are plain-text
 // Errors (no classifier available), so they go through the wording list;
 // OpenRouter errors go through the shared classifier.
 const QUOTA_WORDS = ["quota", "billing", "payment required", "insufficient", "credits", "rate limit exceeded", "usage limit", "额度", "余额", "余量"];
