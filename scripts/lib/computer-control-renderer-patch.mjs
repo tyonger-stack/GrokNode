@@ -12,6 +12,11 @@
 // bridges). noVNC still accepts mouse/keyboard. Match official: keep
 // isInteractive:!0, gate with acceptsInput + sand-47corl + tabIndex +
 // webview.send("sand:vnc-accepts-input") so preload gates IME/clipboard/Mac keys.
+//
+// Visual (kn / footer / hint) — separate from the gate, same patch file:
+//   portal bar into sand-computer-stage as 52px chrome footer (official flex child);
+//   kn pill classes; computer-watch-hint only after Watching click (2500ms);
+//   stage frame width min(100cqw, calc((100cqh - 52px) * 1920 / 1200)).
 // Owner is `bbn` (not `gbn`). Order: after computer-sleep (preview wraps DAe),
 // before i18n (emits RLocT).
 
@@ -80,8 +85,94 @@ const BAR_AFTER =
   + 'p.jsxs("div",{className:re("sand-computer-body",';
 
 const COMPONENT_INJECT_BEFORE = "function bbn({isOpen:n,agentId:e,";
-const COMPONENT_SOURCE = String.raw`function RComputerControlBar(n){const{hasControl:e,onTakeControl:t,onStopControl:s}=n;const r=e?(RLocT("You're in control","你正在控制")):(RLocT("Watching","仅观看"));const i=e?null:p.jsx("span",{className:"sand-tfy4bk",style:{marginInlineStart:"8px",opacity:.75,fontSize:"12px"},children:(RLocT("Take control to click and type","取得控制权后即可点击和输入"))});const o=e?p.jsx(As,{onClick:s,size:"sm",type:"button",variant:"secondary",children:(RLocT("Stop","停止"))}):p.jsx(As,{onClick:t,size:"sm",type:"button",variant:"primary",children:(RLocT("Take control","取得控制权"))});return p.jsxs("div",{"aria-label":(RLocT("Computer control","电脑控制")),className:"sand-computer-control-bar sand-1n2onr6 sand-9f619 sand-78zum5 sand-6s0dn4 sand-2lah0s sand-167g77z sand-h8yej3 sand-n3w4p2 sand-163pfp",role:"status",style:{justifyContent:"space-between",alignItems:"center",paddingInline:"12px",paddingBlock:"8px",borderBottom:"0.5px solid var(--sand-border-default)",background:"var(--sand-bg-secondary)",zIndex:2},children:[p.jsxs("span",{"aria-live":"polite",className:"sand-78zum5 sand-6s0dn4 sand-1cy8zhl",style:{alignItems:"center",gap:"6px"},children:[p.jsx(bt,{name:e?"window-pointer-arrow":"eye",size:"sm","aria-hidden":!0}),r,i]}),o]})}
-`;
+// Official kn pill + 52px stage footer + click-hint. No String.raw backticks (parse hazard).
+const COMPONENT_SOURCE = [
+  "function RComputerControlBar(n){",
+  "const{hasControl:e,onTakeControl:t,onStopControl:s}=n;",
+  "const[host,setHost]=S.useState(null);",
+  "const[hintOn,setHintOn]=S.useState(!1);",
+  "const hasControlRef=S.useRef(e);",
+  "const hintTimerRef=S.useRef(null);",
+  "hasControlRef.current=e;",
+  "S.useEffect(function(){if(e){setHintOn(!1);if(hintTimerRef.current){clearTimeout(hintTimerRef.current);hintTimerRef.current=null}}},[e]);",
+  "S.useEffect(function(){",
+  'if(!document.getElementById("rcompctl-style")){const st=document.createElement("style");st.id="rcompctl-style";',
+  'st.textContent=".rcompctl-footer{height:52px;background-color:var(--cursor-chrome);flex-shrink:0;display:flex;align-items:center;width:100%;box-sizing:border-box;padding-inline:12px;}.rcompctl-bar{border-color:color-mix(in srgb,var(--sand-text-on-primary) 28%,transparent);flex:1;min-width:0;}";',
+  "document.head.appendChild(st)}",
+  // Footer mounts on stage alone; frame (VNC) often arrives after the placeholder
+  // phase — requiring both made attach() exhaust 60×50ms and leave the bar absent.
+  "let cancelled=!1,stage=null,frame=null,footer=null,prevW=\"\",prevAR=\"\",timer=null,obs=null,frameBound=!1;",
+  'const STAGE_W="min(100cqw, calc((100cqh - 52px) * 1920 / 1200))";',
+  'const STAGE_AR="1920 / 1200";',
+  "function onFramePointerDown(){",
+  "if(hasControlRef.current)return;",
+  "setHintOn(!0);",
+  "if(hintTimerRef.current)clearTimeout(hintTimerRef.current);",
+  "hintTimerRef.current=setTimeout(function(){setHintOn(!1);hintTimerRef.current=null},2500)",
+  "}",
+  "function bindFrame(next){",
+  "if(!next||frameBound&&frame===next)return;",
+  "if(frame&&frame!==next){frame.removeEventListener(\"pointerdown\",onFramePointerDown);frame.style.width=prevW;frame.style.aspectRatio=prevAR}",
+  "frame=next;prevW=frame.style.width;prevAR=frame.style.aspectRatio;",
+  "frame.style.width=STAGE_W;frame.style.aspectRatio=STAGE_AR;",
+  'frame.addEventListener("pointerdown",onFramePointerDown);',
+  "frameBound=!0;",
+  // Official stage children order is [frame, footer] (chunk-box-desktop-modal kn mount).
+  // Early attach during placeholder can leave footer first after React swaps the frame in.
+  "ensureFooterLast()",
+  "}",
+  "function ensureFooterLast(){",
+  "if(!stage||!footer)return;",
+  "if(stage.lastElementChild!==footer)stage.appendChild(footer)",
+  "}",
+  "function attach(){",
+  'const box=document.querySelector(".sand-computer-fullscreen");',
+  "if(!box)return!1;",
+  'stage=box.querySelector(".sand-computer-stage");',
+  "if(!stage)return!1;",
+  'stage.classList.add("sand-dt5ytf");',
+  'footer=stage.querySelector(":scope > .rcompctl-footer");',
+  "if(!footer){",
+  'footer=document.createElement("div");',
+  // Match official footer recipe: 52px + chrome fill (0.71 sand-1qj4qm9 / --sand-bg-chrome;
+  // 0.18 has no that class/token — --cursor-chrome is the local chrome fill).
+  'footer.className="rcompctl-footer sand-78zum5 sand-6s0dn4 sand-l56j7k sand-2lah0s sand-h8yej3 sand-dd8jsf";',
+  "stage.appendChild(footer)}",
+  "ensureFooterLast();",
+  'bindFrame(box.querySelector(".sand-computer-stage__frame"));',
+  "if(!cancelled)setHost(footer);",
+  "return!0",
+  "}",
+  "function tick(){",
+  "if(cancelled)return;",
+  "if(!attach()){timer=setTimeout(tick,50);return}",
+  "obs=new MutationObserver(function(){",
+  "if(cancelled)return;",
+  'bindFrame(stage&&stage.querySelector(".sand-computer-stage__frame"));',
+  "ensureFooterLast()",
+  "});",
+  "obs.observe(stage,{childList:!0,subtree:!1});",
+  "ensureFooterLast()",
+  "}",
+  "tick();",
+  "return function(){",
+  "cancelled=!0;if(timer)clearTimeout(timer);if(obs)obs.disconnect();",
+  "if(hintTimerRef.current)clearTimeout(hintTimerRef.current);",
+  'if(frame)frame.removeEventListener("pointerdown",onFramePointerDown);',
+  "if(footer)footer.remove();",
+  'if(stage)stage.classList.remove("sand-dt5ytf");',
+  "if(frame){frame.style.width=prevW;frame.style.aspectRatio=prevAR}",
+  "setHost(null)",
+  "}",
+  "},[]);",
+  'const status=e?(RLocT("You\'re in control","你正在控制")):(RLocT("Watching","仅观看"));',
+  'const hint=(!e&&hintOn)?p.jsx("span",{className:"ui-11wthnw ui-1ja60sm ui-vu1jfw sand-1o0liin sand-uxw1ft",children:(RLocT("Take control to click and type","取得控制权后即可点击和输入"))}):null;',
+  'const btn=e?p.jsx(As,{onClick:function(){setHintOn(!1);s()},size:"sm",type:"button",variant:"secondary",children:(RLocT("Stop","停止"))}):p.jsx(As,{onClick:function(){setHintOn(!1);t()},size:"sm",type:"button",variant:"primary",children:(RLocT("Take control","取得控制权"))});',
+  'const bar=p.jsxs("div",{"aria-label":(RLocT("Computer control","电脑控制")),className:"sand-computer-control-bar rcompctl-bar sand-1n2onr6 sand-9f619 sand-3nfvp2 sand-2lah0s sand-6s0dn4 sand-883omv sand-c9qbxq sand-exx8yu sand-18d9i69 sand-1g0dm76 sand-qjedn3 sand-1y0btm7 sand-149ho13 sand-10e981r sand-1z0g938 sand-tyxrsu sand-uxw1ft sand-qrzla8",role:"status",style:{justifyContent:"space-between",alignItems:"center",paddingInline:"12px"},children:[p.jsxs("span",{"aria-live":"polite",className:"sand-3nfvp2 sand-6s0dn4 sand-17d4w8g sand-1o0liin"+(e?" sand-tyxrsu":""),style:{alignItems:"center"},children:[p.jsx(bt,{name:e?"window-pointer-arrow":"eye",size:"sm","aria-hidden":!0}),status,hint]}),p.jsx("span",{className:"sand-1n2onr6 sand-3nfvp2",children:btn})]});',
+  "if(host==null)return null;",
+  "return Wr.createPortal(bar,host)",
+  "}",
+].join("");
 
 function replaceExactlyOnce(source, before, after, label) {
   const first = source.indexOf(before);
@@ -165,6 +256,28 @@ export function patchComputerControl(source) {
   if (!patched.includes("isInteractive:!0,acceptsInput:RHasControl")) {
     throw new Error("computer-control must keep isInteractive:!0 with acceptsInput gate.");
   }
+  if (!patched.includes("Wr.createPortal(bar,host)")) {
+    throw new Error("computer-control kn bar must portal into the stage footer host.");
+  }
+  if (!patched.includes("rcompctl-footer") || !patched.includes('STAGE_W="min(100cqw, calc((100cqh - 52px) * 1920 / 1200))"')) {
+    throw new Error("computer-control missing official 52px stage footer / frame width recipe.");
+  }
+  if (!patched.includes(",2500)") || !patched.includes("onFramePointerDown")) {
+    throw new Error("computer-control missing computer-watch-hint (2500ms on Watching click).");
+  }
+  if (!patched.includes("if(!stage)return!1;") || patched.includes("if(!stage||!frame)return!1;")) {
+    throw new Error("computer-control footer must attach on stage without waiting for the VNC frame.");
+  }
+  if (!patched.includes("new MutationObserver") || !patched.includes("function bindFrame(")) {
+    throw new Error("computer-control must observe late VNC frame mount for STAGE_W / watch-hint.");
+  }
+  if (!patched.includes("function ensureFooterLast(") || !patched.includes("stage.lastElementChild!==footer")) {
+    throw new Error("computer-control footer must stay after the frame (official [frame, footer] order).");
+  }
+  if (patched.includes('opacity:.75,fontSize:"12px"') && patched.includes("Take control to click and type")) {
+    // Old always-visible hint styling — official only flashes after a Watching click.
+    throw new Error("computer-control must not keep the always-visible Watching hint.");
+  }
   const bbn = extractBbnBody(patched);
   if (!bbn.includes("const[RHasControl,RSetControl]=S.useState(!1)")) {
     throw new Error("computer-control: RHasControl state missing inside bbn.");
@@ -239,10 +352,13 @@ export async function applyOriginalRendererComputerControl({ stageRoot }) {
       "sand-47corl-pointer-events-none",
       "sand-vnc-accepts-input-webview-send",
       "sand-computer-control-bar",
+      "kn-footer-portal-52px",
+      "computer-watch-hint-2500ms",
+      "stage-frame-1920x1200-recipe",
     ],
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-computer-control-extension.json");
   await writeFile(provenancePath, `${JSON.stringify(record, null, 2)}\n`);
-  console.log(`Computer-control: Watching/Take control (acceptsInput+sand-47corl+vnc-accepts-input) on ${candidate.name} (bbn).`);
+  console.log(`Computer-control: Watching/Take control + kn/footer/hint on ${candidate.name} (bbn).`);
   return { ...record, provenancePath, provenanceBytes: (await stat(provenancePath)).size };
 }

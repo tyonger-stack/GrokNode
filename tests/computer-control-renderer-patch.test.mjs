@@ -34,8 +34,34 @@ test("computer-control: Watching gates via acceptsInput + sand-47corl inside bbn
   assert.ok(patched.includes("s[18]!==RAccepts"));
   assert.ok(patched.includes("s[18]=RAccepts"));
   assert.ok(patched.includes("RAccepts=RAcceptsInput===void 0?!1:RAcceptsInput"));
+  assert.ok(patched.includes("Wr.createPortal(bar,host)"));
+  assert.ok(patched.includes("rcompctl-footer"));
+  assert.ok(patched.includes('STAGE_W="min(100cqw, calc((100cqh - 52px) * 1920 / 1200))"'));
+  assert.ok(patched.includes("onFramePointerDown"));
+  assert.ok(patched.includes(",2500)"));
+  assert.equal(patched.includes('opacity:.75,fontSize:"12px"'), false, "always-visible hint style retired");
   assert.ok(patched.includes("function gbn(n){const e=he.c(51),"));
   assert.equal(patched.includes("function gbn(n){const e=he.c(56),"), false);
+});
+
+test("computer-control kn visual: portal + footer + hint without touching the input gate", { skip: pinnedSkip }, () => {
+  const patched = patchComputerControl(readFileSync(chunk, "utf8"));
+  assert.ok(patched.includes("isInteractive:!0,acceptsInput:RHasControl"));
+  assert.ok(patched.includes("RVncAcceptsSend(_,!!RAccepts)"));
+  assert.ok(patched.includes("sand-dt5ytf"));
+  assert.ok(patched.includes("rcompctl-bar"));
+  assert.ok(patched.includes("sand-dd8jsf"));
+  assert.ok(patched.includes("Wr.createPortal(bar,host)"));
+  // Hint copy remains, but only behind hintOn (Watching click) — not the old always-on style.
+  assert.ok(patched.includes('RLocT("Take control to click and type","取得控制权后即可点击和输入")'));
+  assert.ok(patched.includes("!e&&hintOn"));
+  // Footer must not wait on the VNC frame (placeholder phase has stage only).
+  assert.ok(patched.includes("if(!stage)return!1;"));
+  assert.equal(patched.includes("if(!stage||!frame)return!1;"), false);
+  assert.ok(patched.includes("new MutationObserver"));
+  assert.ok(patched.includes("function bindFrame("));
+  assert.ok(patched.includes("function ensureFooterLast("));
+  assert.ok(patched.includes("stage.lastElementChild!==footer"));
 });
 
 test("computer-control MUTATION: dropping sand:vnc-accepts-input send fails guard", { skip: pinnedSkip }, () => {
