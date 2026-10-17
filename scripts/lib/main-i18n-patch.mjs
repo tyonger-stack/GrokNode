@@ -60,7 +60,8 @@ export const MAIN_I18N_PAIRS = [
   // ships rather than anything authored here. PANEL because each literal only ever
   // appears inside an injected JSX prop object.
   ["Add selection to prompt", "将所选内容添加到提示词", "WWv1+v", "PANEL"],
-  ["Add to prompt", "添加到提示词", "9D9gK1", "PANEL"],
+  // 0.71.2 renames the selection toolbar button (jo1zkp); hotkey action label WWv1+v stays.
+  ["Add to chat", "添加到聊天", "jo1zkp", "PANEL"],
   ["Selection actions", "所选内容操作", "6kt/Ns", "PANEL"],
   ["Adjust photo", "调整照片", "gY2AXq", "FULL"],
   ["Agents in this exchange", "此交流中的智能体", "2DO+PC", "FULL"],
@@ -215,7 +216,7 @@ export const MAIN_I18N_PAIRS = [
   ["Group", "群组", "L8fEEm", "FULL"],
   ["Help Center", "帮助中心", "C2SYi+", "FULL"],
   ["Hidden", "已隐藏", "D+zLDD", "FULL"],
-  ["Hidden Bots", "已隐藏的 Bot", "JuesWZ", "FULL"],
+  // Hidden Bots: sidebar-hidden-section-renderer-patch already emits RLocT; pair would fail-closed.
   ["How to connect", "如何连接", "nyWuhA", "FULL"],
   ["I'm done, continue", "我完成了，继续", "6gLBI0", "FULL"],
   ["Image unavailable", "图片不可用", "MZTcRq", "FULL"],
@@ -508,6 +509,11 @@ export const MAIN_I18N_061_PAIRS = [
   ["Conversation", "对话", "YyNOE7", "PANEL"],
   ["Conversation details", "对话详情", "3JY/Mm", "PANEL"],
   ["Couldn't Reach Grok Bot's Computer", "无法连接 Grok Bot 的电脑", "IgRphe", "PANEL"],
+  // P0-5 couldnt-reach comfort (official 0.71.2 LDzo5u / wUMeMd / Vi957D). EN literals
+  // are written by couldnt-reach-comfort-renderer-patch before this pass runs.
+  ["Your Bots, files, and logins are safe. If it doesn't reconnect on its own, recover Grok Bot's computer to keep the data.", "你的 Bot、文件和登录信息都是安全的。如果它没有自动重新连接，请恢复 Grok Bot 的电脑以保留数据。", "LDzo5u", "PANEL"],
+  ["This recreates Grok Bot's computer and reconnects. Your Bots, files, and logins are kept, but installed apps and packages are removed.", "这会重新创建 Grok Bot 的电脑并重新连接。你的 Bot、文件和登录信息都会保留，但已安装的应用和软件包会被移除。", "wUMeMd", "PANEL"],
+  ["The recovery couldn't finish, so Grok Bot's computer may still be unreachable. Your Bots, files, and logins are safe.", "恢复未能完成，Grok Bot 的电脑可能仍然无法连接。你的 Bot、文件和登录信息都是安全的。", "Vi957D", "PANEL"],
   ["Couldn't read file", "无法读取文件", "OZ1zWg", "PANEL"],
   ["Creating Grok Bot's computer", "正在创建 Grok Bot 的电脑", "OKLYXO", "PANEL"],
   ["Dashboard Watcher", "仪表盘监测助手", "N8fzyU", "PANEL"],
@@ -778,6 +784,9 @@ export const MAIN_I18N_GAPS = [
   ["Conversation", "zero-pattern-hit"],
   ["Conversation details", "zero-pattern-hit"],
   ["Couldn't Reach Grok Bot's Computer", "zero-pattern-hit"],
+  ["Your Bots, files, and logins are safe. If it doesn't reconnect on its own, recover Grok Bot's computer to keep the data.", "zero-pattern-hit"],
+  ["This recreates Grok Bot's computer and reconnects. Your Bots, files, and logins are kept, but installed apps and packages are removed.", "zero-pattern-hit"],
+  ["The recovery couldn't finish, so Grok Bot's computer may still be unreachable. Your Bots, files, and logins are safe.", "zero-pattern-hit"],
   ["Couldn't read file", "zero-pattern-hit"],
   ["Creating Grok Bot's computer", "zero-pattern-hit"],
   ["Dashboard Watcher", "zero-pattern-hit"],
@@ -879,7 +888,7 @@ export const MAIN_I18N_GAPS = [
   ["Upgrade to Ultra to send messages with Grok Bot.", "zero-pattern-hit"],
   ["Vercel", "identity-noop"],
   ["View Grok Bot's Computer progress", "zero-pattern-hit"],
-  ["Waiting on a command", "zero-pattern-hit"],
+  ["Waiting on results", "zero-pattern-hit"],
   ["Win-Loss Analyst", "zero-pattern-hit"],
   ["Wiping your data", "zero-pattern-hit"],
   ["Workspace", "identity-noop"],
@@ -1132,7 +1141,7 @@ export const MAIN_I18N_ANCHORED = [
 //   e7QvdT  On your computer                 正在使用你的电脑
 //   8GgDX+  Running commands                 正在运行命令
 //   P4dc6s  Organizing files                 正在整理文件
-//   VMTxcE  Waiting on a command             正在等待命令完成
+//   VMTxcE  Waiting on results               正在等待结果
 //   lZ/iKB  Generating a photo               正在生成图片
 //   voyxge  On its computer                  正在使用它的电脑
 //   vtZ0lQ  Messaging                        正在发送消息
@@ -1181,12 +1190,10 @@ export const MAIN_I18N_LOCAL_ANCHORED = [
     anchor: "function ept(n){const e=new Date(n),t=new Date,s=FIn(e);if(ZTe(e,t))return`Today ${s}`;const r=new Date(t);return r.setDate(t.getDate()-1),ZTe(e,r)?`Yesterday ${s}`:e.getFullYear()===t.getFullYear()?`${DIn.format(e)} ${s}`:`${RIn.format(e)} ${s}`}",
     replacement: "function ept(n){const e=new Date(n),t=new Date,s=FIn(e);if(ZTe(e,t))return`${RLocT(\"Today\",\"今天\")} ${s}`;const r=new Date(t);return r.setDate(t.getDate()-1),ZTe(e,r)?`${RLocT(\"Yesterday\",\"昨天\")} ${s}`:e.getFullYear()===t.getFullYear()?`${DIn.format(e)} ${s}`:`${RIn.format(e)} ${s}`}",
   },
-  {
-    id: "rbijNi/PxYAul",
-    note: "activity-mark label: `<name> is working` and its `Typing…` sibling",
-    anchor: "function gJn(n,e){if(n===\"working\"){const t=e?.trim();return t!=null&&t.length>0?`${t} is working`:null}return\"Typing…\"}",
-    replacement: "function gJn(n,e){if(n===\"working\"){const t=e?.trim();return t!=null&&t.length>0?`${t} ${RLocT(\"is working\",\"正在工作\")}`:null}return(RLocT(\"Typing…\",\"正在输入…\"))}",
-  },
+  // gJn (`<name> is working` / Typing…) moved to
+  // scripts/lib/working-status-phrases-renderer-patch.mjs (0.71.2 CP phrases,
+  // no bot-name prefix; Typing already RLocT'd there). Do not re-anchor here —
+  // the pristine gJn bytes no longer exist after that pass.
   {
     id: "rbijNi/Q5ywLe/yQopUI/OmANKk",
     note: "activity-mark label for one and for many members; official zh collapses the is/are and working/typing distinction into a bare predicate",
@@ -1203,7 +1210,7 @@ export const MAIN_I18N_LOCAL_ANCHORED = [
     id: "AUV+TY..oxsp1W + 2 local",
     note: "activity-verb row: every Ja() label localized through one table at the single funnel. Three of the eighteen (Thinking, Working, Messaging another assistant) are already branched by existing pairs, so the table carries them too and is idempotent for them",
     anchor: "function Ja(n,e,t){return{verb:n,text:XCe(e),icon:{kind:\"glyph\",name:t}}}",
-    replacement: "function Ja(n,e,t){return{verb:n,text:XCe(RLocActivityText(e)),icon:{kind:\"glyph\",name:t}}}const RLocActivityTextZh={\"Thinking\":\"思考中\",\"Working\":\"工作中\",\"Searching the web\":\"正在搜索网页\",\"Reading the web\":\"正在阅读网页\",\"Reading file\":\"正在读取文件\",\"Drafting the file\":\"正在起草文件\",\"On your computer\":\"正在使用你的电脑\",\"Running commands\":\"正在运行命令\",\"Organizing files\":\"正在整理文件\",\"Waiting on a command\":\"正在等待命令完成\",\"Generating a photo\":\"正在生成图片\",\"On its computer\":\"正在使用它的电脑\",\"Messaging\":\"正在发送消息\",\"Browsing the web\":\"正在浏览网页\",\"Connecting to a third party app\":\"正在连接第三方应用\",\"Coding\":\"正在编写代码\",\"Waiting on another agent\":\"正在等待另一个 Bot\"};function RLocActivityText(e){return RLocT(e,RLocActivityTextZh[e]??e)}",
+    replacement: "function Ja(n,e,t){return{verb:n,text:XCe(RLocActivityText(e)),icon:{kind:\"glyph\",name:t}}}const RLocActivityTextZh={\"Thinking\":\"思考中\",\"Working\":\"工作中\",\"Searching the web\":\"正在搜索网页\",\"Reading the web\":\"正在阅读网页\",\"Reading file\":\"正在读取文件\",\"Drafting the file\":\"正在起草文件\",\"On your computer\":\"正在使用你的电脑\",\"Running commands\":\"正在运行命令\",\"Organizing files\":\"正在整理文件\",\"Waiting on results\":\"正在等待结果\",\"Generating a photo\":\"正在生成图片\",\"On its computer\":\"正在使用它的电脑\",\"Messaging\":\"正在发送消息\",\"Browsing the web\":\"正在浏览网页\",\"Connecting to a third party app\":\"正在连接第三方应用\",\"Coding\":\"正在编写代码\",\"Waiting on another agent\":\"正在等待另一个 Bot\"};function RLocActivityText(e){return RLocT(e,RLocActivityTextZh[e]??e)}",
   },
   {
     id: "qIhBkq",

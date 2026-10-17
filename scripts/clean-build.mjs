@@ -47,12 +47,14 @@ import { applyOriginalRendererInfoPaneSplit } from "./lib/info-pane-split-render
 import { applyOriginalRendererAgentModel } from "./lib/agent-model-renderer-patch.mjs";
 import { applyOriginalRendererComputerUpdate } from "./lib/computer-update-renderer-patch.mjs";
 import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patch.mjs";
+import { applyHardwareAccelerationSettingsPatch } from "./lib/hardware-acceleration-settings-patch.mjs";
 import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
 import { applyTeachGateRestorePatch } from "./lib/teach-gate-restore-patch.mjs";
 import { applyGrokMainAgentGatePatch } from "./lib/grok-main-agent-gate-patch.mjs";
 import { applyBotColorGatePatch } from "./lib/bot-color-gate-patch.mjs";
+import { apply0712GateEcosystemPatch } from "./lib/0712-gate-ecosystem-patch.mjs";
 import { applyMainAgentRendererPatch } from "./lib/main-agent-renderer-patch.mjs";
 import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
@@ -60,6 +62,19 @@ import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-p
 import { applyComputerControlRendererPatch } from './lib/computer-control-renderer-patch.mjs';
 import { applyShapePickerPatch } from "./lib/shape-picker-patch.mjs";
 import { applyOriginalRendererConversationComputerCard } from "./lib/conversation-computer-card-renderer-patch.mjs";
+import { applyOriginalRendererWaitingOnResults } from "./lib/waiting-on-results-renderer-patch.mjs";
+import { applyOriginalRendererViewUnread } from "./lib/view-unread-renderer-patch.mjs";
+import { applyOriginalRendererScrollToBottom } from "./lib/scroll-to-bottom-renderer-patch.mjs";
+import { applyOriginalRendererDownloadAll } from "./lib/download-all-renderer-patch.mjs";
+import { applyOriginalRendererUndeliveredSend } from "./lib/undelivered-send-renderer-patch.mjs";
+import { applyOriginalRendererReadFailureRetry } from "./lib/read-failure-retry-renderer-patch.mjs";
+import { applyOriginalRendererSidebarRenameMenu } from "./lib/sidebar-rename-menu-renderer-patch.mjs";
+import { applyOriginalRendererSidebarHiddenSection } from "./lib/sidebar-hidden-section-renderer-patch.mjs";
+import { applyOriginalRendererFailureCopy } from "./lib/failure-copy-renderer-patch.mjs";
+import { applyOriginalRendererCouldntReachComfort } from "./lib/couldnt-reach-comfort-renderer-patch.mjs";
+import { applyOriginalRendererWidgetMultiselect } from "./lib/widget-multiselect-renderer-patch.mjs";
+import { applyOriginalRendererWorkingStatusPhrases } from "./lib/working-status-phrases-renderer-patch.mjs";
+import { applyOriginalRendererPromptAutoLists } from "./lib/prompt-auto-lists-renderer-patch.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 export const defaultElectronMainBindingManifestPath = path.join(repoRoot, "manifests/reconstruction/electron-main-production-bindings-manifest.json");
@@ -362,10 +377,47 @@ export async function buildFidelityReconstructedAsar({
   // own labels, no RLocT: order-free against the passes above.
   await applyComputerControlRendererPatch({ stageRoot });
   await applyOriginalRendererConversationComputerCard({ appRoot: stageRoot });
+  // 0.71.2 View → "View Unread": MAIN chunk roster filter + menu event subscribe. No RLocT.
+  // Must precede i18n only so later passes see a stable chunk; anchors do not overlap them.
+  await applyOriginalRendererViewUnread({ stageRoot });
+  // 0.71.2 transcript "Scroll to bottom" button: edits the MAIN chunk's view builder and
+  // transcript plane, and emits an RLocT call, so it must precede the i18n passes.
+  await applyOriginalRendererScrollToBottom({ stageRoot });
+  // 0.71.2 "Download" / "Download all" message action: edits the MAIN chunk's hover actions,
+  // message wrapper and image-group host, and emits RLocT calls, so it must precede i18n.
+  await applyOriginalRendererDownloadAll({ stageRoot });
+  // 0.71.2's "Not delivered yet": MAIN chunk send journal, transcript overlay and user-row
+  // footer. Its one label is an RLocT call, so it must precede main-i18n (which appends
+  // the RLocT runtime); none of its anchors overlap the passes above.
+  await applyOriginalRendererUndeliveredSend({ stageRoot });
+  await applyOriginalRendererReadFailureRetry({ stageRoot });
+  // 0.71.2 "Rename chat / Rename Bot" sidebar context-menu entry. Emits RLocT calls, so it
+  // must land before main-i18n appends the RLocT runtime.
+  await applyOriginalRendererSidebarRenameMenu({ stageRoot });
+  // 0.71.2 inline Hidden Bots section + "Show in sidebar". Depends on the rename pass's
+  // post-patch fcn/udn memo sizes; emits RLocT, so it must precede main-i18n.
+  await applyOriginalRendererSidebarHiddenSection({ stageRoot });
+  // Its RLocT calls rely on the runtime main-i18n appends to the main chunk.
+  await applyOriginalRendererFailureCopy({ stageRoot });
+  // P0-5: align couldnt-reach dialog comfort (LDzo5u / wUMeMd / Vi957D) to official
+  // Bot wording BEFORE main-i18n pairs match the patched English literals.
+  await applyOriginalRendererCouldntReachComfort({ stageRoot });
+  // Widget view chunk (view-CIFdOvCz.js); order-free vs main-chunk failure-copy. Must precede extra-i18n (keeps its English anchors).
+  await applyOriginalRendererWidgetMultiselect({ stageRoot });
+  // Replaces gJn before main-i18n; MAIN_I18N_LOCAL_ANCHORED no longer owns gJn.
+  await applyOriginalRendererWorkingStatusPhrases({ stageRoot });
+  // P2-2 MsZyH5: Ja("waiting") literal → Waiting on results (before main-i18n table).
+  await applyOriginalRendererWaitingOnResults({ stageRoot });
+  // 0.71.2 prompt `-` / `1.` auto-lists (hft StarterKit). No RLocT; must stay before i18n
+  // only for ordering consistency with other 0712 UI patches. Strips list Enter shortcuts.
+  await applyOriginalRendererPromptAutoLists({ stageRoot });
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
   await applyOriginalRendererLanguagePatch({ stageRoot });
+  // Hardware acceleration toggle: lands in Sa()'s `r` slot after Language (Fragment).
+  // Depends on the Language Sa slot rewrite above; independent of i18n (bilingual inline).
+  await applyHardwareAccelerationSettingsPatch({ stageRoot });
   // Last among the chunk-mutating passes: the flip touches one gate-fallback token in the
   // renderer chunk and the host bundle's bundled FLAGS default, neither of which the i18n
   // passes read or write. It must land before the packaging audit snapshots the stage.
@@ -376,6 +428,10 @@ export async function buildFidelityReconstructedAsar({
   // Also also last: one more NEW entry in the same bundled FLAGS table, with its own
   // anchor check. Independent of both passes above (they assert on their own gate names).
   await applyBotColorGatePatch({ stageRoot });
+  // 0.71 documents/pages/multiplayer/canvas FLAGS ecosystem: inserts 11 entries (2 pinned
+  // ON from Statsig, 9 kept OFF). Same table, own gate-name already-present guard; must
+  // run after the three passes above so their names are not mistaken for ours.
+  await apply0712GateEcosystemPatch({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);

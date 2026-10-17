@@ -4,11 +4,13 @@ import { SAND_REACTION_AGENT, withAutoReviewExpiryNote } from "../../../shared/t
 import { UNKNOWN_CONNECTOR_TAG } from "../../../shared/observability/connector-auth-telemetry.js";
 import { sandErrorDetail } from "../../ports/telemetry.js";
 import {
+  isBackendUnreachableError,
   isContextOverflowDeadEnd,
   isConversationTooLargeRefusal,
   isFirstTokenStallError,
   isProviderCapacityError,
   isRetryableProviderError,
+  isStreamIdleError,
   isTransientStreamError,
   serverRetryAfterMsFromError,
 } from "../../runner/transient-stream-error.js";
@@ -23,9 +25,13 @@ import { brandedEnumOf, brandedErrno } from "../../../shared/errors/bounded.js";
 import { SandError } from "../../../shared/errors/registry.js";
 import { findSystemErrno } from "../../../shared/system-errno.js";
 import {
+  turnTrayTitleKind,
+  type AgentRunErrorKind,
+} from "../../../shared/trays/agent-run-error-title-copy.js";
+import { hostTrayTitle } from "../../../shared/trays/tray-title-fallbacks.js";
+import {
   describeAgentRunError,
   findBackendConnectError,
-  PROVIDER_OVERLOAD_ERROR_TITLE,
 } from "./agent-run-error.js";
 import {
   createSendMessageEntry,
@@ -284,7 +290,7 @@ export function incidentKindOf(
   classified: Record<string, unknown>,
 ): TurnIncidentKind {
   const code = String(classified.code ?? "");
-  if (code === "SAND-E0401" || code === "SAND-E0408") return "stalled";
+  if (code === "SAND-E0401" || code === "SAND-E0408" || code === "SAND-E0417") return "stalled";
   if (code === "SAND-E0405" || code === "SAND-E0407") return "failed";
   return "failed";
 }
@@ -303,6 +309,11 @@ export function classifyAgentError(error: unknown): Record<string, unknown> {
       statusCode,
     });
   }
+  if (isBackendUnreachableError(error)) {
+    return SandError.turnBackendUnreachable({
+      errno: brandedErrno(findSystemErrno(error)),
+    });
+  }
   if (isProviderCapacityError(error)) {
     const retryAfterMs = serverRetryAfterMsFromError(error);
     if (retryAfterMs !== undefined) {
@@ -314,6 +325,7 @@ export function classifyAgentError(error: unknown): Record<string, unknown> {
     return SandError.providerOverloaded({ connectCode: connectCodeOf(error) });
   }
   if (isFirstTokenStallError(error)) return SandError.firstTokenStall();
+  if (isStreamIdleError(error)) return SandError.streamIdleStall();
   if (isContextOverflowDeadEnd(error)) return SandError.contextWindowOverflow();
   if (isConversationTooLargeRefusal(error)) {
     return SandError.conversationTooLarge();
@@ -623,12 +635,14 @@ export class TurnRuntime {
           const requestId = session.db.getRequestIds().at(-1)?.id;
           this.tm.trayErrors.pushError({
             agentId: session.id,
-            title:
-              description.errorKind === "provider_overloaded"
-                ? PROVIDER_OVERLOAD_ERROR_TITLE
-                : "Agent failed to respond",
             requestId,
             ...description,
+            ...hostTrayTitle({
+              kind: turnTrayTitleKind(
+                description.errorKind as AgentRunErrorKind | undefined,
+              ),
+              description,
+            }),
           });
         }
         await this.tm.roster.emitAgentUpdate(session.id);

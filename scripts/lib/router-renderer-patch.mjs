@@ -4,7 +4,7 @@ import { buildPluginsDockRendererExtension } from "./plugins-dock-renderer-exten
 import { buildWebhookCredentialRendererExtension } from "./webhook-credential-renderer-extension.mjs";
 import { buildInfoPaneTabsRendererExtension, patchNativeInfoPaneTabs } from "./info-pane-tabs-renderer-extension.mjs";
 import { buildLibraryHostBundle, patchOriginalLibraryHost } from "./library-host-renderer-patch.mjs";
-import { patchOriginalAutoReviewApproval } from "./auto-review-renderer-patch.mjs";
+import { patchAutoReviewSettingsOpener, patchOriginalAutoReviewApproval } from "./auto-review-renderer-patch.mjs";
 import { patchOriginalRoutineSurfaces } from "./routine-surfaces-renderer-patch.mjs";
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -283,7 +283,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     transformsByFile.set(candidate.name, entry);
   };
   for (const [role, candidate, transform] of [
-    ["registry", registryCandidates[0], (source) => patchOriginalLibraryHost(patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source))), libraryHostBundle)],
+    ["registry", registryCandidates[0], (source) => patchOriginalLibraryHost(patchAutoReviewSettingsOpener(patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source)))), libraryHostBundle)],
     ["panel", panelCandidates[0], patchOriginalSettingsPanel],
     ["approval", approvalCandidate, patchOriginalAutoReviewApproval],
   ]) {
@@ -328,8 +328,8 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     schemaVersion: 1,
     mode: "original-renderer-settings-extension",
     chunks: changes,
-    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy", "routine-row-toggle", "routine-detail-panel", "agent-library-documents", "info-pane-tabs"],
-    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "routine-list-row-switch", "routine-detail-surface", "fail-closed-always-allow", "append-agent-library-documents", "append-info-pane-tabs"],
+    features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy", "routine-row-toggle", "routine-detail-panel", "agent-library-documents", "info-pane-tabs", "auto-review-edit-rule", "auto-review-rule-notice"],
+    transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "routine-list-row-switch", "routine-detail-surface", "fail-closed-always-allow", "append-agent-library-documents", "append-info-pane-tabs", "auto-review-edit-rule", "auto-review-rule-notice", "auto-review-settings-opener"],
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-router-extension.json");
   await writeFile(provenancePath, `${JSON.stringify(record, null, 2)}\n`);

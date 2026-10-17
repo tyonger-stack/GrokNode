@@ -104,6 +104,10 @@ const runtimeSpecs = Object.freeze({
       preloadPath: ["resource-binding-required", null, "var PRELOAD_DIST_DIR ="],
       rendererHtmlPath: ["resource-binding-required", null, "../renderer/index.html"],
       createBrowserWindow: ["native-boundary", null, "new import_electron51.BrowserWindow("],
+      // Optional crash-loop recovery dialog (0.71). Upstream main.cts has no
+      // MessageBox after the source marker; anchor on the process-crash reporter
+      // that the recovery path shares in the same lifecycle section.
+      dialog: ["native-boundary", null, "createDesktopProcessCrashReporter({"],
       getAllWindows: ["native-boundary", null, "BrowserWindow.getAllWindows()"],
       windowStatePersistence: ["clean-provider", "source/electron-main/window-state-persistence.ts#createWindowStatePersistence", "resolveSandWindowPlacement()"],
       deepLinks: ["clean-provider-needs-adapter", "source/electron-main/deep-link/deep-link-controller.ts#SandDeepLinkController", "new SandDeepLinkController("],

@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import { basename, extname } from "node:path";
 import { isHttpExternalUrl } from "../../shared/external-url-policy.js";
 import { desktopMessages, resolveDesktopLocale, type DesktopLanguageSource } from "../i18n/desktop-messages.js";
+import { parseSandMediaUrl } from "./media-protocol.js";
 export const MAX_AVATAR_DECODE_DIMENSION = 4_096, AVATAR_CROP_SOURCE_MAX_DIMENSION = 1_024, AVATAR_SOURCE_MAX_BYTES = 25 * 1024 * 1024;
 export class AvatarInputError extends Error { constructor(message: string) { super(message); this.name = "AvatarInputError"; } }
 const IMAGE_MIME_EXTENSIONS = new Map([["image/png", "png"], ["image/jpeg", "jpg"], ["image/jpg", "jpg"], ["image/gif", "gif"], ["image/webp", "webp"], ["image/svg+xml", "svg"], ["image/bmp", "bmp"], ["image/avif", "avif"]]);
@@ -19,7 +20,7 @@ export function createAvatarImageEdgePort(deps: AvatarImageDeps) { const copy = 
 export interface ImageContextActions { copyImage(): void; saveImage(): Promise<void>; copyImageAddress?(): void }
 export function createImageContextActions(options: { srcUrl: string; copyDataImage(bytes: Buffer): boolean; copyImageAt(): void; fetch(url: string): Promise<Response>; save(bytes: Buffer, defaultName: string): Promise<void>; copyText(text: string): void }): ImageContextActions { return { copyImage() { if (options.srcUrl.startsWith("data:")) { const decoded = decodeImageDataUrl(options.srcUrl); if (decoded != null && options.copyDataImage(decoded.bytes)) return; } options.copyImageAt(); }, async saveImage() { let mime: string, bytes: Buffer; if (options.srcUrl.startsWith("data:")) { const decoded = decodeImageDataUrl(options.srcUrl); if (decoded == null) return; ({ mime, bytes } = decoded); } else { let url: URL; try { url = new URL(options.srcUrl); } catch { return; } if (url.protocol !== "http:" && url.protocol !== "https:") return; const response = await options.fetch(options.srcUrl); if (!response.ok) return; bytes = Buffer.from(await response.arrayBuffer()); if (bytes.length === 0) return; mime = response.headers.get("content-type")?.split(";")[0]?.trim() || "image/png"; } await options.save(bytes, `image.${extensionForImageMime(mime)}`); }, ...(options.srcUrl.length === 0 ? {} : { copyImageAddress: () => options.copyText(options.srcUrl) }) }; }
 
-export interface ImageContextMenuParams { srcURL: string; linkURL: string; mediaType: string; selectionText: string; isEditable: boolean; editFlags: Record<string, boolean>; x: number; y: number }
+export interface ImageContextMenuParams { srcURL: string; linkURL: string; mediaType: string; selectionText: string; isEditable: boolean; editFlags: Record<string, boolean>; x: number; y: number; misspelledWord?: string; dictionarySuggestions?: readonly string[] }
 export interface ImageContextMenuItem { label?: string; type?: "separator"; accelerator?: string; enabled?: boolean; click?: () => void }
 export function buildImageContextMenuTemplate(contents: { copyImageAt(x: number, y: number): void; undo(): void; redo(): void; cut(): void; copy(): void; paste(): void; selectAll(): void }, params: ImageContextMenuParams, deps: { openExternalUrl(url: string): Promise<unknown>; copyText(text: string): void; imageActions: ImageContextActions }): ImageContextMenuItem[] {
   const sections: ImageContextMenuItem[][] = [];
@@ -49,7 +50,8 @@ export interface ImageContextMenuContents {
   copy(): void;
   paste(): void;
   selectAll(): void;
-  readonly session: { fetch(url: string): Promise<ImageContextMenuResponse> };
+  replaceMisspelling(word: string): void;
+  readonly session: { fetch(url: string): Promise<ImageContextMenuResponse>; addWordToSpellCheckerDictionary(word: string): boolean };
 }
 
 export interface ImageContextMenuElectronPorts {
@@ -74,6 +76,7 @@ export interface ImageContextMenuElectronPorts {
   readonly openExternalUrl: (url: string) => Promise<unknown>;
   readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void;
   readonly language?: DesktopLanguageSource;
+  readonly downloadAttachment?: (path: string, suggestedName: string) => Promise<unknown>;
 }
 
 /** Exact immutable image context-menu registration at main.cjs:498143-498309. */
@@ -150,6 +153,26 @@ export function registerImageContextMenu(deps: ImageContextMenuElectronPorts): v
       ];
       if (mediaUrl.length > 0) imageItems.push(new deps.MenuItem({ label: menuCopy.copyImageAddress, click: () => deps.clipboard.writeText(mediaUrl) }));
       sections.push(imageItems);
+    }
+    const videoPath = params.mediaType === "video" ? parseSandMediaUrl(mediaUrl) : null;
+    const downloadAttachment = deps.downloadAttachment;
+    if (videoPath != null && downloadAttachment != null) {
+      sections.push([
+        new deps.MenuItem({
+          label: menuCopy.saveVideo,
+          click: () => {
+            downloadAttachment(videoPath, basename(videoPath)).catch((error: unknown) => reportEdgeFailure("save-video", error));
+          },
+        }),
+      ]);
+    }
+    const misspelledWord = params.misspelledWord ?? "";
+    if (params.isEditable && misspelledWord.length > 0) {
+      sections.push([
+        ...(params.dictionarySuggestions ?? []).map((suggestion) =>
+          new deps.MenuItem({ label: suggestion, click: () => contents.replaceMisspelling(suggestion) })),
+        new deps.MenuItem({ label: menuCopy.addToDictionary, click: () => contents.session.addWordToSpellCheckerDictionary(misspelledWord) }),
+      ]);
     }
     if (params.isEditable) {
       sections.push([

@@ -9,16 +9,19 @@ import { AGENT_CONTENT_SEARCH_MAX_MATCHES_PER_AGENT, AGENT_CONTENT_SEARCH_MAX_RE
 import { SEARCH_INDEX_FILENAME } from "./search-index-db.js";
 import { SandSearchIndexService, SEARCH_INDEX_DISPOSE_TIMEOUT_MS, type TranscriptMutation } from "./search-index-service.js";
 
+// P1-8 / official 0.71.2 parity: content-search is always on.
+// Official host-main.cjs registers this extension with only Telemetry as a
+// dependency, starts the FTS5 index unconditionally, and exposes
+// isGlobalSearchEnabled as `async () => true` (no sand_global_search gate).
+// Keeping isEnabled() as a constant true preserves any residual callers while
+// the gateway methods themselves no longer consult the gate.
 export const GLOBAL_SEARCH_GATE = "sand_global_search";
-
-interface FeatureGateProperty { get(): boolean; subscribe(listener: (value: boolean) => void): () => void }
 
 export const contentSearchExtension = defineHostExtension({
   id: HostExtensions.ContentSearch,
-  dependencies: [HostExtensions.Experiments, HostExtensions.Telemetry],
+  dependencies: [HostExtensions.Telemetry],
   start: (context) => {
     const deps = context.deps as {
-      experiments: { checkFeatureGate(name: string): boolean; getFeatureGateProperty(name: string): FeatureGateProperty };
       telemetry: { logs: { reportSearchIndexHealth(value: Record<string, unknown>): void } };
     };
     const index = new SandSearchIndexService({
@@ -28,19 +31,11 @@ export const contentSearchExtension = defineHostExtension({
       report: (value) => deps.telemetry.logs.reportSearchIndexHealth(value)
     });
     context.onStop(() => index.dispose());
-    let unsubscribeMutations: (() => void) | undefined;
     const subscribe = subscribeTranscriptMutations as unknown as (listener: (mutation: TranscriptMutation) => void) => () => void;
-    const applyGate = (isEnabled: boolean) => {
-      if (!isEnabled) { unsubscribeMutations?.(); unsubscribeMutations = undefined; return; }
-      unsubscribeMutations ??= subscribe((mutation) => index.applyMutation(mutation));
-      index.start();
-    };
-    context.onStop(() => unsubscribeMutations?.());
-    const gate = deps.experiments.getFeatureGateProperty(GLOBAL_SEARCH_GATE);
-    context.onStop(gate.subscribe(applyGate));
-    applyGate(gate.get());
+    context.onStop(subscribe((mutation) => index.applyMutation(mutation)));
+    index.start();
     return {
-      isEnabled: () => deps.experiments.checkFeatureGate(GLOBAL_SEARCH_GATE),
+      isEnabled: () => true,
       get isSearchReady() { return index.isSearchReady; },
       maxMatchesPerAgent: AGENT_CONTENT_SEARCH_MAX_MATCHES_PER_AGENT,
       maxResults: AGENT_CONTENT_SEARCH_MAX_RESULTS,

@@ -36,6 +36,8 @@ test("application menu template emits English labels by default", async () => {
       canUseDevTools: () => false,
       emitOpenAbout: () => undefined,
       emitOpenFeedback: () => undefined,
+      emitUnreadFilterMenuClicked: () => undefined,
+      isUnreadFilterChecked: () => false,
       platform: "darwin",
     },
     { appName: "Grok Node", openExternal: async () => undefined },
@@ -46,6 +48,9 @@ test("application menu template emits English labels by default", async () => {
   assert.ok(viewMenu, "expected a View menu via the macOS viewMenu system role");
   const reload = viewMenu.submenu.find((entry) => entry.label === "Reload");
   assert.ok(reload, "expected a Reload item under View");
+  const viewUnread = viewMenu.submenu.find((entry) => entry.label === "View Unread");
+  assert.ok(viewUnread, "expected View Unread checkbox under View");
+  assert.equal(viewUnread.type, "checkbox");
   const help = template.find((entry) => entry.role === "help");
   assert.ok(help, "expected a help role entry");
   assert.equal(help.label, "Help", "expected the Help menu title pinned to the role default");
@@ -63,6 +68,8 @@ test("application menu template switches to zh-CN labels when locale resolves", 
       canUseDevTools: () => false,
       emitOpenAbout: () => undefined,
       emitOpenFeedback: () => undefined,
+      emitUnreadFilterMenuClicked: () => undefined,
+      isUnreadFilterChecked: () => false,
       locale: "zh-CN",
       platform: "darwin",
     },
@@ -74,6 +81,8 @@ test("application menu template switches to zh-CN labels when locale resolves", 
   assert.ok(viewMenu, "expected View menu to use macOS system role so Edit items are not double-injected");
   const reload = viewMenu.submenu.find((entry) => entry.label === "重新加载");
   assert.ok(reload, "expected Reload translated to 重新加载");
+  const viewUnread = viewMenu.submenu.find((entry) => entry.label === "查看未读");
+  assert.ok(viewUnread, "expected View Unread translated to 查看未读 (0.71.2 5G1/yr)");
   const help = template.find((entry) => entry.role === "help");
   assert.equal(help?.label, "帮助", "expected Help menu title to match the 0.61 live menu");
   assert.equal(viewMenu.label, "显示", "expected View menu title to match the 0.61 live menu");

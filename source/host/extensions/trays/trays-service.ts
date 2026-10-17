@@ -6,10 +6,13 @@ export interface ErrorTray {
   readonly id: string;
   readonly agentId?: string | undefined;
   readonly title: string;
+  readonly titleKind?: string | undefined;
+  readonly titleParams?: Readonly<Record<string, unknown>> | undefined;
   readonly detail: string;
   readonly requestId?: string | undefined;
   readonly createdAt: number;
   readonly errorKind?: string | undefined;
+  readonly errorParams?: Readonly<Record<string, unknown>> | undefined;
   readonly rawDetail?: string | undefined;
   readonly actions?: readonly unknown[] | undefined;
   readonly dedupeKey?: string;
@@ -29,9 +32,11 @@ export class TrayManager {
       const existing = index === -1 ? null : this.trays[index];
       if (existing != null) {
         const updated: ErrorTray = {
-          ...existing, title: options.title, detail: options.detail, requestId: options.requestId,
+          ...existing, title: options.title,
+          titleKind: options.titleKind, titleParams: options.titleKind != null ? options.titleParams : undefined,
+          detail: options.detail, requestId: options.requestId,
           count: options.count ?? (existing.count ?? 1) + 1, createdAt: now,
-          errorKind: options.errorKind, rawDetail: options.rawDetail,
+          errorKind: options.errorKind, errorParams: options.errorParams, rawDetail: options.rawDetail,
           actions: options.actions != null && options.actions.length > 0 ? options.actions : undefined
         };
         const next = [...this.trays]; next[index] = updated; this.trays = next;
@@ -39,9 +44,12 @@ export class TrayManager {
       }
     }
     const tray: ErrorTray = {
-      kind: "error", id: this.createId(), agentId: options.agentId, title: options.title, detail: options.detail,
-      requestId: options.requestId, createdAt: now,
+      kind: "error", id: this.createId(), agentId: options.agentId, title: options.title,
+      ...(options.titleKind != null ? { titleKind: options.titleKind } : {}),
+      ...(options.titleKind != null && options.titleParams != null ? { titleParams: options.titleParams } : {}),
+      detail: options.detail, requestId: options.requestId, createdAt: now,
       ...(options.errorKind != null ? { errorKind: options.errorKind } : {}),
+      ...(options.errorParams != null ? { errorParams: options.errorParams } : {}),
       ...(options.rawDetail != null ? { rawDetail: options.rawDetail } : {}),
       ...(options.actions != null && options.actions.length > 0 ? { actions: options.actions } : {}),
       ...(options.dedupeKey != null ? { dedupeKey: options.dedupeKey, count: options.count ?? 1 } : {})

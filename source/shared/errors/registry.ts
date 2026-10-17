@@ -494,6 +494,24 @@ export const SAND_ERROR_DEFINITIONS = {
     "payload": [],
     "seededFrom": "SandConversationTooLargeError turn gate in conversation-size-limits.ts"
   },
+  "SAND-E0417": {
+    "name": "streamIdleStall",
+    "domain": "agent",
+    "retryable": true,
+    "summary": "A turn stream that had already produced output went silent past the mid-stream idle deadline; the attempt is cancelled so the step settles, and only re-entered from a resume checkpoint.",
+    "payload": [],
+    "seededFrom": "isStreamIdleError in transient-stream-error.ts"
+  },
+  "SAND-E0418": {
+    "name": "turnBackendUnreachable",
+    "domain": "agent",
+    "retryable": true,
+    "summary": "Turn never reached the model provider: the transport failed on a Node system error (a refused connect or an unresolved host) with no server response.",
+    "payload": [
+      "errno"
+    ],
+    "seededFrom": "isBackendUnreachableError in transient-stream-error.ts"
+  },
   "SAND-E0501": {
     "name": "updateFeedFetchFailed",
     "domain": "update",

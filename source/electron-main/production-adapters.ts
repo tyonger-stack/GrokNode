@@ -150,7 +150,7 @@ export interface ElectronProductionAdapterBindings {
   };
   /** Built-in process-lifetime image context-menu registration; not a manifest slot. */
   readonly imageContextMenu?: {
-    register(deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void; readonly language?: DesktopLanguageSource }): void;
+    register(deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void; readonly language?: DesktopLanguageSource; readonly downloadAttachment?: (path: string, suggestedName: string) => Promise<unknown> }): void;
   };
   readonly windowLifecycle?: {
     onWindowCreated(window: MainBrowserWindow, context: ProductionServiceContext): void;
@@ -308,7 +308,7 @@ export function createElectronProductionServiceFactories(
       onWindowCreated: (window, context) => adapters.windowLifecycle!.onWindowCreated(window, context),
     }),
     ...(adapters.imageContextMenu == null ? {} : {
-      registerImageContextMenu: (deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void; readonly language?: DesktopLanguageSource }) => adapters.imageContextMenu!.register(deps),
+      registerImageContextMenu: (deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void; readonly language?: DesktopLanguageSource; readonly downloadAttachment?: (path: string, suggestedName: string) => Promise<unknown> }) => adapters.imageContextMenu!.register(deps),
     }),
   };
 }

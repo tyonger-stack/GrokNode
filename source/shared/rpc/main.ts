@@ -43,6 +43,8 @@ export const MAIN_METHOD_TABLE = {
   clearLocalToolApprovals: { args: "none" },
   getSidebarCollapsed: { args: "none" },
   setSidebarCollapsed: { args: "object" },
+  // 0.71.2: mirror renderer unread-only filter onto the native View menu checkbox.
+  setUnreadFilterMenuChecked: { args: "object" },
   pickAvatarSource: { args: "none" },
   pickAvatarFile: { args: "none" },
   generateAgentAvatarImage: { args: "object" },
@@ -70,6 +72,10 @@ export const MAIN_METHOD_TABLE = {
   // 强调色 = Bot 颜色 (bot color in chat); same whitelist discipline as the entries below.
   getHostBotColorInChat: { args: "none" },
   setHostBotColorInChat: { args: "object" },
+  // Hardware acceleration (0.71.2 getHardwareAcceleration / setHardwareAccelerationEnabled / relaunchDesktop).
+  getHardwareAcceleration: { args: "none" },
+  setHardwareAccelerationEnabled: { args: "object" },
+  relaunchDesktop: { args: "none" },
   // Preview display state only; the box and host continue running.
   getComputerSleepState: { args: "object" },
   sleepComputer: { args: "object" },

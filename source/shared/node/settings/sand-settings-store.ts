@@ -66,6 +66,13 @@ export interface SandStoredSettings {
    * user opts in or out explicitly. See grok-bot-bot-color.ts for the evidence trail.
    */
   botColorInChatEnabled?: boolean;
+  /**
+   * Settings → General → hardware acceleration. Optional boolean matching 0.71.2's
+   * `hardwareAccelerationEnabled` schema field. `undefined` means "use the platform
+   * default" (`darwin`/`win32` → enabled; otherwise disabled) via
+   * `resolveHardwareAccelerationEnabled`.
+   */
+  hardwareAccelerationEnabled?: boolean;
 }
 
 export function emptySettings(): SandStoredSettings {
@@ -173,6 +180,9 @@ function parseSettings(value: unknown): SandStoredSettings | null {
   if (typeof raw.mainAgentId === "string" && raw.mainAgentId.trim().length > 0) result.mainAgentId = raw.mainAgentId.trim();
   if (typeof raw.defaultMainAgentId === "string" && raw.defaultMainAgentId.trim().length > 0) result.defaultMainAgentId = raw.defaultMainAgentId.trim();
   if (typeof raw.botColorInChatEnabled === "boolean") result.botColorInChatEnabled = raw.botColorInChatEnabled;
+  // parseSettings whitelist: hardwareAccelerationEnabled must be read explicitly or it
+  // is silently dropped on load (same trap as mainAgentId / botColorInChatEnabled).
+  if (typeof raw.hardwareAccelerationEnabled === "boolean") result.hardwareAccelerationEnabled = raw.hardwareAccelerationEnabled;
   if (Array.isArray(raw.sidebarSections)) result.sidebarSections = SidebarSections.carryFolds({ sections: raw.sidebarSections.filter((entry): entry is SidebarSection => typeof entry === "object" && entry != null && typeof (entry as { id?: unknown }).id === "string" && typeof (entry as { name?: unknown }).name === "string" && Array.isArray((entry as { agentIds?: unknown }).agentIds)) });
   return result;
 }
@@ -313,6 +323,9 @@ export class SandSettingsStore {
   /** Bot-color-in-chat preference (强调色 = Bot 颜色). Undefined follows the gate default. */
   getBotColorInChatEnabled(): boolean | undefined { return this.load().botColorInChatEnabled; }
   setBotColorInChatEnabled(value: boolean | undefined): void { this.update((s) => { const { botColorInChatEnabled: _old, ...rest } = s; return value === undefined ? rest : { ...rest, botColorInChatEnabled: value }; }); }
+  /** Hardware acceleration preference. Undefined follows the 0.71.2 platform default. */
+  getHardwareAccelerationEnabled(): boolean | undefined { return this.load().hardwareAccelerationEnabled; }
+  setHardwareAccelerationEnabled(value: boolean): void { this.update((s) => ({ ...s, hardwareAccelerationEnabled: value })); }
   static storable(args: { sections: readonly SidebarSection[]; stored?: readonly SidebarSection[] }): SidebarSection[] { return SidebarSections.carryFolds(args).map((s) => ({ id: s.id, name: s.name, agentIds: [...s.agentIds], isCollapsed: s.isCollapsed ?? false })); }
   getSidebarSections(): SidebarSection[] | undefined { const stored = this.load().sidebarSections; return stored === undefined ? undefined : SidebarSections.carryFolds({ sections: stored }); }
   setSidebarSections(sections: readonly SidebarSection[]): void { this.update((s) => ({ ...s, sidebarSections: SandSettingsStore.storable(s.sidebarSections === undefined ? { sections } : { sections, stored: s.sidebarSections }) })); }

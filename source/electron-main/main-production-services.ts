@@ -43,6 +43,12 @@ import { createDevGatewayOfflineControl } from "./dev/dev-gateway-offline.js";
 import { createDevRestartExit, maybeDevLoginFromEnv, registerDevWiring, type IpcMainPort } from "./dev/dev-wiring.js";
 import { SandProductAnalytics } from "../shared/node/analytics/product-analytics.js";
 import { registerElectronProductionVncTrust, type ElectronProductionVncTrustDeps } from "./vnc/vnc-trust.js";
+import {
+  attachMainWindowMouseHistory,
+  installMouseHistoryNavigation,
+  type HistoryBrowserWindow,
+  type MouseHistoryDebouncer,
+} from "./history-mouse-navigation.js";
 import { registerProductionTelemetryIpc } from "./telemetry/production-telemetry-ipc.js";
 import type { SecureStorageCodec } from "./secrets/secret-store.js";
 import { recordLocalToolApproval as persistLocalToolApproval, clearLocalToolApprovals as clearPersistedLocalToolApprovals } from "../host/local-exec/local-tool-approvals.js";
@@ -87,6 +93,7 @@ export interface ElectronProductionNativeBindings {
   };
   readonly shell: { openExternal(url: string): Promise<unknown> };
   readonly screen: WindowStatePersistenceScreen;
+  readonly dialog?: ElectronMainDependencies["dialog"];
 }
 
 export function createElectronProductionNativeBindings(electron: {
@@ -97,6 +104,7 @@ export function createElectronProductionNativeBindings(electron: {
   readonly Menu: ElectronProductionNativeBindings["Menu"];
   readonly shell: ElectronProductionNativeBindings["shell"];
   readonly screen: ElectronProductionNativeBindings["screen"];
+  readonly dialog?: ElectronProductionNativeBindings["dialog"];
 }): ElectronProductionNativeBindings {
   const required = ["app", "safeStorage", "ipcMain", "BrowserWindow", "Menu", "shell", "screen"] as const;
   const missing = required.filter((name) => electron[name] == null);
@@ -106,7 +114,7 @@ export function createElectronProductionNativeBindings(electron: {
   if (typeof electron.Menu.buildFromTemplate !== "function" || typeof electron.Menu.setApplicationMenu !== "function") throw new Error("Electron production ABI requires Menu construction and installation.");
   if (typeof electron.shell.openExternal !== "function") throw new Error("Electron production ABI requires shell.openExternal().");
   if (typeof electron.safeStorage.isEncryptionAvailable !== "function" || typeof electron.safeStorage.encryptString !== "function" || typeof electron.safeStorage.decryptString !== "function") throw new Error("Electron production ABI requires safeStorage encryption methods.");
-  return { app: electron.app, safeStorage: electron.safeStorage, ipcMain: electron.ipcMain, BrowserWindow: electron.BrowserWindow, Menu: electron.Menu, shell: electron.shell, screen: electron.screen };
+  return { app: electron.app, safeStorage: electron.safeStorage, ipcMain: electron.ipcMain, BrowserWindow: electron.BrowserWindow, Menu: electron.Menu, shell: electron.shell, screen: electron.screen, ...(electron.dialog == null ? {} : { dialog: electron.dialog }) };
 }
 
 export interface ElectronProductionResources {
@@ -421,7 +429,7 @@ export interface ElectronProductionServiceFactories {
   createCoordinator(context: ProductionServiceContext): Promise<ProductionCoordinatorService> | ProductionCoordinatorService;
   registerIpc(context: ProductionServiceContext): ProductionDisposable;
   /** Artifact-order process-lifetime registration after the application menu. */
-  registerImageContextMenu?(deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void; readonly language?: DesktopLanguageSource }): void;
+  registerImageContextMenu?(deps: { readonly openExternalUrl: (url: string) => Promise<unknown>; readonly onEdgeFailure: (failure: { readonly leg: string; readonly errorClass: string }) => void; readonly language?: DesktopLanguageSource; readonly downloadAttachment?: (path: string, suggestedName: string) => Promise<unknown> }): void;
   killLocalExecDaemon?(): Promise<void>;
   onWindowCreated?(window: MainBrowserWindow, context: ProductionServiceContext): void;
 }
@@ -481,7 +489,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
     return { induced: Reflect.get(result, "induced") as boolean };
   });
   type ProductionClientPauseControl = ReturnType<typeof createSandClientPauseControl<BoxConnectionInfo, { readonly preserveData: boolean; readonly force?: boolean }, RecreateResult, unknown>>;
-  let runtime: ElectronMainRuntime | undefined, settings: ProductionSettingsService | undefined, mainEdge: (MainEdge & Partial<ProductionDisposable>) | undefined, account: ProductionAccountService | undefined, localAccount: unknown, ensureTranscriptionManager: (() => Promise<unknown>) | undefined, experiments: ProductionExperimentsService | undefined, update: ProductionUpdateService | undefined, mcp: ProductionMcpService | undefined, telemetry: ProductionTelemetryService | undefined, notifications: ProductionNotificationsService | undefined, coordinator: ProductionCoordinatorService | undefined, egressTunnelController: EgressTunnelController | undefined, context: ProductionServiceContext | undefined, secretsStores: ReturnType<typeof createSecretsStores> | undefined, boxRecovery: ReturnType<typeof createProductionBoxRecovery> | undefined, clientPauseControl: ProductionClientPauseControl | undefined, boxVisibilityTracker: SandBoxVisibilityTracker | undefined, desktopMetricsRuntime: DesktopMetricsRuntime | undefined, productAnalytics: SandProductAnalytics | undefined, vncTrust: ReturnType<typeof registerElectronProductionVncTrust> | undefined;
+  let runtime: ElectronMainRuntime | undefined, settings: ProductionSettingsService | undefined, mainEdge: (MainEdge & Partial<ProductionDisposable>) | undefined, account: ProductionAccountService | undefined, localAccount: unknown, ensureTranscriptionManager: (() => Promise<unknown>) | undefined, experiments: ProductionExperimentsService | undefined, update: ProductionUpdateService | undefined, mcp: ProductionMcpService | undefined, telemetry: ProductionTelemetryService | undefined, notifications: ProductionNotificationsService | undefined, coordinator: ProductionCoordinatorService | undefined, egressTunnelController: EgressTunnelController | undefined, context: ProductionServiceContext | undefined, secretsStores: ReturnType<typeof createSecretsStores> | undefined, boxRecovery: ReturnType<typeof createProductionBoxRecovery> | undefined, clientPauseControl: ProductionClientPauseControl | undefined, boxVisibilityTracker: SandBoxVisibilityTracker | undefined, desktopMetricsRuntime: DesktopMetricsRuntime | undefined, productAnalytics: SandProductAnalytics | undefined, vncTrust: ReturnType<typeof registerElectronProductionVncTrust> | undefined, mouseHistoryDebouncer: MouseHistoryDebouncer | undefined;
   let sessionDeathSettlement: ReturnType<typeof wireDesktopUncleanExitSettlement> | undefined;
   const desktopLifecycle = createDesktopLifecycleReporter();
   const disposeLocalExecLifecycleReporter = installLocalExecLifecycleReporter(desktopLifecycle.reportDesktopLocalExecLifecycle);
@@ -751,6 +759,12 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
       ensureTranscriptionManager = bindings.services.createTranscriptionManager(base);
       context = { ...base, attachments, avatarImages, localAccount, ensureTranscriptionManager };
       mainEdge = bindings.services.createMainEdge(context); if (typeof mainEdge.emit !== "function") throw new Error("Electron production main-edge binding did not provide emit()."); if (typeof mainEdge.dispose === "function") track(mainEdge as MainEdge & ProductionDisposable);
+      // 0.71.2 $Ae / gMt: Logitech mouse back/forward → mouse-history-navigation (main-app.cjs @1642554)
+      mouseHistoryDebouncer = installMouseHistoryNavigation({
+        app: bindings.native.app as unknown as Parameters<typeof installMouseHistoryNavigation>[0]["app"],
+        ipcMain: bindings.native.ipcMain as unknown as Parameters<typeof installMouseHistoryNavigation>[0]["ipcMain"],
+        emitNavigation: (direction) => requireValue(mainEdge, "main-edge").emit("mouse-history-navigation", { direction }),
+      });
       update = track(requireDisposable(await bindings.services.createUpdate(context), "update"));
       track(requireDisposable(bindings.services.registerMedia(context), "media"));
       track(requireDisposable(bindings.services.registerLibraryCanvas(context), "library-canvas"));
@@ -860,6 +874,8 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
             getPreference: () => settings!.getLanguageController().getState().preference,
             systemTags: bindings.native.app.getPreferredSystemLanguages?.() ?? [],
           },
+          downloadAttachment: (path, suggestedName) =>
+            (requireValue(context, "context").attachments as { download(source: unknown, suggestedName: unknown): Promise<boolean> }).download(path, suggestedName),
         }),
         configureVncTrust: () => vncTrust?.configureBoxVncSession(),
         hardenVncWebviewAttach: (contents) => vncTrust?.hardenWebviewAttach(contents),
@@ -871,6 +887,13 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
           });
           if (sessionDeathSettlement != null) settleUncleanExitOnSessionEnd(window, sessionDeathSettlement);
           installBoxVisibilityDocumentReset(window.webContents, () => boxVisibilityTracker?.abandonAll());
+          if (mouseHistoryDebouncer != null && mainEdge != null) {
+            attachMainWindowMouseHistory(
+              window as unknown as HistoryBrowserWindow,
+              (direction) => mainEdge!.emit("mouse-history-navigation", { direction }),
+              mouseHistoryDebouncer,
+            );
+          }
           bindings.services.onWindowCreated?.(window, context!);
         },
         dispose: () => void disposeGraph(),
@@ -939,6 +962,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
     initializeServices,
     syncWindowFocused: (state) => coordinator?.setWindowFocused(state) ?? Promise.resolve(),
     beginBeforeQuit,
+    ...(bindings.native.dialog == null ? {} : { dialog: bindings.native.dialog }),
   };
   return { dependencies, bindRuntime(value) { runtime = value; } };
 }

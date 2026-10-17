@@ -8,6 +8,7 @@ import type { MainEdge } from "../main.js";
 import type { ElectronProductionAdapterBindings } from "../production-adapters.js";
 import type { ProductionDisposable, ProductionServiceContext } from "../main-production-services.js";
 import { probeEndpointFromBox } from "../box/local-docker-host-connector.js";
+import { getHardwareAccelerationEnabledAtLaunch } from "../../shared/node/hardware-acceleration.js";
 import { createElectronProductionIpcMainBinding, type ElectronProductionIpcMainSource } from "./ipc.js";
 import { requireFunction, requireObject } from "./provider-guards.js";
 
@@ -116,6 +117,23 @@ export function createElectronProductionMainRpcBinding(
         },
         broadcast: context.broadcast,
         platform: process.platform,
+        // 0.71.2 hardware-acceleration edge: launch snapshot + GPU status + relaunch.
+        hardwareAccelerationEnabledAtLaunch: getHardwareAccelerationEnabledAtLaunch(),
+        getGpuFeatureStatus: () => {
+          try {
+            const electron = require("electron") as { app?: { getGPUFeatureStatus?: () => Record<string, string> } };
+            return electron.app?.getGPUFeatureStatus?.() ?? {};
+          } catch {
+            return {};
+          }
+        },
+        relaunchDesktop: () => {
+          const electron = require("electron") as {
+            app: { relaunch: () => void; quit: () => void };
+          };
+          electron.app.relaunch();
+          electron.app.quit();
+        },
       };
     },
   });

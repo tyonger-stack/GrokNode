@@ -361,7 +361,7 @@ test("the injected selection reader mirrors 0.62's validity and normalisation ru
 });
 
 test("the three toolbar labels are localisable and their pairs land", { skip: bundleSkip }, () => {
-  for (const label of ["Add to prompt", "Selection actions", "Add selection to prompt"]) {
+  for (const label of ["Add to chat", "Selection actions", "Add selection to prompt"]) {
     const pair = MAIN_I18N_PAIRS.find((row) => row[0] === label);
     assert.ok(pair, "missing i18n pair for " + label);
     assert.equal(pair[3], "PANEL");
@@ -372,8 +372,8 @@ test("the three toolbar labels are localisable and their pairs land", { skip: bu
   }
   assert.ok(DISPLAY_PROPS.includes("aria-label"));
   assert.equal(assertSelectionLabelsReachable(), 2);
-  assert.throws(() => assertSelectionLabelsReachable('"data-x":"Selection actions","children":"Add to prompt"'), /localizable Selection actions label/);
-  assert.throws(() => assertSelectionLabelsReachable('"aria-label":"Selection actions","data-x":"Add to prompt"'), /localizable Add to prompt label/);
+  assert.throws(() => assertSelectionLabelsReachable('"data-x":"Selection actions","children":"Add to chat"'), /localizable Selection actions label/);
+  assert.throws(() => assertSelectionLabelsReachable('"aria-label":"Selection actions","data-x":"Add to chat"'), /localizable Add to chat label/);
 });
 
 test("clean-build runs the selection patch with the renderer extensions, ahead of i18n", async () => {

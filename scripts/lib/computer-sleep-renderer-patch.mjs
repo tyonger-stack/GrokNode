@@ -1,5 +1,9 @@
-// 电脑休眠/唤醒 — build pass: appends the overlay runtime (official asleep stage +
-// shape-aware mascot + hover pill) to the ENTRY chunk, and CSS rules to the stylesheet.
+// 电脑预览休眠/恢复 — build pass: appends the overlay runtime (official asleep-stage
+// visuals + shape-aware mascot + hover pill) to the ENTRY chunk, and CSS to the stylesheet.
+//
+// Product decision (2026-10-17): keep local Node `computer-sleep` (preview stream
+// park/unpark; Bot/Docker keep running). Do NOT port official cloud HIBERNATED
+// `Wake computer` / `supportsAsleepBox` — that lifecycle does not exist on local-docker.
 
 import { createHash } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";

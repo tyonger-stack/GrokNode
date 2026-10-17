@@ -7,7 +7,7 @@
 // index-Cp99LmKM.css inside its app.asar — the app was upgraded from 0.61.0 at 06:47
 // the same day, so these bytes are 0.62.0's). The chip's markup was not read from the
 // minified bundle: it was dumped from the running 0.62.0 app over CDP after driving its
-// own "Add to prompt" button, so class names and nesting are measured, not inferred.
+// own "Add to chat" button (0.71.2 jo1zkp; was "Add to prompt"), so class names and nesting are measured, not inferred.
 //
 // 1. The command
 //   `mod+l` occurs exactly once in 0.62.0's main chunk, as a first-class action rather
@@ -267,7 +267,7 @@ document.addEventListener("pointerdown",onDown,!0),document.addEventListener("po
 const first=snap();return first!=null&&o(first),()=>{document.removeEventListener("pointerdown",onDown,!0),document.removeEventListener("pointerup",onUp,!0),document.removeEventListener("pointercancel",onCancel,!0),document.removeEventListener("selectionchange",onSelChange),window.removeEventListener("blur",onBlur),o(null)}},[]);
 S.useLayoutEffect(()=>{if(a==null||c.current==null)return void u(null);const e=c.current,y=e.offsetWidth,b=e.offsetHeight;if(y===0||b===0)return void u(null);let g=a.top-b-R_SEL_GAP;a.top-R_SEL_GAP<0&&(g=a.bottom+R_SEL_GAP);let f=a.left+a.width/2-y/2;f=Math.max(R_SEL_EDGE,Math.min(f,window.innerWidth-y-R_SEL_EDGE));u({top:Math.max(R_SEL_EDGE,g),left:f})},[a]);
 if(a==null)return null;const Rd=s?"⌘L":"Ctrl+L",Ks=s?"Meta+L":"Control+L";
-return p.jsx("div",{"aria-label":"Selection actions","data-sand-selection-actions":"",className:R_SEL_CONTAINER_CLASS,onMouseDown:e=>{e.preventDefault()},ref:c,role:"toolbar",style:l==null?R_SEL_CONTAINER_STYLE:{...R_SEL_CONTAINER_STYLE,top:l.top,left:l.left},children:p.jsx("button",{"aria-keyshortcuts":Ks,className:R_SEL_BUTTON_CLASS,onClick:s,style:R_SEL_BUTTON_STYLE,type:"button",children:[p.jsx("span",{children:"Add to prompt"}),p.jsx("kbd",{"aria-hidden":!0,style:R_SEL_KBD_STYLE,children:Rd})]})})}
+return p.jsx("div",{"aria-label":"Selection actions","data-sand-selection-actions":"",className:R_SEL_CONTAINER_CLASS,onMouseDown:e=>{e.preventDefault()},ref:c,role:"toolbar",style:l==null?R_SEL_CONTAINER_STYLE:{...R_SEL_CONTAINER_STYLE,top:l.top,left:l.left},children:p.jsx("button",{"aria-keyshortcuts":Ks,className:R_SEL_BUTTON_CLASS,onClick:s,style:R_SEL_BUTTON_STYLE,type:"button",children:[p.jsx("span",{children:"Add to chat"}),p.jsx("kbd",{"aria-hidden":!0,style:R_SEL_KBD_STYLE,children:Rd})]})})}
 `;
 
 function replaceExactlyOnce(source, before, after, label) {
@@ -306,8 +306,8 @@ export function assertSelectionLabelsReachable(componentSource = COMPONENT_SOURC
   if (!reachable("Selection actions")) {
     throw new Error("Selection toolbar lost its localizable Selection actions label.");
   }
-  if (!reachable("Add to prompt")) {
-    throw new Error("Selection toolbar lost its localizable Add to prompt label.");
+  if (!reachable("Add to chat")) {
+    throw new Error("Selection toolbar lost its localizable Add to chat label.");
   }
   return 2;
 }

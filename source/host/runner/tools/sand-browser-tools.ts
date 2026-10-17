@@ -579,6 +579,14 @@ const BROWSER_TOOL_SPECS: readonly BrowserToolSpec[] = [
   { id: "BROWSER_CDP", name: "browser_cdp", op: "cdp", description: "Send a Chrome DevTools Protocol command to the target browser tab. Do not use CDP Input.* methods; use dedicated browser tools for clicks, text input, key presses, scrolling, and drag-and-drop. Browser-wide, storage, cookie, cache, permission, and target-management commands are denied.", schema: { required: ["method"] }, canNavigate: true },
   { id: "BROWSER_TABS", name: "browser_tabs", op: "tabs", description: "List, create, close, or select a browser tab.", schema: { required: ["action"], enum: { action: ["list", "new", "close", "select"] } }, skipScreenshot: true },
   { id: "BROWSER_TAKE_SCREENSHOT", name: "browser_take_screenshot", op: "screenshot", description: "Take a screenshot of the current page. Usually redundant: every browser action already returns one. Use fullPage for the full scrollable page." },
+  // Official 0.71.2: page.pdf() → /workspace/browser-pdfs (plus CDP Page.printToPDF allowlist).
+  {
+    id: "BROWSER_SAVE_PDF",
+    name: "browser_save_pdf",
+    op: "pdf",
+    description: "Save the current browser tab as a PDF under /workspace/browser-pdfs. Returns the absolute path, page count, and size so you can read or SendMessage the file. Prefer this over a screenshot when the user wants a printable/exported copy of the page.",
+    skipScreenshot: true,
+  },
 ];
 
 function validateArguments(
