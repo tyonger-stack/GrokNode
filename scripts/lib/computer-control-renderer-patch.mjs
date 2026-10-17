@@ -1,5 +1,6 @@
 // 电脑控制条 — build pass:把控制条运行时追加到 entry chunk,把样式追加到主样式表。
-// 官方 0.70.2 chunk-box-desktop-modal-N-I4Mrel.js (jn/kn) + chunk-core-DLLz6F9_.js (i18n 表)
+// 官方 0.71.2 chunk-box-desktop-modal--0USskmH.js (oa=52 控制条高度 / stage__frame 尺寸)
+// + chunk-teach-recording-controls-CQ4-Ikje.js (双 gate) + preload-vnc.cjs (三通道)
 // 的 DOM 覆盖实现。追加字节,不改上游原有字节;delta 见 provenance。
 
 import { createHash } from 'node:crypto';
@@ -92,9 +93,9 @@ export async function applyComputerControlRendererPatch({ stageRoot }) {
 
   const provenance = {
     mode: 'computer-control-bar-dom-overlay',
-    behavior: 'Fullscreen computer view defaults to view-only (仅观看). Take-control button (取得控制权) sends sand:vnc-accepts-input=true to the stage webview; stop (停止) sends false. Closing the overlay or switching stage revokes control. Status pill shows 你正在控制/仅观看.',
-    evidence: 'Grok Bot 0.70.2 chunk-box-desktop-modal-N-I4Mrel.js control object {hasControl,takeControl,stopControl} and chunk-core-DLLz6F9_.js i18n ids cC22Hu/12cc1j/Kmqs84/qGXg6g/ygCKqB. Upstream 0.18.0 anchors: sand-computer-fullscreen, sand-computer-stage__frame, sand:vnc-viewer-visible webview.send pattern, sandInteractive URL param.',
-    delta: 'Hint line follows official isHintShown semantics: hidden on first fullscreen mount, shown for 2500ms (official computer-watch-hint delay) after stopping control back to view-only; the official aria-hidden hintCount measure span (animation width probe) is omitted. Bar is a DOM overlay appended to the fullscreen container rather than a React control prop. Two 0.70.2 bar classes absent from 0.18.0 are shimmed: sand-11lfxj5 via sand-qrzla8 (same declaration in 0.18.0) and sand-5fd6op border-color via .rcompctl-bar using the official dark resolved value color-mix(in srgb,var(--sand-text-on-primary) 28%,transparent). The 52px carrier strip uses --cursor-chrome because 0.18.0 has no --sand-bg-chrome token.',
+    behavior: 'Fullscreen computer view defaults to view-only (仅观看). Take-control (取得控制权) sends sand:vnc-accepts-input=true plus the interactive and viewer-visible channels; stop (停止) sends false. Two-layer gate: the renderer adds sand-47corl (pointer-events:none) to the webview wrapper and sets aria-hidden/tabindex=-1 while !acceptsInput, and the preload forwards keys, clipboard and Mac shortcuts only when interactive && acceptsInput. Closing the overlay, swapping the stage webview or pagehide revokes all three channels fail-closed.',
+    evidence: 'Grok Bot 0.71.2 chunk-box-desktop-modal--0USskmH.js (oa=52; sand-computer-stage__frame width min(100cqw, calc((100cqh - 52px) * 1920 / 1200)); aspectRatio 1920/1200; footer sand-78zum5 sand-6s0dn4 sand-l56j7k sand-2lah0s sand-h8yej3 sand-dd8jsf sand-1qj4qm9 rcompctl-footer), chunk-teach-recording-controls-CQ4-Ikje.js (E = isInteractive && acceptsInput; sand-47corl pointer-events gate), preload-vnc.cjs (Sn sand:vnc-interactive, _n sand:vnc-accepts-input, ke sand:vnc-viewer-visible; ur(e) keeps n && t). Upstream 0.18.0 anchors: sand-computer-fullscreen, sand-computer-stage__frame, sand:vnc-viewer-visible webview.send pattern, sandInteractive URL param.',
+    delta: 'Control bar stays a DOM overlay rather than a React control prop. Official 0.71.2 hint semantics: the 2500ms computer-watch-hint appears only when a view-only user clicks the stage, not on stop; the aria-hidden hintCount measure span is omitted. The stop path fails closed across all three channels and re-blocks the wrapper. acceptsInput defaults to false in the preload even though the official boot value can be true. Two bar classes absent from 0.18.0 are shimmed: sand-11lfxj5 via sand-qrzla8 and sand-5fd6op border-color via .rcompctl-bar. The 52px carrier strip uses --cursor-chrome because 0.18.0 has no --sand-bg-chrome token.',
     icons: { eye: 'U+' + glyphs.eye.codePointAt(0).toString(16).toUpperCase(), pointer: 'U+' + glyphs['window-pointer-arrow'].codePointAt(0).toString(16).toUpperCase(), font: 'cursor-icons (0.18.0 shipped woff2)' },
     entry: entryScripts[0],
     stylesheet: cssFiles[0],

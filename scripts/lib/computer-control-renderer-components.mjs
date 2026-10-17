@@ -1,4 +1,4 @@
-// 电脑控制条 — build 组件:官方 0.70.2 控制条 (仅观看 / 取得控制权 / 你正在控制 / 停止)
+// 电脑控制条 — build 组件:官方 0.71.2 控制条 (仅观看 / 取得控制权 / 你正在控制 / 停止)
 // 的 DOM 覆盖实现,追加到上游 0.18.0 entry chunk。只读 DOM,不碰 React 内部状态:
 // 全屏容器出现即挂控制条,按钮翻转 hasControl,经 webview.send 下发
 // sand:vnc-accepts-input 给 preload 输入门控 (source/electron-preload/preload-vnc.ts)。
@@ -6,14 +6,14 @@
 // 样式策略:容器/状态/文字全部复用 0.18.0 已存在且与 0.70.2 声明逐字相同的官方原子类
 // (见 tests 里的 SAME 断言);0.18 缺的两个类用 .rcompctl-bar 一条 shim 规则补齐。
 //
-// 布局策略 (对应官方 0.70.2 chunk-box-desktop-modal-N-I4Mrel.js):
+// 布局策略 (对应官方 0.71.2 chunk-box-desktop-modal--0USskmH.js):
 //   官方控制条是 sand-computer-stage 的第二个 flex 子元素 (非 position:absolute),
 //   sand-computer-stage 有 sand-dt5ytf (flex-direction:column),
-//   stage__frame 宽度公式用 (100cqh - 52px) 而非 100cqh。
-//   我们通过 DOM 操作复刻:把 stage 切换到 flex-column,把 wrap 插为 stage 的子元素,
-//   并通过 JS 把 stage__frame 的 style.width 里的 100cqh 替换为 calc(100cqh - 52px)。
+//   stage__frame 的官方值是
+//   width: min(100cqw, calc((100cqh - 52px) * 1920 / 1200)) 且 aspectRatio: 1920/1200,
+//   即控制条高度从可用高度里扣除,画面按 16:10 完整可见,底部不再被菜单栏遮住。
 //
-// 输入门控策略 (对应官方 renderer + preload 双层门控):
+// 输入门控策略 (对应官方 renderer + preload 双层双 gate):
 //   !hasControl 时:
 //     1) webview 外层 wrapper div 加 sand-47corl (pointer-events:none),阻断所有鼠标输入;
 //     2) 如果 webview 有焦点则 blur() 并把焦点交给 fullscreen 容器;
@@ -30,6 +30,12 @@ export const COMPUTER_CONTROL_LABELS = {
 };
 
 export const COMPUTER_CONTROL_CHANNEL = "sand:vnc-accepts-input";
+// @evidence Grok Bot 0.71.2 chunk-box-desktop-modal--0USskmH.js (Sn) 与 preload-vnc.cjs (ke)
+export const COMPUTER_CONTROL_INTERACTIVE_CHANNEL = "sand:vnc-interactive";
+export const COMPUTER_CONTROL_VIEWER_VISIBLE_CHANNEL = "sand:vnc-viewer-visible";
+// @evidence 0.71.2 sand-computer-stage__frame: width min(100cqw, calc((100cqh - 52px) * 1920 / 1200)); aspectRatio 1920/1200
+export const COMPUTER_CONTROL_STAGE_WIDTH = "min(100cqw, calc((100cqh - 52px) * 1920 / 1200))";
+export const COMPUTER_CONTROL_STAGE_ASPECT_RATIO = "1920 / 1200";
 
 export const COMPUTER_CONTROL_CSS_TOKENS = [
   "--cursor-chrome",
@@ -46,7 +52,7 @@ export const COMPUTER_CONTROL_BAR_CLASSES = [
 
 // 官方控制条外层托条的类 (sand-dd8jsf=height:52px; sand-1qj4qm9=background:--sand-bg-chrome)
 // 0.18 无 --sand-bg-chrome token,用 .rcompctl-footer shim 替代。
-export const COMPUTER_CONTROL_FOOTER_CLASSES = "sand-78zum5 sand-6s0dn4 sand-l56j7k sand-2lah0s sand-h8yej3 rcompctl-footer";
+export const COMPUTER_CONTROL_FOOTER_CLASSES = "sand-78zum5 sand-6s0dn4 sand-l56j7k sand-2lah0s sand-h8yej3 sand-dd8jsf sand-1qj4qm9 rcompctl-footer";
 
 export const COMPUTER_CONTROL_STATUS_CLASSES = "sand-3nfvp2 sand-6s0dn4 sand-17d4w8g sand-1o0liin ui-11wthnw ui-1ja60sm ui-vu1jfw ui-h4fh7u";
 export const COMPUTER_CONTROL_HINT_CLASSES = "ui-11wthnw ui-1ja60sm ui-vu1jfw sand-1o0liin sand-uxw1ft";
@@ -89,6 +95,10 @@ export function computerControlBarRuntime(glyphs) {
   const stopClasses = JSON.stringify(COMPUTER_CONTROL_STOP_CLASSES);
   const knClasses = JSON.stringify(COMPUTER_CONTROL_KN_CLASSES);
   const hintMs = JSON.stringify(COMPUTER_CONTROL_HINT_MS);
+  const interactiveChannel = JSON.stringify(COMPUTER_CONTROL_INTERACTIVE_CHANNEL);
+  const viewerChannel = JSON.stringify(COMPUTER_CONTROL_VIEWER_VISIBLE_CHANNEL);
+  const stageWidth = JSON.stringify(COMPUTER_CONTROL_STAGE_WIDTH);
+  const stageAspect = JSON.stringify(COMPUTER_CONTROL_STAGE_ASPECT_RATIO);
   const eyeGlyph = JSON.stringify(cssGlyphEscape(glyphs.eye));
   const pointerGlyph = JSON.stringify(cssGlyphEscape(glyphs["window-pointer-arrow"]));
   const L = [
@@ -107,6 +117,10 @@ export function computerControlBarRuntime(glyphs) {
     "var STOP_CLS=" + stopClasses + ";",
     "var KN_CLS=" + knClasses + ";",
     "var HINT_MS=" + hintMs + ";",
+    "var INT_CH=" + interactiveChannel + ";",
+    "var VIS_CH=" + viewerChannel + ";",
+    "var STAGE_W=" + stageWidth + ";",
+    "var STAGE_AR=" + stageAspect + ";",
     "var EYE=" + eyeGlyph + ";",
     "var POINTER=" + pointerGlyph + ";",
     // sand-47corl = pointer-events:none (官方 0.70.2/0.18.0 共同声明)
@@ -118,33 +132,59 @@ export function computerControlBarRuntime(glyphs) {
     "var FRAME_SEL='.sand-computer-stage__frame';",
     // webview 外层 wrapper (sand-10l6tqk sand-10a8y8t) — 通过 selector 找
     "var WV_WRAP_SEL='.sand-10l6tqk.sand-10a8y8t';",
-    "function sendAccepts(wv,v){try{var r=wv.send?wv.send(CHANNEL,v):null;if(r&&typeof r.catch==='function'){r.catch(function(){});}}catch(e){}}",
+    "function sendTo(wv,ch,v){try{var r=wv.send?wv.send(ch,v):null;if(r&&typeof r.catch==='function'){r.catch(function(){});}}catch(e){}}",
+    "function sendAccepts(wv,v){sendTo(wv,CHANNEL,v);}",
     "function stageEl(box){return box.querySelector(STAGE_SEL);}",
     "function frameEl(box){return box.querySelector(FRAME_SEL);}",
-    "function wvWrapEl(box){return box.querySelector(WV_WRAP_SEL);}",
     "function stageWebview(box){var f=frameEl(box);return f?f.querySelector('webview'):null;}",
-    // 把 stage__frame 的 width 内联样式里的 100cqh 替换为 calc(100cqh - 52px)
-    "function patchFrameWidth(frame,ctrl){",
-    "  if(!frame)return;",
-    "  var w=frame.style.width||'';",
-    "  if(ctrl){",
-    "    if(w.indexOf('rcompctl')!==-1)return;",
-    "    frame.style.width=w.replace(/100cqh/g,'calc(100cqh - 52px)').replace(/calc\\(calc\\(/g,'calc(') + '/* rcompctl */';",
+    // 官方 0.71.2 三通道:sand:vnc-accepts-input / sand:vnc-interactive / sand:vnc-viewer-visible
+    "function interactiveSrc(wv){",
+    "  var s=(wv&&(wv.getAttribute?wv.getAttribute('src'):null))||'';",
+    "  if(!s)return true;",
+    "  return s.indexOf('sandInteractive=1')!==-1;",
+    "}",
+    "function syncChannels(wv,on){",
+    "  if(!wv)return;",
+    "  sendAccepts(wv,!!on);",
+    "  sendTo(wv,INT_CH,interactiveSrc(wv));",
+    "  sendTo(wv,VIS_CH,document.visibilityState!=='hidden');",
+    "}",
+    "function revokeChannels(wv){if(!wv)return;sendAccepts(wv,false);sendTo(wv,INT_CH,false);sendTo(wv,VIS_CH,false);}",
+    "function wvWrap(wv){return wv?wv.closest(WV_WRAP_SEL):null;}",
+    // 官方 0.71.2 E = isInteractive && acceptsInput; !acceptsInput 时 wrapper pointer-events:none
+    "function applyGate(wrap,wv,on,canFocus){",
+    "  if(wrap){if(on)wrap.classList.remove(PTNONE);else wrap.classList.add(PTNONE);}",
+    "  if(!wv)return;",
+    "  if(on){",
+    "    wv.removeAttribute('aria-hidden');",
+    "    wv.removeAttribute('tabindex');",
+    "    try{wv.focus();}catch(e){}",
+    "    setTimeout(function(){try{if(canFocus&&canFocus()&&document.contains(wv))wv.focus();}catch(e){}},32);",
     "  }else{",
-    "    frame.style.width=w.replace(/calc\\(100cqh - 52px\\)/g,'100cqh').replace('/* rcompctl */','');",
+    "    wv.setAttribute('aria-hidden','true');",
+    "    wv.setAttribute('tabindex','-1');",
+    "    try{if(document.activeElement===wv)wv.blur();}catch(e){}",
     "  }",
     "}",
+    "var MOUNTS=[];",
     "function mount(box){",
     "  if(box.querySelector(':scope .rcompctl-footer'))return true;",
     "  var wv=stageWebview(box);",
     "  if(!wv)return false;",
     "  var on=false;",
+    "  var disposed=false;",
     "  var hintOn=false;",
     "  var hintTimer=0;",
     "  var stage=stageEl(box);",
     "  var frame=frameEl(box);",
-    // 把 stage 变成 flex-column
-    "  if(stage&&!stage.classList.contains(FLEXCOL)){stage.classList.add(FLEXCOL);}",
+    // 0.71.2 不再有 position:absolute 回退:缺 stage/frame 就不挂载
+    "  if(!stage||!frame)return false;",
+    "  var wvParent=wvWrap(wv);",
+    "  var prevW=frame.style.width,prevAR=frame.style.aspectRatio;",
+    // 把 stage 变成 flex-column,并按 52px 控制条让位 frame 宽度
+    "  stage.classList.add(FLEXCOL);",
+    "  frame.style.width=STAGE_W;",
+    "  frame.style.aspectRatio=STAGE_AR;",
     // 建托条 div (官方: sand-78zum5 sand-6s0dn4 sand-l56j7k sand-2lah0s sand-h8yej3 sand-dd8jsf sand-1qj4qm9)
     "  var footer=document.createElement('div');",
     "  footer.className=FOOTER_CLS;",
@@ -182,19 +222,9 @@ export function computerControlBarRuntime(glyphs) {
     "    btn.setAttribute('data-size','sm');",
     "    btn.setAttribute('data-variant',on?'secondary':'primary');",
     "    hint.style.display=(hintOn&&!on)?'':'none';",
-    // 输入门控: webview wrapper pointer-events 切换 + webview blur/focus
-    "    var wrap=wvWrapEl(box);",
+    "    var wrap=wvParent;",
     "    var curWv=stageWebview(box);",
-    "    if(wrap){",
-    "      if(on){wrap.classList.remove(PTNONE);}",
-    "      else{wrap.classList.add(PTNONE);}",
-    "    }",
-    "    if(curWv){",
-    "      if(on){try{curWv.focus();}catch(e){}}",
-    "      else{",
-    "        try{if(document.activeElement===curWv||curWv.contains&&curWv.contains(document.activeElement)){curWv.blur();box.focus();}}catch(e){}",
-    "      }",
-    "    }",
+    "    applyGate(wrap,curWv,on,function(){return on&&!disposed&&wv===curWv&&document.contains(box);});",
     "  }",
     "  function clearHint(){if(hintTimer){clearTimeout(hintTimer);hintTimer=0;}}",
     // pointerdown 在 stage__frame 上门控点击：仅观看时截获点击并显示提示
@@ -209,50 +239,68 @@ export function computerControlBarRuntime(glyphs) {
     "  if(frame){frame.addEventListener('pointerdown',onFramePointerDown);}",
     "  btn.addEventListener('click',function(){",
     "    var cur=stageWebview(box);",
-    "    if(cur&&cur!==wv){try{sendAccepts(wv,false);}catch(e){}wv=cur;}",
-    "    if(on){hintOn=true;clearHint();hintTimer=setTimeout(function(){hintOn=false;hintTimer=0;render();},HINT_MS);}",
-    "    else{hintOn=false;clearHint();}",
+    "    if(cur&&cur!==wv){unbindGuest(wv);revokeChannels(wv);applyGate(wvParent,wv,false);wv=cur;wvParent=wvWrap(cur);bindGuest(wv);}",
+    // 0.71.2:停止回到仅观看不主动弹提示,只有仅观看态点画面才提示
+    "    hintOn=false;clearHint();",
     "    on=!on;",
-    "    sendAccepts(wv,on);",
+    "    syncChannels(wv,on);",
     "    render();",
     "  });",
     // 把 footer 插到 stage 内部（stage__frame 之后）
-    "  if(stage){",
-    "    stage.appendChild(footer);",
-    "    patchFrameWidth(frame,true);",
-    "  }else{",
-    // 回退：stage 找不到时保持旧的 absolute 布局
-    "    footer.style.cssText='position:absolute;left:0;right:0;bottom:0;height:52px;display:flex;align-items:center;justify-content:center;background-color:var(--cursor-chrome);z-index:5;';",
-    "    box.appendChild(footer);",
-    "  }",
+    // 0.71.2:footer 是 stage 的第二个 flex 子元素,不再有 position:absolute 回退
+    "  stage.appendChild(footer);",
+    // 0.71.2:三通道在 dom-ready / did-finish-load / visibilitychange 反复重发
+    "  function resync(){if(!disposed)syncChannels(wv,on);}",
+    "  function bindGuest(guest){guest.addEventListener('dom-ready',resync);guest.addEventListener('did-finish-load',resync);}",
+    "  function unbindGuest(guest){guest.removeEventListener('dom-ready',resync);guest.removeEventListener('did-finish-load',resync);}",
+    "  bindGuest(wv);",
+    "  document.addEventListener('visibilitychange',resync);",
+    "  syncChannels(wv,on);",
     "  render();",
+    "  function teardown(){",
+    "    disposed=true;mo.disconnect();",
+    "    clearHint();revokeChannels(wv);",
+    "    if(frame)frame.removeEventListener('pointerdown',onFramePointerDown);",
+    "    unbindGuest(wv);",
+    "    document.removeEventListener('visibilitychange',resync);",
+    "    footer.remove();",
+    "    stage.classList.remove(FLEXCOL);",
+    "    frame.style.width=prevW;frame.style.aspectRatio=prevAR;",
+    "    if(wvParent)wvParent.classList.remove(PTNONE);",
+    "  }",
+    // 全屏框是从 body 摘掉的,挂在 box 上的观察器看不到这种变更;
+    // 卸载判定统一交给全局 sweep,这里只管 stage 内 webview 的换帧。
     "  var mo=new MutationObserver(function(){",
-    "    if(!document.contains(box)){",
-    "      mo.disconnect();clearHint();",
-    "      if(frame)frame.removeEventListener('pointerdown',onFramePointerDown);",
-    "      return;",
-    "    }",
     "    var cur=stageWebview(box);",
     "    if(cur!==wv){",
-    "      if(on){try{sendAccepts(wv,false);}catch(e){}on=false;}",
+    // 切换 webview 时对旧实例三通道 fail-closed
+    "      unbindGuest(wv);revokeChannels(wv);applyGate(wvParent,wv,false);on=false;",
     "      hintOn=false;clearHint();",
     "      if(!cur){",
-    "        footer.remove();",
-    "        var st2=stageEl(box);",
-    "        if(st2)st2.classList.remove(FLEXCOL);",
-    "        patchFrameWidth(frameEl(box),false);",
-    "        mo.disconnect();",
-    "        if(frame)frame.removeEventListener('pointerdown',onFramePointerDown);",
+    "        mo.disconnect();MOUNTS.splice(MOUNTS.indexOf(entry),1);teardown();",
     "        return;",
     "      }",
-    "      wv=cur;",
+    "      wv=cur;wvParent=wvWrap(cur);",
+    "      bindGuest(wv);",
+    "      syncChannels(wv,on);",
     "      render();",
     "    }",
     "  });",
     "  mo.observe(box,{childList:true,subtree:true});",
+    "  var entry={box:box,teardown:teardown};",
+    "  MOUNTS.push(entry);",
     "  return true;",
     "}",
-    "function sweep(){var boxes=document.querySelectorAll(BOX_SEL);for(var i=0;i<boxes.length;i++){try{mount(boxes[i]);}catch(e){}}}",
+    "function sweep(){",
+    "  for(var i=MOUNTS.length-1;i>=0;i--){",
+    "    var m=MOUNTS[i];",
+    "    if(document.contains(m.box))continue;",
+    "    MOUNTS.splice(i,1);",
+    "    try{m.teardown();}catch(e){}",
+    "  }",
+    "  var boxes=document.querySelectorAll(BOX_SEL);",
+    "  for(var j=0;j<boxes.length;j++){try{mount(boxes[j]);}catch(e){}}",
+    "}",
     "var obs=new MutationObserver(sweep);",
     "if(document.documentElement){obs.observe(document.documentElement,{childList:true,subtree:true});}",
     "sweep();",
