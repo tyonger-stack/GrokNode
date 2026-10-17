@@ -131,7 +131,7 @@ test("其他页：留设置卡片与描述，藏身份兄弟节点", async () =>
     assert.equal(vis(document, '.description-heading'), true);
     assert.equal(vis(document, ".sand-agent-settings"), true);
     assert.equal(vis(document, "[data-r-info-pane-hero]"), true);
-    assert.equal(document.querySelector('.sand-agent-settings [aria-label="Agent name"]').closest("[hidden]"), null);
+    assert.ok(document.querySelector('.sand-agent-settings [aria-label="Agent name"]').closest("[hidden]") != null);
     assert.equal(vis(document, ".sand-agent-identity"), true);
     assert.equal(vis(document, ".routine-wrap"), false);
     assert.equal(vis(document, "section.sand-agent-library"), false);

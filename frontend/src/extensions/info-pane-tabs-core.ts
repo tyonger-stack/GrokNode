@@ -97,7 +97,7 @@ function computerPart(pane: Element, pool: Element | null): Element | null {
   if (pool == null) return null;
   return pool.closest('[data-r-info-pane-computer]') ?? pool.closest('.sand-computer-preview') ?? topPaneChild(pane, pool);
 }
-function descriptionParts(pane: Element, desc: Element | null): Element[] {
+function fieldParts(pane: Element, desc: Element | null): Element[] {
   if (desc == null) return [];
   let editor = desc;
   while (editor.parentElement != null && editor.parentElement !== pane &&
@@ -111,7 +111,7 @@ export function applyTab(pane: Element, tab: InfoPaneTabId): void {
   if (tab === "library" && nodes.library == null || tab === "computer" && nodes.pool == null ||
       tab === "other" && nodes.settings == null && nodes.cards.length === 0 && nodes.desc == null) return;
   resetHidden(pane);
-  const description = descriptionParts(pane, nodes.desc);
+  const description = fieldParts(pane, nodes.desc);
   if (tab === "details") {
     if (nodes.library != null) markHide(nodes.library);
     const comp = computerPart(pane, nodes.pool);
@@ -140,6 +140,12 @@ export function applyTab(pane: Element, tab: InfoPaneTabId): void {
   for (const part of description) keep.push(part);
   if (keep.length === 0) return;
   keepOnly(overview, keep);
+  if (nodes.settings != null) {
+    for (const label of ["Agent name", "Agent title"]) {
+      const field = nodes.settings.querySelector('[aria-label="' + label + '"]');
+      for (const part of fieldParts(pane, field)) markHide(part);
+    }
+  }
   pane.setAttribute(TAB_ATTR, tab);
 }
 export function readStoredTab(storage: Storage | null): InfoPaneTabId {

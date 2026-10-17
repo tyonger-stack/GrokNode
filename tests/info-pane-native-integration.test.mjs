@@ -40,7 +40,7 @@ test("native p3n mounts original settings with shared overview and preserves nod
       Nmt:({onOpenSettings})=>jsx.jsx("header",{className:"sand-info-pane__top sand-78zum5",children:jsx.jsx("button",{onClick:onOpenSettings,"aria-label":"Agent settings",children:"Settings"})}),
       K2n:()=>jsx.jsx("ul",{className:"sand-routine__list",children:jsx.jsx("li",{children:"Routine"})}),
       Qe:()=>({roster:{setAgentNotifyOnUpdates:(...args)=>changes.push(["notify",...args])}}),
-      lr:run=>({run,isPending:false}),YCe:()=>false,
+      lr:run=>({run,isPending:false}),YCe:()=>true,
       f3n:()=>jsx.jsx("button",{"aria-label":"Edit avatar",children:"Avatar"}),
       Uwe:props=>jsx.jsx("div",{children:jsx.jsx(props.isMultiline?"textarea":"input",{"aria-label":props.ariaLabel,defaultValue:props.initialValue,onChange:e=>props.onCommit(e.target.value)})}),
       Fe:()=>({className:"sand-78zum5"}),vt:({children})=>jsx.jsx("span",{children}),
@@ -73,7 +73,8 @@ test("native p3n mounts original settings with shared overview and preserves nod
       assert.equal(visible(pane.querySelector('[aria-label="Agent description"]')),tab==="other");
       assert.equal(visible(pane.querySelector('[data-r-agent-model]')),tab==="other");
       assert.ok(visible(pane.querySelector('[data-r-info-pane-hero] [aria-label="Agent name"]')));
-      assert.equal(visible(pane.querySelector('.sand-agent-settings [aria-label="Agent name"]')),tab==="other");
+      assert.equal(visible(pane.querySelector('.sand-agent-settings [aria-label="Agent name"]')),false);
+      assert.equal(visible(pane.querySelector('.sand-agent-settings [aria-label="Agent title"]')),false);
       assert.equal(pane.querySelector(".sand-agent-settings"),settings);assert.equal(pane.querySelector(".sand-box-vnc-pool"),pool);
     }
     pane.querySelector('[data-r-tab="details"]').click();
