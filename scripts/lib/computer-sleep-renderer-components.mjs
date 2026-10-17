@@ -51,9 +51,22 @@ export async function loadOfficialOpenPill() {
 }
 
 export const COMPUTER_SLEEP_LABELS = {
-  zh: { title: "电脑预览已关闭", wake: "恢复预览", waking: "正在恢复预览…", open: "打开", sleep: "休眠", sleepHint: "暂停当前 Bot 的预览流，任务继续运行" },
-  en: { title: "Computer preview is off", wake: "Show preview", waking: "Restoring preview…", open: "Open", sleep: "Sleep preview", sleepHint: "Pause this Bot's preview stream; tasks keep running" },
+  zh: { title: "电脑预览已关闭", wake: "恢复预览", waking: "正在恢复预览…", open: "打开", sleep: "休眠", sleepHint: "暂停当前 Bot 的预览流，任务继续运行", offline: "电脑正在休眠", wakeComputer: "唤醒电脑" },
+  en: { title: "Computer preview is off", wake: "Show preview", waking: "Restoring preview…", open: "Open", sleep: "Sleep preview", sleepHint: "Pause this Bot's preview stream; tasks keep running", offline: "Your computer is sleeping", wakeComputer: "Wake computer" },
 };
+
+// 官方 0.71.2 chunk-computer-screen-preview-LY_WYUeq.js `Us` 用 sand-1unejwy / sand-budbmw /
+// sand-162z183 / sand-1qvvsn5 给头像与文案定位,这四个类在 0.18 样式表里不存在。
+// 声明值逐字取自官方 index-DkV65EBE.css;Chromium 不会应用我们注入的同名选择器,
+// 因此改为在挂载时按同一组值内联,几何结果与官方一致。
+export const COMPUTER_SLEEP_0712_LAYOUT = Object.freeze({
+  avatar: Object.freeze({ top: "calc(50% - 28px)", insetInlineStart: "50%", marginInlineStart: "-16px" }),
+  words: Object.freeze({ top: "calc(50% + 10px)" }),
+});
+
+// 官方 `We()` 的状态机:away/未启动 → asleep;状态未知或 starting/pulling → starting;
+// isStatusUnavailable → unreachable。0.18 把同一个区分暴露在 .sand-computer-preview 的 data-phase 上。
+const BUSY_PREVIEW_PHASES = Object.freeze({ loading: 1, starting: 1, pulling: 1 });
 
 export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGlyph, avatarStates) {
   return `
@@ -64,6 +77,15 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
   var SHAPE_SVGS=${JSON.stringify(shapeSvgs)};
   var SHAPE_STATES=${JSON.stringify(avatarStates ?? { sleeping: shapeSvgs, waking: shapeSvgs })};
   var SLEEP_ICON_GLYPH=${JSON.stringify(sleepIconGlyph)};
+  var LAYOUT=${JSON.stringify(COMPUTER_SLEEP_0712_LAYOUT)};
+  var BUSY_PHASES=${JSON.stringify(BUSY_PREVIEW_PHASES)};
+  // 官方 openOverStage:休眠台盖在画面上时,原生「打开」按钮仍可见并变成唤醒动作。
+  var OPEN_OVER_STAGE='sand-oegz02';
+  var WAKE_SLOT_RE=/\\{\\{WAKE_SLOT\\}\\}[\\s\\S]*?\\{\\{WAKE_SLOT_END\\}\\}/;
+  // 从标记末尾开始切，保留紧随其后的 '<'；写死 +14 会多跳一位，
+  // 切出的片段丢了开标签，浏览器把 <span ...> 当正文渲染出来。
+  var WAKE_SLOT_MARKER='{{WAKE_SLOT}}';
+  var WAKE_SLOT_HTML=STAGE_HTML.slice(STAGE_HTML.indexOf(WAKE_SLOT_MARKER)+WAKE_SLOT_MARKER.length,STAGE_HTML.indexOf('{{WAKE_SLOT_END}}'));
   var ZH=(navigator.language||'').toLowerCase().indexOf('zh')===0;
   var L=${JSON.stringify(COMPUTER_SLEEP_LABELS)}[ZH?'zh':'en'];
   var IDS={overlay:'rcompsleep-stage',wake:'rcompsleep-wake',pill:'rcompsleep-pill',pillSleep:'rcompsleep-pill-sleep'};
@@ -121,14 +143,58 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
   }
 
   // --- Overlay ---
-  function labels(mode){return STAGE_HTML.replace('{{TITLE}}',mode==='waking'?L.waking:L.title).replace('{{WAKE}}',L.wake)}
+  function labels(mode){
+    var offline=mode==='offline';
+    return STAGE_HTML
+      .replace('{{TITLE}}',mode==='waking'?L.waking:(offline?L.offline:L.title))
+      // 官方 0.71.2 的 Es("asleep") 返回 second:null,台内没有按钮;唤醒走原生打开按钮。
+      .replace(WAKE_SLOT_RE,offline?'':'@@WAKE_SLOT@@')
+      .replace('@@WAKE_SLOT@@',WAKE_SLOT_HTML)
+      .replace('{{WAKE}}',L.wake);
+  }
+  function previewRoot(){var host=pool();return host==null?null:previewFrame(host).closest('.sand-computer-preview')}
+  function computerRunning(frame){
+    return frame.querySelector('.sand-box-vnc-pool webview,.sand-box-vnc-pool iframe')!=null;
+  }
+  // 官方 We():状态已知、电脑没起来 → asleep;未知/启动中 → starting;不可用 → unreachable。
+  function isOffline(frame){
+    var root=previewRoot();
+    if(root==null)return false;
+    var phase=root.getAttribute('data-phase');
+    if(phase==='error'||BUSY_PHASES[phase]===1)return false;
+    return !computerRunning(frame);
+  }
+  // 官方 He():asleep → 'wake'。原生按钮的 onClick 已经会启动电脑,这里只改可见性与文案。
+  var openState=null;
+  function setOpenAsWake(on){
+    var host=pool();
+    if(host==null){openState=null;return}
+    var frame=previewFrame(host);
+    var open=frame.querySelector(':scope > .sand-computer-preview__open');
+    if(on){
+      if(open==null){openState=null;return}
+      if(openState===null)openState={el:open,label:open.getAttribute('aria-label'),title:open.getAttribute('title'),pill:open.firstElementChild};
+      open.classList.add(OPEN_OVER_STAGE);
+      open.setAttribute('aria-label',L.wakeComputer);
+      open.removeAttribute('title');
+      if(openState.pill!=null)openState.pill.style.display='none';
+    }else if(openState!=null){
+      openState.el.classList.remove(OPEN_OVER_STAGE);
+      if(openState.label!=null)openState.el.setAttribute('aria-label',openState.label);else openState.el.removeAttribute('aria-label');
+      if(openState.title!=null)openState.el.setAttribute('title',openState.title);
+      if(openState.pill!=null)openState.pill.style.removeProperty('display');
+      openState=null;
+    }
+  }
   function removeOverlay(){
+    setOpenAsWake(false);
     var el=document.getElementById(IDS.overlay);
     if(el!=null&&el.parentNode!=null){el.parentNode.removeAttribute('data-preview-asleep');el.parentNode.removeChild(el)}
     var host=pool();if(host!=null){host.removeAttribute('data-preview-asleep');previewFrame(host).removeAttribute('data-preview-asleep')}
   }
   function mountOverlay(mode){
     removeOverlay();
+    if(mode==='offline')setOpenAsWake(true);
     var host=pool();
     if(host==null)return;
     var frame=previewFrame(host);
@@ -138,6 +204,12 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     var stage=frame.lastElementChild;
     if(stage==null||stage.getAttribute('data-stage')!=='asleep'){removeOverlay();return}
     stage.id=IDS.overlay;
+    // 官方 0.71.2 用四个 0.18 没有的类定位头像与文案;同名规则在 Chromium 里不生效,
+    // 这里按官方声明的内联值落位,几何与官方一致。
+    var avatarEl=stage.querySelector('[data-stage-avatar]');
+    if(avatarEl!=null){avatarEl.style.top=LAYOUT.avatar.top;avatarEl.style.insetInlineStart=LAYOUT.avatar.insetInlineStart;avatarEl.style.marginInlineStart=LAYOUT.avatar.marginInlineStart}
+    var wordsEl=stage.querySelector('[data-stage-words]');
+    if(wordsEl!=null&&wordsEl.parentElement!=null)wordsEl.parentElement.style.top=LAYOUT.words.top;
     host.setAttribute('data-preview-asleep','true');
     previewFrame(host).setAttribute('data-preview-asleep','true');
     stage.addEventListener('click',function(event){event.stopPropagation()});
@@ -252,17 +324,19 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     var host=pool();
     if(host==null){removeOverlay();removePill();return}
     var agentId=currentBotId();if(!agentId){removeOverlay();removePill();return}
+    // 电脑没启动(官方 We() 的 asleep)时先按官方外观挂台,不依赖 host 的休眠集合。
+    var offlineHost=pool()!=null&&isOffline(previewFrame(pool()));
     var observedRevision=revision(agentId);
     rebindHover();
     b.getSleepState(agentId).then(function(state){
       if(observedRevision!==revision(agentId))return;
       pausePreviewStream(agentId,state==='asleep');
       if(currentBotId()!==agentId)return;
-      if(state==='asleep'){
+      if(state==='asleep'||(state==='awake'&&offlineHost)){
         removePill();
         var current=document.getElementById(IDS.overlay);
-        if(current==null)mountOverlay('asleep');
-        else if(current.getAttribute('data-avatar-shape')!==currentBotShape())swapMascotShape(current,'asleep');
+        if(current==null)mountOverlay(state==='awake'?'offline':'asleep');
+        else if(current.getAttribute('data-avatar-shape')!==currentBotShape())swapMascotShape(current,state==='awake'?'offline':'asleep');
       }else if(state==='awake'){
         removeOverlay();
         rebindHover();
@@ -321,8 +395,10 @@ export function computerSleepStyles(officialCss) {
   }
   return shims + "\n" + scopedCss + `
 .sand-box-vnc-pool[data-preview-asleep="true"]>:not(#rcompsleep-stage){visibility:hidden}
-.sand-computer-preview__frame[data-preview-asleep="true"]>.sand-computer-preview__open{visibility:hidden}
-#rcompsleep-stage{z-index:60;pointer-events:auto}
+.sand-computer-preview__frame[data-preview-asleep="true"]>.sand-computer-preview__open:not(.sand-oegz02){visibility:hidden}
+#rcompsleep-stage{pointer-events:auto}
+#rcompsleep-stage:is(.sand-zkaem6){z-index:3}
+.sand-computer-preview__frame>.sand-computer-preview__open:is(.sand-oegz02){visibility:visible;z-index:4}
 #rcompsleep-pill{pointer-events:auto}
 #rcompsleep-pill button{pointer-events:auto}
 #rcompsleep-pill-sleep:disabled{cursor:default;opacity:.6}

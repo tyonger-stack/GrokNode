@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { build } from "esbuild";
 import { Window } from "happy-dom";
-import { computerSleepOverlayRuntime, computerSleepStyles, loadOfficialAsleepArtifacts, loadOfficialOpenPill, loadOfficialShapeSvgs } from "../scripts/lib/computer-sleep-renderer-components.mjs";
+import { COMPUTER_SLEEP_0712_LAYOUT, computerSleepOverlayRuntime, computerSleepStyles, loadOfficialAsleepArtifacts, loadOfficialOpenPill, loadOfficialShapeSvgs } from "../scripts/lib/computer-sleep-renderer-components.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -151,4 +151,95 @@ test("preview CSS keeps pseudo-elements outside functional selectors", () => {
   assert.match(css, /:is\(\.mascot\):before/);
   assert.match(css, /:is\(\.icon\)::after/);
   assert.doesNotMatch(css, /:is\([^)]*:{1,2}(?:before|after)\)/);
+});
+
+test("0.71.2 layout classes reach the stage descendants, not only the stage root", () => {
+  assert.deepEqual(COMPUTER_SLEEP_0712_LAYOUT.avatar, { top: "calc(50% - 28px)", insetInlineStart: "50%", marginInlineStart: "-16px" });
+  assert.deepEqual(COMPUTER_SLEEP_0712_LAYOUT.words, { top: "calc(50% + 10px)" });
+});
+
+function mountPreview(html, phase) {
+  const window = new Window();
+  let refresh;
+  window.desktop = { computer: { getSleepState: async () => "awake" } };
+  Object.defineProperty(window.navigator, "language", { value: "zh-CN", configurable: true });
+  window.setTimeout = () => 1;
+  window.setInterval = callback => { refresh = callback; return 1; };
+  window.document.body.innerHTML = '<div class="sand-computer-preview" data-phase="' + phase + '">' + html + "</div>";
+  return { window, refresh: () => refresh() };
+}
+
+const IDLE_PREVIEW = '<div id="preview-frame" data-preview-bot-id="bot-A" class="sand-computer-preview__frame"><div class="sand-box-vnc-pool"></div><button id="open-computer" class="sand-computer-preview__open" aria-label="打开电脑" title="打开电脑"><span class="native-open-pill">Open</span></button></div>';
+const RUNNING_PREVIEW = '<div id="preview-frame" data-preview-bot-id="bot-A" class="sand-computer-preview__frame"><div class="sand-box-vnc-pool"><webview id="stream"></webview></div><button id="open-computer" class="sand-computer-preview__open"><span>Open</span></button></div>';
+
+test("a computer that has not started renders the official 电脑正在休眠 card", async () => {
+  const [stage, shapes] = await Promise.all([loadOfficialAsleepArtifacts(), loadOfficialShapeSvgs()]);
+  const { window, refresh } = mountPreview(IDLE_PREVIEW, "idle");
+  try {
+    const css = window.document.createElement("style");
+    css.textContent = computerSleepStyles(stage.css);
+    window.document.head.append(css);
+    let opened = 0;
+    window.document.getElementById("open-computer").addEventListener("click", () => {
+      opened += 1;
+      window.document.querySelector(".sand-computer-preview").setAttribute("data-phase", "loading");
+    });
+    window.eval(computerSleepOverlayRuntime(stage.html, shapes, "\uf46f"));
+    await refresh();
+    await new Promise(resolve => setImmediate(resolve));
+    const asleep = window.document.getElementById("rcompsleep-stage");
+    assert.ok(asleep, "the not-started computer shows the asleep stage");
+    assert.equal(asleep.getAttribute("data-stage"), "asleep");
+    assert.equal(asleep.textContent.includes("电脑正在休眠"), true, "official 0.71.2 title");
+    assert.equal(window.document.getElementById("rcompsleep-wake"), null, "the official asleep stage has no in-stage button");
+    const card = window.document.getElementById("rcompsleep-stage");
+    const avatar = card.querySelector("[data-stage-avatar]");
+    const words = card.querySelector("[data-stage-words]").parentElement;
+    assert.equal(avatar.style.top, "calc(50% - 28px)", "official 0.71.2 avatar offset");
+    assert.equal(avatar.style.insetInlineStart, "50%");
+    assert.equal(avatar.style.marginInlineStart, "-16px");
+    assert.equal(words.style.top, "calc(50% + 10px)", "official 0.71.2 caption offset");
+    assert.equal(window.document.querySelectorAll("#preview-frame button").length, 1, "only the native opener remains");
+    const open = window.document.getElementById("open-computer");
+    assert.equal(open.classList.contains("sand-oegz02"), true, "official openOverStage keeps the wake action visible");
+    assert.equal(open.getAttribute("aria-label"), "唤醒电脑");
+    assert.equal(open.hasAttribute("title"), false);
+    assert.equal(window.getComputedStyle(open).visibility, "visible", "the native wake action must remain reachable over the asleep stage");
+    assert.ok(Number(window.getComputedStyle(open).zIndex) > Number(window.getComputedStyle(asleep).zIndex), "the native wake action must receive clicks above the stage");
+    open.click();
+    await refresh();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(opened, 1, "wake uses the original computer opener");
+    assert.equal(window.document.getElementById("rcompsleep-stage"), null, "starting removes the asleep stage");
+    assert.equal(open.classList.contains("sand-oegz02"), false);
+    assert.equal(open.getAttribute("aria-label"), "打开电脑");
+    assert.equal(open.getAttribute("title"), "打开电脑");
+    assert.equal(open.firstElementChild.style.display, "");
+  } finally {
+    window.close();
+  }
+});
+
+test("a starting or unreachable computer never shows the asleep card", async () => {
+  for (const phase of ["loading", "starting", "pulling", "error"]) {
+    const [stage, shapes] = await Promise.all([loadOfficialAsleepArtifacts(), loadOfficialShapeSvgs()]);
+    const { window, refresh } = mountPreview(IDLE_PREVIEW, phase);
+    window.eval(computerSleepOverlayRuntime(stage.html, shapes, "\uf46f"));
+    await refresh();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(window.document.getElementById("rcompsleep-stage"), null, "phase " + phase + " must not render the asleep card");
+    assert.equal(window.document.getElementById("open-computer").classList.contains("sand-oegz02"), false, "phase " + phase + " leaves the native opener untouched");
+    window.close();
+  }
+});
+
+test("a running computer keeps the live preview and shows no asleep card", async () => {
+  const [stage, shapes] = await Promise.all([loadOfficialAsleepArtifacts(), loadOfficialShapeSvgs()]);
+  const { window, refresh } = mountPreview(RUNNING_PREVIEW, "remote");
+  window.eval(computerSleepOverlayRuntime(stage.html, shapes, "\uf46f"));
+  await refresh();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(window.document.getElementById("rcompsleep-stage"), null);
+  assert.equal(window.document.getElementById("stream") != null, true);
+  window.close();
 });
