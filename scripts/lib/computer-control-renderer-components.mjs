@@ -36,6 +36,12 @@ export const COMPUTER_CONTROL_VIEWER_VISIBLE_CHANNEL = "sand:vnc-viewer-visible"
 // @evidence 0.71.2 sand-computer-stage__frame: width min(100cqw, calc((100cqh - 52px) * 1920 / 1200)); aspectRatio 1920/1200
 export const COMPUTER_CONTROL_STAGE_WIDTH = "min(100cqw, calc((100cqh - 52px) * 1920 / 1200))";
 export const COMPUTER_CONTROL_STAGE_ASPECT_RATIO = "1920 / 1200";
+// 0.18.0 bbn 关闭态: re("sand-computer-fullscreen",{0:{…},1:{… sand-lshs6z sand-47corl}}[!isOpen<<0])。
+// 官方 0.71.2 index-wlkGG389.js oJe: isComputerOverlayOpen 变 false 时 P(!1) → 关闭全屏即回到仅观看。
+export const COMPUTER_CONTROL_CLOSED_CLASS = "sand-lshs6z";
+// 官方 0.71.2 只在 hasControl 时把焦点交给画面;0.18 ve/oe/focus-probe 会无条件聚焦,
+// 重开全屏且仅观看时等这一拍再把焦点从 webview 移回全屏容器。
+export const COMPUTER_CONTROL_REOPEN_BLUR_MS = 32;
 
 export const COMPUTER_CONTROL_CSS_TOKENS = [
   "--cursor-chrome",
@@ -99,6 +105,8 @@ export function computerControlBarRuntime(glyphs) {
   const viewerChannel = JSON.stringify(COMPUTER_CONTROL_VIEWER_VISIBLE_CHANNEL);
   const stageWidth = JSON.stringify(COMPUTER_CONTROL_STAGE_WIDTH);
   const stageAspect = JSON.stringify(COMPUTER_CONTROL_STAGE_ASPECT_RATIO);
+  const closedClass = JSON.stringify(COMPUTER_CONTROL_CLOSED_CLASS);
+  const reopenBlurMs = JSON.stringify(COMPUTER_CONTROL_REOPEN_BLUR_MS);
   const eyeGlyph = JSON.stringify(cssGlyphEscape(glyphs.eye));
   const pointerGlyph = JSON.stringify(cssGlyphEscape(glyphs["window-pointer-arrow"]));
   const L = [
@@ -121,6 +129,8 @@ export function computerControlBarRuntime(glyphs) {
     "var VIS_CH=" + viewerChannel + ";",
     "var STAGE_W=" + stageWidth + ";",
     "var STAGE_AR=" + stageAspect + ";",
+    "var CLOSED_CLS=" + closedClass + ";",
+    "var REOPEN_BLUR_MS=" + reopenBlurMs + ";",
     "var EYE=" + eyeGlyph + ";",
     "var POINTER=" + pointerGlyph + ";",
     // sand-47corl = pointer-events:none (官方 0.70.2/0.18.0 共同声明)
@@ -258,7 +268,10 @@ export function computerControlBarRuntime(glyphs) {
     "  syncChannels(wv,on);",
     "  render();",
     "  function teardown(){",
-    "    disposed=true;mo.disconnect();",
+    "    disposed=true;mo.disconnect();co.disconnect();",
+    "    if(reopenTimer){clearTimeout(reopenTimer);reopenTimer=0;}",
+    "    if(settleTimer){clearTimeout(settleTimer);settleTimer=0;}",
+    "    window.removeEventListener('blur',onWindowBlur,true);",
     "    clearHint();revokeChannels(wv);",
     "    if(frame)frame.removeEventListener('pointerdown',onFramePointerDown);",
     "    unbindGuest(wv);",
@@ -287,6 +300,58 @@ export function computerControlBarRuntime(glyphs) {
     "    }",
     "  });",
     "  mo.observe(box,{childList:true,subtree:true});",
+    // 官方 0.71.2 oJe: 全屏关闭 (isOpen=false) 时 hasControl 归零;重开时只在控制中才聚焦画面。
+    "  function isClosed(){return box.classList.contains(CLOSED_CLS);}",
+    "  var wasClosed=isClosed();",
+    "  var reopenTimer=0;",
+    "  var settleTimer=0;",
+    // Electron 在 window blur 回调里同步改回宿主焦点后,浏览器进程仍会把键盘焦点落到 guest;
+    // 实测须在下一个任务里再 blur+focus 一次全屏容器,键盘才真正回到宿主。
+    "  function settleHostFocus(){",
+    "    settleTimer=0;",
+    "    if(disposed||on||isClosed())return;",
+    "    var cur=stageWebview(box);var ae=document.activeElement;",
+    "    if(ae!==box&&ae!==cur)return;",
+    "    try{if(cur&&ae===cur)cur.blur();}catch(e){}",
+    "    try{box.blur();}catch(e){}",
+    "    try{box.focus();}catch(e){}",
+    "  }",
+    "  function dropGuestFocus(){",
+    "    var cur=stageWebview(box);",
+    "    if(!cur||document.activeElement!==cur)return;",
+    "    try{cur.blur();}catch(e){}",
+    "    try{box.focus();}catch(e){}",
+    "    if(settleTimer)clearTimeout(settleTimer);",
+    "    settleTimer=setTimeout(settleHostFocus,0);",
+    "  }",
+    "  function onBoxClass(){",
+    "    var closed=isClosed();",
+    "    if(closed===wasClosed||disposed)return;",
+    "    wasClosed=closed;",
+    "    if(reopenTimer){clearTimeout(reopenTimer);reopenTimer=0;}",
+    "    if(closed){",
+    "      on=false;hintOn=false;clearHint();",
+    "      syncChannels(wv,false);",
+    "      render();",
+    "      return;",
+    "    }",
+    "    if(!on){",
+    "      reopenTimer=setTimeout(function(){reopenTimer=0;if(disposed||on||isClosed())return;dropGuestFocus();},REOPEN_BLUR_MS);",
+    "    }",
+    "  }",
+    "  var co=new MutationObserver(onBoxClass);",
+    "  co.observe(box,{attributes:true,attributeFilter:['class']});",
+    // 0.18 首次打开时 webview 就绪 (onReadyChange) 和 focus-probe 会在挂载之后才聚焦画面,
+    // 不经过 class 变化。Electron 的 <webview> 获得焦点时宿主文档不派发 focus/focusin,
+    // 只派发 window 自身的 blur (此时 activeElement===webview);仅观看时据此把焦点交还全屏容器。
+    "  function onWindowBlur(e){",
+    "    if(e&&e.target!==window)return;",
+    "    if(on||disposed||isClosed())return;",
+    "    var cur=stageWebview(box);",
+    "    if(!cur||document.activeElement!==cur)return;",
+    "    dropGuestFocus();",
+    "  }",
+    "  window.addEventListener('blur',onWindowBlur,true);",
     "  var entry={box:box,teardown:teardown};",
     "  MOUNTS.push(entry);",
     "  return true;",

@@ -9,6 +9,7 @@ import { Window } from 'happy-dom';
 import {
   COMPUTER_CONTROL_BAR_CLASSES,
   COMPUTER_CONTROL_CHANNEL,
+  COMPUTER_CONTROL_CLOSED_CLASS,
   COMPUTER_CONTROL_CSS_TOKENS,
   COMPUTER_CONTROL_FOOTER_CLASSES,
   COMPUTER_CONTROL_INTERACTIVE_CHANNEL,
@@ -19,7 +20,7 @@ import {
   computerControlBarRuntime,
   computerControlBarStyles,
 } from '../scripts/lib/computer-control-renderer-components.mjs';
-import { controlIconGlyphs, patchComputerControlRenderer, applyComputerControlRendererPatch } from '../scripts/lib/computer-control-renderer-patch.mjs';
+import { assertFullscreenClosedClass, controlIconGlyphs, patchComputerControlRenderer, applyComputerControlRendererPatch } from '../scripts/lib/computer-control-renderer-patch.mjs';
 
 const GLYPHS = { eye: '\uea70', 'window-pointer-arrow': '\uebd1' };
 const glyphEscape = (ch) => String.fromCharCode(92) + ch.codePointAt(0).toString(16);
@@ -29,6 +30,7 @@ const FIXTURE_JS = [
   'var frame = "sand-computer-stage__frame";',
   'var viewerChannel = "sand:vnc-viewer-visible";',
   'var interactive = "sandInteractive";',
+  'var fsState = re("sand-computer-fullscreen",{0:{className:"sand-ixxii4 sand-10a8y8t"},1:{className:"sand-ixxii4 sand-10a8y8t sand-lshs6z sand-47corl"}});',
   'var icons = { "eye": "\uea70", "window-pointer-arrow": "\uebd1", "moon-z": "\uf46f" };',
   'console.log(fullscreen, frame, viewerChannel, interactive, icons);',
 ].join('\n');
@@ -341,4 +343,168 @@ test('apply end to end writes provenance with icon codepoints', async () => {
   assert.equal(provenance.icons.pointer, 'U+EBD1');
   const js = readFileSync(path.join(stageRoot, 'dist', 'renderer', 'assets', 'index-AbC123.js'), 'utf8');
   assert.ok(js.includes(COMPUTER_CONTROL_LABELS.take));
+});
+
+test('build fails closed unless the fullscreen closed state carries sand-lshs6z', () => {
+  const pair = (open, closed) => 're("sand-computer-fullscreen",{0:{className:"' + open + '"},1:{className:"' + closed + '"}})';
+  assert.equal(COMPUTER_CONTROL_CLOSED_CLASS, 'sand-lshs6z');
+  assert.doesNotThrow(() => assertFullscreenClosedClass(FIXTURE_JS));
+  const runtime = computerControlBarRuntime(GLYPHS);
+  assert.ok(runtime.includes("var CLOSED_CLS=\"sand-lshs6z\""), 'runtime watches the same closed class');
+  const withoutPair = FIXTURE_JS.replace(/var fsState[^\n]*\n/, '');
+  assert.throws(() => patchComputerControlRenderer(withoutPair, runtime), /exactly one fullscreen open\/closed class pair, found 0/);
+  assert.throws(() => assertFullscreenClosedClass(pair('a', 'a sand-47corl')), /closed state lacks sand-lshs6z/);
+  assert.throws(() => assertFullscreenClosedClass(pair('a sand-lshs6z', 'a sand-lshs6z')), /open state already carries sand-lshs6z/);
+  assert.throws(() => assertFullscreenClosedClass(pair('a', 'a sand-lshs6z') + ';' + pair('b', 'b sand-lshs6z')), /found 2/);
+  assert.throws(() => assertFullscreenClosedClass(pair('a', 'a sand-lshs6zz')), /closed state lacks/, 'whole-class match, not substring');
+});
+
+test('closing fullscreen while in control resets to view-only and reopening stays view-only', async (t) => {
+  const window = new Window();
+  t.after(() => window.happyDOM.close());
+  const env = buildBox(window.document, true);
+  runRuntime(window.document);
+  await tick(); await tick();
+  const button = env.box.querySelector('.rcompctl-footer button');
+  button.click();
+  assert.equal(button.textContent, COMPUTER_CONTROL_LABELS.stop);
+  assert.equal(channelCalls(env.webview, COMPUTER_CONTROL_CHANNEL).at(-1), true);
+
+  env.box.classList.add(COMPUTER_CONTROL_CLOSED_CLASS);
+  await tick(); await tick();
+  assert.equal(button.textContent, COMPUTER_CONTROL_LABELS.take, 'official 0.71.2: closing the overlay drops control');
+  assert.equal(channelCalls(env.webview, COMPUTER_CONTROL_CHANNEL).at(-1), false, 'accepts-input revoked on close');
+  assert.equal(env.wrapper.classList.contains('sand-47corl'), true, 'pointer gate restored on close');
+  assert.equal(env.webview.getAttribute('tabindex'), '-1');
+  assert.equal(env.box.querySelector('.rcompctl-footer span[aria-live=polite]').textContent.includes(COMPUTER_CONTROL_LABELS.viewOnly), true);
+
+  env.box.classList.remove(COMPUTER_CONTROL_CLOSED_CLASS);
+  await tick(); await tick();
+  assert.equal(button.textContent, COMPUTER_CONTROL_LABELS.take, 'reopen starts view-only');
+  assert.equal(channelCalls(env.webview, COMPUTER_CONTROL_CHANNEL).at(-1), false);
+  const hint = env.box.querySelectorAll('.rcompctl-footer span[aria-live=polite] span')[1];
+  assert.equal(hint.style.display, 'none', 'close/reopen does not raise the watch hint');
+  const before = env.webview.sent.length;
+  env.box.classList.add('sand-unrelated');
+  await tick(); await tick();
+  assert.equal(env.webview.sent.length, before, 'unrelated class changes are ignored');
+});
+
+test('reopening view-only moves focus off the webview after the 32ms beat', async (t) => {
+  const window = new Window();
+  t.after(() => window.happyDOM.close());
+  const env = buildBox(window.document, true);
+  env.box.setAttribute('tabindex', '-1');
+  env.box.classList.add(COMPUTER_CONTROL_CLOSED_CLASS);
+  const timers = [];
+  let blurCalls = 0;
+  let focused = null;
+  Object.defineProperty(window.document, 'activeElement', { configurable: true, get: () => focused });
+  env.webview.focus = () => { focused = env.webview; };
+  env.webview.blur = () => { blurCalls++; if (focused === env.webview) focused = null; };
+  env.box.focus = () => { focused = env.box; };
+  runRuntime(window.document, {
+    setTimeout: (callback, ms) => { timers.push({ callback, ms }); return timers.length; },
+    clearTimeout: () => {},
+  });
+  await tick(); await tick();
+
+  env.box.classList.remove(COMPUTER_CONTROL_CLOSED_CLASS);
+  await tick(); await tick();
+  env.webview.focus(); // 0.18 ve / onReadyChange / focus probe focus the guest on open
+  const reopen = timers.filter((timer) => timer.ms === 32);
+  assert.equal(reopen.length, 1, 'one reopen blur scheduled at 32ms');
+  reopen[0].callback();
+  assert.equal(blurCalls, 1, 'view-only reopen blurs the guest');
+  assert.equal(focused, env.box, 'focus handed to the fullscreen region, like official 0.71.2');
+
+  env.box.classList.add(COMPUTER_CONTROL_CLOSED_CLASS);
+  await tick(); await tick();
+  env.box.classList.remove(COMPUTER_CONTROL_CLOSED_CLASS);
+  await tick(); await tick();
+  env.box.querySelector('.rcompctl-footer button').click();
+  focused = env.webview;
+  const blursBefore = blurCalls;
+  timers.filter((timer) => timer.ms === 32).at(-1).callback();
+  assert.equal(blurCalls, blursBefore, 'taking control before the beat keeps the guest focused');
+  assert.equal(focused, env.webview);
+});
+
+test('teardown disconnects the class observer', async (t) => {
+  const window = new Window();
+  t.after(() => window.happyDOM.close());
+  const env = buildBox(window.document, true);
+  const observers = [];
+  class TrackedObserver extends window.MutationObserver {
+    disconnected = false;
+    observe(target, options) { this.target = target; this.options = options; super.observe(target, options); }
+    disconnect() { this.disconnected = true; super.disconnect(); }
+    constructor(callback) { super(callback); observers.push(this); }
+  }
+  runRuntime(window.document, { MutationObserver: TrackedObserver });
+  await tick(); await tick();
+  const classObserver = observers.find((observer) => observer.target === env.box && observer.options?.attributes === true);
+  assert.ok(classObserver, 'box class attribute is observed');
+  assert.deepEqual([...classObserver.options.attributeFilter], ['class']);
+  await afterMutation(window, window.document.body, () => env.box.remove());
+  await tick(); await tick();
+  assert.equal(classObserver.disconnected, true);
+});
+
+test('view-only hands any later guest focus back to the fullscreen region', async (t) => {
+  const window = new Window();
+  t.after(() => window.happyDOM.close());
+  const env = buildBox(window.document, true);
+  let focused = null;
+  let blurCalls = 0;
+  Object.defineProperty(window.document, 'activeElement', { configurable: true, get: () => focused });
+  // Electron <webview>: host document gets no focus/focusin, only window's own blur with activeElement===webview.
+  env.webview.focus = () => { focused = env.webview; window.dispatchEvent(new window.Event('blur')); };
+  env.webview.blur = () => { blurCalls++; if (focused === env.webview) focused = null; };
+  let boxBlurs = 0;
+  env.box.focus = () => { focused = env.box; };
+  env.box.blur = () => { boxBlurs++; if (focused === env.box) focused = null; };
+  runRuntime(window.document);
+  await tick(); await tick();
+
+  env.webview.focus(); // first-open onReadyChange / focus probe in 0.18 bbn
+  assert.equal(blurCalls, 1, 'view-only guest focus is dropped immediately');
+  assert.equal(focused, env.box, 'keyboard stays on the fullscreen region');
+  assert.equal(boxBlurs, 0, 'host focus settle waits for the next task');
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(boxBlurs, 1, 'next task re-blurs the region so Electron hands keyboard back to the host');
+  assert.equal(focused, env.box, 'region refocused after settle');
+
+  const other = window.document.createElement('button');
+  env.webview.focus();
+  focused = other; // user moves focus elsewhere before the settle task runs
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(boxBlurs, 1, 'settle leaves focus alone once it moved outside the stage');
+  assert.equal(focused, other);
+  focused = env.box;
+  const blursAfterGuard = blurCalls;
+  window.dispatchEvent(new window.Event('blur')); // app switch while the region holds focus
+  assert.equal(blurCalls, blursAfterGuard, 'window blur without guest focus is ignored');
+  env.box.dispatchEvent(new window.Event('blur')); // element blur reaching the capture listener
+  assert.equal(blurCalls, blursAfterGuard, 'element blur events are ignored');
+
+  env.box.querySelector('.rcompctl-footer button').click(); // take control focuses the guest
+  assert.equal(focused, env.webview, 'in control the guest keeps focus');
+  const blursInControl = blurCalls;
+  env.webview.focus();
+  assert.equal(blurCalls, blursInControl, 'no blur while in control');
+
+  env.box.querySelector('.rcompctl-footer button').click(); // stop
+  env.box.classList.add(COMPUTER_CONTROL_CLOSED_CLASS);
+  await tick(); await tick();
+  const blursClosed = blurCalls;
+  env.webview.focus();
+  assert.equal(blurCalls, blursClosed, 'closed overlay leaves focus alone (React owns it)');
+
+  env.box.remove();
+  await tick(); await tick();
+  env.box.classList.remove(COMPUTER_CONTROL_CLOSED_CLASS);
+  focused = null;
+  env.webview.focus();
+  assert.equal(focused, env.webview, 'torn-down mount no longer intercepts focus');
 });

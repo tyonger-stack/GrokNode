@@ -8,6 +8,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'acorn';
 import {
+  COMPUTER_CONTROL_CLOSED_CLASS,
   COMPUTER_CONTROL_CSS_TOKENS,
   computerControlBarRuntime,
   computerControlBarStyles,
@@ -55,11 +56,26 @@ const REQUIRED_ANCHORS = [
   'sandInteractive',
 ];
 
+// 运行时靠全屏容器的关闭态类判断 isOpen=false 并把控制权归零 (官方 0.71.2 oJe 的 s||P(!1))。
+// 0.18.0 bbn 的形状: "sand-computer-fullscreen",{0:{className:"…"},1:{className:"… sand-lshs6z …"}}。
+// 找不到这一对、或打开态也带该类,都 fail-closed,避免关闭检测静默失效。
+const FULLSCREEN_STATE_CLASSES = /"sand-computer-fullscreen",\{0:\{className:"([^"]*)"\},1:\{className:"([^"]*)"\}\}/g;
+
+export function assertFullscreenClosedClass(source) {
+  const matches = [...source.matchAll(FULLSCREEN_STATE_CLASSES)];
+  if (matches.length !== 1) throw new Error('Computer-control patch: expected exactly one fullscreen open/closed class pair, found ' + matches.length + '.');
+  const [, openClasses, closedClasses] = matches[0];
+  const has = (list) => list.split(' ').includes(COMPUTER_CONTROL_CLOSED_CLASS);
+  if (!has(closedClasses)) throw new Error('Computer-control patch: fullscreen closed state lacks ' + COMPUTER_CONTROL_CLOSED_CLASS + '.');
+  if (has(openClasses)) throw new Error('Computer-control patch: fullscreen open state already carries ' + COMPUTER_CONTROL_CLOSED_CLASS + '.');
+}
+
 export function patchComputerControlRenderer(source, runtime) {
   if (source.includes(JS_MARKER)) throw new Error('Computer-control renderer patch was already applied.');
   for (const anchor of REQUIRED_ANCHORS) {
     if (!source.includes(anchor)) throw new Error('Computer-control patch: missing anchor: ' + anchor);
   }
+  assertFullscreenClosedClass(source);
   const patched = source + runtime;
   parse(patched, { ecmaVersion: 'latest', sourceType: 'module' });
   return patched;
