@@ -204,6 +204,14 @@ test("构建产物包含标签标识", async () => {
   assert.ok(text.includes("资料库") || text.toLowerCase().includes("8d44"));
   assert.ok(text.includes("data-r-tabs-tab"));
 });
+test("身份区标签：空 title 仍渲染 Add a label / 添加标签（对齐官方 Pq+d85lwh）", async () => {
+  const source = await readFile(path.join(REPO, "scripts/lib/info-pane-tabs-renderer-extension.mjs"), "utf8");
+  assert.ok(source.includes('YCe(t)?p.jsx(Uwe,{ariaLabel:"Agent title"'), "hero must gate on YCe like official o6");
+  assert.ok(source.includes('RLocT("Add a label","添加标签")'), "hero placeholder must be official d85lwh");
+  assert.equal(source.includes("t.title&&t.title.trim().length>0?p.jsx(Uwe,{ariaLabel:\"Agent title\""), false, "must not hide empty titles");
+  const entry = await readFile(path.join(REPO, ENTRY), "utf8");
+  assert.ok(entry.includes("[aria-label=\"Agent title\"]::placeholder"), "empty-label tertiary placeholder style");
+});
 test("构建接线：router 补丁装配资料库同款扩展位", async () => {
   const source = await readFile(path.join(REPO, "scripts/lib/router-renderer-patch.mjs"), "utf8");
   assert.ok(source.includes("buildInfoPaneTabsRendererExtension"));

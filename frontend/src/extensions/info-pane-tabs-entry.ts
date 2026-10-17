@@ -27,6 +27,9 @@ const BAR_CSS = [
   '[data-r-info-pane-hero] input:hover{background:var(--sand-bg-secondary-hover,var(--sand-fill-secondary-hover,#7777772b))!important;}',
   '[data-r-info-pane-hero] input:focus{border-color:var(--sand-border-focus-primary,#1e86fc)!important;}',
   '[data-r-info-pane-hero] [aria-label="Agent title"]{font-size:12px!important;line-height:16px!important;font-weight:400!important;color:var(--sand-text-secondary,#8a8f87)!important;}',
+  // Official zp empty title uses Ga.placeholder → sand-169k319 (tertiary). Uwe shows
+  // that state via the input placeholder, so style ::placeholder to match.
+  '[data-r-info-pane-hero] [aria-label="Agent title"]::placeholder{color:var(--sand-text-tertiary,#6b7168)!important;opacity:1!important;}',
   '[class*="sand-info-pane__inner"][data-r-tabs-tab="other"] .sand-agent-settings>div:first-child>div:first-child{display:none;}',
 ].join("\n");
 function ensureStyle(doc: Document): void {

@@ -24,6 +24,10 @@ function RCompOfficialAvatarView(n){
  const paint=n.ink??(n.color==="black"?MNe("black"):PQ.find(c=>c.id===n.color)?.value??"var(--fg)");
  return p.jsx(e.Mark,{body:e.body(n.shape),appearance:e.appearance(paint),fill:e.fill,size:n.size??"100%",resolution:192,state:n.state,isPlaying:!n.paused,isEmphasized:n.emphasis,isFollowingPointer:n.isFollowingPointer,id:n.id,ref:capture});
 }
+function RCompOfficialAvatarMirror({sourceId}){
+ const extent=RCompOfficialAvatarEngine().fillScale*100+"%";
+ return p.jsx("span",{"aria-hidden":true,style:{display:"inline-block",position:"relative",flexShrink:0,width:"100%",height:"100%",lineHeight:0},children:p.jsx("svg",{style:{position:"absolute",left:"50%",top:"50%",width:extent,height:extent,transform:"translate(-50%, -50%)",pointerEvents:"none"},children:p.jsx("use",{height:"100%",href:"#"+sourceId,width:"100%"})})});
+}
 function RCompAvatarSuffix(kind){return typeof RLocT==="function"?RLocT(" character "+kind,kind==="shape"?"角色形状":"角色颜色"):" character "+kind}
 function RCompAvatarOutline(shape){
  const e=RCompOfficialAvatarEngine(),r=4,size=44,body=e.body(shape);
@@ -68,8 +72,16 @@ export function patchShapePicker(source,joAdditions,engineSource){
    edits.push([node,body.replace(anchor,"p.jsx(RCompOfficialAvatarView,{...W,...H,color:t,ink:r?.flat,isFollowingPointer:I,emphasis:A").replace("lnt(x)",'lnt(Jo[x]?x:"blob")').replace("$de(x)",'$de(Jo[x]?x:"blob")')]);
   }
   if(node.id?.name==="Eee"&&body.includes("Qtt.find(t=>t===n.avatarShape)"))edits.push([node,body.replace("Qtt.find(t=>t===n.avatarShape)","("+JSON.stringify(OFFICIAL_SHAPES)+".find(t=>t===n.avatarShape)??Qtt.find(t=>t===n.avatarShape))")]);
+  // Official 0.71.2 mR/XN mirrors the 192px source with the same fill as the
+  // live mark. The 0.18 viewBox drops that fill wrapper and shrinks rail marks.
+  if(node.id?.name==="Nlt"&&body.includes('"sand-grok-bot-mark--mirror"')){
+   const mirror='p.jsx("svg",{style:lin,viewBox:ent,children:p.jsx("use",{height:J1.height,href:k,width:J1.width,x:J1.minX,y:J1.minY})})';
+   one(body,mirror);
+   edits.push([node,body.replace(mirror,'p.jsx(RCompOfficialAvatarMirror,{sourceId:t})')]);
+  }
  }});
  if(!edits.some(([node])=>node===sd))throw Error("Native avatar renderer missing.");
+ if(!edits.some(([node])=>node.id?.name==="Nlt"))throw Error("Native avatar mirror missing.");
  edits.push([picker,officialPicker.toString().replace("function officialPicker","function e3n")]);
  let text=source;
  for(const [node,value] of edits.sort((a,b)=>b[0].start-a[0].start)){

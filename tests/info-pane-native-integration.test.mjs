@@ -42,7 +42,7 @@ test("native p3n mounts original settings with shared overview and preserves nod
       Qe:()=>({roster:{setAgentNotifyOnUpdates:(...args)=>changes.push(["notify",...args])}}),
       lr:run=>({run,isPending:false}),YCe:()=>true,
       f3n:()=>jsx.jsx("button",{"aria-label":"Edit avatar",children:"Avatar"}),
-      Uwe:props=>jsx.jsx("div",{children:jsx.jsx(props.isMultiline?"textarea":"input",{"aria-label":props.ariaLabel,defaultValue:props.initialValue,onChange:e=>props.onCommit(e.target.value)})}),
+      Uwe:props=>jsx.jsx("div",{children:jsx.jsx(props.isMultiline?"textarea":"input",{"aria-label":props.ariaLabel,defaultValue:props.initialValue,placeholder:props.placeholder,onChange:e=>props.onCommit(e.target.value)})}),
       Fe:()=>({className:"sand-78zum5"}),vt:({children})=>jsx.jsx("span",{children}),
       Hlt:({isChecked,onToggle})=>jsx.jsx("button",{"aria-label":"Notifications",onClick:()=>onToggle(!isChecked),children:"Notify"}),
     };
@@ -52,14 +52,18 @@ test("native p3n mounts original settings with shared overview and preserves nod
     const style = document.createElement("style");style.textContent='.sand-78zum5:not(#\\#):not(#\\#):not(#\\#){display:flex}';document.head.append(style);
     root=createRoot(pane);
     await React.act(async()=>root.render(jsx.jsx(native.Pane,{
-      agent:{id:"A",name:"Bot A",description:"Description",notifyOnUpdatesEnabled:false},
+      // title:"" keeps YCe true (official o6) so the hero "Add a label" control mounts
+      agent:{id:"A",name:"Bot A",title:"",description:"Description",notifyOnUpdatesEnabled:false},
       channelsView:{manifests:[],connections:[]},sectionRequest:null,onSectionRequestHandled:()=>{},onViewChange:()=>{},
-      onDescriptionChange:v=>changes.push(["description",v]),onNameChange:()=>{},onTitleChange:()=>{},
+      onDescriptionChange:v=>changes.push(["description",v]),onNameChange:()=>{},onTitleChange:v=>changes.push(["title",v]),
       computerPreview:jsx.jsx("div",{className:"sand-computer-preview__frame",children:jsx.jsx("div",{className:"sand-box-vnc-pool"})}),
     })));
     const settings = pane.querySelector(".sand-agent-settings"),pool=pane.querySelector(".sand-box-vnc-pool");
     assert.ok(settings);assert.ok(pool);
     assert.ok(pane.querySelector("[data-r-info-pane-hero]"));
+    const heroTitle = pane.querySelector('[data-r-info-pane-hero] [aria-label="Agent title"]');
+    assert.ok(heroTitle, "empty title must still render the Add a label control");
+    assert.equal(heroTitle.getAttribute("placeholder") ?? heroTitle.placeholder, "Add a label");
     const library = document.createElement("section");library.className="sand-agent-library sand-78zum5";library.textContent="Library";
     const routines = pane.querySelector("ul.sand-routine__list").parentElement;
     routines.insertAdjacentElement("afterend",library);
@@ -73,6 +77,7 @@ test("native p3n mounts original settings with shared overview and preserves nod
       assert.equal(visible(pane.querySelector('[aria-label="Agent description"]')),tab==="other");
       assert.equal(visible(pane.querySelector('[data-r-agent-model]')),tab==="other");
       assert.ok(visible(pane.querySelector('[data-r-info-pane-hero] [aria-label="Agent name"]')));
+      assert.ok(visible(pane.querySelector('[data-r-info-pane-hero] [aria-label="Agent title"]')));
       assert.equal(visible(pane.querySelector('.sand-agent-settings [aria-label="Agent name"]')),false);
       assert.equal(visible(pane.querySelector('.sand-agent-settings [aria-label="Agent title"]')),false);
       assert.equal(pane.querySelector(".sand-agent-settings"),settings);assert.equal(pane.querySelector(".sand-box-vnc-pool"),pool);
