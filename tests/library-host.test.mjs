@@ -490,7 +490,7 @@ test("file reads and downloads preserve the original non-file-URL locator", asyn
   const host = await renderHost(t, ui, desktop);
   await ui.act(async () => [...host.querySelectorAll("li button")].find((b) => b.textContent.includes("Original.txt")).click());
   assert.match(document.body.textContent, /Original bytes/);
-  await ui.act(async () => document.querySelector('[aria-label="Download file"]').click());
+  await ui.act(async () => document.querySelector('[aria-label="下载"]').click());
   assert.deepEqual(seen.map((call) => [call.method, call.path]), [["read", source], ["download", source]]);
   record("R1-original-source", document.body, { seen });
 });

@@ -96,11 +96,6 @@ function OpenDocxAttachmentViewer({ source, name, onClose, readBytes, onDownload
                 the result to the upstream tag/attribute table, so this is the
                 first innerHTML in the viewer and the only place it is allowed. */}
             <div className={`${FILE_VIEWER_CLASSES.body} sand-docx-viewer__body`} dangerouslySetInnerHTML={{ __html: state.html }} />
-            {state.messages.length > 0 ? (
-              <p className="sand-file-viewer__body sand-docx-viewer__notes">
-                {state.messages.length} formatting {state.messages.length === 1 ? "hint" : "hints"} from Word were not applied.
-              </p>
-            ) : null}
           </>
         );
     }

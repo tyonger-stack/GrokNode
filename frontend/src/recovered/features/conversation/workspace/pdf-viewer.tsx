@@ -22,7 +22,7 @@ export const FILE_VIEWER_CLASSES = {
   root: "sand-file-viewer sand-ixxii4 sand-10a8y8t sand-fo81ep sand-78zum5 sand-6s0dn4 sand-l56j7k sand-9f619 sand-1846v19",
   panel: "sand-file-viewer__panel sand-1n2onr6 sand-78zum5 sand-dt5ytf sand-h8yej3 sand-5yr21d sand-1wmrhtn sand-mz0i5r sand-2lwn1j sand-hojbe8 sand-b3r6kr sand-10e981r sand-qjedn3 sand-1y0btm7 sand-17tbahu sand-anlk42",
   header: "sand-file-viewer__header sand-78zum5 sand-6s0dn4 sand-1v2ro7d sand-2lah0s sand-9f619 sand-1y1aw1k sand-wib8y2 sand-f7dkkf sand-pdmqnj sand-1hkp6id sand-1q0q8m5 sand-1vu50b0 sand-1qj4qm9",
-  title: "sand-78zum5 sand-dt5ytf sand-12mrbbr sand-euugli sand-1iyjqo2 sand-s83m0k",
+  title: "sand-file-viewer__title sand-78zum5 sand-dt5ytf sand-12mrbbr sand-euugli sand-1iyjqo2 sand-s83m0k",
   toolbar: "sand-file-viewer__toolbar sand-78zum5 sand-6s0dn4 sand-167g77z sand-vc5jky sand-2lah0s",
   actions: "sand-file-viewer__actions sand-78zum5 sand-6s0dn4 sand-167g77z sand-2lah0s",
   body: "sand-file-viewer__body sand-1n2onr6 sand-1iyjqo2 sand-2lwn1j sand-78zum5 sand-dt5ytf sand-10e981r",

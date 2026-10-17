@@ -65,10 +65,10 @@ test("unknown explains itself and downloads", async (t) => {
   let closed = 0;
   await act(async () => { root.render(h(LibraryFileViewer, { kind: "unknown", source: "s", name: "mystery.bin", isOpen: true, onClose: () => { closed += 1; }, readTextBytes: b.readTextBytes, readPdfBytes: b.readPdfBytes, readDocxBytes: b.readDocxBytes, readTableBytes: b.readTableBytes, onDownload: b.onDownload })); });
   assert.match(host.textContent, /isn't available/);
-  host.querySelector('[aria-label="Download file"]').click();
+  host.querySelector('[aria-label="下载"]').click();
   await act(async () => {});
   assert.equal(b.calls.downloads, 1);
-  host.querySelector('[aria-label="Close preview"]').click();
+  host.querySelector('[aria-label="关闭"]').click();
   assert.equal(closed, 1);
 });
 
@@ -150,7 +150,7 @@ for (const kind of ["html", "json"]) test(`${kind} does not retry missing or ove
       ...b, kind, source: "file:///home/box/original", name: "original", isOpen: true, onClose() {}, readTextBytes: async () => result,
     })));
     assert.equal(host.querySelector('[aria-label="Retry"]'), null);
-    assert.ok(host.querySelector('[aria-label="Download file"]'));
+    assert.ok(host.querySelector('[aria-label="下载"]'));
   }
 });
 
