@@ -123,6 +123,14 @@ test("production seams register the native tool and the MCP hook", () => {
   assert.match(runner, /createNativeArtifactToolInputs:/);
   const extensions = readFileSync(path.join(repoRoot, "source/host/host-production-extensions.ts"), "utf8");
   assert.match(extensions, /\[HostExtensions\.Library\]:\s*bind\(libraryExtension\)/);
+  const orderLine = readFileSync(path.join(repoRoot, "source/host/extensions/registry.ts"), "utf8")
+    .split("\n")
+    .find((line) => line.includes("HOST_EXTENSION_ORDER"));
+  const orderIds = [...orderLine.matchAll(/HostExtensions\.(\w+)/g)].map((match) => match[1]);
+  const boundIds = [...extensions.matchAll(/\[HostExtensions\.(\w+)\]:/g)].map((match) => match[1]);
+  assert.deepEqual([...orderIds].sort(), [...boundIds].sort());
+  assert.equal(new Set(orderIds).size, orderIds.length);
+  assert.ok(orderIds.includes("Library"));
   const gateway = readFileSync(path.join(repoRoot, "source/host/host-gateway-api.ts"), "utf8");
   assert.match(gateway, /encodeLibraryJson\(await target/);
   const preload = readFileSync(path.join(repoRoot, "source/electron-preload/preload.ts"), "utf8");

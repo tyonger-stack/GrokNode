@@ -15,6 +15,7 @@ import { getSandRootDir } from "../../host-paths.js";
 import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { getBoxSecretsStorePath } from "../secrets/secrets-service.js";
 import { streamCodexDirectResponses, type CodexDirectTool } from "./codex-direct-responses.js";
+import { acquireInferenceSlot } from "./inference-inflight.js";
 import type { LabelMessage, PromptExecutor } from "./sand-labeling.js";
 
 type Loose = Record<string, any>;
@@ -499,6 +500,8 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     recordedChatStatusSignature = signature;
     try { chatStatusStore.setOpenRouterChatStatus(status); } catch {}
   }
+  const transport = resolveOpenRouterTransport(readPersistedOpenRouterBaseUrl());
+  const id = modelId ?? resolveOpenRouterModel();
   function recordChatError(error: unknown): void {
     const status = classifyOpenRouterError(error, "chat", chatStartedAt);
     if (status == null) {
@@ -511,8 +514,6 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     if (status.state === "out_of_quota") recordRoutedQuotaExhausted("openrouter", error, id);
     writeChatStatus(status);
   }
-  const transport = resolveOpenRouterTransport(readPersistedOpenRouterBaseUrl());
-  const id = modelId ?? resolveOpenRouterModel();
   const headers: Record<string, string> = { "HTTP-Referer": "https://github.com/grok-bot-reconstructed", "X-Title": "Grok Bot Reconstructed" };
   if (transport.hostHeader) headers["Host"] = transport.hostHeader;
   let model: LanguageModelV1;
@@ -541,11 +542,56 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     throw error;
   }
   const tools = toToolSet(definitions, executeTool, transport.baseUrl);
-  const result = streamText({ model, system: GROK_ROUTER_SYSTEM_PROMPT, messages: messages as CoreMessage[], ...(signal === undefined ? {} : { abortSignal: signal }), ...(tools === undefined ? {} : { tools }), toolCallStreaming: true, maxSteps: tools === undefined ? 1 : 8, maxRetries: 4 });
+
+  // stream() must stay sync for the middleware stack. Defer streamText until a
+  // consumer touches the stream/response so the global inflight slot is taken
+  // only for live dials — and so waiters never open an upstream socket early.
+  type StreamTextResult = ReturnType<typeof streamText>;
+  let releaseSlot: (() => void) | undefined;
+  let streamResult: StreamTextResult | undefined;
+  let startPromise: Promise<StreamTextResult> | undefined;
+
+  function detachSlot(): void {
+    const release = releaseSlot;
+    releaseSlot = undefined;
+    release?.();
+  }
+
+  async function ensureStream(): Promise<StreamTextResult> {
+    if (streamResult !== undefined) return streamResult;
+    if (startPromise !== undefined) return startPromise;
+    startPromise = (async () => {
+      releaseSlot = await acquireInferenceSlot(signal);
+      try {
+        const result = streamText({
+          model,
+          system: GROK_ROUTER_SYSTEM_PROMPT,
+          messages: messages as CoreMessage[],
+          ...(signal === undefined ? {} : { abortSignal: signal }),
+          ...(tools === undefined ? {} : { tools }),
+          toolCallStreaming: true,
+          maxSteps: tools === undefined ? 1 : 8,
+          maxRetries: 4,
+        });
+        streamResult = result;
+        void result.response.catch(recordChatError);
+        // Consumers may await response/usage without draining fullStream.
+        void result.response.finally(detachSlot);
+        return result;
+      } catch (error) {
+        detachSlot();
+        startPromise = undefined;
+        throw error;
+      }
+    })();
+    return startPromise;
+  }
+
   async function* observedFullStream() {
-    const iterator = result.fullStream[Symbol.asyncIterator]();
-    let pending = iterator.next();
     try {
+      const result = await ensureStream();
+      const iterator = result.fullStream[Symbol.asyncIterator]();
+      let pending = iterator.next();
       while (true) {
         let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
         const idleTimeout = new Promise<{ readonly streamTimeout: true }>((resolve) => {
@@ -570,14 +616,34 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     } catch (error) {
       recordChatError(error);
       throw error;
+    } finally {
+      detachSlot();
     }
   }
-  void result.response.catch(recordChatError);
 
-  const usage = result.usage.then(value => ({ promptTokens: finiteTokenCount(value?.promptTokens), completionTokens: finiteTokenCount(value?.completionTokens), totalTokens: finiteTokenCount(value?.totalTokens) || finiteTokenCount(value?.promptTokens) + finiteTokenCount(value?.completionTokens) }));
-  const extendedUsage = usage.then(value => ({ inputTokens: value.promptTokens, outputTokens: value.completionTokens, cacheReadTokens: 0, cacheWriteTokens: 0, maxTokens: 0 }));
+  const usage = ensureStream().then((result) => result.usage).then((value) => ({
+    promptTokens: finiteTokenCount(value?.promptTokens),
+    completionTokens: finiteTokenCount(value?.completionTokens),
+    totalTokens: finiteTokenCount(value?.totalTokens) || finiteTokenCount(value?.promptTokens) + finiteTokenCount(value?.completionTokens),
+  }));
+  const extendedUsage = usage.then((value) => ({
+    inputTokens: value.promptTokens,
+    outputTokens: value.completionTokens,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    maxTokens: 0,
+  }));
   if (onUsage != null) void extendedUsage.then(onUsage);
-  return { fullStream: observedFullStream(), response: result.response, usage, extendedUsage, providerMetadata: result.providerMetadata, invocationId: Promise.resolve(invocationId) };
+  const response = ensureStream().then((result) => result.response);
+  const providerMetadata = ensureStream().then((result) => result.providerMetadata);
+  return {
+    fullStream: observedFullStream(),
+    response,
+    usage,
+    extendedUsage,
+    providerMetadata,
+    invocationId: Promise.resolve(invocationId),
+  };
 }
 
 class ProviderPromptExecutor extends BasePromptExecutor<ProviderMessage> {

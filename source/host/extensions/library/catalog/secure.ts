@@ -1,4 +1,4 @@
-import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync } from "node:fs";
+import { chownSync, constants, closeSync, fstatSync, lstatSync, openSync, readFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -6,8 +6,26 @@ import { assertNoSymlinkInPath, ensureSecureDirectoryChain } from "../../../../p
 import { openSecureSqlitePath } from "../../../../packages/agent-store-sync/secure-open.js";
 import { LibraryCatalogError, migrateCatalog } from "../migrations.js";
 
+/**
+ * Local-docker supervisors spawn the host as root while durable sand-data
+ * trees are often owned by `box`. Reclaim only private paths (no group/other
+ * bits) when we are root inside the box so Library can boot without weakening
+ * the ownership guard for non-box or non-private trees.
+ */
+function reclaimPrivatePathIfInBoxRoot(path: string): void {
+  if (process.env.SAND_HOST_IN_BOX !== "1") return;
+  const uid = process.getuid?.();
+  const euid = process.geteuid?.();
+  if (uid == null || euid !== 0 || uid !== 0) return;
+  const stat = lstatSync(path);
+  if (stat.uid === uid) return;
+  if ((stat.mode & 0o077) !== 0) return;
+  chownSync(path, uid, process.getgid?.() ?? uid);
+}
+
 function guard(path: string, directory: boolean): void {
   assertNoSymlinkInPath(path);
+  reclaimPrivatePathIfInBoxRoot(path);
   const stat = lstatSync(path);
   if ((directory ? !stat.isDirectory() : !stat.isFile()) || stat.uid !== process.getuid?.() ||
       (stat.mode & 0o077) !== 0 || (!directory && stat.nlink !== 1)) {
