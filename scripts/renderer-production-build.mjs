@@ -252,12 +252,26 @@ export async function rewritePdfAssetReferences(rendererRoot) {
     }
     if (rewritten !== original) await writeFile(target, rewritten);
   }
+  // Since c74a820 the viewer resolves the PDF.js runtime at load time through
+  // resolveShippedViewerAsset("pdf-WLgSwHwh.js") (file: -> ./assets/, otherwise
+  // /upstream/assets/), so the bundle carries the bare filename instead of the
+  // absolute /upstream/ literal and nothing needs rewriting. Accept that form only
+  // when the runtime file is actually shipped next to the chunks.
+  const runtimeResolved = { [moduleReference]: 0, [workerReference]: 0 };
+  if (counts[moduleReference] === 0) {
+    const shipped = await stat(path.join(rendererRoot, "assets", "pdf-WLgSwHwh.js")).then(() => true, () => false);
+    for (const relative of await walk(rendererRoot)) {
+      if (!relative.endsWith(".js") || relative.endsWith("pdf-WLgSwHwh.js")) continue;
+      const source = await readFile(path.join(rendererRoot, relative), "utf8");
+      if (shipped && source.includes('"pdf-WLgSwHwh.js"') && source.includes('"./assets/"')) runtimeResolved[moduleReference] += 1;
+    }
+  }
   for (const [from, count] of Object.entries(counts)) {
-    if (count === 0) throw new Error(`Renderer PDF reference was not emitted: ${from}`);
+    if (count === 0 && runtimeResolved[from] === 0) throw new Error(`Renderer PDF reference was not emitted: ${from}`);
   }
   return {
     replacements: {
-      [moduleReference]: { to: "./pdf-WLgSwHwh.js", count: counts[moduleReference] },
+      [moduleReference]: { to: "./pdf-WLgSwHwh.js", count: counts[moduleReference], runtimeResolved: runtimeResolved[moduleReference] },
       [workerReference]: { to: "./pdf.worker.min-qwK7q_zL.mjs", count: counts[workerReference] },
     },
   };
@@ -329,7 +343,13 @@ export async function buildProductionRenderer({ outputRoot }) {
   const pdfAssetRewrite = await rewritePdfAssetReferences(rendererRoot);
   const viteManifest = normalizeRendererManifestDynamicImports(JSON.parse(await readFile(path.join(rendererRoot, ".vite", "manifest.json"), "utf8")));
   await writeFile(path.join(rendererRoot, ".vite", "manifest.json"), `${JSON.stringify(viteManifest, null, 2)}\n`);
-  const emittedLazyEntries = [...(viteManifest["index.html"]?.dynamicImports ?? [])].sort();
+  // Vendor modules loaded on demand by recovered viewers (not recovered lazy
+  // boundaries of the original bundle). Explicit allowlist keeps the check fail-closed:
+  // docx-convert.ts lazily imports mammoth's browser bundle since c74a820.
+  const allowedVendorLazyEntries = [/(?:^|\/)node_modules\/mammoth\/mammoth\.browser\.js$/];
+  const emittedDynamicImports = [...(viteManifest["index.html"]?.dynamicImports ?? [])];
+  const vendorLazyEntries = emittedDynamicImports.filter(entry => allowedVendorLazyEntries.some(pattern => pattern.test(entry)));
+  const emittedLazyEntries = emittedDynamicImports.filter(entry => !vendorLazyEntries.includes(entry)).sort();
   const expectedLazyEntries = bootstrap.lazyBoundaries.map(boundary => boundary.cleanDynamicEntry).sort();
   if (JSON.stringify(emittedLazyEntries) !== JSON.stringify(expectedLazyEntries)) {
     throw new Error(`Renderer lazy boundaries drifted; expected ${expectedLazyEntries.join(",")}, emitted ${emittedLazyEntries.join(",")}`);
