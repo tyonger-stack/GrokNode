@@ -101,11 +101,17 @@ window.showPreview = async (kind) => {
  check(close.title==='关闭' && download?.title==='下载','download and close tooltips');
  check(close.querySelector('[data-icon-name="close"]')?.dataset.iconName==='close' && download?.querySelector('[data-icon-name]')?.dataset.iconName==='desktop-download','official close and download glyphs');
  check(document.fonts.check('16px cursor-icons'),'close icon font is loaded');
+ const titleNode=dialog.querySelector('h2'), titleCss=getComputedStyle(titleNode);
+ check(dialog.querySelector('.sand-file-viewer__title')!==null,'viewer title lost its semantic class hook');
+ check(titleCss.fontSize==='13px' && titleCss.fontWeight==='500' && titleCss.lineHeight==='18px' && titleCss.margin==='0px','official title typography: '+JSON.stringify([titleCss.fontSize,titleCss.fontWeight,titleCss.lineHeight,titleCss.margin]));
+ check(!dialog.querySelector('.sand-docx-viewer__notes') && !/formatting hints? from Word/.test(dialog.textContent||''),'viewer must not render Word formatting hints');
+ const headerHeight=dialog.querySelector('.sand-file-viewer__header').getBoundingClientRect().height;
+ check(headerHeight<=56,'viewer header is not compact: '+headerHeight);
  if(kind==='pdf') check(getComputedStyle(document.querySelector('.sand-pdf-page__text')).position==='absolute','PDF text CSS missing');
  dialog.querySelector('[aria-label="下载"]').click();
  await Promise.resolve();
  const rect=close.getBoundingClientRect();
- const result={kind,title:dialog.querySelector('h2').textContent,reads:[...reads],downloads,position:getComputedStyle(dialog).position,panelDisplay:getComputedStyle(panel).display,bodyHeight:body.getBoundingClientRect().height,bodyText:body.innerText,audioPlaying:kind==='audio'?!document.querySelector('audio').paused:undefined,close:{width:closeStyle.width,height:closeStyle.height,title:close.title,borderRadius:closeStyle.borderRadius,x:rect.x,y:rect.y,w:rect.width,h:rect.height}};
+ const result={kind,title:dialog.querySelector('h2').textContent,titleStyle:{fontSize:titleCss.fontSize,fontWeight:titleCss.fontWeight,lineHeight:titleCss.lineHeight,margin:titleCss.margin},headerHeight,hasNotes:!!dialog.querySelector('.sand-docx-viewer__notes'),reads:[...reads],downloads,position:getComputedStyle(dialog).position,panelDisplay:getComputedStyle(panel).display,bodyHeight:body.getBoundingClientRect().height,bodyText:body.innerText,audioPlaying:kind==='audio'?!document.querySelector('audio').paused:undefined,close:{width:closeStyle.width,height:closeStyle.height,title:close.title,borderRadius:closeStyle.borderRadius,x:rect.x,y:rect.y,w:rect.width,h:rect.height}};
  window.closePreview=async()=>{close.click();await wait(()=>document.querySelector('[role=dialog]')==null);return true};
  return result;
 };
@@ -157,11 +163,19 @@ app.whenReady().then(async()=>{
    (theme==='light'?previews:darkPreviews).push(preview);
    await win.webContents.executeJavaScript('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
    fs.writeFileSync(${JSON.stringify(evidence)}+'/'+(theme==='light'?'':theme+'-')+kind+'.png',(await win.webContents.capturePage()).toPNG());
+   // A single mouseMove is dropped when the harness window has not actually
+   // taken focus yet, and the ghost tint also fades in over 120ms. Re-send
+   // the event and poll until it settles rather than asserting once.
+   app.focus({steal:true});
    win.focus();
    win.webContents.focus();
-   win.webContents.sendInputEvent({type:'mouseMove',x:Math.round(preview.close.x+preview.close.w/2),y:Math.round(preview.close.y+preview.close.h/2)});
-   await win.webContents.executeJavaScript('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
-   const hover=await win.webContents.executeJavaScript('window.closeButtonHover()');
+   const hoverX=Math.round(preview.close.x+preview.close.w/2), hoverY=Math.round(preview.close.y+preview.close.h/2);
+   let hover='rgba(0, 0, 0, 0)';
+   for(let attempt=0;attempt<40 && hover==='rgba(0, 0, 0, 0)';attempt++){
+    win.webContents.sendInputEvent({type:'mouseMove',x:hoverX,y:hoverY});
+    await new Promise(resolve=>setTimeout(resolve,25));
+    hover=await win.webContents.executeJavaScript('window.closeButtonHover()');
+   }
    if(hover==='rgba(0, 0, 0, 0)') throw new Error('official ghost close hover missing: '+hover);
    preview.close.hoverBackground=hover;
    fs.writeFileSync(${JSON.stringify(evidence)}+'/'+theme+'-'+kind+'-hover.png',(await win.webContents.capturePage()).toPNG());
@@ -193,5 +207,13 @@ app.whenReady().then(async()=>{
   assert.equal(result.previews.length, 6);
   assert.equal(result.darkPreviews.length, 6);
   assert.equal(result.previews[2].audioPlaying, true);
+  for (const preview of [...result.previews, ...result.darkPreviews]) {
+    assert.deepEqual(preview.titleStyle, { fontSize: "13px", fontWeight: "500", lineHeight: "18px", margin: "0px" }, `${preview.kind} title typography`);
+    assert.equal(preview.hasNotes, false, `${preview.kind} must not render Word formatting hints`);
+    assert.ok(preview.headerHeight <= 56, `${preview.kind} header too tall: ${preview.headerHeight}`);
+    assert.equal(preview.close.width, "24px");
+    assert.equal(preview.close.borderRadius, "6px");
+    assert.equal(preview.close.title, "关闭");
+  }
   console.log(JSON.stringify({ evidence, exit, result }));
 });
