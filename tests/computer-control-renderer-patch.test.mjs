@@ -29,8 +29,23 @@ test("computer-control: Watching gates via acceptsInput + sand-47corl inside bbn
   assert.ok(bbn.includes("RComputerControlBar"));
   assert.ok(patched.includes('RLocT("Take control","取得控制权")'));
   assert.ok(patched.includes('RLocT("Watching","仅观看")'));
+  assert.ok(patched.includes('RVncAcceptsCh="sand:vnc-accepts-input"'));
+  assert.ok(patched.includes("RVncAcceptsSend(_,!!RAccepts)"));
+  assert.ok(patched.includes("s[18]!==RAccepts"));
+  assert.ok(patched.includes("s[18]=RAccepts"));
+  assert.ok(patched.includes("RAccepts=RAcceptsInput===void 0?!1:RAcceptsInput"));
   assert.ok(patched.includes("function gbn(n){const e=he.c(51),"));
   assert.equal(patched.includes("function gbn(n){const e=he.c(56),"), false);
+});
+
+test("computer-control MUTATION: dropping sand:vnc-accepts-input send fails guard", { skip: pinnedSkip }, () => {
+  const patched = patchComputerControl(readFileSync(chunk, "utf8"));
+  const mutated = patched.replace("RVncAcceptsSend(_,!!RAccepts)", "/*dropped*/");
+  assert.throws(() => {
+    if (!mutated.includes('RVncAcceptsCh="sand:vnc-accepts-input"') || !mutated.includes("RVncAcceptsSend(_,!!RAccepts)")) {
+      throw new Error("computer-control missing sand:vnc-accepts-input webview.send bridge.");
+    }
+  }, /sand:vnc-accepts-input/);
 });
 
 test("computer-control: RHasControl never escapes bbn", { skip: pinnedSkip }, () => {

@@ -10,7 +10,8 @@
 //
 // 0.18 trap: toggling isInteractive alone only drops sandInteractive=1 (clipboard
 // bridges). noVNC still accepts mouse/keyboard. Match official: keep
-// isInteractive:!0, gate with acceptsInput + sand-47corl + tabIndex.
+// isInteractive:!0, gate with acceptsInput + sand-47corl + tabIndex +
+// webview.send("sand:vnc-accepts-input") so preload gates IME/clipboard/Mac keys.
 // Owner is `bbn` (not `gbn`). Order: after computer-sleep (preview wraps DAe),
 // before i18n (emits RLocT).
 
@@ -31,8 +32,34 @@ const CALL_AFTER = "p.jsx(DAe,{isInteractive:!0,acceptsInput:RHasControl,isViewe
 
 const DAE_DESTRUCTURE_BEFORE =
   "{src:r,className:i,isInteractive:o,onReadyChange:l,onConnectedChange:c,onCrashedChange:u,onHostKey:d,isViewerVisible:m,openedAtMs:f}=e,h=o===void 0?!1:o";
+// Default acceptsInput=false (view-only) when the prop is omitted — matches official
+// preload boot and keeps preview tiles from advertising control they do not have.
 const DAE_DESTRUCTURE_AFTER =
-  "{src:r,className:i,isInteractive:o,acceptsInput:RAcceptsInput,onReadyChange:l,onConnectedChange:c,onCrashedChange:u,onHostKey:d,isViewerVisible:m,openedAtMs:f}=e,h=o===void 0?!1:o,RAccepts=RAcceptsInput===void 0?!0:RAcceptsInput";
+  "{src:r,className:i,isInteractive:o,acceptsInput:RAcceptsInput,onReadyChange:l,onConnectedChange:c,onCrashedChange:u,onHostKey:d,isViewerVisible:m,openedAtMs:f}=e,h=o===void 0?!1:o,RAccepts=RAcceptsInput===void 0?!1:RAcceptsInput";
+
+// Mirror G8n/obn (viewer-visible): host → webview.send("sand:vnc-accepts-input", bool).
+// Must land AFTER the full `const G8n=…,W8n=…,K8n=…;` statement — splicing into the
+// declarator list leaves `function RVncAcceptsSend` mid-const and fails parse.
+const VNC_ACCEPTS_HELPER_BEFORE = 'const G8n="sand:vnc-viewer-visible",W8n=1280,K8n=800;';
+const VNC_ACCEPTS_HELPER_AFTER =
+  'const G8n="sand:vnc-viewer-visible",W8n=1280,K8n=800;'
+  + 'const RVncAcceptsCh="sand:vnc-accepts-input";'
+  + "function RVncAcceptsSend(n,e){const t=n.send?.(RVncAcceptsCh,e);t!=null&&jAe(t)}";
+
+// Sync accepts-input whenever the effect re-runs (dom-ready / take-control / stop).
+const VNC_ACCEPTS_SYNC_BEFORE = "z=()=>{m==null||!q.isReady||obn(_,m)}";
+const VNC_ACCEPTS_SYNC_AFTER =
+  "z=()=>{m==null||!q.isReady||obn(_,m);q.isReady&&RVncAcceptsSend(_,!!RAccepts)}";
+
+// he.c(26) leaves s[18]..s[25] free; pin RAccepts on s[18] so take/stop re-runs the effect.
+const VNC_ACCEPTS_DEPS_BEFORE =
+  "s[0]!==y||s[1]!==h||s[2]!==m||s[3]!==c||s[4]!==u||s[5]!==d||s[6]!==l||s[7]!==f||s[8]!==r?(k=_=>{";
+const VNC_ACCEPTS_DEPS_AFTER =
+  "s[0]!==y||s[1]!==h||s[2]!==m||s[3]!==c||s[4]!==u||s[5]!==d||s[6]!==l||s[7]!==f||s[8]!==r||s[18]!==RAccepts?(k=_=>{";
+const VNC_ACCEPTS_DEPS_ASSIGN_BEFORE =
+  "s[0]=y,s[1]=h,s[2]=m,s[3]=c,s[4]=u,s[5]=d,s[6]=l,s[7]=f,s[8]=r,s[9]=k):k=s[9];";
+const VNC_ACCEPTS_DEPS_ASSIGN_AFTER =
+  "s[0]=y,s[1]=h,s[2]=m,s[3]=c,s[4]=u,s[5]=d,s[6]=l,s[7]=f,s[8]=r,s[18]=RAccepts,s[9]=k):k=s[9];";
 
 // After the memoised base className, append sand-47corl when input is off and
 // drive tabIndex from the same gate (official E=isInteractive&&acceptsInput).
@@ -111,6 +138,10 @@ export function patchComputerControl(source) {
   patched = replaceExactlyOnce(patched, BBN_HEAD, STATE_AFTER, "useState hasControl in bbn");
   patched = replaceExactlyOnce(patched, CALL_BEFORE, CALL_AFTER, "DAe acceptsInput");
   patched = replaceExactlyOnce(patched, DAE_DESTRUCTURE_BEFORE, DAE_DESTRUCTURE_AFTER, "DAe acceptsInput destructure");
+  patched = replaceExactlyOnce(patched, VNC_ACCEPTS_HELPER_BEFORE, VNC_ACCEPTS_HELPER_AFTER, "webview accepts-input helper");
+  patched = replaceExactlyOnce(patched, VNC_ACCEPTS_SYNC_BEFORE, VNC_ACCEPTS_SYNC_AFTER, "webview accepts-input sync");
+  patched = replaceExactlyOnce(patched, VNC_ACCEPTS_DEPS_BEFORE, VNC_ACCEPTS_DEPS_AFTER, "DAe effect deps include acceptsInput");
+  patched = replaceExactlyOnce(patched, VNC_ACCEPTS_DEPS_ASSIGN_BEFORE, VNC_ACCEPTS_DEPS_ASSIGN_AFTER, "DAe effect deps assign acceptsInput");
   patched = replaceExactlyOnce(patched, DAE_GATE_BEFORE, DAE_GATE_AFTER, "DAe pointer-events + tabIndex gate");
   patched = replaceExactlyOnce(patched, BAR_BEFORE, BAR_AFTER, "control bar mount");
   if (!patched.includes("sand-computer-control-bar")) {
@@ -121,6 +152,12 @@ export function patchComputerControl(source) {
   }
   if (!patched.includes("h&&!RAccepts") || !patched.includes("sand-47corl")) {
     throw new Error("computer-control missing sand-47corl pointer-events gate.");
+  }
+  if (!patched.includes('RVncAcceptsCh="sand:vnc-accepts-input"') || !patched.includes("RVncAcceptsSend(_,!!RAccepts)")) {
+    throw new Error("computer-control missing sand:vnc-accepts-input webview.send bridge.");
+  }
+  if (!patched.includes("s[18]!==RAccepts") || !patched.includes("s[18]=RAccepts")) {
+    throw new Error("computer-control must re-run DAe effect when acceptsInput flips.");
   }
   if (patched.includes("isInteractive:RHasControl")) {
     throw new Error("computer-control must not toggle isInteractive (remounts URL; does not block RFB).");
@@ -184,7 +221,7 @@ export async function applyOriginalRendererComputerControl({ stageRoot }) {
       version: "0.71.2",
       controlBar: "dist/renderer/assets/chunk-box-desktop-modal--0USskmH.js",
       state: "index-wlkGG389.js hasControl useState(!1)",
-      gate: "acceptsInput + sand-47corl pointer-events:none (keep isInteractive:!0)",
+      gate: "acceptsInput + sand-47corl + sand:vnc-accepts-input webview.send (keep isInteractive:!0)",
       ids: ["12cc1j", "cC22Hu", "Kmqs84", "qGXg6g", "ygCKqB"],
       owner: "bbn fullscreen modal (0.18)",
     },
@@ -200,11 +237,12 @@ export async function applyOriginalRendererComputerControl({ stageRoot }) {
       "bbn-hasControl-useState-false",
       "acceptsInput-hasControl",
       "sand-47corl-pointer-events-none",
+      "sand-vnc-accepts-input-webview-send",
       "sand-computer-control-bar",
     ],
   };
   const provenancePath = path.join(stageRoot, "dist", "renderer-computer-control-extension.json");
   await writeFile(provenancePath, `${JSON.stringify(record, null, 2)}\n`);
-  console.log(`Computer-control: Watching/Take control (acceptsInput+sand-47corl) on ${candidate.name} (bbn).`);
+  console.log(`Computer-control: Watching/Take control (acceptsInput+sand-47corl+vnc-accepts-input) on ${candidate.name} (bbn).`);
   return { ...record, provenancePath, provenanceBytes: (await stat(provenancePath)).size };
 }

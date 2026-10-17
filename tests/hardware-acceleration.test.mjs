@@ -212,8 +212,9 @@ test("currentHardwareAccelerationSetting projects enabled + enabledAtLaunch + pd
 });
 
 test("settings UI patch injects toggle + restart after Language Sa slot", async () => {
+  // Theme `ha` may already be RLocT-wrapped by settings-i18n; chunk identity is RLangSection.
   const base = [
-    'const ha={system:"Follow System",light:"Light",dark:"Dark"};',
+    'const ha={system:(RLocT("Follow System","跟随系统")),light:(RLocT("Light","浅色")),dark:(RLocT("Dark","深色"))};',
     "function RLangSection(){return null}",
     'function Sa(){const r=a.jsx(RLangSection,{});return r}',
     "export{}",

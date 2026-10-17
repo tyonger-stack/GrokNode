@@ -21,10 +21,13 @@ import { parse } from "acorn";
 const hash = (text) => createHash("sha256").update(text).digest("hex");
 
 // After language-renderer-patch: Sa mounts RLangSection in slot `r`.
+// Chunk identity is the Language section itself — NOT the Theme `ha={system,light,dark}`
+// map. settings-i18n wraps those theme literals in RLocT before Language/HW run, so the
+// pristine theme marker is gone by the time this pass looks for candidates.
 const SA_LANG_SLOT = "r=a.jsx(RLangSection,{})";
 const SA_LANG_PLUS_HW = "r=a.jsxs(a.Fragment,{children:[a.jsx(RLangSection,{}),a.jsx(RHwAccelSection,{})]})";
 
-const CHUNK_MARKER = `const ha={system:"Follow System",light:"Light",dark:"Dark"}`;
+const CHUNK_MARKER = "function RLangSection(){";
 
 const APPEND = `
 /* grok-node hardware acceleration (0.71.2 general setting) — bilingual labels from official i18n. */
