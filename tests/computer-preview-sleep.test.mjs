@@ -210,7 +210,15 @@ test("a computer that has not started renders the official 电脑正在休眠 ca
     await refresh();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(opened, 1, "wake uses the original computer opener");
-    assert.equal(window.document.getElementById("rcompsleep-stage"), null, "starting removes the asleep stage");
+    // 官方 Us(starting): 留台、头像 waking、标题 shimmer — 不是拆台露出 StagePlaceholder 进度条。
+    const waking = window.document.getElementById("rcompsleep-stage");
+    assert.ok(waking, "busy wake keeps the official starting stage");
+    assert.equal(waking.getAttribute("data-stage"), "starting");
+    assert.equal(waking.querySelector(".sand-grok-bot-mark").getAttribute("data-grok-state"), "waking");
+    assert.equal(waking.textContent.includes("正在唤醒"), true, "official pwcnuW title");
+    const title = waking.querySelector("[data-stage-words]>span");
+    assert.ok(title.className.includes("rcompsleep-shimmer"), "title runs official shimmer animation");
+    assert.equal(waking.querySelector("[data-stage-avatar]>span").classList.contains("sand-1aquc0h"), false, "avatar pulse unlocked while waking");
     assert.equal(open.classList.contains("sand-oegz02"), false);
     assert.equal(open.getAttribute("aria-label"), "打开电脑");
     assert.equal(open.getAttribute("title"), "打开电脑");
@@ -220,17 +228,38 @@ test("a computer that has not started renders the official 电脑正在休眠 ca
   }
 });
 
-test("a starting or unreachable computer never shows the asleep card", async () => {
-  for (const phase of ["loading", "starting", "pulling", "error"]) {
+test("busy phases without VNC keep the official waking stage; error does not", async () => {
+  for (const phase of ["loading", "starting", "pulling"]) {
     const [stage, shapes] = await Promise.all([loadOfficialAsleepArtifacts(), loadOfficialShapeSvgs()]);
     const { window, refresh } = mountPreview(IDLE_PREVIEW, phase);
     window.eval(computerSleepOverlayRuntime(stage.html, shapes, "\uf46f"));
     await refresh();
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(window.document.getElementById("rcompsleep-stage"), null, "phase " + phase + " must not render the asleep card");
-    assert.equal(window.document.getElementById("open-computer").classList.contains("sand-oegz02"), false, "phase " + phase + " leaves the native opener untouched");
+    const card = window.document.getElementById("rcompsleep-stage");
+    assert.ok(card, "phase " + phase + " must keep Us starting");
+    assert.equal(card.getAttribute("data-stage"), "starting");
+    assert.equal(card.querySelector(".sand-grok-bot-mark").getAttribute("data-grok-state"), "waking");
+    assert.equal(card.textContent.includes("正在唤醒"), true);
+    assert.equal(window.document.getElementById("open-computer").classList.contains("sand-oegz02"), false);
     window.close();
   }
+  {
+    const [stage, shapes] = await Promise.all([loadOfficialAsleepArtifacts(), loadOfficialShapeSvgs()]);
+    const { window, refresh } = mountPreview(IDLE_PREVIEW, "error");
+    window.eval(computerSleepOverlayRuntime(stage.html, shapes, "\uf46f"));
+    await refresh();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(window.document.getElementById("rcompsleep-stage"), null, "error phase is not Us starting");
+    window.close();
+  }
+});
+
+test("styles ship the official title shimmer keyframes", async () => {
+  const stage = await loadOfficialAsleepArtifacts();
+  const css = computerSleepStyles(stage.css);
+  assert.match(css, /@keyframes sand-1ofn8cw-B/);
+  assert.match(css, /#rcompsleep-stage \.rcompsleep-shimmer/);
+  assert.match(css, /animation:sand-1ofn8cw-B 2\.2s steps\(60\) infinite/);
 });
 
 test("a running computer keeps the live preview and shows no asleep card", async () => {
@@ -242,4 +271,55 @@ test("a running computer keeps the live preview and shows no asleep card", async
   assert.equal(window.document.getElementById("rcompsleep-stage"), null);
   assert.equal(window.document.getElementById("stream") != null, true);
   window.close();
+});
+
+test("waking stage starts the official live avatar engine, not a static SVG", async () => {
+  const [{ html }, shapes] = await Promise.all([loadOfficialAsleepArtifacts(), loadOfficialShapeSvgs()]);
+  const runtime = computerSleepOverlayRuntime(html, shapes, "\uf46f");
+  assert.match(runtime, /createOfficialAvatarEngine\(S,p\)/, "reuse the shape-picker engine already in the chunk");
+  assert.match(runtime, /engine\.state\(puppet,'waking'/, "official Ie.starting → waking");
+  assert.match(runtime, /requestAnimationFrame\(tick\)/, "eyes animate on rAF like Us Mark");
+  assert.match(runtime, /data-live-avatar/, "live host is marked for assertions");
+  const applyBody = runtime.split("function applyStageMode")[1].split("function mountOverlay")[0];
+  assert.equal(applyBody.includes("startLiveAvatar(stage)"), true);
+  assert.equal(/swapMascotShape\(stage,waking\?'waking'/.test(applyBody), false, "waking must not stay on the static SVG swap");
+});
+
+test("with the official engine in scope, waking SVG frames actually change", async () => {
+  const { createOfficialAvatarEngine } = await import("../scripts/lib/computer-sleep-official/avatar-engine.mjs");
+  const [stage, shapes] = await Promise.all([loadOfficialAsleepArtifacts(), loadOfficialShapeSvgs()]);
+  const { window, refresh } = mountPreview(IDLE_PREVIEW, "idle");
+  window.S = {
+    forwardRef: (fn) => fn,
+    useId: () => ":r0:",
+    useRef: () => ({ current: null }),
+    useEffect: () => {},
+    useImperativeHandle: () => {},
+  };
+  window.p = { jsx: () => null, jsxs: () => null };
+  window.createOfficialAvatarEngine = createOfficialAvatarEngine;
+  window.requestAnimationFrame = (cb) => { window.__raf = cb; return 1; };
+  window.cancelAnimationFrame = () => {};
+  try {
+    const runtime = computerSleepOverlayRuntime(stage.html, shapes, "\uf46f");
+    const body = runtime.replace(/^\/\*[\s\S]*?\*\/\n/, "");
+    window.eval("var S=window.S,p=window.p,createOfficialAvatarEngine=window.createOfficialAvatarEngine;" + body);
+    await refresh();
+    await new Promise((resolve) => setImmediate(resolve));
+    const open = window.document.getElementById("open-computer");
+    window.document.querySelector(".sand-computer-preview").setAttribute("data-phase", "loading");
+    open.click();
+    await refresh();
+    await new Promise((resolve) => setImmediate(resolve));
+    const live = window.document.querySelector("[data-live-avatar='waking']");
+    assert.ok(live, "live avatar host mounted");
+    const first = live.innerHTML;
+    assert.ok(first.includes("<svg"), "first frame is SVG");
+    const start = 1000;
+    for (let i = 1; i <= 20; i++) window.__raf?.(start + i * 32);
+    const second = live.innerHTML;
+    assert.notEqual(second, first, "waking eyes must move across frames");
+  } finally {
+    window.close();
+  }
 });

@@ -142,14 +142,74 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     stage.setAttribute('data-avatar-shape',shape);
     mark.setAttribute('data-grok-state',state);
   }
+  // 官方 Us 的 ee Mark: state "waking" + isPaused:false → avatar-engine rAF 画眼睛东张西望。
+  // shape-picker 先于本补丁写入同 chunk 的 createOfficialAvatarEngine(S,p);这里复用,不塞第二份引擎。
+  var liveAvatar=null;
+  function hashAvatarSeed(text){
+    var h=2166136261,i=0;for(;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);return h>>>0;
+  }
+  function treeToSvg(node){
+    var attrs='',key;for(key in node.attrs)attrs+=' '+key+'="'+String(node.attrs[key]).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'"';
+    var kids='',i=0,ch=node.children||[];for(;i<ch.length;i++)kids+=treeToSvg(ch[i]);
+    return '<'+node.tag+attrs+'>'+kids+'</'+node.tag+'>';
+  }
+  function resolveLiveEngine(){
+    if(typeof createOfficialAvatarEngine!=='function')return null;
+    if(typeof S==='undefined'||typeof p==='undefined')return null;
+    try{return createOfficialAvatarEngine(S,p)}catch(err){return null}
+  }
+  function stopLiveAvatar(){
+    if(liveAvatar==null)return;
+    if(liveAvatar.raf!=null)cancelAnimationFrame(liveAvatar.raf);
+    liveAvatar=null;
+  }
+  function startLiveAvatar(stage){
+    stopLiveAvatar();
+    var engine=resolveLiveEngine();
+    if(engine==null){swapMascotShape(stage,'waking');return}
+    var mark=stage.querySelector('.sand-grok-bot-mark');
+    if(mark==null)return;
+    var container=mark.querySelector('span[style*="inline-block"]');
+    if(container==null)return;
+    var shape=currentBotShape();
+    var paint=(getComputedStyle(mark).getPropertyValue('--grok-bot-ink')||'').trim()||'var(--sand-text-tertiary)';
+    var appearance=engine.appearance(paint);
+    var puppet=engine.create({body:engine.body(shape)});
+    var seed=hashAvatarSeed(String(currentBotId()||shape||'wake'));
+    var ctrl=engine.state(puppet,'waking',{seed:seed,isCompact:!0,isResting:!1});
+    var extent=(engine.fillScale*100)+'%';
+    var host=document.createElement('span');
+    host.setAttribute('aria-hidden','true');
+    host.setAttribute('data-live-avatar','waking');
+    host.style.cssText='position:absolute;left:50%;top:50%;width:'+extent+';height:'+extent+';transform:translate(-50%,-50%);pointer-events:none;line-height:0';
+    container.textContent='';
+    container.appendChild(host);
+    stage.setAttribute('data-avatar-shape',shape);
+    mark.setAttribute('data-grok-state','waking');
+    mark.removeAttribute('data-paused');
+    var last=0;
+    function paintFrame(){
+      host.innerHTML=treeToSvg(engine.render(puppet.frame(),appearance,49,'r-avatar-live-'+seed,{displaySize:32,extent:'100%'}));
+    }
+    paintFrame();
+    function tick(now){
+      if(liveAvatar==null)return;
+      var dt=last===0?1/30:Math.min(0.05,(now-last)/1000);
+      last=now;
+      if(!document.hidden){ctrl.advance(dt);puppet.advance(dt);paintFrame()}
+      liveAvatar.raf=requestAnimationFrame(tick);
+    }
+    liveAvatar={stage:stage,raf:requestAnimationFrame(tick)};
+  }
 
   // --- Overlay ---
   function labels(mode){
     var offline=mode==='offline';
+    var waking=mode==='waking';
     return STAGE_HTML
-      .replace('{{TITLE}}',mode==='waking'?L.waking:(offline?L.offline:L.title))
-      // 官方 0.71.2 的 Es("asleep") 返回 second:null,台内没有按钮;唤醒走原生打开按钮。
-      .replace(WAKE_SLOT_RE,offline?'':'@@WAKE_SLOT@@')
+      .replace('{{TITLE}}',waking?L.waking:(offline?L.offline:L.title))
+      // 官方 Es(asleep/starting): second:null — 台内无按钮;asleep 唤醒走原生打开,starting 只动画。
+      .replace(WAKE_SLOT_RE,(offline||waking)?'':'@@WAKE_SLOT@@')
       .replace('@@WAKE_SLOT@@',WAKE_SLOT_HTML)
       .replace('{{WAKE}}',L.wake);
   }
@@ -165,9 +225,29 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     if(phase==='error'||BUSY_PHASES[phase]===1)return false;
     return !computerRunning(frame);
   }
+  // 官方 We() 在 waking/starting 时 kind:"starting" — 仍画 Us 舞台(头像 waking + 标题 shimmer),
+  // 不是 0.18 StagePlaceholder 进度条。BUSY 相位下只要还没有 VNC 就保住 waking 舞台。
+  function isWakingBusy(frame){
+    var root=previewRoot();
+    if(root==null)return false;
+    if(computerRunning(frame))return false;
+    var phase=root.getAttribute('data-phase');
+    return BUSY_PHASES[phase]===1;
+  }
+  var wakeVisualPending=false;
   // 官方 He():asleep → 'wake' → view.ensure()（不开全屏）。0.18 原生 onClick 曾恒走 onOpen;
   // computer-preview-stream 补丁已改成 E?onOpen:ensure。这里只改可见性与文案（openOverStage）。
   var openState=null;
+  function onNativeWakeClick(){
+    // 官方 He(asleep)→wake→ensure: 立刻切 Us starting 动画;onClick 仍由 React 调 e.ensure()。
+    wakeVisualPending=true;
+    var host=pool();if(host==null)return;
+    var frame=previewFrame(host);
+    var existing=document.getElementById(IDS.overlay);
+    if(existing!=null)applyStageMode(existing,'waking');
+    else mountOverlay('waking');
+    setOpenAsWake(false);
+  }
   function setOpenAsWake(on){
     var host=pool();
     if(host==null){openState=null;return}
@@ -175,37 +255,77 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     var open=frame.querySelector(':scope > .sand-computer-preview__open');
     if(on){
       if(open==null){openState=null;return}
-      if(openState===null)openState={el:open,label:open.getAttribute('aria-label'),title:open.getAttribute('title'),pill:open.firstElementChild};
+      if(openState===null)openState={el:open,label:open.getAttribute('aria-label'),title:open.getAttribute('title'),pill:open.firstElementChild,onWake:null};
       open.classList.add(OPEN_OVER_STAGE);
       open.setAttribute('aria-label',L.wakeComputer);
       open.removeAttribute('title');
       if(openState.pill!=null)openState.pill.style.display='none';
+      if(openState.onWake==null){openState.onWake=onNativeWakeClick;open.addEventListener('click',openState.onWake,true)}
     }else if(openState!=null){
       openState.el.classList.remove(OPEN_OVER_STAGE);
       if(openState.label!=null)openState.el.setAttribute('aria-label',openState.label);else openState.el.removeAttribute('aria-label');
       if(openState.title!=null)openState.el.setAttribute('title',openState.title);
       if(openState.pill!=null)openState.pill.style.removeProperty('display');
+      if(openState.onWake!=null)openState.el.removeEventListener('click',openState.onWake,true);
       openState=null;
     }
   }
   function removeOverlay(){
+    wakeVisualPending=false;
+    stopLiveAvatar();
     setOpenAsWake(false);
     var el=document.getElementById(IDS.overlay);
     if(el!=null&&el.parentNode!=null){el.parentNode.removeAttribute('data-preview-asleep');el.parentNode.removeChild(el)}
     var host=pool();if(host!=null){host.removeAttribute('data-preview-asleep');previewFrame(host).removeAttribute('data-preview-asleep')}
   }
+  // 官方 Us: starting → Mark state "waking" + isPlaying + 标题 shimmer;
+  // asleep → sleeping + paused + zZz。眼睛动画来自 avatar-engine,不是静态 SVG。
+  var SHIMMER_CLS='sand-19co3pv sand-n9qfrr sand-akli9p sand-1ta4xzc sand-o5tii7 sand-1s7govs sand-16ssq7h sand-a4qsjk rcompsleep-shimmer';
+  function applyStageMode(stage,mode){
+    var waking=mode==='waking';
+    var keepLive=waking&&stage.getAttribute('data-stage')==='starting'&&liveAvatar!=null&&liveAvatar.stage===stage;
+    stage.setAttribute('data-stage',waking?'starting':'asleep');
+    var mark=stage.querySelector('.sand-grok-bot-mark');
+    if(mark!=null){
+      mark.setAttribute('data-grok-state',waking?'waking':'sleeping');
+      if(waking)mark.removeAttribute('data-paused');else mark.setAttribute('data-paused','true');
+    }
+    // 官方 starting 去掉 sand-1aquc0h;asleep 保留以停住外壳脉冲(眼睛由 engine 负责)。
+    var avatarWrap=stage.querySelector('[data-stage-avatar]>span');
+    if(avatarWrap!=null){
+      if(waking)avatarWrap.classList.remove('sand-1aquc0h');
+      else if(!avatarWrap.classList.contains('sand-1aquc0h'))avatarWrap.classList.add('sand-1aquc0h');
+    }
+    var zzz=stage.querySelector('[data-stage-avatar] .sand-8hg36d');
+    if(zzz!=null){
+      if(waking)zzz.classList.add('sand-g01cxk');else zzz.classList.remove('sand-g01cxk');
+    }
+    var title=stage.querySelector('[data-stage-words]>span');
+    if(title!=null){
+      title.textContent=waking?L.waking:(mode==='offline'?L.offline:L.title);
+      if(waking){
+        title.className=SHIMMER_CLS+' sand-78zum5 sand-6s0dn4 sand-l56j7k sand-193iq5w sand-euugli sand-mix8c7 sand-b3r6kr sand-uxw1ft sand-lyipyv';
+      }else{
+        title.className='sand-11wthnw sand-w8bs97 sand-14gdtuo sand-1rhlpx6 sand-tyxrsu sand-78zum5 sand-6s0dn4 sand-l56j7k sand-193iq5w sand-euugli sand-mix8c7 sand-b3r6kr sand-uxw1ft sand-lyipyv';
+      }
+    }
+    if(waking){if(!keepLive)startLiveAvatar(stage)}
+    else{stopLiveAvatar();swapMascotShape(stage,'asleep')}
+  }
   function mountOverlay(mode){
     removeOverlay();
     if(mode==='offline')setOpenAsWake(true);
+    else setOpenAsWake(false);
     var host=pool();
     if(host==null)return;
     var frame=previewFrame(host);
     var agentId=frame.getAttribute('data-preview-bot-id');
     if(!agentId)return;
-    frame.insertAdjacentHTML('beforeend',labels(mode));
+    frame.insertAdjacentHTML('beforeend',labels(mode==='waking'?'waking':mode));
     var stage=frame.lastElementChild;
-    if(stage==null||stage.getAttribute('data-stage')!=='asleep'){removeOverlay();return}
+    if(stage==null||!stage.hasAttribute('data-stage')){removeOverlay();return}
     stage.id=IDS.overlay;
+    applyStageMode(stage,mode);
     // 官方 0.71.2 用四个 0.18 没有的类定位头像与文案;同名规则在 Chromium 里不生效,
     // 这里按官方声明的内联值落位,几何与官方一致。
     var avatarEl=stage.querySelector('[data-stage-avatar]');
@@ -215,7 +335,6 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     host.setAttribute('data-preview-asleep','true');
     previewFrame(host).setAttribute('data-preview-asleep','true');
     stage.addEventListener('click',function(event){event.stopPropagation()});
-    swapMascotShape(stage,mode);
     var wake=stage.querySelector('button');
     if(wake!=null){
       wake.id=IDS.wake;
@@ -224,10 +343,9 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
         var b=bridge();if(b==null)return;
         var change=beginChange(agentId);
         wake.disabled=!0;
-        swapMascotShape(stage,'waking');
-        var title=stage.querySelector('[data-stage-words]>span');
-        if(title!=null)title.textContent=L.waking;
-        b.wake(agentId).then(function(state){if(change!==revision(agentId))return;beginChange(agentId);if(state==='awake'){pausePreviewStream(agentId,!1);if(currentBotId()===agentId){removeOverlay();rebindHover()}}else{wake.disabled=!1;swapMascotShape(stage,'asleep')}}).catch(function(){wake.disabled=!1;swapMascotShape(stage,'asleep');if(title!=null)title.textContent=L.title});
+        wakeVisualPending=true;
+        applyStageMode(stage,'waking');
+        b.wake(agentId).then(function(state){if(change!==revision(agentId))return;beginChange(agentId);if(state==='awake'){wakeVisualPending=false;pausePreviewStream(agentId,!1);if(currentBotId()===agentId){removeOverlay();rebindHover()}}else{wakeVisualPending=false;wake.disabled=!1;applyStageMode(stage,'asleep')}}).catch(function(){wakeVisualPending=false;wake.disabled=!1;applyStageMode(stage,'asleep')});
       });
     }
   }
@@ -326,20 +444,34 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     var host=pool();
     if(host==null){removeOverlay();removePill();return}
     var agentId=currentBotId();if(!agentId){removeOverlay();removePill();return}
-    // 电脑没启动(官方 We() 的 asleep)时先按官方外观挂台,不依赖 host 的休眠集合。
-    var offlineHost=pool()!=null&&isOffline(previewFrame(pool()));
+    // 官方 We(): asleep / starting(无 VNC) 都画 Us 舞台;live 才拆台。
     var observedRevision=revision(agentId);
     rebindHover();
     b.getSleepState(agentId).then(function(state){
       if(observedRevision!==revision(agentId))return;
       pausePreviewStream(agentId,state==='asleep');
       if(currentBotId()!==agentId)return;
+      var host=pool();if(host==null)return;
+      var frame=previewFrame(host);
+      if(computerRunning(frame)){wakeVisualPending=false;removeOverlay();rebindHover();return}
+      var wakingBusy=isWakingBusy(frame)||wakeVisualPending;
+      if(wakingBusy){
+        removePill();
+        var cur=document.getElementById(IDS.overlay);
+        if(cur==null)mountOverlay('waking');
+        else applyStageMode(cur,'waking');
+        return;
+      }
+      var offlineHost=isOffline(frame);
       if(state==='asleep'||(state==='awake'&&offlineHost)){
+        wakeVisualPending=false;
         removePill();
         var current=document.getElementById(IDS.overlay);
-        if(current==null)mountOverlay(state==='awake'?'offline':'asleep');
-        else if(current.getAttribute('data-avatar-shape')!==currentBotShape())swapMascotShape(current,state==='awake'?'offline':'asleep');
+        var mode=state==='awake'?'offline':'asleep';
+        if(current==null)mountOverlay(mode);
+        else applyStageMode(current,mode);
       }else if(state==='awake'){
+        wakeVisualPending=false;
         removeOverlay();
         rebindHover();
       }
@@ -398,12 +530,22 @@ export function computerSleepStyles(officialCss) {
   return shims + "\n" + scopedCss + `
 .sand-box-vnc-pool[data-preview-asleep="true"]>:not(#rcompsleep-stage){visibility:hidden}
 .sand-computer-preview__frame[data-preview-asleep="true"]>.sand-computer-preview__open:not(.sand-oegz02){visibility:hidden}
+.sand-computer-preview__frame[data-preview-asleep="true"]>.sand-10l6tqk.sand-10a8y8t.sand-zkaem6:not(#rcompsleep-stage){visibility:hidden}
 #rcompsleep-stage{pointer-events:auto}
 #rcompsleep-stage:is(.sand-zkaem6){z-index:3}
 .sand-computer-preview__frame>.sand-computer-preview__open:is(.sand-oegz02){visibility:visible;z-index:4}
 #rcompsleep-pill{pointer-events:auto}
 #rcompsleep-pill button{pointer-events:auto}
 #rcompsleep-pill-sleep:disabled{cursor:default;opacity:.6}
+@keyframes sand-1ofn8cw-B{0%{background-position:200% 0}to{background-position:-200% 0}}
+#rcompsleep-stage .rcompsleep-shimmer{
+  color:transparent;
+  background-image:linear-gradient(90deg,color-mix(in srgb,var(--sand-text-primary) 40%,transparent) 0%,color-mix(in srgb,var(--sand-text-primary) 40%,transparent) 25%,var(--sand-text-primary) 60%,color-mix(in srgb,var(--sand-text-primary) 40%,transparent) 75%,color-mix(in srgb,var(--sand-text-primary) 40%,transparent) 100%);
+  background-size:200% 100%;
+  -webkit-background-clip:text;
+  background-clip:text;
+  animation:sand-1ofn8cw-B 2.2s steps(60) infinite;
+}
 `;
 }
 
