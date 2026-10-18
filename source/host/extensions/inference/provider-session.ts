@@ -15,7 +15,7 @@ import { getSandRootDir } from "../../host-paths.js";
 import { SandSettingsStore } from "../../../shared/node/settings/sand-settings-store.js";
 import { getBoxSecretsStorePath } from "../secrets/secrets-service.js";
 import { streamCodexDirectResponses, type CodexDirectTool } from "./codex-direct-responses.js";
-import { acquireInferenceSlot } from "./inference-inflight.js";
+import { acquireInferenceSlot, takePreheldInferenceSlot } from "./inference-inflight.js";
 import type { LabelMessage, PromptExecutor } from "./sand-labeling.js";
 
 type Loose = Record<string, any>;
@@ -561,7 +561,9 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     if (streamResult !== undefined) return streamResult;
     if (startPromise !== undefined) return startPromise;
     startPromise = (async () => {
-      releaseSlot = await acquireInferenceSlot({
+      // Prefer a slot already held by runWithInferenceSlot (before startStream).
+      // Fall back to acquire for paths that dial without that wrap (summarize, etc.).
+      releaseSlot = takePreheldInferenceSlot() ?? await acquireInferenceSlot({
         ...(signal === undefined ? {} : { signal }),
         ...(agentId === undefined || agentId.length === 0 ? {} : { agentId }),
       });

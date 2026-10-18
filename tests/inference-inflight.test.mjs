@@ -28,6 +28,8 @@ const {
   isAgentWaitingForInferenceSlot,
   resetInferenceInflightForTests,
   resolveMaxInferenceInflight,
+  runWithInferenceSlot,
+  takePreheldInferenceSlot,
   DEFAULT_MAX_INFERENCE_INFLIGHT,
 } = await import(pathToFileURL(output).href);
 
@@ -119,13 +121,58 @@ test("a pre-aborted signal is refused without queueing", async () => {
   assert.equal(getInferenceInflightSnapshot().waiting, 0);
 });
 
-test("openRouterExecutor acquires the global slot before streamText", () => {
+test("runWithInferenceSlot pre-holds for takePreheld and releases if unused", async () => {
+  process.env.SAND_MAX_INFERENCE_INFLIGHT = "1";
+  let sawActive = false;
+  await runWithInferenceSlot({}, async () => {
+    assert.deepEqual(getInferenceInflightSnapshot(), { active: 1, waiting: 0, limit: 1 });
+    sawActive = true;
+    // leave preheld in ALS — finally must release
+  });
+  assert.equal(sawActive, true);
+  assert.deepEqual(getInferenceInflightSnapshot(), { active: 0, waiting: 0, limit: 1 });
+
+  let stolenRelease;
+  await runWithInferenceSlot({}, async () => {
+    stolenRelease = takePreheldInferenceSlot();
+    assert.equal(typeof stolenRelease, "function");
+    assert.equal(takePreheldInferenceSlot(), undefined);
+    assert.deepEqual(getInferenceInflightSnapshot(), { active: 1, waiting: 0, limit: 1 });
+  });
+  // stolen: finally must not double-release
+  assert.deepEqual(getInferenceInflightSnapshot(), { active: 1, waiting: 0, limit: 1 });
+  stolenRelease();
+  assert.deepEqual(getInferenceInflightSnapshot(), { active: 0, waiting: 0, limit: 1 });
+});
+
+test("runWithInferenceSlot queues behind the cap before fn runs", async () => {
+  process.env.SAND_MAX_INFERENCE_INFLIGHT = "1";
+  const held = await acquireInferenceSlot();
+  const agentId = "prehold-waiter";
+  let fnEntered = false;
+  const pending = runWithInferenceSlot({ agentId }, async () => {
+    fnEntered = true;
+    assert.equal(isAgentWaitingForInferenceSlot(agentId), false);
+    const release = takePreheldInferenceSlot();
+    release?.();
+  });
+  await Promise.resolve();
+  assert.equal(fnEntered, false);
+  assert.equal(isAgentWaitingForInferenceSlot(agentId), true);
+  held();
+  await pending;
+  assert.equal(fnEntered, true);
+  assert.deepEqual(getInferenceInflightSnapshot(), { active: 0, waiting: 0, limit: 1 });
+});
+
+test("openRouterExecutor prefers takePreheld then falls back to acquire before streamText", () => {
   const source = readFileSync(
     path.join(repoRoot, "source/host/extensions/inference/provider-session.ts"),
     "utf8",
   );
+  assert.match(source, /takePreheldInferenceSlot/);
   assert.match(source, /acquireInferenceSlot/);
-  const gateAt = source.indexOf("releaseSlot = await acquireInferenceSlot({");
+  const gateAt = source.indexOf("takePreheldInferenceSlot() ?? await acquireInferenceSlot({");
   const streamAt = source.indexOf("streamText({", gateAt);
   assert.ok(gateAt > 0 && streamAt > gateAt);
   assert.match(source, /agentId/);
@@ -134,6 +181,16 @@ test("openRouterExecutor acquires the global slot before streamText", () => {
     source,
     /const result = streamText\(\{[\s\S]{0,200}acquireInferenceSlot/,
   );
+});
+
+test("production adapter wraps openrouter attempts with runWithInferenceSlot", () => {
+  const source = readFileSync(
+    path.join(repoRoot, "source/host/runner/production-turn-run-shell-adapter.ts"),
+    "utf8",
+  );
+  assert.match(source, /withInferenceCapacity/);
+  assert.match(source, /runWithInferenceSlot/);
+  assert.match(source, /provider !== "openrouter"/);
 });
 
 test("run-lifecycle suspends idle while inferenceQueued", () => {

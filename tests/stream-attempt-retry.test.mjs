@@ -199,6 +199,30 @@ test("first-token stall fires the exponential deadline and is retried", async ()
   assert.equal(calls.startStream, 2);
 });
 
+test("withInferenceCapacity runs before startStream and before first-token timer", async () => {
+  const order = [];
+  const { host, calls } = makeHost({
+    startStream: async () => {
+      order.push("startStream");
+      return "final-state";
+    },
+    deadlineTimer: (callback, deadlineMs) => {
+      order.push(`deadline:${deadlineMs}`);
+      return { cancel() {}, restart() {} };
+    },
+  });
+  const state = await runAttempt({
+    ...host,
+    withInferenceCapacity: async (_ctx, run) => {
+      order.push("capacity");
+      return await run();
+    },
+  });
+  assert.equal(state, "final-state");
+  assert.equal(calls.startStream, 1);
+  assert.deepEqual(order.slice(0, 3), ["capacity", "startStream", "deadline:150000"]);
+});
+
 test("shouldRetryTurnAttempt gates on cancellation, output, checkpoint, and overflow", () => {
   const base = { canceled: false, streamOutputProduced: false, resumeCheckpointAvailable: false };
   assert.equal(shouldRetryTurnAttempt({ ...base, error: CONNECTION_RESET }), true);

@@ -12,10 +12,19 @@
  * deadline must suspend for agents listed here (official host bounds provider
  * silence after dial starts; it has no "kill while queued for capacity" rule).
  *
+ * Capacity is acquired BEFORE startStream (see runWithInferenceSlot) so the
+ * first-token silence budget only covers the real provider dial, not the
+ * local queue wait.
+ *
  * Override with SAND_MAX_INFERENCE_INFLIGHT (positive integer). Default 4.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 export const DEFAULT_MAX_INFERENCE_INFLIGHT = 4;
+
+type PreheldStore = { release: (() => void) | undefined };
+const preheldAls = new AsyncLocalStorage<PreheldStore>();
 
 type Waiter = {
   readonly resolve: (release: () => void) => void;
@@ -173,4 +182,34 @@ export function acquireInferenceSlot(
     waiters.push(waiter);
     signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+/**
+ * Acquire a slot, then run `fn` with that slot pre-held in AsyncLocalStorage.
+ * `takePreheldInferenceSlot` (called from openRouterExecutor) steals ownership
+ * so the slot stays held for the real dial; if nothing takes it, this finally
+ * releases. Queue wait happens here — before startStream arms first-token.
+ */
+export async function runWithInferenceSlot<T>(
+  options: AcquireInferenceSlotOptions,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const release = await acquireInferenceSlot(options);
+  const store: PreheldStore = { release };
+  try {
+    return await preheldAls.run(store, fn);
+  } finally {
+    const leftover = store.release;
+    store.release = undefined;
+    leftover?.();
+  }
+}
+
+/** Steal the ALS-held release if present; otherwise undefined (caller acquires). */
+export function takePreheldInferenceSlot(): (() => void) | undefined {
+  const store = preheldAls.getStore();
+  if (store == null || store.release == null) return undefined;
+  const release = store.release;
+  store.release = undefined;
+  return release;
 }

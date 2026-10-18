@@ -1,7 +1,11 @@
+import { join } from "node:path";
 import type { Context } from "../../packages/context/core.js";
 import type {
   ConversationStateStructure as ConversationStateStructureMessage,
 } from "../../packages/proto/generated/agent/v1/agent_pb.js";
+import { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
+import { runWithInferenceSlot } from "../extensions/inference/inference-inflight.js";
+import { getSandRootDir } from "../host-paths.js";
 import {
   createProductionTurnAgentOwner,
   createProductionTurnAgentRunInput,
@@ -30,6 +34,12 @@ import type {
 } from "./prompt-collector-glue.js";
 import type { TurnAgentMcpTurnProvider } from "./turn-agent-composition.js";
 import type { ForwardedUpdate } from "./agent-adapters.js";
+
+function attemptContextSignal(value: unknown): AbortSignal | undefined {
+  if (typeof value !== "object" || value == null || !("signal" in value)) return undefined;
+  const signal = Reflect.get(value, "signal");
+  return signal instanceof AbortSignal ? signal : undefined;
+}
 
 export interface ProductionTurnRunShellPreparedTurn extends PreparedTurn {
   readonly baseState: ConversationStateStructureMessage;
@@ -383,6 +393,23 @@ export function createProductionTurnRunShellAdapter(
             privacyMode: owned.productionOwner.runContext.privacyMode,
             mcpTools: owned.productionInput.mcpTools,
           }).startStream(streamContext, resumeFrom, persist),
+        // OpenRouter-family only: take the global inflight slot before dial so
+        // first-token silence excludes local queue wait. Codex keeps its own path.
+        withInferenceCapacity: async (streamContext, run) => {
+          const provider = new SandSettingsStore(
+            join(getSandRootDir(), "settings.json"),
+          ).getInferenceProvider();
+          if (provider !== "openrouter") return run();
+          const signal = attemptContextSignal(streamContext);
+          const agentId = input.getConversationId();
+          return runWithInferenceSlot(
+            {
+              ...(signal === undefined ? {} : { signal }),
+              ...(agentId.length === 0 ? {} : { agentId }),
+            },
+            run,
+          );
+        },
         createDeadlineTimer: (callback, deadlineMs) => {
           let timer: ReturnType<typeof setTimeout> | undefined;
           const restart = (): void => {
