@@ -321,12 +321,28 @@ export const EXTRA_I18N_FILES = [
 const RUNTIME_PRELUDE = NL + RUNTIME_LINES.join(NL) + NL;
 
 export function patchExtraFile(source, entry) {
-  let patched = source + RUNTIME_PRELUDE;
+  // Skip the prelude when a prior pass (or a re-entry) already appended it —
+  // double-appending would still "work" but bloats the chunk and confuses audits.
+  let patched = source.includes("function RLocT(")
+    ? source
+    : source + RUNTIME_PRELUDE;
   const applied = [];
   for (const [en, zh, id, mode] of entry.pairs) {
-    const result = applyPair(patched, en, zh, mode);
-    patched = result.patched;
-    applied.push({ en, id, mode, hits: result.hits });
+    const already = "RLocT(" + JSON.stringify(en) + "," + JSON.stringify(zh) + ")";
+    try {
+      const result = applyPair(patched, en, zh, mode);
+      patched = result.patched;
+      applied.push({ en, id, mode, hits: result.hits });
+    } catch (error) {
+      // Idempotent: if a previous i18n pass already wrapped this literal, the
+      // bare anchor is gone and applyPair fail-closes. That is success, not drift.
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("no anchor") && patched.includes(already)) {
+        applied.push({ en, id, mode, hits: 0, alreadyLocalized: true });
+        continue;
+      }
+      throw error;
+    }
   }
   return { patched, applied };
 }
