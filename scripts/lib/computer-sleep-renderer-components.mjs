@@ -51,8 +51,9 @@ export async function loadOfficialOpenPill() {
 }
 
 export const COMPUTER_SLEEP_LABELS = {
-  zh: { title: "电脑预览已关闭", wake: "恢复预览", waking: "正在恢复预览…", open: "打开", sleep: "休眠", sleepHint: "暂停当前 Bot 的预览流，任务继续运行", offline: "电脑正在休眠", wakeComputer: "唤醒电脑" },
-  en: { title: "Computer preview is off", wake: "Show preview", waking: "Restoring preview…", open: "Open", sleep: "Sleep preview", sleepHint: "Pause this Bot's preview stream; tasks keep running", offline: "Your computer is sleeping", wakeComputer: "Wake computer" },
+  // waking / wakeComputer match official 0.71.2 pwcnuW / saz6Yf (正在唤醒… / 唤醒电脑).
+  zh: { title: "电脑预览已关闭", wake: "恢复预览", waking: "正在唤醒…", open: "打开", sleep: "休眠", sleepHint: "暂停当前 Bot 的预览流，任务继续运行", offline: "电脑正在休眠", wakeComputer: "唤醒电脑" },
+  en: { title: "Computer preview is off", wake: "Show preview", waking: "Waking…", open: "Open", sleep: "Sleep preview", sleepHint: "Pause this Bot's preview stream; tasks keep running", offline: "Your computer is sleeping", wakeComputer: "Wake computer" },
 };
 
 // 官方 0.71.2 chunk-computer-screen-preview-LY_WYUeq.js `Us` 用 sand-1unejwy / sand-budbmw /
@@ -164,7 +165,8 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     if(phase==='error'||BUSY_PHASES[phase]===1)return false;
     return !computerRunning(frame);
   }
-  // 官方 He():asleep → 'wake'。原生按钮的 onClick 已经会启动电脑,这里只改可见性与文案。
+  // 官方 He():asleep → 'wake' → view.ensure()（不开全屏）。0.18 原生 onClick 曾恒走 onOpen;
+  // computer-preview-stream 补丁已改成 E?onOpen:ensure。这里只改可见性与文案（openOverStage）。
   var openState=null;
   function setOpenAsWake(on){
     var host=pool();

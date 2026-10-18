@@ -698,6 +698,8 @@ export const MAIN_I18N_061_PAIRS = [
 // pair, so the dead row had to go rather than stay.
 export const MAIN_I18N_LOCAL_PAIRS = [
   ["Booting up the computer", "正在启动电脑", "FULL"],
+  // Official 0.71.2 pwcnuW (chunk-computer-screen-preview Es starting): sidebar wake copy.
+  ["Waking…", "正在唤醒…", "FULL"],
   ["Agent settings", "智能体设置", "PROP"],
   ["Create Routine", "创建例行任务", "PROP"],
   ["Routines are recurring tasks this agent runs on a schedule.", "例行任务是这个智能体按计划重复执行的任务。", "PROP"],

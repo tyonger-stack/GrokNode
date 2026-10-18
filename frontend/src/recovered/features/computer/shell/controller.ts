@@ -40,6 +40,8 @@ export interface ComputerExperience {
   openTrigger: "preview" | "handoff" | undefined;
   refresh(): void;
   open(focusMonitorId?: string | null, trigger?: "preview" | "handoff"): void;
+  /** Official He(asleep)→ensure: start the box in-pane without opening the fullscreen overlay. */
+  wake(): void;
   close(): void;
   handBack(subagentId: string | null, trigger?: "button" | "dismissed"): Promise<void>;
   cardFor(entry: TranscriptComputerHandoff): ComputerHandoffCardProjection;
@@ -240,6 +242,11 @@ export function useComputerExperience(input: {
     return () => { stopSubagents(); stopAsyncTasks(); stopTransport(); };
   }, [activeAgentId, client, fetchAsyncTasks, fetchSubagents]);
 
+  const wake = useCallback(() => {
+    if (activeAgentId == null) return;
+    ensure(activeAgentId);
+  }, [activeAgentId, ensure]);
+
   const open = useCallback((monitorId: string | null = null, trigger: "preview" | "handoff" = "preview") => {
     if (activeAgentId == null) return;
     bridge?.telemetry.reportOpenComputer({ trigger, hadVncUrl: (monitors.find((monitor) => monitor.subagentId === monitorId)?.vncUrl ?? view.vncUrl) != null, monitorFocused: monitorId != null });
@@ -280,5 +287,5 @@ export function useComputerExperience(input: {
     return id == null ? null : cursors[id] ?? null;
   }, [activeAgentId, cursors]);
 
-  return { statusStore, view, monitors, isComputerUseActive, isOpen, focusMonitorId, openedAtMs, openTrigger, refresh, open, close, handBack, cardFor, cursorFor };
+  return { statusStore, view, monitors, isComputerUseActive, isOpen, focusMonitorId, openedAtMs, openTrigger, refresh, open, wake, close, handBack, cardFor, cursorFor };
 }

@@ -1,8 +1,42 @@
 import { parse } from "acorn";
 
+// Official 0.71.2 chunk-computer-screen-preview-LY_WYUeq.js Ke/He:
+//   live → onOpen (fullscreen); asleep → view.ensure() only (inline wake, no modal).
+// 0.18 _bn always called onOpen, which is why the sidebar open over the asleep
+// stage jumped to fullscreen "Booting up the computer" / 正在启动电脑.
+const PREVIEW_OPEN_CLICK = "onClick:()=>l(h?.subagentId)";
+const PREVIEW_OPEN_CLICK_PORTED = "onClick:()=>E?l(h?.subagentId):e.ensure()";
+// Official Es("starting") without pull % uses i18n pwcnuW = 正在唤醒… (en "Waking…").
+// Keep fullscreen Booting copy; only the sidebar preview emptyMessage changes.
+const PREVIEW_WAKE_EMPTY = 'subjectLabel:r,emptyMessage:void 0,isEmptyLoading:A,pullPercent:e.pullPercent';
+const PREVIEW_WAKE_EMPTY_PORTED = 'subjectLabel:r,emptyMessage:"Waking…",isEmptyLoading:A,pullPercent:e.pullPercent';
+
+function replaceExactlyOnce(source, from, to, label) {
+  const start = source.indexOf(from);
+  if (start < 0 || source.indexOf(from, start + from.length) >= 0) {
+    throw new Error(`Preview-stream patch: ${label} anchor missing or ambiguous.`);
+  }
+  return source.slice(0, start) + to + source.slice(start + from.length);
+}
+
+/** Port official He() open-vs-wake when the shipped _bn anchors are present (canonical chunk). Fixtures omit them. */
+export function portOfficialPreviewOpenWake(source) {
+  const hasClick = source.includes(PREVIEW_OPEN_CLICK);
+  const hasEmpty = source.includes(PREVIEW_WAKE_EMPTY);
+  if (!hasClick && !hasEmpty) return source;
+  if (!hasClick || !hasEmpty) {
+    throw new Error("Preview-stream patch: official He() open/wake anchors are only partially present.");
+  }
+  let next = replaceExactlyOnce(source, PREVIEW_OPEN_CLICK, PREVIEW_OPEN_CLICK_PORTED, "preview open/wake click (official He)");
+  next = replaceExactlyOnce(next, PREVIEW_WAKE_EMPTY, PREVIEW_WAKE_EMPTY_PORTED, "preview waking emptyMessage (official pwcnuW)");
+  return next;
+}
+
 export function patchComputerPreviewStream(source) {
   if (source.includes("RCompPreviewPoolBase")) throw new Error("Preview-stream patch was already applied.");
-  const ast = parse(source, { ecmaVersion: "latest", sourceType: "module" });
+  let prepared = portOfficialPreviewOpenWake(source);
+  const ast = parse(prepared, { ecmaVersion: "latest", sourceType: "module" });
+  source = prepared;
   const pools = ast.body.filter(node => node.type === "FunctionDeclaration" && node.id?.name === "dbn");
   if (pools.length !== 1) throw new Error("Preview-stream patch: expected the shipped dbn pool function.");
   const pool = pools[0];

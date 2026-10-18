@@ -521,7 +521,7 @@ export function ComputerPreview({ bridge, experience, subjectLabel, teachRecordi
   const src = monitor?.vncUrl ?? experience.view.vncUrl;
   const dimensions = useMemo(() => vncDimensions(src ?? ""), [src]);
   const busy = !experience.view.isStatusUnavailable && (!experience.view.isStatusKnown || experience.view.phase === "pulling" || experience.view.phase === "starting");
-  const copy = computerStageCopy({ isScreenLoading: false, isScreenUnavailable: experience.view.isStatusUnavailable, subjectLabel, isEmptyLoading: busy, pullPercent: experience.view.pullPercent });
+  const copy = computerStageCopy({ isScreenLoading: false, isScreenUnavailable: experience.view.isStatusUnavailable, subjectLabel, emptyMessage: "Waking…", isEmptyLoading: busy, pullPercent: experience.view.pullPercent });
   const hasPlaceholder = copy.isBusy || copy.hasRetry;
   let phase = experience.view.phase;
   if (experience.view.isStatusUnavailable) phase = "off";
@@ -535,7 +535,7 @@ export function ComputerPreview({ bridge, experience, subjectLabel, teachRecordi
       <div className="sand-computer-preview__frame sand-1n2onr6 sand-78zum5 sand-6s0dn4 sand-l56j7k sand-h8yej3 sand-9f619 sand-t9pb60 sand-b3r6kr sand-i07v4r sand-4b2ntj sand-1ahgo13" ref={frameRef} style={{ aspectRatio: `${dimensions.width} / ${dimensions.height}` }}>
         <VncPool bridge={bridge} className="sand-47corl" src={src} />
         {src == null && !hasPlaceholder ? <DeviceDesktopIcon size="base" /> : null}
-        <button aria-label={monitor?.title ?? "Open computer"} className="sand-computer-preview__open sand-10l6tqk sand-10a8y8t sand-htitgo sand-78zum5 sand-6s0dn4 sand-l56j7k sand-dj266r sand-1yf7rl7 sand-at24cr sand-j3b58b sand-1717udv sand-c342km sand-ng3xce sand-t9pb60 sand-jbqb8w sand-jyslct sand-1lugfcp sand-1ypdohk" onClick={() => experience.open(monitor?.subagentId, "preview")} title={monitor?.title} type="button">{src == null ? null : <span className="sand-3nfvp2 sand-6s0dn4 sand-pkkfsy sand-1i4c3av sand-12ffz05 sand-w3enoh sand-1846v19 sand-18ti0zn sand-47corl sand-1i4knns sand-19991ni sand-gdialr sand-9lcvmn"><ExpandIcon />Open</span>}</button>
+        <button aria-label={monitor?.title ?? "Open computer"} className="sand-computer-preview__open sand-10l6tqk sand-10a8y8t sand-htitgo sand-78zum5 sand-6s0dn4 sand-l56j7k sand-dj266r sand-1yf7rl7 sand-at24cr sand-j3b58b sand-1717udv sand-c342km sand-ng3xce sand-t9pb60 sand-jbqb8w sand-jyslct sand-1lugfcp sand-1ypdohk" onClick={() => src == null ? experience.wake() : experience.open(monitor?.subagentId, "preview")} title={monitor?.title} type="button">{src == null ? null : <span className="sand-3nfvp2 sand-6s0dn4 sand-pkkfsy sand-1i4c3av sand-12ffz05 sand-w3enoh sand-1846v19 sand-18ti0zn sand-47corl sand-1i4knns sand-19991ni sand-gdialr sand-9lcvmn"><ExpandIcon />Open</span>}</button>
         {src == null && hasPlaceholder ? <span className="sand-10l6tqk sand-10a8y8t sand-zkaem6 sand-78zum5 sand-6s0dn4 sand-l56j7k sand-47corl"><StagePlaceholder copy={copy} onRetry={experience.refresh} tone="pane" /></span> : null}
         {src == null ? null : <ComputerCursorOverlay cursor={experience.cursorFor(monitor?.subagentId ?? null)} framebuffer={dimensions} />}
         {teachRecording == null ? null : <TeachRecordingPreviewFrame actions={teachRecording.actions} projection={teachRecording.projection} />}
