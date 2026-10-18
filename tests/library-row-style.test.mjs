@@ -83,9 +83,41 @@ test('source card, row typography, footer and focus/hover declarations survive t
         ui.createElement('li', {}, ui.createElement(ui.LibraryMediaRow, { ...base, row: row('file', 'Name.pdf') })),
         ui.createElement('li', {}, ui.createElement('button', { type: 'button', className: 'sand-library-expand' }, '展开')))))));
   const get = selector => window.getComputedStyle(host.querySelector(selector));
-  const actual = { cardRadius: get('ul').borderRadius, cardBorder: get('ul').borderTopWidth, cardPadding: get('ul').paddingTop, listStyle: get('ul').listStyle, rowPadding: get('.sand-library-row').padding, rowGap: get('.sand-library-row').gap, fontSize: get('.sand-library-row').fontSize, lineHeight: get('.sand-library-row').lineHeight, footerHeight: get('.sand-library-expand').height, ageMaxWidth: get('.sand-library-age').maxWidth };
-  assert.deepEqual(actual, { cardRadius:'12px', cardBorder:'0.5px', cardPadding:'4px', listStyle:'none', rowPadding:'6px 8px', rowGap:'6px', fontSize:'13px', lineHeight:'18px', footerHeight:'32px', ageMaxWidth:'0' });
+  const actual = {
+    cardRadius: get('ul').borderRadius,
+    cardBorder: get('ul').borderTopWidth,
+    cardPadding: get('ul').paddingTop,
+    cardBackground: get('ul').backgroundColor,
+    cardBorderColor: get('ul').borderTopColor,
+    listStyle: get('ul').listStyle,
+    rowPadding: get('.sand-library-row').padding,
+    rowGap: get('.sand-library-row').gap,
+    fontSize: get('.sand-library-row').fontSize,
+    lineHeight: get('.sand-library-row').lineHeight,
+    footerHeight: get('.sand-library-expand').height,
+    ageMaxWidth: get('.sand-library-age').maxWidth,
+  };
+  // Official 0.71.2 cl.card: sand-10e981r (bg-elevated) + sand-5fd6op (border-tertiary-translucent).
+  // happy-dom resolves missing tokens to transparent / default; assert declared values via rules too.
+  assert.equal(actual.cardRadius, '12px');
+  assert.equal(actual.cardBorder, '0.5px');
+  assert.equal(actual.cardPadding, '4px');
+  assert.equal(actual.listStyle, 'none');
+  assert.equal(actual.rowPadding, '6px 8px');
+  assert.equal(actual.rowGap, '8px');
+  assert.equal(actual.fontSize, '13px');
+  assert.equal(actual.lineHeight, '18px');
+  assert.equal(actual.footerHeight, '32px');
+  assert.equal(actual.ageMaxWidth, '0');
   const rules = [...style.sheet.cssRules].filter(rule => rule.selectorText);
+  const cardRule = rules.find(rule => rule.selectorText === '.sand-library-card');
+  assert.ok(cardRule, 'card rule present');
+  assert.equal(cardRule.style.backgroundColor, 'var(--sand-bg-elevated)');
+  // happy-dom may drop nested var() from borderColor CSSOM; assert source text.
+  const listCss = readFileSync(path.join(repo, 'frontend/src/recovered/features/library/library-list.css'), 'utf8');
+  assert.match(listCss, /background-color:\s*var\(--sand-bg-elevated\)/);
+  assert.match(listCss, /border:\s*\.5px solid var\(--sand-border-tertiary-translucent,\s*var\(--sand-border-weak\)\)/);
+  assert.match(listCss, /background-color:\s*var\(--sand-bg-secondary,\s*var\(--sand-fill-ghost-hover\)\)/);
   assert.ok(rules.some(rule => rule.selectorText.includes('.sand-library-row:focus-visible') && rule.style.boxShadow === '0 0 0 2px var(--sand-border-focus)'));
   assert.ok(rules.some(rule => rule.selectorText.includes('.sand-library-row:hover:not(:disabled) .sand-library-age') && rule.style.maxWidth === 'none' && rule.style.opacity === '1'));
   record('source-style-contract', { actual, hoverAndFocusRulesPresent: true, scope: 'DOM/CSS contract, not live browser layout or visual QA' });

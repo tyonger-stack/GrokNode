@@ -1,6 +1,7 @@
-/* Official 0.68.1 index-ByKx0M82.js: Pi, Za, Xa, xc, JE, eM, tM, nG/sG, lh.
- * Declaration/offset and 0.18 equivalence ledger: library-style/source-map.json.
- * Scoped selectors adapt these recipes to the below-routines LibraryHost. */
+/* Official 0.71.2 index-wlkGG389.js `cl.card` / `cl.row` / `mo` heading
+ * (rea-grokbot-0712). Scoped selectors adapt those recipes to LibraryHost.
+ * Missing 0.18 theme tokens keep an explicit fallback (same pattern as
+ * stage-icon-button.css). */
 .sand-agent-library,
 .sand-library-groups {
   display: flex;
@@ -27,7 +28,7 @@
   font-size: var(--cursor-font-size-base);
   font-weight: var(--sand-font-weight-regular);
   line-height: 18px;
-  color: var(--cursor-text-secondary);
+  color: var(--sand-text-secondary);
 }
 
 .sand-library-heading > p,
@@ -41,13 +42,15 @@
   color: var(--sand-text-tertiary);
 }
 
+/* cl.card — sand-10e981r / sand-5fd6op / sand-hojbe8 / sand-4hv7ue / … */
 .sand-library-card {
   box-sizing: border-box;
   margin: 0;
   padding: var(--cursor-spacing-1);
   list-style: none;
-  border: .5px solid var(--sand-border-default);
+  border: .5px solid var(--sand-border-tertiary-translucent, var(--sand-border-weak));
   border-radius: 12px;
+  background-color: var(--sand-bg-elevated);
 }
 
 .sand-library-card > li {
@@ -80,10 +83,13 @@
   outline-style: none;
 }
 
-.sand-library-row { gap: 6px; }
+/* cl.row — gap sand-ehausa (cursor-spacing-2); hover sand-11hyl0l */
+.sand-library-row { gap: var(--cursor-spacing-2); }
 .sand-library-row:hover:not(:disabled),
 .sand-library-row-item:hover,
-.sand-library-expand:hover { background-color: var(--sand-fill-ghost-hover); }
+.sand-library-expand:hover {
+  background-color: var(--sand-bg-secondary, var(--sand-fill-ghost-hover));
+}
 .sand-library-row:focus-visible,
 .sand-library-expand:focus-visible { box-shadow: 0 0 0 2px var(--sand-border-focus); }
 
