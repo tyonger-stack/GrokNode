@@ -13,8 +13,47 @@ await mkdir(path.join(root, "node_modules", ".cache"), { recursive: true });
 const jsToTs = { name: "js-to-ts", setup(builder) { builder.onResolve({ filter: /^\.\.?\/.*\.js$/ }, (args) => { const candidate = path.resolve(path.dirname(args.importer), args.path.replace(/\.js$/, ".ts")); return candidate.startsWith(path.join(root, "source")) && existsSync(candidate) ? { path: candidate } : null; }); } };
 const cacheDir = path.join(root, "node_modules", ".cache");
 
+// Build the inflight gate as its own CJS file, then point the lifecycle bundle
+// at that absolute path so enqueueExclusiveRun and acquireInferenceSlot share
+// one waitingAgentIds Set (two separate bundles would each get a private copy).
+const inflightOut = path.join(cacheDir, "inference-inflight-deadline.cjs");
+await build({
+  entryPoints: [path.join(root, "source/host/extensions/inference/inference-inflight.ts")],
+  bundle: true,
+  platform: "node",
+  format: "cjs",
+  outfile: inflightOut,
+  logLevel: "error",
+});
+const {
+  acquireInferenceSlot,
+  isAgentWaitingForInferenceSlot,
+  resetInferenceInflightForTests,
+} = createRequire(import.meta.url)(inflightOut);
+
 const lifecycleOut = path.join(cacheDir, "run-lifecycle-deadline.cjs");
-await build({ entryPoints: [path.join(root, "source/host/extensions/transcript/run-lifecycle.ts")], bundle: true, platform: "node", format: "cjs", outfile: lifecycleOut, logLevel: "error", plugins: [jsToTs] });
+await build({
+  entryPoints: [path.join(root, "source/host/extensions/transcript/run-lifecycle.ts")],
+  bundle: true,
+  platform: "node",
+  format: "cjs",
+  outfile: lifecycleOut,
+  logLevel: "error",
+  plugins: [
+    // Must run before jsToTs: that plugin rewrites the relative .js import to
+    // an absolute .ts path, which would then be inlined as a private Set copy.
+    {
+      name: "share-inference-inflight",
+      setup(builder) {
+        builder.onResolve({ filter: /inference-inflight(\.js)?$/ }, () => ({
+          path: inflightOut,
+          external: true,
+        }));
+      },
+    },
+    jsToTs,
+  ],
+});
 const {
   RunLifecycle,
   RunProgressTracker,
@@ -364,6 +403,77 @@ test("a tool call in flight suspends the idle budget; the total cap still applie
     await run.catch(() => {});
     assert.match(caught.message, /run stalled/);
   }));
+
+test("waiting on the global inference gate suspends the idle budget", () =>
+  withEnv({ SAND_RUN_HARD_DEADLINE_MS: "3600000", SAND_RUN_IDLE_DEADLINE_MS: "1500" }, async () => {
+    const queued = { value: true };
+    const tracker = new RunProgressTracker();
+    const wrapped = withRunHardDeadline(
+      "agent-x",
+      "agent",
+      () => new Promise(() => {}),
+      () => false,
+      () => {},
+      (id) => ({
+        ...tracker.snapshot(id),
+        ...(queued.value ? { inferenceQueued: true } : {}),
+      }),
+    );
+    const run = wrapped();
+    let caught;
+    run.catch((error) => { caught = error; });
+    await sleep(3200);
+    assert.equal(caught, undefined, "capacity queueing must not count as a stall");
+    queued.value = false;
+    await run.catch(() => {});
+    assert.match(caught.message, /run stalled/);
+  }));
+
+test("enqueueExclusiveRun suspends idle while the agent waits on acquireInferenceSlot", () =>
+  withEnv(
+    {
+      SAND_DISABLE_RUN_SCHEDULER: "1",
+      SAND_RUN_HARD_DEADLINE_MS: "3600000",
+      SAND_RUN_IDLE_DEADLINE_MS: "1500",
+      SAND_MAX_INFERENCE_INFLIGHT: "1",
+    },
+    async () => {
+      resetInferenceInflightForTests();
+      const agentId = "77777777-7777-4777-8777-777777777777";
+      const tm = makeFakeTm(agentId);
+      const lifecycle = new RunLifecycle(tm);
+      const held = await acquireInferenceSlot();
+      let finish;
+      const run = lifecycle.enqueueExclusiveRun(
+        agentId,
+        () => new Promise((resolve) => { finish = resolve; }),
+        { lane: "user", source: "agent" },
+      );
+      let slotRelease;
+      const waiting = acquireInferenceSlot({ agentId }).then((release) => {
+        slotRelease = release;
+        return release;
+      });
+      await Promise.resolve();
+      assert.equal(
+        isAgentWaitingForInferenceSlot(agentId),
+        true,
+        "production openRouterExecutor parks here before streamText",
+      );
+      let caught;
+      run.catch((error) => { caught = error; });
+      await sleep(3200);
+      assert.equal(caught, undefined, "slot queue must not trip the run-idle deadline");
+      assert.deepEqual(tm.interrupts, [], "must not abort a capacity-queued run");
+      held();
+      await waiting;
+      assert.equal(isAgentWaitingForInferenceSlot(agentId), false);
+      slotRelease();
+      finish();
+      await run;
+      resetInferenceInflightForTests();
+    },
+  ));
 
 test("the total cap fails a run that keeps making progress forever", async () => {
   const tracker = new RunProgressTracker();

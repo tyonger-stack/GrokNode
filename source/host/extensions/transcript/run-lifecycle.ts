@@ -21,6 +21,7 @@ import {
 import { turnFailureCopy } from "../../../shared/trays/agent-run-error-title-copy.js";
 import { hostTrayTitle } from "../../../shared/trays/tray-title-fallbacks.js";
 import { isTurnInterruptedFailure } from "./turn-runtime.js";
+import { isAgentWaitingForInferenceSlot } from "../inference/inference-inflight.js";
 import { ToolRepeatDetector } from "./tool-repeat-detector.js";
 import { SandRunScheduler, type RunLane } from "./run-scheduler.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
@@ -84,6 +85,12 @@ export interface RunProgressSnapshot {
   /** Monotonic count of progress events (model output, tool activity). */
   readonly progressSeq: number;
   readonly toolInFlight: boolean;
+  /**
+   * True while the turn is parked on the global OpenRouter inflight gate
+   * (no dial yet). Official host only bounds provider silence after a stream
+   * starts; queuing for capacity must not trip the run-idle deadline.
+   */
+  readonly inferenceQueued?: boolean;
 }
 
 const PROGRESS_UPDATE_TYPES = new Set([
@@ -221,8 +228,15 @@ export function withRunHardDeadline(
         } else {
           awaitingMs = 0;
           activeMs += delta;
-          if (progressed || progress?.toolInFlight === true) idleMs = 0;
-          else idleMs += delta;
+          if (
+            progressed ||
+            progress?.toolInFlight === true ||
+            progress?.inferenceQueued === true
+          ) {
+            idleMs = 0;
+          } else {
+            idleMs += delta;
+          }
           if (activeMs >= deadlineMs) {
             fail(
               `run hard deadline exceeded (${deadlineMs}ms) for agent ${agentId} (source: ${source}): the run never settled and was failed so the queue can move on`
@@ -551,7 +565,16 @@ export class RunLifecycle {
           // best-effort; the deadline itself already released the queue
         }
       },
-      id => this.progressTracker.snapshot(id)
+      id => {
+        const snap = this.progressTracker.snapshot(id);
+        // Fan-out parks many agents on the global inference gate before any
+        // text-delta/tool-call arrives. That wait is capacity queueing, not a
+        // wedged turn — suspend the idle clock the same way toolInFlight does.
+        if (isAgentWaitingForInferenceSlot(id)) {
+          return { ...snap, inferenceQueued: true };
+        }
+        return snap;
+      }
     );
     const guardedTask = TURN_FAILURE_NOTICE_SOURCES.has(options.source)
       ? () =>

@@ -561,7 +561,10 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     if (streamResult !== undefined) return streamResult;
     if (startPromise !== undefined) return startPromise;
     startPromise = (async () => {
-      releaseSlot = await acquireInferenceSlot(signal);
+      releaseSlot = await acquireInferenceSlot({
+        ...(signal === undefined ? {} : { signal }),
+        ...(agentId === undefined || agentId.length === 0 ? {} : { agentId }),
+      });
       try {
         const result = streamText({
           model,
@@ -584,6 +587,9 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
         throw error;
       }
     })();
+    // If the run-idle watchdog aborts a waiter after the consumer was dropped,
+    // keep the rejection from becoming an unhandledRejection (kept-alive noise).
+    void startPromise.catch(() => {});
     return startPromise;
   }
 

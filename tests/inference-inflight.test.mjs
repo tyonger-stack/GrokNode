@@ -25,6 +25,7 @@ await build({
 const {
   acquireInferenceSlot,
   getInferenceInflightSnapshot,
+  isAgentWaitingForInferenceSlot,
   resetInferenceInflightForTests,
   resolveMaxInferenceInflight,
   DEFAULT_MAX_INFERENCE_INFLIGHT,
@@ -89,6 +90,26 @@ test("an aborted wait never takes a slot", async () => {
   held();
 });
 
+test("queued agents are visible for run-idle suspension", async () => {
+  process.env.SAND_MAX_INFERENCE_INFLIGHT = "1";
+  const held = await acquireInferenceSlot();
+  const agentId = "agent-waiting-for-slot";
+  assert.equal(isAgentWaitingForInferenceSlot(agentId), false);
+  let released = false;
+  const waiting = acquireInferenceSlot({ agentId }).then((release) => {
+    released = true;
+    return release;
+  });
+  await Promise.resolve();
+  assert.equal(isAgentWaitingForInferenceSlot(agentId), true);
+  assert.equal(released, false);
+  held();
+  const release = await waiting;
+  assert.equal(released, true);
+  assert.equal(isAgentWaitingForInferenceSlot(agentId), false);
+  release();
+});
+
 test("a pre-aborted signal is refused without queueing", async () => {
   process.env.SAND_MAX_INFERENCE_INFLIGHT = "1";
   await acquireInferenceSlot();
@@ -104,12 +125,26 @@ test("openRouterExecutor acquires the global slot before streamText", () => {
     "utf8",
   );
   assert.match(source, /acquireInferenceSlot/);
-  const gateAt = source.indexOf("releaseSlot = await acquireInferenceSlot(signal)");
+  const gateAt = source.indexOf("releaseSlot = await acquireInferenceSlot({");
   const streamAt = source.indexOf("streamText({", gateAt);
   assert.ok(gateAt > 0 && streamAt > gateAt);
+  assert.match(source, /agentId/);
   assert.match(source, /result\.response\.finally\(detachSlot\)/);
   assert.doesNotMatch(
     source,
     /const result = streamText\(\{[\s\S]{0,200}acquireInferenceSlot/,
+  );
+});
+
+test("run-lifecycle suspends idle while inferenceQueued", () => {
+  const source = readFileSync(
+    path.join(repoRoot, "source/host/extensions/transcript/run-lifecycle.ts"),
+    "utf8",
+  );
+  assert.match(source, /isAgentWaitingForInferenceSlot/);
+  assert.match(source, /inferenceQueued:\s*true/);
+  assert.match(
+    source,
+    /progress\?\.inferenceQueued === true/,
   );
 });
