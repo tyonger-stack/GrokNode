@@ -32,14 +32,37 @@ function record(name, details) {
 }
 after(async () => { await ui.act(async () => root.unmount()); await closeLibraryDom(window); });
 
-test('official file-kind glyphs preserve original names and click action', async () => {
-  const cases = { 'a.pdf':'file-pdf', 'a.docx':'file-text', 'a.csv':'table', 'a.xlsx':'table', 'a.md':'markdown', 'a.mdx':'markdown', 'a.json':'json', 'a.jsonc':'json', 'a.ndjson':'json', 'a.py':'file-text', 'a.sh':'file-text', 'a.zip':'folder', 'a.txz':'folder', 'a.mp3':'music', 'a.avif':'image', 'a.mov':'video-camera', 'a.unknown':'file', '.pdf':'file', 'https://x.test/a%2Epdf?q=1':'file-pdf' };
+test('official 0.71.2 get-file-icon glyphs + colors preserve names and click action', async () => {
+  // Ported from chunk-get-file-icon-ZAkFyGfn.js (md→markdown/iconSecondary, pdf→file-type-pdf/iconRedPrimary, …).
+  const cases = {
+    'a.pdf': { glyph: 'file-type-pdf', color: 'red' },
+    'a.docx': { glyph: 'file-text', color: 'blue' },
+    'a.csv': { glyph: 'table', color: 'green' },
+    'a.xlsx': { glyph: 'table', color: 'green' },
+    'a.md': { glyph: 'markdown', color: 'secondary' },
+    'a.mdx': { glyph: 'markdown', color: 'secondary' },
+    'a.json': { glyph: 'brackets-curly', color: 'yellow' },
+    'a.jsonc': { glyph: 'brackets-curly', color: 'yellow' },
+    'a.ndjson': { glyph: 'brackets-curly', color: 'yellow' },
+    'a.py': { glyph: 'file-type-python', color: 'blue' },
+    'a.sh': { glyph: 'currency-dollar', color: 'green' },
+    'a.zip': { glyph: 'package-zipper', color: 'yellow' },
+    'a.txz': { glyph: 'package-zipper', color: 'yellow' },
+    'a.mp3': { glyph: 'waveform', color: 'purple' },
+    'a.avif': { glyph: 'image-square', color: 'cyan' },
+    'a.mov': { glyph: 'play-circle', color: 'red' },
+    'a.unknown': { glyph: 'file', color: 'secondary' },
+    '.pdf': { glyph: 'file-type-pdf', color: 'red' },
+    'https://x.test/a%2Epdf?q=1': { glyph: 'file-type-pdf', color: 'red' },
+  };
   let opened = 0;
-  for (const [name, glyph] of Object.entries(cases)) {
+  for (const [name, expect] of Object.entries(cases)) {
     await render(ui.LibraryMediaRow, { ...base, row: row('file', name), onOpen: () => opened++ });
-    assert.equal(host.querySelector('[data-icon-name]').dataset.iconName, glyph, name);
+    const icon = host.querySelector('[data-icon-name]');
+    assert.equal(icon.dataset.iconName, expect.glyph, name);
+    assert.equal(icon.dataset.color, expect.color, `${name} color`);
     assert.equal(host.querySelector('bdi').textContent, name);
-    assert.equal(host.querySelector('[data-icon-name]').dataset.size, 'lg');
+    assert.equal(icon.dataset.size, 'lg');
     await ui.act(async () => host.querySelector('button').click());
   }
   assert.equal(opened, Object.keys(cases).length);

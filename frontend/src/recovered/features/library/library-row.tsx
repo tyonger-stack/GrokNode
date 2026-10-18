@@ -2,9 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { LibraryExternalDoc, LibraryPage } from "../../../../../source/shared/library-contracts";
 import type { TranscriptMediaRow } from "../../../../../source/host/extensions/library/transcript-media";
 import { formatWhen } from "../../../extensions/library-core";
-import { getFilePreviewKind } from "../../../../../source/shared/media/file-preview-kind";
-import { attachmentExtension } from "../../../../../source/shared/media/attachment-open-policy";
-import { SandIcon, type SandIconName } from "../../ui/sand-kit-primitives";
+import { SandIcon } from "../../ui/sand-kit-primitives";
+import { mapOfficialIconColor, resolveFileIcon } from "./get-file-icon";
 import type { LibraryPageProvider } from "./canvas-provider";
 import { LibraryPageMenu } from "./page-menu";
 import type { LibraryLinkActions } from "./page-share";
@@ -51,22 +50,10 @@ function externalTitle(doc: LibraryExternalDoc): string {
   try { return new URL(doc.url).hostname; } catch { return doc.url; }
 }
 
-// Official 0.68.1: eG → ehe/WP and up → sk; details in library-style/source-map.json.
-function fileGlyph(name: string): SandIconName {
-  let path = name;
-  if (URL.canParse(name)) {
-    path = new URL(name).pathname;
-    try { path = decodeURIComponent(path); } catch (error) { if (!(error instanceof URIError)) throw error; }
-  }
-  const extension = attachmentExtension(path);
-  const kind = getFilePreviewKind(path);
-  if (kind === "text" && extension != null && ["jsonc", "json5", "ndjson"].includes(extension)) return "json";
-  if (kind === "unknown" && extension != null && ["zip", "tar", "gz", "tgz", "bz2", "tbz2", "xz", "txz", "zst", "7z", "rar"].includes(extension)) return "folder";
-  const glyphs = {
-    image: "image", video: "video-camera", audio: "music", pdf: "file-pdf", table: "table",
-    json: "json", markdown: "markdown", docx: "file-text", text: "file-text", unknown: "file",
-  } as const;
-  return glyphs[kind];
+/** Official 0.71.2 get-file-icon (`chunk-get-file-icon-ZAkFyGfn.js`). */
+function fileIcon(name: string) {
+  const mapping = resolveFileIcon(name);
+  return { name: mapping.icon, color: mapOfficialIconColor(mapping.color) };
 }
 
 type ResolveThumb = (source: string) => Promise<{ readonly kind: "image" | "video"; readonly url: string }>;
@@ -104,12 +91,17 @@ export function LibraryMediaRow(props: {
 }): ReactNode {
   const title = mediaTitle(props.row);
   const age = formatWhen(props.row.timestampMs, props.nowMs);
+  const file = props.row.kind === "link" || props.row.kind === "image" || props.row.kind === "video"
+    ? null
+    : fileIcon(props.row.name);
   return (
     <button className="sand-library-row" data-library-media={props.row.kind} onClick={props.onOpen} title={title} type="button">
       <span className="sand-library-lead">
         {props.row.kind === "image" || props.row.kind === "video"
           ? <LibraryThumbnail key={`${props.row.kind}:${props.row.source}`} source={props.row.source} kind={props.row.kind} resolveThumb={props.resolveThumb} />
-          : <SandIcon name={props.row.kind === "link" ? "globe" : fileGlyph(props.row.name)} size="lg" />}
+          : props.row.kind === "link"
+            ? <SandIcon name="globe" size="lg" />
+            : file == null ? null : <SandIcon color={file.color} name={file.name} size="lg" />}
       </span>
       <span className="sand-library-copy"><span className="sand-library-title-line">
         <span className="sand-library-title"><bdi>{title}</bdi></span>
