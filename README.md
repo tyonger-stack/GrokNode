@@ -31,8 +31,8 @@
 <table>
   <tr>
     <td width="50%" align="center" valign="top">
-      <img src="https://github.com/user-attachments/assets/f9578f3d-418d-4dbd-98f8-97aaf7b8c190" alt="暗色主题：工作管家 bot 汇总多个 bot 的日报" width="100%"><br>
-      <sub><b>暗色主题</b> · 多 bot 协作：工作管家汇总 8 个 bot 的消息</sub>
+      <img src="https://github.com/user-attachments/assets/f6d3bfe7-9e33-4811-b156-036163d02e0e" alt="暗色主题：工作管家 bot 汇总多个 bot 的日报" width="100%"><br>
+      <sub><b>暗色主题</b> · 多 bot 协作</sub>
     </td>
     <td width="50%" align="center" valign="top">
       <img src="https://github.com/user-attachments/assets/f78c292e-5a97-49e4-b0a5-5121299868d7" alt="浅色主题：主 Bot 的设置面板" width="100%"><br>
