@@ -32,11 +32,11 @@
   <tr>
     <td width="50%" align="center" valign="top">
       <img src="https://github.com/user-attachments/assets/f6d3bfe7-9e33-4811-b156-036163d02e0e" alt="暗色主题：工作管家 bot 汇总多个 bot 的日报" width="100%"><br>
-      <sub><b>暗色主题</b> · 多 bot 协作</sub>
+      <sub><b>暗色主题</b> · 单独指定模型和推理强度 </sub>
     </td>
     <td width="50%" align="center" valign="top">
-      <img src="https://github.com/user-attachments/assets/f78c292e-5a97-49e4-b0a5-5121299868d7" alt="浅色主题：主 Bot 的设置面板" width="100%"><br>
-      <sub><b>浅色主题</b> · 主 Bot 设置：单独指定模型和推理强度</sub>
+      <img src="https://github.com/user-attachments/assets/f4d86291-f619-4ed0-ad3b-dba3ffa61a2f" alt="浅色主题：打开电脑和休眠" width="100%"><br>
+      <sub><b>浅色主题</b> · 打开电脑和休眠</sub>
     </td>
   </tr>
 </table>
