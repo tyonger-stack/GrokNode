@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -11,7 +11,7 @@ mkdirSync(path.join(repoRoot, "node_modules/.cache"), { recursive: true });
 const temporary = await mkdtemp(path.join(repoRoot, "node_modules/.cache/compaction-gaps-"));
 test.after(() => rm(temporary, { recursive: true, force: true }));
 
-async function bundle(entry, name) {
+async function bundle(entry, name, options = {}) {
   const outfile = path.join(temporary, `${name}.mjs`);
   await build({
     entryPoints: [path.join(repoRoot, entry)],
@@ -22,6 +22,7 @@ async function bundle(entry, name) {
     target: "node26",
     logLevel: "silent",
     packages: "external",
+    ...options,
   });
   return import(pathToFileURL(outfile).href);
 }
@@ -42,9 +43,15 @@ const userMsg = await bundle(
   "source/packages/agent/self-summary/compaction-user-message.ts",
   "compaction-user-message",
 );
+const catalogDir = path.join(temporary, "catalog");
+mkdirSync(catalogDir);
+writeFileSync(path.join(catalogDir, "opencodex-catalog.json"), JSON.stringify({ models: [
+  { slug: "zai/glm-5.3-flash", context_window: 950_000, auto_compact_token_limit: 855_000 },
+] }));
 const proxy = await bundle(
   "source/shared/node/openrouter-proxy.ts",
   "openrouter-proxy",
+  { define: { "process.env.CODEX_HOME": JSON.stringify(catalogDir) } },
 );
 
 test("localBackgroundSummarizationPropsForWindow starts near 80% and persists near auto-compact", () => {
@@ -203,3 +210,23 @@ test("bare glm-5.3-flash is direct Z.AI API meta, not TokenHub zai/ catalog", ()
   assert.equal(proxy.effortSupportedByModel("medium", "glm-5.3-flash"), null);
   assert.equal(proxy.effortSupportedByModel("max", "glm-5.3-flash"), "max");
 });
+
+for (const condition of ["missing", "malformed"]) {
+  test(`direct model context and reasoning survive a ${condition} optional catalog`, async () => {
+    const isolatedDir = path.join(temporary, condition);
+    if (condition === "malformed") {
+      mkdirSync(isolatedDir);
+      writeFileSync(path.join(isolatedDir, "opencodex-catalog.json"), "{broken");
+    }
+    const isolated = await bundle("source/shared/node/openrouter-proxy.ts", `proxy-${condition}`, {
+      define: { "process.env.CODEX_HOME": JSON.stringify(isolatedDir) },
+    });
+    assert.deepEqual(isolated.readOpenRouterModelContextWindow("glm-5.3-flash"), {
+      contextWindow: 1_000_000, autoCompactTokenLimit: 900_000,
+    });
+    assert.deepEqual(isolated.readOpenRouterModelReasoning("glm-5.3-flash"), {
+      levels: ["low", "high", "max"], defaultLevel: "max",
+    });
+    assert.equal(isolated.readOpenRouterModelContextWindow("zai/glm-5.3-flash"), null);
+  });
+}

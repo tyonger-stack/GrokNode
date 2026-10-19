@@ -100,11 +100,21 @@ export function resolveOpenRouterTransport(persistedOverride?: string | null, in
 let catalogCache: { path: string; mtimeMs: number; models: unknown[] | null } | null = null;
 function readCatalogModels(): unknown[] | null {
   const path = join(codexHome(), "opencodex-catalog.json");
-  const mtimeMs = statSync(path).mtimeMs;
-  if (catalogCache?.path === path && catalogCache.mtimeMs === mtimeMs) return catalogCache.models;
-  const parsed = JSON.parse(readFileSync(path, "utf8")) as { models?: unknown };
-  catalogCache = { path, mtimeMs, models: Array.isArray(parsed.models) ? parsed.models : null };
-  return catalogCache.models;
+  try {
+    const mtimeMs = statSync(path).mtimeMs;
+    if (catalogCache?.path === path && catalogCache.mtimeMs === mtimeMs) return catalogCache.models;
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+    const models = typeof parsed === "object" && parsed !== null && "models" in parsed && Array.isArray(parsed.models)
+      ? parsed.models : null;
+    catalogCache = { path, mtimeMs, models };
+    return models;
+  } catch (error) {
+    if (error instanceof SyntaxError || error instanceof Error && "code" in error && error.code === "ENOENT") {
+      catalogCache = null;
+      return null;
+    }
+    throw error;
+  }
 }
 
 export interface OpenRouterModelReasoning {
