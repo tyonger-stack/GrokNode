@@ -213,3 +213,8 @@ export function buildMcpCallToolSchemas({
     normalizeInput,
   };
 }
+
+export { classifyMcpConnectorFault, parseMcpRetryAfterMs, type McpConnectorFault } from "./mcp-connector-fault.js";
+export { retryMcpRateLimit, waitForMcpRetry, type McpConnectorAttempt, type McpConnectorRetryOptions } from "./mcp-connector-retry.js";
+export { classifyConnectorFailure, serializeConnectorFailure } from "./mcp-connector-failure.js";
+export { createConnectorRateLimitWaiter, type ConnectorRateLimitWaiter } from "./mcp-connector-rate-limits.js";

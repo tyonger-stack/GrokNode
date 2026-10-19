@@ -20,6 +20,7 @@ var BackgroundShellSpawnArgs$Runtime = (() => class _BackgroundShellSpawnArgs ex
   declare parsingResult?: ShellCommandParsingResult;
   declare sandboxPolicy?: SandboxPolicy;
   declare enableWriteShellStdinTool: boolean;
+  declare suppressStdinLogging: boolean;
   declare description?: string;
   declare classifierResult?: CommandClassifierResult;
   declare outputNotification?: ShellOutputNotificationConfig;
@@ -34,6 +35,7 @@ var BackgroundShellSpawnArgs$Runtime = (() => class _BackgroundShellSpawnArgs ex
     this.workingDirectory = "";
     this.toolCallId = "";
     this.enableWriteShellStdinTool = false;
+    this.suppressStdinLogging = false;
     this.skipApproval = false;
     this.adminCommandDenylist = [];
     proto3.util.initPartial(data, this as _BackgroundShellSpawnArgs);
@@ -99,7 +101,8 @@ var BackgroundShellSpawnArgs: MessageType<BackgroundShellSpawnArgs> = Background
     /* ScalarType.BOOL */
   },
   { no: 13, name: "conversation_id", kind: "scalar", T: 9, opt: true },
-  { no: 14, name: "admin_command_denylist", kind: "scalar", T: 9, repeated: true }
+  { no: 14, name: "admin_command_denylist", kind: "scalar", T: 9, repeated: true },
+  { no: 16, name: "suppress_stdin_logging", kind: "scalar", T: 8 }
 ]);
 var BackgroundShellSpawnResult$Runtime = (() => class _BackgroundShellSpawnResult extends Message<_BackgroundShellSpawnResult> {
   declare result: { case: "success"; value: BackgroundShellSpawnSuccess } | { case: "error"; value: BackgroundShellSpawnError } | { case: "rejected"; value: ShellRejected } | { case: "permissionDenied"; value: ShellPermissionDenied } | { case: "sandboxUnsupported"; value: ShellSandboxUnsupported } | { case: undefined; value?: undefined };

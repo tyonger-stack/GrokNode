@@ -9,6 +9,13 @@ interface IsoBox {
   readonly end: number;
 }
 
+export interface ImageTransform {
+  readonly quarterTurns: number;
+  readonly mirrorAxis: "vertical" | "horizontal" | null;
+}
+
+interface HeicPrimary extends ImageTransform { readonly ispeBody: number }
+
 function toImageDimensions({ width, height }: MediaDimensions): MediaDimensions | null {
   if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
   if (width <= 0 || height <= 0) return null;
@@ -51,6 +58,11 @@ function indexOfFourCharTag(bytes: Uint8Array, tag: string): number {
 }
 
 export class HeicDimensions {
+  public static readTransform(buffer: Uint8Array): ImageTransform | null {
+    if (buffer.length < 12 || fourCharTag(buffer, 4) !== "ftyp") return null;
+    const selected = HeicDimensions.selectPrimary(buffer);
+    return selected == null ? null : { quarterTurns: selected.quarterTurns, mirrorAxis: selected.mirrorAxis };
+  }
   public static read(buffer: Uint8Array): MediaDimensions | null {
     if (buffer.length < 12 || fourCharTag(buffer, 4) !== "ftyp") return null;
     const selected = HeicDimensions.selectPrimary(buffer);
@@ -133,14 +145,17 @@ export class HeicDimensions {
     return null;
   }
 
-  private static selectPrimary(buffer: Uint8Array): { readonly ispeBody: number; readonly quarterTurns: number } | null {
+  private static selectPrimary(buffer: Uint8Array): HeicPrimary | null {
     const firstIspe = indexOfFourCharTag(buffer, "ispe");
     const firstIrot = indexOfFourCharTag(buffer, "irot");
-    const fallback = (): { readonly ispeBody: number; readonly quarterTurns: number } | null => {
+    const firstImir = indexOfFourCharTag(buffer, "imir");
+    const mirror = (value: number): ImageTransform["mirrorAxis"] => (value & 1) === 0 ? "vertical" : "horizontal";
+    const fallback = (): HeicPrimary | null => {
       if (firstIspe < 0 || firstIspe + 16 > buffer.length) return null;
       return {
         ispeBody: firstIspe + 8,
         quarterTurns: firstIrot >= 0 && firstIrot + 4 < buffer.length ? buffer[firstIrot + 4]! & 3 : 0,
+        mirrorAxis: firstImir >= 0 && firstImir + 4 < buffer.length ? mirror(buffer[firstImir + 4] ?? 0) : null,
       };
     };
     const meta = HeicDimensions.find(HeicDimensions.boxes(buffer, { start: 0, end: buffer.length }), "meta");
@@ -159,6 +174,7 @@ export class HeicDimensions {
     if (indices == null) return fallback();
     let ispeBody: number | null = null;
     let quarterTurns = 0;
+    let mirrorAxis: ImageTransform["mirrorAxis"] = null;
     for (const index of indices) {
       const property = properties[index - 1];
       if (property == null) continue;
@@ -166,10 +182,12 @@ export class HeicDimensions {
         ispeBody = property.body + 4;
       } else if (property.type === "irot" && property.body < property.end) {
         quarterTurns = buffer[property.body]! & 3;
+      } else if (property.type === "imir" && property.body < property.end) {
+        mirrorAxis = mirror(buffer[property.body] ?? 0);
       }
     }
     if (ispeBody == null) return fallback();
-    return { ispeBody, quarterTurns };
+    return { ispeBody, quarterTurns, mirrorAxis };
   }
 }
 

@@ -64,7 +64,7 @@ export { createPortal, flushSync };
 export default { createPortal, flushSync };
 `;
 
-function chunkReactPlugin() {
+export function chunkReactPlugin() {
   return {
     name: "chunk-react",
     setup(buildApi) {

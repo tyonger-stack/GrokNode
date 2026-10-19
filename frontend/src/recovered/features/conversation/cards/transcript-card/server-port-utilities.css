@@ -1,0 +1,64 @@
+/* Review-card utilities absent from the packaged 0.18 stylesheet.
+ * Copied verbatim from the official 0.71 renderer stylesheet and re-scoped
+ * under .sand-server-port-review so nothing here can affect the app shell.
+ * Tokens are var() fallbacks, never wrapper overrides: when the host renderer
+ * defines --sand-* (the 0.71 build does) its themed value wins.
+ * source: index-DkV65EBE.css sha256 30beefeee1dd1b707732f529954a6ab7b9be5bbb43fa2ec4ac9525c4dee7ed5a
+ * see server-port-utilities.manifest.json for per-rule provenance */
+.sand-server-port-review{display:contents}
+/*sand-135b78x*/
+.sand-server-port-review .sand-135b78x:not(#\#):not(#\#):not(#\#){padding-inline-start:4px}
+/*sand-17tbahu*/
+.sand-server-port-review .sand-17tbahu:not(#\#):not(#\#){border-color:var(--sand-border-secondary-translucent,#1c1c1c1f)}
+/*sand-181h0qd*/
+.sand-server-port-review .sand-181h0qd:not(#\#):not(#\#):not(#\#){color:var(--sand-text-purple-primary,#7547d0)}
+/*sand-18hwk67*/
+.sand-server-port-review .sand-18hwk67:not(#\#):not(#\#):not(#\#){column-gap:20px}
+/*sand-19jy9ex*/
+.sand-server-port-review .sand-19jy9ex:hover:not(:disabled):not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary-hover,#1c1c1c1a)}
+/*sand-1a4mgn7*/
+.sand-server-port-review .sand-1a4mgn7:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-red-secondary,#fb2b3e17)}
+/*sand-1axzn7n*/
+.sand-server-port-review .sand-1axzn7n:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-primary-disabled,#1c1c1c26)}
+/*sand-1csozyq*/
+.sand-server-port-review .sand-1csozyq:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-purple-secondary,#8f59f917)}
+/*sand-1firant*/
+.sand-server-port-review .sand-1firant:not(#\#):not(#\#):not(#\#){transition-duration:.12s}
+/*sand-1g6zli8*/
+.sand-server-port-review .sand-1g6zli8:disabled:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary-disabled,#1c1c1c0a)}
+/*sand-1ialtwx*/
+.sand-server-port-review .sand-1ialtwx:disabled:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-primary-disabled,#1c1c1c26)}
+/*sand-1mt1orb*/
+.sand-server-port-review .sand-1mt1orb:not(#\#):not(#\#):not(#\#){grid-auto-flow:column}
+/*sand-1rnidkh*/
+.sand-server-port-review .sand-1rnidkh:not(#\#):not(#\#):not(#\#){grid-auto-columns:minmax(0,1fr)}
+/*sand-1sxibbd*/
+.sand-server-port-review .sand-1sxibbd:hover:not(:disabled):not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-primary-hover,#363636)}
+/*sand-4gjf66*/
+.sand-server-port-review .sand-4gjf66:not(#\#):not(#\#):not(#\#){letter-spacing:inherit}
+/*sand-5fd6op*/
+.sand-server-port-review .sand-5fd6op:not(#\#):not(#\#){border-color:var(--sand-border-tertiary-translucent,#1c1c1c14)}
+/*sand-8rotk8*/
+.sand-server-port-review .sand-8rotk8:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-primary,#1c1c1c)}
+/*sand-e2zdcy*/
+.sand-server-port-review .sand-e2zdcy:not(#\#):not(#\#):not(#\#){padding-inline-start:10px}
+/*sand-f4egzd*/
+.sand-server-port-review .sand-f4egzd:not(#\#):not(#\#){padding-block:3px}
+/*sand-fwqdrz*/
+.sand-server-port-review .sand-fwqdrz:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary,#1c1c1c0f)}
+/*sand-i69oq4*/
+.sand-server-port-review .sand-i69oq4:not(#\#):not(#\#):not(#\#){color:var(--sand-text-danger-primary,#cd2834)}
+/*sand-pdmqnj*/
+.sand-server-port-review .sand-pdmqnj:not(#\#):not(#\#):not(#\#){padding-inline-end:12px}
+/*sand-pqajaz*/
+.sand-server-port-review .sand-pqajaz:not(#\#):not(#\#):not(#\#){align-items:end}
+/*sand-sa7k8x*/
+.sand-server-port-review .sand-sa7k8x:not(#\#):not(#\#):not(#\#){color:var(--sand-text-inverted,#fcfcfc)}
+/*sand-sb55g1*/
+.sand-server-port-review .sand-sb55g1:focus-within:not(#\#):not(#\#){border-color:var(--sand-border-primary-translucent,#1c1c1c3d)}
+/*sand-shfolx*/
+.sand-server-port-review .sand-shfolx:not(#\#):not(#\#):not(#\#){transition-property:border-color}
+/*sand-wtpwev*/
+.sand-server-port-review .sand-wtpwev:not(#\#):not(#\#):not(#\#){color:var(--sand-text-red-primary,#cd2834)}
+/*sand-x1phaw*/
+.sand-server-port-review .sand-x1phaw:not(#\#):not(#\#):not(#\#){color:var(--sand-text-quaternary,#1c1c1c66)}

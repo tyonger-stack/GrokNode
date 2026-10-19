@@ -35,6 +35,7 @@ interface TranscriptExtensionDeps {
   readonly "turn-execution": {
     readonly canExecute: boolean;
     isRunReady(): Promise<boolean>;
+    waitForLocalWork(): Promise<void>;
     createRunner(...args: any[]): any;
     createGroupMemberRunner(...args: any[]): any;
   };
@@ -91,6 +92,7 @@ export const transcriptExtension = defineHostExtension<
         return execution.canExecute;
       },
       isRunReady: () => execution.isRunReady(),
+      waitForLocalWork: () => execution.waitForLocalWork(),
       createRunner: (...args: any[]) => execution.createRunner(...args),
       createGroupMemberRunner: (...args: any[]) =>
         execution.createGroupMemberRunner(...args),

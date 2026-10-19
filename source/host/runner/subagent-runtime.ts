@@ -50,6 +50,7 @@ export interface SubagentRunOptions {
 export interface SubagentSession {
   run(prompt: string, options?: SubagentRunOptions): Promise<SubagentRunResult>;
   interrupt(reason: string): void;
+  stopSubagents?(): void;
   getResolvedOutline(): Promise<readonly unknown[]>;
   getObservedToolCallCount(): number;
   getActivitySnapshot(): readonly string[];
@@ -446,6 +447,8 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
       return "not-running";
     }
 
+    if (abortingSubagents.has(subagentAgentId)) { runner.stopSubagents?.(); return "ok"; }
+
     abortingSubagents.add(subagentAgentId);
     pendingSubagentSteers.delete(subagentAgentId);
     const meta = subagentMeta.get(subagentAgentId);
@@ -457,8 +460,17 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
       });
     }
     host.emitAsyncTasksChanged();
-    runner.interrupt("Stopped by the parent agent.");
+    try { runner.stopSubagents?.(); }
+    finally { runner.interrupt("Stopped by the parent agent."); }
     return "ok";
+  }
+
+  function stopSubagents(): void {
+    const errors: unknown[] = [];
+    for (const id of [...backgroundSubagentRuns.keys()]) {
+      try { abortSubagent(id); } catch (error) { errors.push(error); }
+    }
+    if (errors.length > 0) throw new AggregateError(errors, "Some descendant subagents could not be stopped");
   }
 
   function listSubagents() {
@@ -499,6 +511,7 @@ export function createSubagentRuntime(host: SubagentRuntimeHost) {
     getRunningSubagent,
     steerSubagent,
     abortSubagent,
+    stopSubagents,
     listSubagents,
     hasSubagent: (id: string): boolean => subagentRegistry.has(id),
     hasRunningSubagents(): boolean {

@@ -10,6 +10,7 @@ import { nextEntryId } from "./transcript-entry-ids.js";
 import { getTranscript } from "./transcript-store.js";
 import { classifyAgentError } from "./turn-runtime.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
+import type { DelegatedStopOutcome } from "../../runner/tools/sand-subagent-management-tools.js";
 
 export interface AgentInboundMessage {
   from: { id: string; name: string };
@@ -47,7 +48,41 @@ export function mergeAgentInboundQueue<T extends { priority?: boolean }>(
 export class AgentToAgentMessaging {
   readonly pendingAgentInbound = new Map<string, AgentInboundMessage[]>();
   readonly revivingAgentInboundIds = new Set<string>();
+  readonly activeBatches = new Map<string, readonly AgentInboundMessage[]>();
+  readonly activeMessages = new Map<string, AgentInboundMessage>();
+  readonly withdrawnMessages = new WeakSet<AgentInboundMessage>();
+  readonly settledMessages = new WeakSet<AgentInboundMessage>();
   constructor(readonly tm: TranscriptManagerLike) {}
+
+  async stopDelegatedFromAgent(fromAgentId: string, visitedAgentIds: readonly string[] = []): Promise<readonly DelegatedStopOutcome[]> {
+    const targets = new Set([...this.pendingAgentInbound.keys(), ...this.activeBatches.keys(), ...this.activeMessages.keys()]);
+    const outcomes: DelegatedStopOutcome[] = [];
+    for (const id of targets) {
+      const pending = this.pendingAgentInbound.get(id) ?? [];
+      const batch = this.activeBatches.get(id) ?? [];
+      const owned = [...pending, ...batch].filter(message => message.priority === true && message.from.id === fromAgentId && !this.withdrawnMessages.has(message) && !this.settledMessages.has(message));
+      if (owned.length === 0) continue;
+      const base = { kind: "peer" as const, id, name: id };
+      if (visitedAgentIds.includes(id)) { outcomes.push({ ...base, result: "unreachable", detail: "Delegation cycle; the caller was not interrupted." }); continue; }
+      for (const message of owned) this.withdrawnMessages.add(message);
+      this.pendingAgentInbound.set(id, pending.filter(message => !this.withdrawnMessages.has(message)));
+      const active = this.activeMessages.get(id);
+      const lane = this.tm.runLifecycle.runScheduler?.getActiveLane(id);
+      const isOwnedActive = active !== undefined && active.priority === true && active.from.id === fromAgentId;
+      if (!isOwnedActive || lane === "user" || this.tm.turnRuntime.activeRequestSources.get(id) !== "agent") {
+        outcomes.push({ ...base, result: isOwnedActive ? "unreachable" : "stopped", detail: "Pending handoff withdrawn; unrelated active work was not interrupted." });
+        continue;
+      }
+      const runner = this.tm.runnerRegistry.runners.get(id);
+      if (runner === undefined) { outcomes.push({ ...base, result: "unreachable", detail: "The active delegated runner is unavailable." }); continue; }
+      this.tm.backgroundWakes.dmPreemptedWakeAgentIds.delete(id);
+      try {
+        try { runner.stopSubagents?.(); } finally { runner.interrupt("Stopped by the agent that delegated this work."); }
+        outcomes.push({ ...base, result: "stopped", stopDescendants: true });
+      } catch (error) { outcomes.push({ ...base, result: "failed", detail: error instanceof Error ? error.message : String(error) }); }
+    }
+    return outcomes;
+  }
 
   async sendToAgent(
     fromAgentId: string,
@@ -187,8 +222,9 @@ export class AgentToAgentMessaging {
       messages.filter((message) => message.isDisplayed !== true),
     );
     const runner = this.tm.runnerRegistry.getRunner(session);
+    this.activeBatches.set(agentId, [...(this.activeBatches.get(agentId) ?? []), ...messages]);
     this.tm.runLifecycle.beginSessionRun(session);
-    await this.tm.runLifecycle.enqueueExclusiveRun(
+    try { await this.tm.runLifecycle.enqueueExclusiveRun(
       session.id,
       async () => {
         this.tm.turnRuntime.activeRequestPrompts.delete(session.id);
@@ -196,6 +232,7 @@ export class AgentToAgentMessaging {
         this.tm.backgroundWakes.dmPreemptedWakeAgentIds.delete(session.id);
         try {
           for (const [index, message] of messages.entries()) {
+            if (this.withdrawnMessages.has(message)) continue;
             if (
               index > 0 &&
               (this.pendingAgentInbound.get(agentId) ?? []).some(
@@ -215,6 +252,8 @@ export class AgentToAgentMessaging {
               return;
             }
             const selectedImages = await loadAgentInboundImages(message.images);
+            if (this.withdrawnMessages.has(message)) continue;
+            this.activeMessages.set(agentId, message);
             const result = await runner.run(
               buildAgentInboundWakePrompt(message),
               {
@@ -222,7 +261,10 @@ export class AgentToAgentMessaging {
                 isSilenceAllowed: true,
                 ...(selectedImages.length === 0 ? {} : { selectedImages }),
               },
-            );
+            ).finally(() => {
+              if (this.activeMessages.get(agentId) === message) this.activeMessages.delete(agentId);
+              this.settledMessages.add(message);
+            });
             const preempted =
               this.tm.backgroundWakes.dmPreemptedWakeAgentIds.delete(
                 session.id,
@@ -231,7 +273,7 @@ export class AgentToAgentMessaging {
               if (!preempted || this.tm.sessions.isAgentGone(agentId)) return;
               const redrivable = messages
                 .slice(index)
-                .filter((remaining) => remaining.isRedriven !== true)
+                .filter((remaining) => remaining.isRedriven !== true && !this.withdrawnMessages.has(remaining))
                 .map((remaining) => ({
                   ...remaining,
                   isDisplayed: true,
@@ -265,11 +307,17 @@ export class AgentToAgentMessaging {
             ...describeAgentRunError(error),
           });
         } finally {
-          this.tm.runLifecycle.endSessionRun(session);
         }
       },
       { lane: "agent", source: "agent" },
-    );
+    ); } finally {
+      const remaining = (this.activeBatches.get(agentId) ?? []).filter(message => !messages.includes(message));
+      if (remaining.length === 0) this.activeBatches.delete(agentId);
+      else this.activeBatches.set(agentId, remaining);
+      const active = this.activeMessages.get(agentId);
+      if (active !== undefined && messages.includes(active)) this.activeMessages.delete(agentId);
+      this.tm.runLifecycle.endSessionRun(session);
+    }
   }
 
   appendAgentInboundEntries(

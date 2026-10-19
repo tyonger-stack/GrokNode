@@ -1,3 +1,4 @@
+import { createServerPortCardActions } from "./server-port-card-actions";
 import { installBotTemplatePreview } from "../extensions/bot-template-preview";
 import { Component, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ErrorInfo, type ReactNode } from "react";
 import type { CoordinatorPortBridge, CursorAuthStatus, DesktopAutoReviewInstructions, DesktopBridge, SidebarSection, ThemePreference } from "../recovered/contracts/desktop-bridge";
@@ -1755,6 +1756,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
     widgetInteractions: transcriptCardWidgetInteractions,
     cloudAgents: transcriptCardCloudAgents,
     leafProviders: {
+      serverPortActions: client == null ? null : createServerPortCardActions(client),
       autoReviewApproval: createTranscriptCardAutoReviewApproval,
       listenerIntegrations: transcriptCardListenerIntegrations,
       secretRequests: transcriptCardSecretRequests,
@@ -1763,7 +1765,7 @@ export function ProductionRenderer({ bridge, coordinatorPort }: ProductionRender
       urlCards: transcriptCardUrlCards,
       onOpenPullRequest: openTranscriptCardPullRequest
     }
-  }), [createTranscriptCardAutoReviewApproval, openTranscriptCardPullRequest, transcriptCardAttachments, transcriptCardCloudAgents, transcriptCardConnectors, transcriptCardListenerIntegrations, transcriptCardResolver, transcriptCardScope, transcriptCardSecretRequests, transcriptCardUrlCards, transcriptCardWidgetInteractions]);
+  }), [client, createTranscriptCardAutoReviewApproval, openTranscriptCardPullRequest, transcriptCardAttachments, transcriptCardCloudAgents, transcriptCardConnectors, transcriptCardListenerIntegrations, transcriptCardResolver, transcriptCardScope, transcriptCardSecretRequests, transcriptCardUrlCards, transcriptCardWidgetInteractions]);
   const transcriptCardEntries = useMemo(
     () => transcriptCardContract.projectEntries(entries),
     [entries, transcriptCardContract]

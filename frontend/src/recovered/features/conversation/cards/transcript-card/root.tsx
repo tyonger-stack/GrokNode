@@ -10,6 +10,7 @@ import type { TranscriptCardFrame } from "./registry";
 import { TranscriptCardFrame as TranscriptCardFrameView } from "./frame";
 import type { AttachmentCardKind } from "./attachment-data";
 import { TranscriptCardActionAnchor, type RenderTranscriptMessageReactionActions } from "./message-actions";
+import { REVIEW_CARD_PROTOCOL_KEYS, ReviewCardScope } from "./review-card-scope";
 
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=5108848 (send-message card lazy dispatcher)
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=5221733 (placeholder height fallback)
@@ -66,6 +67,9 @@ export function TranscriptCardRootEntry({ contract, entry, adjacency, isReadOnly
   const metadata = contract.registry.metadata(protocolKey);
   const frame = transcriptCardFrameForEntry(entry, metadata, contract.leafProviders.attachments);
   const Leaf = leafFor(protocolKey);
+  const leaf = REVIEW_CARD_PROTOCOL_KEYS.has(protocolKey)
+    ? <ReviewCardScope><Leaf actionVerb={null} adjacency={adjacency} entry={entry} isKeyboardTarget={isKeyboardTarget} isStale={isStale} /></ReviewCardScope>
+    : <Leaf actionVerb={null} adjacency={adjacency} entry={entry} isKeyboardTarget={isKeyboardTarget} isStale={isStale} />;
   const reactionPills = renderReactionPills?.({
     entry,
     isReadOnly,
@@ -83,14 +87,14 @@ export function TranscriptCardRootEntry({ contract, entry, adjacency, isReadOnly
       <div data-entry-id={entry.id} role="article">
         <TranscriptCardLeafProvider value={contract.leafProviders}>
           <Suspense fallback={<div aria-hidden="true" style={{ height: metadata.placeholderHeight, width: "100%" }} />}>
-            {frame == null ? <><Leaf actionVerb={null} adjacency={adjacency} entry={entry} isKeyboardTarget={isKeyboardTarget} isStale={isStale} />{reactionPills}</> : (
+            {frame == null ? <>{leaf}{reactionPills}</> : (
               <TranscriptCardFrameView
                 className={frame.className}
                 isGroupStart={adjacency?.isGroupStart}
                 timestampMs={entry.timestampMs}
                 variant={frame.variant}
               >
-                <Leaf actionVerb={null} adjacency={adjacency} entry={entry} isKeyboardTarget={isKeyboardTarget} isStale={isStale} />
+                {leaf}
                 {reactionPills}
               </TranscriptCardFrameView>
             )}

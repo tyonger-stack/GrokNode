@@ -19,6 +19,7 @@ import { getBoxSecretsStorePath } from "../secrets/secrets-service.js";
 import { streamCodexDirectResponses, type CodexDirectTool } from "./codex-direct-responses.js";
 import { acquireInferenceSlot, takePreheldInferenceSlot } from "./inference-inflight.js";
 import type { LabelMessage, PromptExecutor } from "./sand-labeling.js";
+import type { PromptPrefixObserver } from "../../runner/prompt-prefix-observation.js";
 
 /** Default context window when the provider does not report maxTokens (local OpenRouter/Z.AI). */
 export const DEFAULT_INFERENCE_CONTEXT_WINDOW_TOKENS = 1_000_000;
@@ -661,16 +662,16 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     completionTokens: finiteTokenCount(value?.completionTokens),
     totalTokens: finiteTokenCount(value?.totalTokens) || finiteTokenCount(value?.promptTokens) + finiteTokenCount(value?.completionTokens),
   }));
-  const extendedUsage = usage.then((value) => ({
+  const providerMetadata = ensureStream().then((result) => result.providerMetadata);
+  const extendedUsage = Promise.all([usage, providerMetadata]).then(([value, metadata]) => ({
     inputTokens: value.promptTokens,
     outputTokens: value.completionTokens,
-    cacheReadTokens: 0,
+    cacheReadTokens: finiteTokenCount(isRecord(metadata?.openai) ? metadata.openai.cachedPromptTokens : undefined),
     cacheWriteTokens: 0,
     maxTokens: resolveInferenceContextWindowTokens(id),
   }));
   if (onUsage != null) void extendedUsage.then(onUsage);
   const response = ensureStream().then((result) => result.response);
-  const providerMetadata = ensureStream().then((result) => result.providerMetadata);
   return {
     fullStream: observedFullStream(),
     response,
@@ -682,18 +683,21 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
 }
 
 class ProviderPromptExecutor extends BasePromptExecutor<ProviderMessage> {
-  constructor(readonly provider: RoutedProvider, initialMessages?: readonly ProviderMessage[], readonly onUsage?: (usage: UsageRecord) => void, readonly openRouterModelId?: string, readonly agentId?: string) { super(new BasePromptBuilder(initialMessages)); }
+  constructor(readonly provider: RoutedProvider, initialMessages?: readonly ProviderMessage[], readonly onUsage?: (usage: UsageRecord) => void, readonly openRouterModelId?: string, readonly agentId?: string,
+    readonly prefixObserver?: PromptPrefixObserver, readonly inferenceReason: "agent" | "summarization" = "agent") { super(new BasePromptBuilder(initialMessages)); }
   stream(ctx: unknown, invocationId = crypto.randomUUID(), definitions?: readonly Loose[]) {
     const signal = contextSignal(ctx);
-    if (this.provider === "codex") return codexExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage, signal);
-    return openRouterExecutor(this.getMessages(), invocationId, definitions, undefined, this.onUsage, signal, this.openRouterModelId, this.agentId);
+    const observed = this.prefixObserver?.observe({ messages: this.getMessages(), tools: definitions ?? [], reason: this.inferenceReason });
+    const onUsage = (usage: UsageRecord) => { this.onUsage?.(usage); observed?.onUsage(usage); };
+    if (this.provider === "codex") return codexExecutor(this.getMessages(), invocationId, definitions, undefined, onUsage, signal);
+    return openRouterExecutor(this.getMessages(), invocationId, definitions, undefined, onUsage, signal, this.openRouterModelId, this.agentId);
   }
 }
 
-export function createProviderPromptSession(provider: RoutedProvider, options?: { readonly agentId?: string }): { getModelId(): string; getExecutor(state?: unknown): PromptExecutor } {
+export function createProviderPromptSession(provider: RoutedProvider, options?: { readonly agentId?: string; readonly prefixObserver?: PromptPrefixObserver; readonly inferenceReason?: "agent" | "summarization" }): { getModelId(): string; getExecutor(state?: unknown): PromptExecutor } {
   const modelId = provider === "codex" ? configuredCodexModel() : resolveOpenRouterModel(options?.agentId);
   const openRouterModelId = provider === "codex" ? undefined : modelId;
-  return { getModelId: () => modelId, getExecutor: state => new ProviderPromptExecutor(provider, Array.isArray(state) ? state as ProviderMessage[] : undefined, usage => recordRoutedUsage(provider, usage), openRouterModelId, options?.agentId) };
+  return { getModelId: () => modelId, getExecutor: state => new ProviderPromptExecutor(provider, Array.isArray(state) ? state as ProviderMessage[] : undefined, usage => recordRoutedUsage(provider, usage), openRouterModelId, options?.agentId, options?.prefixObserver, options?.inferenceReason) };
 }
 
 export async function runRoutedProviderText(provider: RoutedProvider, messages: readonly ProviderMessage[], options?: {

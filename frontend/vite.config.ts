@@ -71,6 +71,9 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     strictPort: false,
+    // The 0.71 checksum renderer ships its stylesheet outside this package;
+    // the dev review-card harness has to read it to preview real utility classes.
+    fs: { allow: [here, path.resolve(here, "../.."), "/Users/Apple/Documents/grokbot/rea-grokbot-0712"] },
     proxy: {
       "/__sand_control": {
         target: `http://127.0.0.1:${controlPort}`,

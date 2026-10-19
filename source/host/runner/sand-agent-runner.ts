@@ -238,6 +238,7 @@ export interface SandAgentRunnerOptions<T = unknown> {
     readonly type: "started" | "ended";
     readonly requestId: string;
   }) => void;
+  readonly onInterrupt?: () => void;
   readonly onComputerUseUsage?: (event: unknown) => void;
   readonly onPendingWakeArmed?: (event: unknown) => void;
   readonly onPendingWakeDisarmed?: (event: unknown) => void;
@@ -802,6 +803,8 @@ export class SandAgentRunner<T = unknown> {
     return this.subagents.abortSubagent(id);
   }
 
+  stopSubagents(): void { this.subagents.stopSubagents(); }
+
   listSubagents() {
     return this.subagents.listSubagents();
   }
@@ -1139,6 +1142,7 @@ export class SandAgentRunner<T = unknown> {
     reason: string,
     supersede?: { readonly carriesRecovery: boolean },
   ): boolean {
+    this.options.onInterrupt?.();
     if (this.#productionTurnRunShell !== undefined) {
       return this.#productionTurnRunShell.interrupt(reason, supersede);
     }

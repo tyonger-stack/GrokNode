@@ -7,6 +7,7 @@ import { createTranscriptCardRegistry, type TranscriptCardRegistry, type Transcr
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=784036 (lazy card metadata projection)
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=5119020 (unknown-card fail-closed branch)
 const TRANSCRIPT_CARD_VIEW_LOADERS: TranscriptCardViewLoaders = {
+  "send-message:user-form": async () => ({ default: (await import("./views/user-form")).UserFormTranscriptCard }),
   "send-message:text": async () => await import("./views/send-message-text"),
   "send-message:widget": async () => await import("./views/widget"),
   "send-message:cursor-agent": async () => await import("./views/cloud-agent"),

@@ -34,6 +34,7 @@ import { renderAgentDirectorySystemPrompt, type AgentAddress, type AgentGroupAdd
 import type { RelatedConversationLink } from "./sessions/related-conversations-prompt.js";
 import { createRelatedConversationsSection, type PromptSectionSnapshotStore } from "./sessions/related-conversations-section.js";
 import { spotlightPromptSection } from "../../shared/sand-spotlight.js";
+import { createFrozenPromptSections } from "./frozen-prompt-section.js";
 import type { ConnectorManifest } from "../../shared/channels.js";
 
 export function modelVisibleLocation(location: string | null | undefined): string | null {
@@ -258,6 +259,14 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
     return rendered.length > 0 ? rendered : null;
   }
 
+  const frozenSections = createFrozenPromptSections({
+    snapshots: () => deps.promptSectionSnapshots?.() ?? null,
+    compactionEpoch: deps.compactionEpoch,
+    enabled: () => !deps.isSubagentRunner && !deps.isSharedRoomRunner,
+    renderers: { timezone: getTimeZoneSection, automations: getAutomationsSection,
+      agent_directory: getAgentDirectorySection, mcp_instructions: deps.mcpCustomInstructionsSection },
+  });
+
   function getSystemPrompt(snapshot?: AgentProfilePromptSnapshot): string {
     const cloudDisabled = deps.isCloudAgentsDisabledByTeam?.() === true;
     const base = !deps.isSystemPromptOverridden && cloudDisabled ? SAND_SYSTEM_PROMPT_CLOUD_AGENTS_DISABLED : deps.basePrompt;
@@ -271,15 +280,22 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
     if (!deps.isSubagentRunner && !deps.isSystemPromptOverridden && deps.isMultitaskEnabled?.() === true) add(deps.multitaskSection);
     if (deps.isSystemPromptOverridden && !deps.isSubagentRunner && cloudDisabled) add(SAND_CLOUD_AGENTS_DISABLED_PROMPT_SECTION);
     if (!deps.isSubagentRunner && deps.mcpManagement() != null && deps.isMcpMultiAccountEnabled?.() === true) add(SAND_MCP_MULTI_ACCOUNT_PROMPT_SECTION);
-    add(getTimeZoneSection());
-    add(getMemorySection()); add(relatedConversationsSection.render()); add(getAutomationsSection()); add(getWorkflowsSection()); add(getChannelsSection()); add(getAgentDirectorySection());
-    add(deps.mcpCustomInstructionsSection()); add(deps.mcpDiscoveryStatusSection()); add(deps.remoteBoxSection()); add(deps.computerSection());
+    add(frozenSections.render("timezone"));
+    add(getMemorySection()); add(relatedConversationsSection.render()); add(frozenSections.render("automations")); add(getWorkflowsSection()); add(getChannelsSection()); add(frozenSections.render("agent_directory"));
+    add(frozenSections.render("mcp_instructions")); add(deps.mcpDiscoveryStatusSection()); add(deps.remoteBoxSection()); add(deps.computerSection());
     return sections.join("\n\n");
   }
 
   return {
     getSystemPrompt, prepareAgentProfilePromptSnapshot, getAgentProfileUpdateForTurn, persistAnnouncedAgentProfile,
-    appendFrozenSectionUpdates: relatedConversationsSection.appendUpdates,
+    appendFrozenSectionUpdates: (messages: readonly unknown[]) => frozenSections.appendUpdates(relatedConversationsSection.appendUpdates(messages)),
+    getCompactionEpoch: deps.compactionEpoch,
+    renderedFrozenSections: () => {
+      const related = deps.promptSectionSnapshots?.()?.getPromptSectionSnapshot("related_conversations");
+      const relatedRender = typeof related === "object" && related !== null && "render" in related && typeof related.render === "string" ? related.render : "";
+      return [...frozenSections.rendered(), { name: "memory", render: deps.memorySnapshots()?.getMemoryPromptSnapshot()?.render ?? "" },
+        { name: "related_conversations", render: relatedRender }];
+    },
     resetProfileSnapshotFallback() { inMemoryProfilePromptSnapshot = null; },
   };
 }

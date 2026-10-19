@@ -36,6 +36,9 @@ export function coerceUpgradeResumeMarker(
   };
 }
 export const coerceMarker2 = coerceUpgradeResumeMarker;
+export function resumeMarkerKey(marker: UpgradeResumeMarker): string {
+  return JSON.stringify([marker.agentId, marker.markedAtMs, marker.source, marker.automationId, marker.automationRunId]);
+}
 export function parseUpgradeResumeFile(
   raw: string | null,
 ): UpgradeResumeMarker[] {
@@ -86,6 +89,10 @@ export class SandUpgradeResumeStore {
   }
   clearAll(): void {
     this.deleteFile();
+  }
+  clearIfUnchanged(marker: UpgradeResumeMarker): void {
+    const current = this.readPending().find(entry => entry.agentId === marker.agentId);
+    if (current !== undefined && resumeMarkerKey(current) === resumeMarkerKey(marker)) this.clear(marker.agentId);
   }
   readPending(): UpgradeResumeMarker[] {
     try {

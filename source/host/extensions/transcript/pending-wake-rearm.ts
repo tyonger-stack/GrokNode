@@ -92,9 +92,11 @@ export class PendingWakeRearm {
     });
     this.tm.roster.emitAsyncTasksForAgent(event.parentAgentId);
   }
-  async rearmPendingWakes(): Promise<void> {
+  async rearmPendingWakes(): Promise<boolean> {
     const store = this.tm.pendingWakeStore;
-    if (store == null || !this.tm.execution.canExecute) return;
+    if (store == null) return true;
+    if (!this.tm.execution.canExecute) return false;
+    let success = true;
     const now = Date.now();
     for (const marker of store.pruneStale(
       PENDING_WAKE_STALE_MAX_AGE_MS,
@@ -122,17 +124,18 @@ export class PendingWakeRearm {
         });
         continue;
       }
-      if (!(marker.kind === "shell" && marker.interruptedByRecreate === true))
-        store.clearOne(marker.agentId, marker.kind, marker.workId);
-      void this.rearmPendingWake(marker, now);
+      await this.rearmPendingWake(marker, now, { onOutcome: outcome => { if (outcome === "rearm_failed") success = false; } });
     }
+    return success;
   }
   async rearmPendingWake(
     marker: PendingWakeMarker,
     nowMs: number,
-    options?: { successReason?: string },
+    options?: { successReason?: string; onOutcome?: (outcome: string) => void },
   ): Promise<void> {
     const report = (outcome: string, reason?: string) => {
+      options?.onOutcome?.(outcome);
+      if (outcome === "rearm_skipped") this.tm.pendingWakeStore?.clearOne(marker.agentId, marker.kind, marker.workId);
       if (outcome === "rearm_failed")
         this.tm.pendingWakeStore?.markPending(marker);
       const effectiveReason =

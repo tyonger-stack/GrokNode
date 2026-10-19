@@ -1,3 +1,4 @@
+import type { ServerPortCardActions } from "../../../../../../production/server-port-card-actions";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { CloudAgentProvider } from "../cloud-agent-provider";
 import type { AutoReviewApprovalActionInput, AutoReviewApprovalActions } from "../auto-review-actions";
@@ -16,6 +17,7 @@ import type { ResolveLocalToolPermissionInput } from "../../../../permissions/lo
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=5214895 (transcript interactions provider lifecycle)
 
 export interface TranscriptCardLeafProviders {
+  readonly serverPortActions?: ServerPortCardActions | null;
   readonly scope: TranscriptCardScope;
   readonly widgetInteractions: WidgetInteractionAdapter | null;
   readonly cloudAgents: CloudAgentProvider | null;

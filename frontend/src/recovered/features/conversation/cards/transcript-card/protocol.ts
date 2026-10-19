@@ -1,3 +1,7 @@
+import { z } from "zod";
+import { emailDraftSchema, slackDraftSchema, draftSendStateSchema, type DraftSendState } from "../../../../../../../source/shared/external-drafts";
+import { requestUserFormParameters, type UserForm } from "../../../../../../../source/shared/user-forms";
+export type { DraftSendState, UserForm };
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=5109827 (lazy card map and send-message discriminants)
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=782731 (transcript-card declaration validation)
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js#byteOffset=784036 (card metadata projection)
@@ -11,6 +15,7 @@ export const TRANSCRIPT_CARD_ENTRY_TYPES = [
   "text",
   "widget",
   "cursor-agent",
+  "user-form",
   "email-draft",
   "slack-draft",
   "auto-review-approval",
@@ -63,30 +68,12 @@ export interface CursorAgentCardMessage {
   title?: string;
 }
 
-export interface EmailDraft {
-  from?: string;
-  to: readonly string[];
-  cc?: readonly string[];
-  subject: string;
-  body: string;
-}
-
-export interface EmailDraftCardMessage {
-  type: "email-draft";
-  draft: EmailDraft;
-}
-
-export interface SlackDraft {
-  workspace?: string;
-  target: string;
-  thread?: string;
-  body: string;
-}
-
-export interface SlackDraftCardMessage {
-  type: "slack-draft";
-  draft: SlackDraft;
-}
+export type EmailDraft = z.infer<typeof emailDraftSchema>;
+export interface EmailDraftCardMessage { readonly type: "email-draft"; readonly draft: EmailDraft; }
+export type SlackDraft = z.infer<typeof slackDraftSchema>;
+export interface SlackDraftCardMessage { readonly type: "slack-draft"; readonly draft: SlackDraft; }
+export const userFormSchema = requestUserFormParameters.innerType().extend({ id: z.string().min(1) });
+export interface UserFormCardMessage { readonly type: "user-form"; readonly form: UserForm; }
 
 export type AutoReviewSurface =
   | "host_shell"
@@ -172,6 +159,7 @@ export type TranscriptCardMessage =
   | SendMessageTextCardMessage
   | WidgetCardMessage
   | CursorAgentCardMessage
+  | UserFormCardMessage
   | EmailDraftCardMessage
   | SlackDraftCardMessage
   | AutoReviewApprovalCardMessage
@@ -191,7 +179,10 @@ export interface TranscriptCardEntryBase {
   widgetDismissed?: boolean;
   widgetSkipped?: boolean;
   respondedValueEchoed?: boolean;
-  draftSendState?: "editable" | "sending" | "sent";
+  draftSendState?: DraftSendState;
+  readonly formResolution?: string;
+  /** Host-owned lifecycle; independent of the originating inference turn. */
+  readonly userFormState?: string;
   secretProvided?: boolean;
   boxInstruction?: string;
   boxRequest?: string;
@@ -274,46 +265,12 @@ function projectCursorAgent(value: Record<string, unknown>): CursorAgentCardMess
 }
 
 function projectEmailDraft(value: Record<string, unknown>): EmailDraftCardMessage | null {
-  if (!isRecord(value.draft)) return null;
-  const draft = value.draft;
-  const to = stringArray(draft.to);
-  if (to == null || typeof draft.subject !== "string" || typeof draft.body !== "string") return null;
-  const ccValue = draft.cc;
-  const cc = ccValue === undefined ? undefined : stringArray(ccValue);
-  if (ccValue !== undefined && cc == null) return null;
-  const projectedCc = cc ?? undefined;
-  const fromValue = draft.from;
-  if (fromValue !== undefined && typeof fromValue !== "string") return null;
-  if (draft.from !== undefined && typeof draft.from !== "string") return null;
-  return {
-    type: "email-draft",
-    draft: {
-      ...(fromValue === undefined ? {} : { from: fromValue }),
-      to,
-      ...(projectedCc === undefined ? {} : { cc: projectedCc }),
-      subject: draft.subject,
-      body: draft.body,
-    },
-  };
+  const parsed = emailDraftSchema.safeParse(value.draft);
+  return parsed.success ? { type: "email-draft", draft: parsed.data } : null;
 }
-
 function projectSlackDraft(value: Record<string, unknown>): SlackDraftCardMessage | null {
-  if (!isRecord(value.draft)) return null;
-  const draft = value.draft;
-  const targetValue = draft.target;
-  const bodyValue = draft.body;
-  if (!nonEmptyString(targetValue) || typeof bodyValue !== "string") return null;
-  if (draft.workspace !== undefined && typeof draft.workspace !== "string") return null;
-  if (draft.thread !== undefined && typeof draft.thread !== "string") return null;
-  return {
-    type: "slack-draft",
-    draft: {
-      ...(draft.workspace === undefined ? {} : { workspace: draft.workspace }),
-      target: targetValue,
-      ...(draft.thread === undefined ? {} : { thread: draft.thread }),
-      body: bodyValue,
-    },
-  };
+  const parsed = slackDraftSchema.safeParse(value.draft);
+  return parsed.success ? { type: "slack-draft", draft: parsed.data } : null;
 }
 
 function projectAutoReviewApproval(value: Record<string, unknown>): AutoReviewApprovalCardMessage | null {
@@ -433,6 +390,12 @@ export function projectTranscriptCardEntry(value: unknown): TranscriptCardEntry 
     }
     case "widget": projectedMessage = projectWidget(message); break;
     case "cursor-agent": projectedMessage = projectCursorAgent(message); break;
+    case "user-form": {
+      const form = userFormSchema.safeParse(message.form);
+      if (!form.success) return null;
+      projectedMessage = { type: "user-form", form: form.data };
+      break;
+    }
     case "email-draft": projectedMessage = projectEmailDraft(message); break;
     case "slack-draft": projectedMessage = projectSlackDraft(message); break;
     case "auto-review-approval": projectedMessage = projectAutoReviewApproval(message); break;
@@ -451,7 +414,8 @@ export function projectTranscriptCardEntry(value: unknown): TranscriptCardEntry 
   if (value.widgetDismissed !== undefined && typeof value.widgetDismissed !== "boolean") return null;
   if (value.widgetSkipped !== undefined && typeof value.widgetSkipped !== "boolean") return null;
   if (value.respondedValueEchoed !== undefined && typeof value.respondedValueEchoed !== "boolean") return null;
-  if (value.draftSendState !== undefined && value.draftSendState !== "editable" && value.draftSendState !== "sending" && value.draftSendState !== "sent") return null;
+  const draftState = draftSendStateSchema.optional().safeParse(value.draftSendState);
+  if (!draftState.success) return null;
   if (value.secretProvided !== undefined && typeof value.secretProvided !== "boolean") return null;
   if (value.boxInstruction !== undefined && typeof value.boxInstruction !== "string") return null;
   if (value.boxRequest !== undefined && typeof value.boxRequest !== "string") return null;
@@ -475,7 +439,9 @@ export function projectTranscriptCardEntry(value: unknown): TranscriptCardEntry 
     ...(value.widgetDismissed === undefined ? {} : { widgetDismissed: value.widgetDismissed }),
     ...(value.widgetSkipped === undefined ? {} : { widgetSkipped: value.widgetSkipped }),
     ...(value.respondedValueEchoed === undefined ? {} : { respondedValueEchoed: value.respondedValueEchoed }),
-    ...(value.draftSendState === undefined ? {} : { draftSendState: value.draftSendState }),
+    ...(draftState.data === undefined ? {} : { draftSendState: draftState.data }),
+    ...(typeof value.formResolution === "string" ? { formResolution: value.formResolution } : {}),
+    ...(typeof value.userFormState === "string" ? { userFormState: value.userFormState } : {}),
     ...(value.secretProvided === undefined ? {} : { secretProvided: value.secretProvided }),
     ...(value.boxInstruction === undefined ? {} : { boxInstruction: value.boxInstruction }),
     ...(value.boxRequest === undefined ? {} : { boxRequest: value.boxRequest }),

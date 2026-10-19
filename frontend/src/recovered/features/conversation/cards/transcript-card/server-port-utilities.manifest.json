@@ -1,0 +1,333 @@
+{
+ "sourceCss": "/Users/Apple/Documents/grokbot/rea-grokbot-0712/app/dist/renderer/assets/index-DkV65EBE.css",
+ "sourceCssSha256": "30beefeee1dd1b707732f529954a6ab7b9be5bbb43fa2ec4ac9525c4dee7ed5a",
+ "packagedCss": "/Users/Apple/Documents/grokbot/grok-bot-0.18-reconstructed/src/app/dist/renderer/assets/index-lCyB53CO.css",
+ "packagedCssSha256": "5a25f934b7d3b7a55483cb5f2a1a05e21209aad0a09c82d07d2add054a6b7856",
+ "scope": ".sand-server-port-review",
+ "totalReviewClasses": 108,
+ "alreadyInPackagedCss": 80,
+ "extractedClasses": [
+  "sand-135b78x",
+  "sand-17tbahu",
+  "sand-181h0qd",
+  "sand-18hwk67",
+  "sand-19jy9ex",
+  "sand-1a4mgn7",
+  "sand-1axzn7n",
+  "sand-1csozyq",
+  "sand-1firant",
+  "sand-1g6zli8",
+  "sand-1ialtwx",
+  "sand-1mt1orb",
+  "sand-1rnidkh",
+  "sand-1sxibbd",
+  "sand-4gjf66",
+  "sand-5fd6op",
+  "sand-8rotk8",
+  "sand-e2zdcy",
+  "sand-f4egzd",
+  "sand-fwqdrz",
+  "sand-i69oq4",
+  "sand-pdmqnj",
+  "sand-pqajaz",
+  "sand-sa7k8x",
+  "sand-sb55g1",
+  "sand-shfolx",
+  "sand-wtpwev",
+  "sand-x1phaw"
+ ],
+ "tokenFallbacks": {
+  "--sand-bg-primary": {
+   "value": "#1c1c1c",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-bg-primary-disabled": {
+   "value": "#1c1c1c26",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-bg-primary-hover": {
+   "value": "#363636",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-bg-purple-secondary": {
+   "value": "#8f59f917",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-bg-red-secondary": {
+   "value": "#fb2b3e17",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-bg-secondary": {
+   "value": "#1c1c1c0f",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-bg-secondary-disabled": {
+   "value": "#1c1c1c0a",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-bg-secondary-hover": {
+   "value": "#1c1c1c1a",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-border-primary-translucent": {
+   "value": "#1c1c1c3d",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-border-secondary-translucent": {
+   "value": "#1c1c1c1f",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-border-tertiary-translucent": {
+   "value": "#1c1c1c14",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-text-danger-primary": {
+   "value": "#cd2834",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-text-inverted": {
+   "value": "#fcfcfc",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-text-purple-primary": {
+   "value": "#7547d0",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-text-quaternary": {
+   "value": "#1c1c1c66",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  },
+  "--sand-text-red-primary": {
+   "value": "#cd2834",
+   "sourceSelector": ":root,.sand-1wuigm2"
+  }
+ },
+ "rules": [
+  {
+   "classes": [
+    "sand-135b78x"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-135b78x:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "padding-inline-start:4px"
+  },
+  {
+   "classes": [
+    "sand-17tbahu"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-17tbahu:not(#\\#):not(#\\#)",
+   "body": "border-color:var(--sand-border-secondary-translucent)"
+  },
+  {
+   "classes": [
+    "sand-181h0qd"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-181h0qd:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "color:var(--sand-text-purple-primary)"
+  },
+  {
+   "classes": [
+    "sand-18hwk67"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-18hwk67:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "column-gap:20px"
+  },
+  {
+   "classes": [
+    "sand-19jy9ex"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-19jy9ex:hover:not(:disabled):not(#\\#):not(#\\#):not(#\\#)",
+   "body": "background-color:var(--sand-bg-secondary-hover)"
+  },
+  {
+   "classes": [
+    "sand-1a4mgn7"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-1a4mgn7:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "background-color:var(--sand-bg-red-secondary)"
+  },
+  {
+   "classes": [
+    "sand-1axzn7n"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-1axzn7n:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "background-color:var(--sand-bg-primary-disabled)"
+  },
+  {
+   "classes": [
+    "sand-1csozyq"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-1csozyq:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "background-color:var(--sand-bg-purple-secondary)"
+  },
+  {
+   "classes": [
+    "sand-1firant"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-1firant:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "transition-duration:.12s"
+  },
+  {
+   "classes": [
+    "sand-1g6zli8"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-1g6zli8:disabled:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "background-color:var(--sand-bg-secondary-disabled)"
+  },
+  {
+   "classes": [
+    "sand-1ialtwx"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-1ialtwx:disabled:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "background-color:var(--sand-bg-primary-disabled)"
+  },
+  {
+   "classes": [
+    "sand-1mt1orb"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-1mt1orb:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "grid-auto-flow:column"
+  },
+  {
+   "classes": [
+    "sand-1rnidkh"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-1rnidkh:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "grid-auto-columns:minmax(0,1fr)"
+  },
+  {
+   "classes": [
+    "sand-1sxibbd"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-1sxibbd:hover:not(:disabled):not(#\\#):not(#\\#):not(#\\#)",
+   "body": "background-color:var(--sand-bg-primary-hover)"
+  },
+  {
+   "classes": [
+    "sand-4gjf66"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-4gjf66:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "letter-spacing:inherit"
+  },
+  {
+   "classes": [
+    "sand-5fd6op"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-5fd6op:not(#\\#):not(#\\#)",
+   "body": "border-color:var(--sand-border-tertiary-translucent)"
+  },
+  {
+   "classes": [
+    "sand-8rotk8"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-8rotk8:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "background-color:var(--sand-bg-primary)"
+  },
+  {
+   "classes": [
+    "sand-e2zdcy"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-e2zdcy:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "padding-inline-start:10px"
+  },
+  {
+   "classes": [
+    "sand-f4egzd"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-f4egzd:not(#\\#):not(#\\#)",
+   "body": "padding-block:3px"
+  },
+  {
+   "classes": [
+    "sand-fwqdrz"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-fwqdrz:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "background-color:var(--sand-bg-secondary)"
+  },
+  {
+   "classes": [
+    "sand-i69oq4"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-i69oq4:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "color:var(--sand-text-danger-primary)"
+  },
+  {
+   "classes": [
+    "sand-pdmqnj"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-pdmqnj:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "padding-inline-end:12px"
+  },
+  {
+   "classes": [
+    "sand-pqajaz"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-pqajaz:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "align-items:end"
+  },
+  {
+   "classes": [
+    "sand-sa7k8x"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-sa7k8x:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "color:var(--sand-text-inverted)"
+  },
+  {
+   "classes": [
+    "sand-sb55g1"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-sb55g1:focus-within:not(#\\#):not(#\\#)",
+   "body": "border-color:var(--sand-border-primary-translucent)"
+  },
+  {
+   "classes": [
+    "sand-shfolx"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-shfolx:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "transition-property:border-color"
+  },
+  {
+   "classes": [
+    "sand-wtpwev"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-wtpwev:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "color:var(--sand-text-red-primary)"
+  },
+  {
+   "classes": [
+    "sand-x1phaw"
+   ],
+   "context": [],
+   "selector": ".sand-server-port-review .sand-x1phaw:not(#\\#):not(#\\#):not(#\\#)",
+   "body": "color:var(--sand-text-quaternary)"
+  }
+ ],
+ "outputCss": "server-port-utilities.css",
+ "outputCssSha256": "e17631fda7cfa02b842c2297fb49b1292f94b5194f7d16836a603eadc313e625"
+}

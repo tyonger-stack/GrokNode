@@ -104,6 +104,7 @@ import {
   createContextTools,
   type ContextToolDependencies,
 } from "./context-tools.js";
+import { createSandSplitStateTools } from "./sand-split-state-tools.js";
 import {
   createSubagentManagementTools,
   type SubagentManagementController,
@@ -538,6 +539,8 @@ export interface TurnToolFactories {
   updateAgent?(): TurnTool;
   updateState?(): TurnTool;
   contextTools?(): readonly TurnTool[];
+  splitStateTools?(): readonly TurnTool[];
+  reviewInteractions?(): readonly TurnTool[];
   externalShell?(): TurnTool | undefined;
   externalRead?(): TurnTool;
   externalAwait?(): TurnTool;
@@ -708,6 +711,7 @@ export interface TurnToolsetFactoryInputs {
 
 /** Host-facing per-turn projection; resource/session identities stay fresh. */
 export interface TurnToolsetHostFactoryProvider {
+  readonly createReviewInteractionTools?: (turn: TurnToolsetTurnInput, props: TurnToolsetBuildProps) => readonly unknown[];
   readonly createTaskToolInputs?: (
     turn: TurnToolsetTurnInput,
     props: TurnToolsetBuildProps,
@@ -1041,6 +1045,10 @@ export function createTurnStateToolFactory(
   return () => asTurnTool(createSandStateTool(input.dependencies));
 }
 
+export function createTurnSplitStateToolFactory(input: TurnStateToolFactoryInput): () => readonly TurnTool[] {
+  return () => createSandSplitStateTools(input.dependencies).map(asTurnTool);
+}
+
 export function createTurnContextToolFactory(
   input: ContextToolDependencies,
 ): () => readonly TurnTool[] {
@@ -1086,7 +1094,7 @@ export function createTurnToolsetFactories(
   "task" | "mcpMeta" | "computer" | "browser" | "screenshot"
   | "fileTransfer" | "requestBoxHelp" | "generateImage" | "webSearch" | "webFetch" | "externalAwait"
   | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead"
-  | "sendMessage" | "nativeArtifacts" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState" | "contextTools"
+  | "sendMessage" | "nativeArtifacts" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState" | "contextTools" | "splitStateTools"
   | "subagentManagement"
   | "mcpManagement" | "cloudAgent"
 > {
@@ -1162,7 +1170,7 @@ export function createTurnToolsetFactories(
       }),
     ...(input.state === undefined
       ? {}
-      : { updateState: createTurnStateToolFactory(input.state) }),
+      : { updateState: createTurnStateToolFactory(input.state), splitStateTools: createTurnSplitStateToolFactory(input.state) }),
     ...(input.state?.context === undefined
       ? {}
       : { contextTools: createTurnContextToolFactory(input.state.context) }),
@@ -1188,12 +1196,13 @@ export function createTurnToolsetFactoriesForTurn(
   provider: TurnToolsetHostFactoryProvider,
   turn: TurnToolsetTurnInput,
   props: TurnToolsetBuildProps,
-): ReturnType<typeof createTurnToolsetFactories> {
+): ReturnType<typeof createTurnToolsetFactories> & Pick<TurnToolFactories, "reviewInteractions"> {
   const externalShell = provider.createExternalShellToolInputs?.(turn, props);
   const externalRead = provider.createExternalReadToolInputs?.(turn, props);
   const boxShell = provider.createBoxShellToolInputs?.(turn, props);
   const boxRead = provider.createBoxReadToolInputs?.(turn, props);
-  return createTurnToolsetFactories({
+  const reviewInteractions = provider.createReviewInteractionTools;
+  return { ...createTurnToolsetFactories({
     ...(provider.createTaskToolInputs === undefined
       ? {}
       : { task: provider.createTaskToolInputs(turn, props) }),
@@ -1281,7 +1290,10 @@ export function createTurnToolsetFactoriesForTurn(
       : {
         cloudAgent: provider.createCloudAgentToolInputs(turn, props),
       }),
-  });
+  }), ...(reviewInteractions === undefined ? {} : { reviewInteractions: () => reviewInteractions(turn, props).map(value => {
+    if (typeof value !== "object" || value === null) throw new TypeError("Review tool is unavailable");
+    return asTurnTool(value);
+  }) }) };
 }
 
 export interface TurnToolsetHost {
@@ -1425,6 +1437,10 @@ export function buildTurnTools(
       if (updateState !== undefined) tools.push(updateState);
       const contextTools = factories.contextTools?.();
       if (contextTools !== undefined) tools.push(...contextTools);
+      const splitStateTools = factories.splitStateTools?.();
+      if (splitStateTools !== undefined) tools.push(...splitStateTools);
+      const reviewInteractions = factories.reviewInteractions?.();
+      if (reviewInteractions !== undefined) tools.push(...reviewInteractions);
     }
   }
 

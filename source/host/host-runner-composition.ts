@@ -1,4 +1,11 @@
 import { dirname } from "node:path";
+import { createContext } from "../packages/context/core.js";
+import { TranscriptManager } from "./extensions/transcript/transcript-manager.js";
+import { createReviewInteractions } from "./review-interactions-service.js";
+import { createReviewPrivateBox } from "./review-private-box.js";
+import type { PrivateUserFormBox } from "./runner/browser/user-form-fill.js";
+import { createReviewAttachmentResolver } from "./review-attachments.js";
+import { ReviewTranscriptStore } from "./extensions/transcript/review-transcript-store.js";
 import { bindAgentBoxPrewarmPort, bindAttachmentStagingPort } from "./attachment-runtime-ports.js";
 import { TranscriptMirrorOffloadPool } from "./agent-isolation/transcript-mirror-offload.js";
 import type {
@@ -38,6 +45,11 @@ import { isMemorableExchange } from "./runner/sand-memory.js";
 import { createPromptTranscriptSource, hasPromptTranscriptState, readOwnedSubagentTranscript } from "./runner/transcript-blobs.js";
 import { createLocalConversationAccess } from "./runner/sessions/transcript-reader.js";
 import { promptSectionSnapshotStore } from "./runner/sessions/related-conversations-section.js";
+import { createPromptPrefixObserver } from "./runner/prompt-prefix-observation.js";
+import { FileAutomationStore } from "./automations/automation-store.js";
+import { createDelegatedWorkStopper } from "./runner/delegated-work-stop.js";
+import { createSandLoopDetectionPolicy, parseSandLoopDetectionMode } from "./runner/loop-detection-policy.js";
+import type { DelegatedStopOutcome, DelegatedStopRequest } from "./runner/tools/sand-subagent-management-tools.js";
 import type {
   CloudAgentApi,
   CloudAgentToolContext,
@@ -294,6 +306,7 @@ export interface ProductionSessionBoundRunner {
   } | undefined;
   run(prompt: string, options?: SubagentRunOptions): Promise<unknown>;
   interrupt(reason: string): unknown;
+  stopSubagents?(): void;
   endTurnAwaitingUser?(reason: string): void;
   getResolvedOutline(): Promise<readonly unknown[]>;
   getObservedToolCallCount(): number;
@@ -876,6 +889,18 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
   const localToolPermission = extensions.api("local-tool-permission");
   const localToolPermissionSurfaces = new Map<string, () => void>();
   const ownedRunners = new Set<Runner>();
+  const delegatedStopHandlers = new Map<string, (request: DelegatedStopRequest) => Promise<readonly DelegatedStopOutcome[]>>();
+  const reviewBoxes = new Map<string, () => Promise<PrivateUserFormBox | undefined>>();
+  const reviewTurnIds = new Map<string, string>();
+  const reviewTranscript = extensions.api("transcript");
+  const reviewInteractions = reviewTranscript instanceof TranscriptManager ? createReviewInteractions({
+    transcript: reviewTranscript,
+    mcp: extensions.api("mcp").mcp,
+    resolveAttachment: createReviewAttachmentResolver(new ReviewTranscriptStore(reviewTranscript), extensions.api("mcp").mcp),
+    resolvePrivateBox: async agentId => reviewBoxes.get(agentId)?.(),
+    onError: code => console.warn("[sand:review]", code),
+  }) : undefined;
+  if (reviewInteractions !== undefined) method(reviewTranscript, "setReviewInteractions")?.(reviewInteractions);
   let mirrorOffloadPool: TranscriptMirrorOffloadPool | null = null;
 
   const getMirrorOffloadPool = () => {
@@ -958,6 +983,21 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
     const foreverBox = extensions.api("forever-box");
     const boxPrewarm = bindAgentBoxPrewarmPort(foreverBox);
     const remoteBox = foreverBox.box as DynamicApi;
+    if (!isSharedRoomTurn) reviewBoxes.set(session.id, async () => {
+      const owner = asRemoteBoxResourceOwner(remoteBox), transfer = asTransferBox(remoteBox);
+      const download = method(remoteBox, "downloadFile");
+      if (owner === undefined || transfer === undefined || download === undefined) return undefined;
+      return createReviewPrivateBox({ agentId: session.id, context: createContext(), box: {
+        ensureReady: (context, id) => owner.ensureReady(context, id),
+        getAgentWindowIndex: id => owner.getAgentWindowIndex?.(id),
+        uploadFile: (context, id, path, bytes) => transfer.uploadFile(context, id, path, bytes),
+        downloadFile: async (context, id, path, options) => {
+          const bytes: unknown = await download(context, id, path, options);
+          if (!(bytes instanceof Uint8Array) || options?.maxBytes !== undefined && bytes.byteLength > options.maxBytes) throw new TypeError("Private browser output is unavailable");
+          return bytes;
+        },
+      } });
+    });
     const transcriptsDir = method(sessionApi, "transcriptsDir")?.() ??
       dirname(dirname(session.dbPath));
 
@@ -1232,7 +1272,30 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
 
     const resolveCloudAgentTitle = async (_ctx: unknown, bcId: string) =>
       (await method(cloudAgents, "get")?.(bcId))?.name;
-    const awaitCloudAgent = method(cloudAgents, "awaitCompletion");
+    const rawAwaitCloudAgent = method(cloudAgents, "awaitCompletion");
+    const awaitCloudAgent = rawAwaitCloudAgent === undefined ? undefined : async (id: string, options: { waitForRestart: boolean }) => {
+      const result = await rawAwaitCloudAgent(id, options);
+      delegatedStopper.finished(id);
+      return result;
+    };
+    const stopPeers = method(transcript, "stopDelegatedFromAgent");
+    const delegatedStopper = createDelegatedWorkStopper({
+      selfId: session.id,
+      ...(stopPeers === undefined ? {} : { stopPeers: (visited: readonly string[]) => stopPeers(session.id, visited) }),
+      stopPeerDescendants: (id, request) => delegatedStopHandlers.get(id)?.(request) ?? Promise.resolve([]),
+      pendingCloudIds: () => method(builtRunner, "getPendingCloudAgentWatchBcIds")?.() ?? [],
+      stopCloud: async (id, request) => {
+        const cloud = hostDependencies().cloudAgent;
+        if (cloud === undefined) return { result: "unreachable", detail: "Cloud-agent control is unavailable." };
+        const current = await cloud.api.get(id);
+        if (current === null || current.status !== "running" && current.status !== "creating") return { result: "not_running" };
+        const review = await cloud.reviewAction?.({ args: { action: "cancel", agent_id: id }, toolCallId: request.toolCallId ?? "stop-delegated-work", images: [] });
+        if (review !== undefined && !review.allowed) return { result: "failed", detail: review.reason };
+        await cloud.api.cancel(id);
+        return { result: "stopped" };
+      },
+    });
+    if (!isSharedRoomTurn) delegatedStopHandlers.set(session.id, delegatedStopper.stop);
     const sendToAgent = (
       toAgentId: string,
       text: string,
@@ -1434,7 +1497,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               };
             },
           },
-          automationStore: () => null,
+          automationStore: () => session.automations instanceof FileAutomationStore ? session.automations : null,
           workflowStore: () => null,
           channelStore: () => null,
           connectorManifests: CONNECTOR_MANIFESTS,
@@ -1459,6 +1522,13 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           computerSection: () => productionPromptGlue?.getComputerSection() ?? null,
         });
 
+    const promptPrefixObserver = productionSystemPromptAssembly === undefined || isSharedRoomTurn ? undefined : createPromptPrefixObserver({
+      snapshots: () => promptSectionSnapshotStore(session.db),
+      compactionEpoch: productionSystemPromptAssembly.getCompactionEpoch,
+      sections: productionSystemPromptAssembly.renderedFrozenSections,
+      report: report => console.info("[sand:prompt-prefix]", JSON.stringify({ agentId: session.id, ...report })),
+      reportError: errorClass => console.warn("[sand:prompt-prefix] observation failed", errorClass),
+    });
     const runnerOptions: Record<string, unknown> = {
       inference: extensions.api("inference").port,
       diskPressureReminder: foreverBox.diskPressureReminder,
@@ -1482,7 +1552,16 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           method(extensions.api("session"), "startHandoff")?.(request)
       },
       transport: hooks.transport,
-      onRunLifecycle: hooks.onRunLifecycle,
+      onInterrupt: () => reviewInteractions?.stopAgent(session.id),
+      onRunLifecycle: (event: { readonly type: "started" | "ended"; readonly requestId: string }) => {
+        if (event.type === "started") {
+          reviewTurnIds.set(session.id, event.requestId);
+          reviewInteractions?.onTurnStarted(session.id, event.requestId);
+        }
+        if (event.type === "ended") method(transcript, "settleReviewInteractionTurn")?.(session.id, event.requestId);
+        if (event.type === "ended" && reviewTurnIds.get(session.id) === event.requestId) reviewTurnIds.delete(session.id);
+        hooks.onRunLifecycle?.(event);
+      },
       isSharedRoomTurn,
       isSharedRoomBoxToolsEnabled: () =>
         !Boolean(method(experiments, "checkFeatureGate")?.(
@@ -2030,7 +2109,8 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             ...(onListenerRoutineSaved === undefined ? {} : { onListenerRoutineSaved }),
           };
 
-      const subagentManagement = createRunnerSubagentManagement(builtRunner);
+      const ownedSubagents = createRunnerSubagentManagement(builtRunner);
+      const subagentManagement = ownedSubagents === undefined ? undefined : { ...ownedSubagents, stopDelegatedWork: delegatedStopper.stop };
       const projectedActionAuditor = asActionAuditor(actionAuditor);
       const autoReviewProjection: ProductionTurnAutoReviewHostProjection | undefined =
         autoReviewController === undefined || autoReviewGate === undefined
@@ -2132,6 +2212,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           : { userAutoRunInstructions: scopedUserAutoRunInstructions }),
       };
       const provider: TurnToolsetHostFactoryProvider = {
+      createReviewInteractionTools: turn => {
+        const requestId = reviewTurnIds.get(agentId);
+        if (reviewInteractions === undefined || requestId === undefined || isSharedRoomTurn || turn.endThisRunAwaitingUser === undefined) return [];
+        return reviewInteractions.toolsForTurn({ agentId, requestId, endThisRunAwaitingUser: turn.endThisRunAwaitingUser,
+          onCardShown: (entryId, message) => turn.emitUpdate?.({ type: "send-message", reviewEntryId: entryId,
+            message, timestampMs: Date.now(), ...(turn.ackToken === undefined ? {} : { ackToken: turn.ackToken }) }),
+        });
+      },
       createSendMessageToolInputs: turn => ({
         dependencies: turn.emitUpdate === undefined
           ? dependencies.sendMessage
@@ -2512,6 +2600,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   launchedIds: cloudAgent.launchedIds,
                   agentDir: cloudAgent.agentDir,
                   writeBoxFile: cloudAgent.writeBoxFile,
+                  onLaunched: ({ bcId }) => delegatedStopper.launched(bcId),
                   ...(cloudAgent.readBoxFile === undefined
                     ? {}
                     : { readBoxFile: cloudAgent.readBoxFile }),
@@ -2723,6 +2812,8 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         readonly interruptRunner: () => { interrupt?: (value: string) => boolean } | undefined;
       };
       const createScopedAgentOwnerInput = (scope: ScopedAgentOwnerIdentity): ProductionTurnRunShellHostInput["createAgentOwnerInput"] => ({ requestId, runOptions, context, cancelThisRun, emitUpdate }) => {
+          const loopMode = parseSandLoopDetectionMode(process.env.SAND_LOOP_DETECTION_MODE
+            ?? method(experiments, "getDynamicConfig")?.("grok_bot_loop_detection", { disableExposureLog: true })?.mode);
           if (session.agentStore == null || typeof session.agentStore.getBlobStore !== "function") {
             throw new TypeError("production Agent blob store is not bound");
           }
@@ -2985,6 +3076,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   interrupt: reason => {
                     child.interrupt(reason);
                   },
+                  stopSubagents: () => child.stopSubagents?.(),
                   getResolvedOutline: () => child.getResolvedOutline(),
                   getObservedToolCallCount: () => child.getObservedToolCallCount(),
                   getActivitySnapshot: () => child.getActivitySnapshot(),
@@ -3103,6 +3195,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             turn,
             staticConfig: {
               modelId: staticModelId,
+              loopDetectionMode: loopMode,
               agentTokenLimit: inferenceContextWindow,
               backgroundSummarizationPropsOverride: localBackgroundSummarizationProps,
               conversationId: scope.agentId,
@@ -3129,6 +3222,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             },
             emitUpdate,
             interactionObservers: {},
+            loopDetectionPolicy: createSandLoopDetectionPolicy({ mode: loopMode,
+              report: event => console.info("[sand:loop-detection]", JSON.stringify({ agentId: scope.agentId, requestId, ...event })) }),
+            ...(!scope.isSubagentRunner && promptPrefixObserver !== undefined ? { promptPrefixObserver } : {}),
             diskPressureReminder: foreverBox.diskPressureReminder,
             ...(productionSystemPromptAssembly === undefined
               ? {}
@@ -3255,6 +3351,9 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       method(localToolPermission, "forgetAgent")?.(agentId);
     },
     dispose: async () => {
+      reviewBoxes.clear();
+      reviewTurnIds.clear();
+      delegatedStopHandlers.clear();
       for (const runner of ownedRunners) {
         const candidate = runner as {
           interrupt?(reason?: string): unknown;

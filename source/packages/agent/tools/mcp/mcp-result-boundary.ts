@@ -13,6 +13,7 @@ import {
 } from "../common.js";
 import { ToolErrorClassification } from "../core.js";
 import { classifyMcpErrorMessage } from "./mcp-error-classification.js";
+import { classifyConnectorFailure } from "./mcp-connector-failure.js";
 
 export class McpPermissionDeniedError extends CustomToolCallError {
   readonly error: string;
@@ -116,15 +117,39 @@ export function isInvalidMcpArgumentsError(error: unknown): boolean {
 }
 
 export function createMcpTransportError(errorMessage: string, cause?: unknown): Error {
-  const classification = classifyMcpErrorMessage(errorMessage);
-  if (classification !== undefined && classification !== ToolErrorClassification.OTHER_ERROR) {
-    return new CustomToolCallError(classification, {
-      error: errorMessage,
-      clientVisibleErrorMessage: errorMessage,
-      modelVisibleErrorMessage: errorMessage,
-    });
+  const fault = classifyConnectorFailure(errorMessage);
+  switch (fault.kind) {
+    case "reauthorize":
+      return new CustomToolCallError(ToolErrorClassification.MCP_AUTH_ERROR, {
+        error: errorMessage,
+        clientVisibleErrorMessage: errorMessage,
+        modelVisibleErrorMessage: errorMessage,
+      });
+    case "permanent":
+      return new CustomToolCallError(ToolErrorClassification.UNEXPECTED_ENVIRONMENT, {
+        error: errorMessage,
+        clientVisibleErrorMessage: errorMessage,
+        modelVisibleErrorMessage: errorMessage,
+      });
+    case "rate_limited":
+    case "unknown": {
+      const classification = classifyMcpErrorMessage(errorMessage);
+      if (classification !== undefined && classification !== ToolErrorClassification.OTHER_ERROR) {
+        return new CustomToolCallError(classification, {
+          error: errorMessage,
+          clientVisibleErrorMessage: errorMessage,
+          modelVisibleErrorMessage: errorMessage,
+        });
+      }
+      return new Error(errorMessage, { cause });
+    }
+    default:
+      return assertNeverMcpConnectorFault(fault);
   }
-  return new Error(errorMessage, { cause });
+}
+
+function assertNeverMcpConnectorFault(value: never): never {
+  throw new TypeError(`Unexpected MCP connector fault: ${String(value)}`);
 }
 
 export function createMcpToolCall(mcpToolCall: McpToolCall): ToolCall {

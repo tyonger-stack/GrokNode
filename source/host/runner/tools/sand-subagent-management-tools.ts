@@ -16,11 +16,22 @@ export interface SubagentManagementController<_Context = Context> {
   listRunningSubagents(): readonly RunningSubagentInfo[];
   getRunningSubagent(subagentId: string): RunningSubagentInfo | undefined;
   steerSubagent(subagentId: string, message: string): "steered" | "not-running" | string;
-  abortSubagent(subagentId: string): "aborted" | "not-running" | string;
+  abortSubagent(subagentId: string): string | Promise<string>;
+  stopDelegatedWork?(args: DelegatedStopRequest): Promise<readonly DelegatedStopOutcome[]>;
   reviewSteer?(
     context: Context,
     request: { readonly subagentId: string; readonly message: string; readonly toolCallId: string },
   ): Promise<{ readonly allowed: boolean; readonly reason: string }>;
+}
+
+export interface DelegatedStopRequest { readonly visitedAgentIds?: readonly string[]; readonly toolCallId?: string }
+export interface DelegatedStopOutcome {
+  readonly stopDescendants?: boolean;
+  readonly kind: "peer" | "cloud_agent";
+  readonly id: string;
+  readonly name: string;
+  readonly result: "stopped" | "not_running" | "unreachable" | "failed" | "stale";
+  readonly detail?: string;
 }
 
 export const checkSubagentParameters = z.object({
@@ -39,10 +50,43 @@ export const messageSubagentParameters = z.object({
 });
 
 export const stopSubagentParameters = z.object({
-  subagent_id: z.string().trim().min(1).describe(
+  subagent_id: z.string().trim().optional().describe(
     "The Agent ID of the running subagent to abort (from the Task tool result that dispatched it).",
   ),
-});
+  all: z.boolean().optional().describe("Stop every background subagent you dispatched and reachable work you delegated. Do not combine with subagent_id."),
+}).refine(args => (args.all === true) !== Boolean(args.subagent_id), { message: "Pass exactly one of subagent_id or all: true." });
+
+export async function stopAllRunningSubagents(controller: SubagentManagementController, request: DelegatedStopRequest = {}) {
+  const running = controller.listRunningSubagents();
+  const outcomes = await Promise.all(running.map(async info => {
+    try { return { info, result: await controller.abortSubagent(info.subagentId) }; }
+    catch (error) { return { info, result: "failed", error: error instanceof Error ? error.message : String(error) }; }
+  }));
+  const stopped: RunningSubagentInfo[] = [], alreadyFinished: RunningSubagentInfo[] = [];
+  const failed: { readonly subagentId: string; readonly error: string }[] = [];
+  for (const outcome of outcomes) {
+    if (outcome.result === "ok" || outcome.result === "aborted") stopped.push(outcome.info);
+    else if (outcome.result === "not-running") alreadyFinished.push(outcome.info);
+    else failed.push({ subagentId: outcome.info.subagentId, error: outcome.error ?? outcome.result });
+  }
+  let delegated: readonly DelegatedStopOutcome[] = [];
+  if (controller.stopDelegatedWork !== undefined) {
+    try { delegated = await controller.stopDelegatedWork(request); }
+    catch (error) { delegated = [{ kind: "peer", id: "", name: "delegated work", result: "failed", detail: error instanceof Error ? error.message : String(error) }]; }
+  }
+  return { stopped, alreadyFinished, failed, delegated, delegatedWorkUnavailable: controller.stopDelegatedWork === undefined };
+}
+
+function formatStopAll(report: Awaited<ReturnType<typeof stopAllRunningSubagents>>): string {
+  const lines = [`Stopped ${report.stopped.length} subagent(s); ${report.alreadyFinished.length} already finished; ${report.failed.length} failed.`];
+  for (const item of report.stopped) lines.push(`- ${item.subagentId}: stopped`);
+  for (const item of report.alreadyFinished) lines.push(`- ${item.subagentId}: already finished`);
+  for (const item of report.failed) lines.push(`- ${item.subagentId}: could NOT be stopped; ${item.error}`);
+  for (const item of report.delegated) lines.push(`- ${item.kind} ${item.id} (${item.name}): ${item.result}${item.detail === undefined ? "" : `; ${item.detail}`}`);
+  if (report.delegatedWorkUnavailable) lines.push("Delegated peer/cloud work is unreachable from this controller and may still be running.");
+  lines.push("Do not resume or redispatch stopped work unless the user asks again. Independent background shell processes are not subagents; terminate them by their reported PIDs.");
+  return lines.join("\n");
+}
 
 export function elapsedLabel(elapsedMs: number): string {
   const totalSeconds = Math.max(0, Math.round(elapsedMs / 1_000));
@@ -130,13 +174,18 @@ export function createSubagentManagementTools(
     defineCommunicateTool(controller, {
       id: "STOP_SUBAGENT",
       name: "StopSubagent",
-      description: "Abort a running background subagent you dispatched (via Task). Use this to kill a subagent that is wedged, looping with no progress, or no longer needed — for example a computerUse subagent stuck on the box desktop. This tears the subagent down and frees its box desktop window; it does not come back, and you are not separately revived for it (this tool's result is the confirmation). If you instead want it to change course and keep going, use MessageSubagent. Pass the subagent's Agent ID (from the Task result).",
+      description: "Stop a background subagent you dispatched, or pass all:true to stop every running child and reachable work you delegated to peers/cloud agents. Use all:true when the user asks to stop the current work. Results distinguish stopped, already finished and failures; unreachable work may still run. Do not combine all:true with subagent_id. Independent shell processes need their own termination.",
       parameters: stopSubagentParameters,
       async execute(_context, args: z.infer<typeof stopSubagentParameters>, dependencies) {
-        if (dependencies.abortSubagent(args.subagent_id) === "not-running") {
-          return notRunningMessage(args.subagent_id, dependencies.listRunningSubagents());
+        if (args.all === true) return formatStopAll(await stopAllRunningSubagents(dependencies, { toolCallId: dependencies.toolCallId }));
+        const id = args.subagent_id;
+        if (id === undefined || id.length === 0) throw new Error("Stop target was not parsed");
+        const result = await dependencies.abortSubagent(id);
+        if (result === "not-running") {
+          return notRunningMessage(id, dependencies.listRunningSubagents());
         }
-        return `Stopping subagent ${args.subagent_id}. It will be torn down and won't report back.`;
+        if (result !== "ok" && result !== "aborted") return `Could not stop subagent ${id}: ${result}`;
+        return `Stopping subagent ${id}. It will be torn down and won't report back.`;
       },
     }),
   ];

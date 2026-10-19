@@ -81,6 +81,9 @@ export class BackgroundWakes {
   sendToAgent(...args: Parameters<AgentToAgentMessaging["sendToAgent"]>) {
     return this.agentToAgent.sendToAgent(...args);
   }
+  stopDelegatedFromAgent(...args: Parameters<AgentToAgentMessaging["stopDelegatedFromAgent"]>) {
+    return this.agentToAgent.stopDelegatedFromAgent(...args);
+  }
   appendAgentOutboundEntry(
     ...args: Parameters<AgentToAgentMessaging["appendAgentOutboundEntry"]>
   ): void {
