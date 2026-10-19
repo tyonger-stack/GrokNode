@@ -198,6 +198,25 @@ test("入口行为：建栏一次、点击切换、非 Bot 面不建栏", async 
     await rm(dir, { recursive: true, force: true });
   }
 });
+test("应用卡片在右栏挂载前请求电脑页，挂载后保留目标标签", async () => {
+  const bundle = await buildInfoPaneTabsRendererExtension();
+  const { window, document } = fixtureDocument();
+  const pane = paneOf(document);
+  pane.parentElement.remove();
+  try {
+    window.eval(bundle);
+    window.dispatchEvent(new window.CustomEvent('grok-node-info-pane-tab', { detail: 'computer' }));
+    document.body.append(pane);
+    window.__sandInfoPaneTabsSync();
+    assert.equal(pane.getAttribute('data-r-tabs-tab'), 'computer');
+    assert.equal(vis(document, '.comp-wrap'), true);
+    assert.equal(vis(document, '.routine-wrap'), false);
+  } finally {
+    window.__sandInfoPaneTabsStop?.();
+    window.close();
+  }
+});
+
 test("构建产物包含标签标识", async () => {
   const text = await buildInfoPaneTabsRendererExtension();
   assert.ok(text.includes("sand-info-pane-tabs"));

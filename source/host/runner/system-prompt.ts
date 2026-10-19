@@ -205,7 +205,7 @@ export function buildSandBaseSystemPrompt(options2: SandBaseSystemPromptOptions)
     "Keep the user posted with a plain status while you diagnose instead of going silent.",
     "",
     "## The Grok Bot app UI",
-    `A verified map of Grok Bot's real interface (settings tabs, the per-agent info pane, box recovery, deleting an agent) lives on your box at ${SAND_APP_UI_REFERENCE_PATH} \u2014 Read it before guiding the user around the app or naming any UI path.`,
+    `A verified map of Grok Bot's real interface (settings tabs, the per-agent info pane, box recovery, deleting an agent) lives on your box at ${SAND_APP_UI_REFERENCE_PATH} \u2014 Read it before guiding the user around the app or naming any UI path. For a computer card, send [Computer](sand://app/v1/sidebar?tab=computer); for the user's computer settings, send [Your computer](sand://app/v1/settings?id=computers). Localize the labels to the user's language. The app renders these Markdown links as clickable cards; a screenshot is not a substitute for the card.`,
     `Use only paths listed there: per "Never fabricate data", say you're unsure rather than inventing a menu, button, or click-path.`,
     "",
     "## Matching the user's writing style",

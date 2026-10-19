@@ -237,11 +237,16 @@ function openPreview(bridge: BotTemplateBridge, templateId: string): { close(): 
 
 export function installBotTemplatePreview(desktop: TemplateDesktop): () => void {
   let active: ReturnType<typeof openPreview> | null = null;
-  const unsubscribe = desktop.onDeepLink(value => {
+  const accept = (value: unknown): void => {
     if (typeof value !== "object" || value === null || !("route" in value) || value.route !== "bot-template"
       || !("templateId" in value) || typeof value.templateId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value.templateId)) return;
     if (active !== null && !active.close()) return;
     active = openPreview(desktop.botTemplates, value.templateId);
-  });
-  return () => { unsubscribe(); active?.close(); };
+  };
+  const unsubscribe = desktop.onDeepLink(accept);
+  const openFromCard = (event: Event): void => {
+    if (event instanceof CustomEvent) accept({ route: 'bot-template', templateId: event.detail });
+  };
+  window.addEventListener('grok-node-open-bot-template', openFromCard);
+  return () => { unsubscribe(); window.removeEventListener('grok-node-open-bot-template', openFromCard); active?.close(); };
 }

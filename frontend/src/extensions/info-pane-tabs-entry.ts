@@ -150,8 +150,10 @@ observer.observe(document.body, { childList: true, subtree: true });
 scheduleSync();
 window.addEventListener('grok-node-info-pane-tab', event => {
   if (!(event instanceof CustomEvent) || typeof event.detail !== 'string' || !isTabId(event.detail)) return;
+  activeTab = event.detail;
   const pane = paneRoot(document);
   if (pane != null && isBotContext(pane)) setTab(pane, event.detail);
+  else scheduleSync();
 });
 const testHooks = globalThis as unknown as { __sandInfoPaneTabsSync?: () => void; __sandInfoPaneTabsStop?: () => void; __sandInfoPaneTabsSet?: (tab: InfoPaneTabId) => void };
 testHooks.__sandInfoPaneTabsSync = sync;
