@@ -143,6 +143,13 @@ export class UserMemoryStore {
   constructor(readonly sandRoot: string, readonly ownAgentId: string, readonly resolveAgentName: (id: string) => string, readonly debounce: DebouncePolicy) {}
   getLocation(): string { return getUserMemoryDir(this.sandRoot); }
   getOwnShardLocation(): string { return getUserMemoryShardDir(this.sandRoot, this.ownAgentId); }
+  recallAll(): Array<MemoryRecord & { agentId: string; agentName: string }> {
+    let ids: string[];
+    try { ids = readdirSync(getUserMemoryShardsDir(this.sandRoot)); }
+    catch (error) { if (error instanceof Error && "code" in error && error.code === "ENOENT") return []; throw error; }
+    return ids.flatMap((id) => new FileMemoryStore(getUserMemoryShardDir(this.sandRoot, id), this.debounce)
+      .listMemories(Number.MAX_SAFE_INTEGER).map((fact) => ({ ...fact, agentId: id, agentName: this.resolveAgentName(id) })));
+  }
   recall(limits: { profile: number; recent: number } = { profile: 50, recent: 20 }) { const profile: Array<MemoryRecord & { agentId: string; agentName: string }> = [], recent: Array<MemoryRecord & { agentId: string; agentName: string }> = []; let ids: string[] = []; try { ids = readdirSync(getUserMemoryShardsDir(this.sandRoot)); } catch {} for (const id of ids) { const store = new FileMemoryStore(getUserMemoryShardDir(this.sandRoot, id), this.debounce), recalled = store.recall(limits.recent); profile.push(...recalled.profile.map((item) => ({ ...item, agentId: id, agentName: this.resolveAgentName(id) }))); recent.push(...recalled.recent.map((item) => ({ ...item, agentId: id, agentName: this.resolveAgentName(id) }))); } return { profile: profile.slice(0, limits.profile), recent: recent.sort((a, b) => b.createdAt - a.createdAt).slice(0, limits.recent) }; }
 }
 export class ProjectMemoryStore {

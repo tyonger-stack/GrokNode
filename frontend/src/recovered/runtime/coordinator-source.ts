@@ -522,6 +522,7 @@ const TELEMETRY_DOMAIN_BY_METHOD: Record<CoordinatorMethod, string> = {
   listAgents: "roster", countAgents: "roster", searchAgents: "roster", createAgent: "roster",
   createGroup: "roster", setGroupMembers: "roster", updateAgent: "roster", deleteAgents: "roster",
   duplicateAgent: "roster", kickstartAgent: "roster", requestDiskSaverAudit: "roster",
+  startFreshConversation: "transcript",
   broadcastToAgents: "roster", setAgentUnread: "roster", setAgentHiddenFromSidebar: "roster",
   setAgentNotificationsEnabled: "roster", setAgentNotifyOnUpdates: "roster", setAgentAvatarBytes: "roster",
   getAgentAvatar: "roster", searchMedia: "search", getCloudAgentInfo: "cloud_agents",

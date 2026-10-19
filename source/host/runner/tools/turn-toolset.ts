@@ -101,6 +101,10 @@ import {
   type SandStateDependencies,
 } from "./sand-state-tool.js";
 import {
+  createContextTools,
+  type ContextToolDependencies,
+} from "./context-tools.js";
+import {
   createSubagentManagementTools,
   type SubagentManagementController,
 } from "./sand-subagent-management-tools.js";
@@ -533,6 +537,7 @@ export interface TurnToolFactories {
   createAgent?(): TurnTool;
   updateAgent?(): TurnTool;
   updateState?(): TurnTool;
+  contextTools?(): readonly TurnTool[];
   externalShell?(): TurnTool | undefined;
   externalRead?(): TurnTool;
   externalAwait?(): TurnTool;
@@ -653,6 +658,7 @@ export interface TurnAgentManagementToolFactoryInput {
 
 export interface TurnStateToolFactoryInput {
   readonly dependencies: SandStateDependencies;
+  readonly context?: ContextToolDependencies;
 }
 
 export interface TurnSubagentManagementToolFactoryInput {
@@ -1035,6 +1041,12 @@ export function createTurnStateToolFactory(
   return () => asTurnTool(createSandStateTool(input.dependencies));
 }
 
+export function createTurnContextToolFactory(
+  input: ContextToolDependencies,
+): () => readonly TurnTool[] {
+  return () => createContextTools(input).map(asTurnTool);
+}
+
 export function createTurnSubagentManagementToolFactory(
   input: TurnSubagentManagementToolFactoryInput,
 ): () => readonly TurnTool[] {
@@ -1074,7 +1086,7 @@ export function createTurnToolsetFactories(
   "task" | "mcpMeta" | "computer" | "browser" | "screenshot"
   | "fileTransfer" | "requestBoxHelp" | "generateImage" | "webSearch" | "webFetch" | "externalAwait"
   | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead"
-  | "sendMessage" | "nativeArtifacts" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState"
+  | "sendMessage" | "nativeArtifacts" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState" | "contextTools"
   | "subagentManagement"
   | "mcpManagement" | "cloudAgent"
 > {
@@ -1151,6 +1163,9 @@ export function createTurnToolsetFactories(
     ...(input.state === undefined
       ? {}
       : { updateState: createTurnStateToolFactory(input.state) }),
+    ...(input.state?.context === undefined
+      ? {}
+      : { contextTools: createTurnContextToolFactory(input.state.context) }),
     ...(input.subagentManagement === undefined
       ? {}
       : {
@@ -1408,6 +1423,8 @@ export function buildTurnTools(
     if (!host.isSystemPromptOverridden) {
       const updateState = factories.updateState?.();
       if (updateState !== undefined) tools.push(updateState);
+      const contextTools = factories.contextTools?.();
+      if (contextTools !== undefined) tools.push(...contextTools);
     }
   }
 

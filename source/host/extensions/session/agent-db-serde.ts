@@ -10,6 +10,7 @@ export const EPISODE_PENDING_MAX = 64;
 type JsonObject = Record<string, unknown>;
 function object(value: unknown): JsonObject | null { return value != null && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : null; }
 function parse(raw: string | null): unknown { if (raw == null) return null; try { return JSON.parse(raw) as unknown; } catch { return null; } }
+export function parsePromptSectionSnapshots(raw: string | null): Record<string, unknown> { return object(parse(raw)) ?? {}; }
 
 export function isValidTranscriptEntry(entry: unknown): entry is JsonObject {
   const value = object(entry); if (value == null) return false;
