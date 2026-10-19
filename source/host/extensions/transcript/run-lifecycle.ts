@@ -21,7 +21,7 @@ import {
 import { turnFailureCopy } from "../../../shared/trays/agent-run-error-title-copy.js";
 import { hostTrayTitle } from "../../../shared/trays/tray-title-fallbacks.js";
 import { isTurnInterruptedFailure } from "./turn-runtime.js";
-import { isAgentWaitingForInferenceSlot } from "../inference/inference-inflight.js";
+import { isAgentBusyOnInferenceSlot } from "../inference/inference-inflight.js";
 import { ToolRepeatDetector } from "./tool-repeat-detector.js";
 import { SandRunScheduler, type RunLane } from "./run-scheduler.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
@@ -86,6 +86,14 @@ export interface RunProgressSnapshot {
   readonly progressSeq: number;
   readonly toolInFlight: boolean;
   /**
+   * True while SummarizationOrchestrator has emitted summaryStarted and has
+   * not yet emitted summaryCompleted. Self-summary / XaiCompaction drains its
+   * model stream without forwarding text-delta/thinking-delta into the turn
+   * update path, so without this flag a long compaction await looks identical
+   * to a wedged turn and trips the 10-minute idle deadline.
+   */
+  readonly summarizing?: boolean;
+  /**
    * True while the turn is parked on the global OpenRouter inflight gate
    * (no dial yet). Official host only bounds provider silence after a stream
    * starts; queuing for capacity must not trip the run-idle deadline.
@@ -99,6 +107,8 @@ const PROGRESS_UPDATE_TYPES = new Set([
   "tool-call",
   "send-message",
   "turn-ended",
+  "summary-started",
+  "summary-completed",
 ]);
 
 /** Per-agent liveness signal for the idle deadline, fed from the runner's own
@@ -107,12 +117,22 @@ const PROGRESS_UPDATE_TYPES = new Set([
 export class RunProgressTracker {
   private readonly seqByAgent = new Map<string, number>();
   private readonly pendingToolsByAgent = new Map<string, Set<string>>();
+  private readonly summarizingByAgent = new Set<string>();
 
   record(agentId: string, update: ActivityUpdate): void {
     if (!PROGRESS_UPDATE_TYPES.has(update.type)) return;
     this.seqByAgent.set(agentId, (this.seqByAgent.get(agentId) ?? 0) + 1);
+    if (update.type === "summary-started") {
+      this.summarizingByAgent.add(agentId);
+      return;
+    }
+    if (update.type === "summary-completed") {
+      this.summarizingByAgent.delete(agentId);
+      return;
+    }
     if (update.type === "turn-ended") {
       this.pendingToolsByAgent.delete(agentId);
+      this.summarizingByAgent.delete(agentId);
       return;
     }
     if (update.type !== "tool-call") return;
@@ -132,12 +152,14 @@ export class RunProgressTracker {
    * deadline of the next one. */
   reset(agentId: string): void {
     this.pendingToolsByAgent.delete(agentId);
+    this.summarizingByAgent.delete(agentId);
   }
 
   snapshot(agentId: string): RunProgressSnapshot {
     return {
       progressSeq: this.seqByAgent.get(agentId) ?? 0,
       toolInFlight: (this.pendingToolsByAgent.get(agentId)?.size ?? 0) > 0,
+      summarizing: this.summarizingByAgent.has(agentId),
     };
   }
 }
@@ -231,6 +253,7 @@ export function withRunHardDeadline(
           if (
             progressed ||
             progress?.toolInFlight === true ||
+            progress?.summarizing === true ||
             progress?.inferenceQueued === true
           ) {
             idleMs = 0;
@@ -568,9 +591,10 @@ export class RunLifecycle {
       id => {
         const snap = this.progressTracker.snapshot(id);
         // Fan-out parks many agents on the global inference gate before any
-        // text-delta/tool-call arrives. That wait is capacity queueing, not a
-        // wedged turn — suspend the idle clock the same way toolInFlight does.
-        if (isAgentWaitingForInferenceSlot(id)) {
+        // text-delta/tool-call arrives — and after a slot is granted the
+        // first-token wait is still silent. Both are capacity/provider wait,
+        // not a wedged turn — suspend idle the same way toolInFlight does.
+        if (isAgentBusyOnInferenceSlot(id)) {
           return { ...snap, inferenceQueued: true };
         }
         return snap;

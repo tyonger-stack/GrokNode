@@ -429,6 +429,49 @@ test("waiting on the global inference gate suspends the idle budget", () =>
     assert.match(caught.message, /run stalled/);
   }));
 
+test("blocking summarization suspends the idle budget until summary-completed", () =>
+  withEnv({ SAND_RUN_HARD_DEADLINE_MS: "3600000", SAND_RUN_IDLE_DEADLINE_MS: "1500" }, async () => {
+    const tracker = new RunProgressTracker();
+    tracker.record("agent-x", { type: "summary-started" });
+    assert.equal(tracker.snapshot("agent-x").summarizing, true);
+    const wrapped = withRunHardDeadline(
+      "agent-x",
+      "agent",
+      () => new Promise(() => {}),
+      () => false,
+      () => {},
+      (id) => tracker.snapshot(id),
+    );
+    const run = wrapped();
+    let caught;
+    run.catch((error) => { caught = error; });
+    await sleep(3200);
+    assert.equal(caught, undefined, "self-summary / compaction await must not count as a stall");
+    tracker.record("agent-x", { type: "summary-completed" });
+    assert.equal(tracker.snapshot("agent-x").summarizing, false);
+    await run.catch(() => {});
+    assert.match(caught.message, /run stalled/);
+  }));
+
+test("ForwardingInteractionListener forwards summary lifecycle into turn updates", async () => {
+  const adaptersOut = path.join(cacheDir, "agent-adapters-summary.cjs");
+  await build({
+    entryPoints: [path.join(root, "source/host/runner/agent-adapters.ts")],
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    outfile: adaptersOut,
+    logLevel: "error",
+    plugins: [jsToTs],
+  });
+  const { ForwardingInteractionListener } = createRequire(import.meta.url)(adaptersOut);
+  const seen = [];
+  const listener = new ForwardingInteractionListener((update) => seen.push(update.type));
+  await listener.sendUpdate({}, { message: { case: "summaryStarted", value: {} } });
+  await listener.sendUpdate({}, { message: { case: "summaryCompleted", value: {} } });
+  assert.deepEqual(seen, ["summary-started", "summary-completed"]);
+});
+
 test("enqueueExclusiveRun suspends idle while the agent waits on acquireInferenceSlot", () =>
   withEnv(
     {
@@ -475,6 +518,43 @@ test("enqueueExclusiveRun suspends idle while the agent waits on acquireInferenc
     },
   ));
 
+test("enqueueExclusiveRun suspends idle while the agent holds a slot (first-token wait)", () =>
+  withEnv(
+    {
+      SAND_DISABLE_RUN_SCHEDULER: "1",
+      SAND_RUN_HARD_DEADLINE_MS: "3600000",
+      SAND_RUN_IDLE_DEADLINE_MS: "1500",
+      SAND_MAX_INFERENCE_INFLIGHT: "1",
+    },
+    async () => {
+      resetInferenceInflightForTests();
+      const agentId = "88888888-8888-4888-8888-888888888888";
+      const tm = makeFakeTm(agentId);
+      const lifecycle = new RunLifecycle(tm);
+      // Slot already granted — mirrors post-queue first-token silence on Z.AI.
+      const held = await acquireInferenceSlot({ agentId });
+      let finish;
+      const run = lifecycle.enqueueExclusiveRun(
+        agentId,
+        () => new Promise((resolve) => { finish = resolve; }),
+        { lane: "user", source: "agent" },
+      );
+      let caught;
+      run.catch((error) => { caught = error; });
+      await sleep(3200);
+      assert.equal(
+        caught,
+        undefined,
+        "holding a slot during first-token silence must not trip run-idle",
+      );
+      assert.deepEqual(tm.interrupts, []);
+      held();
+      finish();
+      await run;
+      resetInferenceInflightForTests();
+    },
+  ));
+
 test("the total cap fails a run that keeps making progress forever", async () => {
   const tracker = new RunProgressTracker();
   const feeder = setInterval(() => tracker.record("agent-x", { type: "thinking-delta" }), 50);
@@ -495,7 +575,11 @@ test("the total cap fails a run that keeps making progress forever", async () =>
 
 test("RunProgressTracker counts model and tool events and tracks pending tools", () => {
   const tracker = new RunProgressTracker();
-  assert.deepEqual(tracker.snapshot("a"), { progressSeq: 0, toolInFlight: false });
+  assert.deepEqual(tracker.snapshot("a"), {
+    progressSeq: 0,
+    toolInFlight: false,
+    summarizing: false,
+  });
   tracker.record("a", { type: "retrying" });
   assert.equal(tracker.snapshot("a").progressSeq, 0, "retry bookkeeping is not progress");
   tracker.record("a", { type: "tool-call", id: "t1", name: "x", status: "pending" });
@@ -510,10 +594,18 @@ test("RunProgressTracker counts model and tool events and tracks pending tools",
   tracker.record("a", { type: "tool-call", id: "t3", name: "z", status: "pending" });
   tracker.record("a", { type: "turn-ended" });
   assert.equal(tracker.snapshot("a").toolInFlight, false, "turn end clears dangling tools");
+  assert.equal(tracker.snapshot("a").summarizing, false, "turn end clears summarizing");
+  tracker.record("a", { type: "summary-started" });
+  assert.equal(tracker.snapshot("a").summarizing, true);
   tracker.record("a", { type: "tool-call", id: "t4", name: "z", status: "pending" });
   tracker.reset("a");
   assert.equal(tracker.snapshot("a").toolInFlight, false, "a new run starts without inherited tools");
-  assert.deepEqual(tracker.snapshot("b"), { progressSeq: 0, toolInFlight: false });
+  assert.equal(tracker.snapshot("a").summarizing, false, "a new run starts without inherited summarizing");
+  assert.deepEqual(tracker.snapshot("b"), {
+    progressSeq: 0,
+    toolInFlight: false,
+    summarizing: false,
+  });
 });
 
 test("enqueueExclusiveRun keeps a progressing run alive via trackProgressFromUpdate", () =>
