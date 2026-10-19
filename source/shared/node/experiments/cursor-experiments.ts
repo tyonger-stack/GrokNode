@@ -54,13 +54,25 @@ export class SandExperimentService {
   private computeFeatureFlagDevPanel(): unknown { if (!this.canUseFeatureFlagOverrides()) return undefined; const overrides = this.overrideStore.activeOverrides(); return { items: Object.keys(FLAGS).filter(isFlagName).map((name) => ({ name, value: this.checkFeatureGate(name), defaultValue: FLAGS[name]?.default ?? false, override: overrides.get(name) ?? null })), isLive: this.hasLiveNetworkBootstrap }; }
   private async whenReady(timeoutMs = GATE_READY_TIMEOUT_MS): Promise<void> { if (this.hasLiveNetworkBootstrap) return; const drain = async () => { let last: Promise<void> | null = null; while (!this.hasLiveNetworkBootstrap && !this.isDisposed) { const current = this.currentRefresh; if (current == null || current === last) return; last = current; await current; } }; if (timeoutMs <= 0) return drain(); const deadline = createDeadlinePolicy(realClock, { name: "sand-experiments-gate-ready", timeoutMs }); try { await deadline.run(drain); } catch (error) { if (!(error instanceof DeadlineExceededError)) throw error; } }
   async checkGate(name: FeatureFlagName, options?: { timeoutMs?: number }): Promise<boolean> { await this.whenReady(options?.timeoutMs); return this.checkFeatureGate(name); }
-  getExperiment(name: ExperimentName): Record<string, unknown> { const fallback = EXPERIMENTS[name].fallbackValues as Record<string, unknown>; if (this.client == null) return fallback; try { return { ...fallback, ...this.client.getExperiment(name, READ_OPTIONS).value }; } catch { return fallback; } }
+  getExperiment(name: ExperimentName): Record<string, unknown> {
+    // Unknown names must not throw: call sites may probe configs that are not in
+    // the bundled experiment-config.gen.ts map yet (e.g. grok_bot_loop_detection).
+    const fallback = (EXPERIMENTS[name]?.fallbackValues ?? {}) as Record<string, unknown>;
+    if (this.client == null) return fallback;
+    try { return { ...fallback, ...this.client.getExperiment(name, READ_OPTIONS).value }; } catch { return fallback; }
+  }
   getExperimentGroupName(name: ExperimentName): string | null { if (this.client == null) return null; try { return this.client.getExperiment(name, READ_OPTIONS).groupName ?? null; } catch { return null; } }
   hasHydratedStatsigUserId(): boolean { return this.lastHydratedUserId != null && this.lastHydratedUserId.length > 0; }
   async waitForHydratedStatsigUserId(timeoutMs = 60_000): Promise<boolean> { if (this.hasHydratedStatsigUserId()) return true; if (this.hydratedUserIdReady == null) this.hydratedUserIdReady = new Promise((resolve) => { this.resolveHydratedUserIdReady = resolve; }); const deadline = createDeadlinePolicy(realClock, { name: "sand-experiments-hydrated-user", timeoutMs }); try { return await deadline.run(() => this.hydratedUserIdReady as Promise<boolean>); } catch (error) { if (error instanceof DeadlineExceededError) return false; throw error; } }
   getSandModelExperimentState(): unknown { const environment = readSandModelExperimentEnvOverride(this.options.env); if (environment != null) return environment; if (!this.hasHydratedStatsigUserId() || !Object.hasOwn(EXPERIMENTS, SAND_MODEL_EXPERIMENT_NAME)) return undefined; const name = SAND_MODEL_EXPERIMENT_NAME as ExperimentName; return resolveSandModelExperimentState({ groupName: this.getExperimentGroupName(name), enabled: this.getExperiment(name).enabled === true }); }
   logSandModelExperimentExposure(): boolean { if (this.client == null || !this.hasHydratedStatsigUserId() || !Object.hasOwn(EXPERIMENTS, SAND_MODEL_EXPERIMENT_NAME)) return false; try { const value = this.client.getExperiment(SAND_MODEL_EXPERIMENT_NAME, READ_OPTIONS); if (value.groupName == null) return false; this.client.getExperiment(SAND_MODEL_EXPERIMENT_NAME); void this.client.flush().catch((error) => reportExperimentsDiagnostic({ kind: "exposure_flush_failed", errorClass: errorLogTag(error) })); return true; } catch { return false; } }
-  getDynamicConfig(name: DynamicConfigName): Record<string, unknown> { const fallback = DYNAMIC_CONFIGS[name].fallbackValues as Record<string, unknown>; if (this.client == null) return fallback; try { return { ...fallback, ...this.client.getDynamicConfig(name, READ_OPTIONS).value }; } catch { return fallback; } }
+  getDynamicConfig(name: DynamicConfigName): Record<string, unknown> {
+    // Same fail-soft contract as FLAGS[name]?.default: a missing bundled entry
+    // returns {} so prepareTurn cannot crash the whole agent run.
+    const fallback = (DYNAMIC_CONFIGS[name]?.fallbackValues ?? {}) as Record<string, unknown>;
+    if (this.client == null) return fallback;
+    try { return { ...fallback, ...this.client.getDynamicConfig(name, READ_OPTIONS).value }; } catch { return fallback; }
+  }
   getConfiguredDefaultModel() { return this.resolveConfiguredModel(SAND_DEFAULT_MODEL_CONFIG_NAME); }
   getConfiguredAutomationsModel() { return this.resolveConfiguredModel(SAND_AUTOMATIONS_MODEL_CONFIG_NAME); }
   private resolveConfiguredModel(configName: string) { const resolution = resolveSandDefaultModelConfig({ raw: Object.hasOwn(DYNAMIC_CONFIGS, configName) ? this.getDynamicConfig(configName as DynamicConfigName) : undefined, hasHydratedStatsigUserId: this.hasHydratedStatsigUserId() }); if (resolution.rejection != null) this.reportModelConfigRejection(configName, resolution.rejection); return resolution.selection; }

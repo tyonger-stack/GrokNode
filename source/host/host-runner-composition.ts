@@ -2812,8 +2812,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         readonly interruptRunner: () => { interrupt?: (value: string) => boolean } | undefined;
       };
       const createScopedAgentOwnerInput = (scope: ScopedAgentOwnerIdentity): ProductionTurnRunShellHostInput["createAgentOwnerInput"] => ({ requestId, runOptions, context, cancelThisRun, emitUpdate }) => {
+          // grok_bot_loop_detection is not in experiment-config.gen.ts; getDynamicConfig
+          // must fail-soft (see SandExperimentService). Env override short-circuits.
           const loopMode = parseSandLoopDetectionMode(process.env.SAND_LOOP_DETECTION_MODE
-            ?? method(experiments, "getDynamicConfig")?.("grok_bot_loop_detection", { disableExposureLog: true })?.mode);
+            ?? method(experiments, "getDynamicConfig")?.("grok_bot_loop_detection")?.mode);
           if (session.agentStore == null || typeof session.agentStore.getBlobStore !== "function") {
             throw new TypeError("production Agent blob store is not bound");
           }
