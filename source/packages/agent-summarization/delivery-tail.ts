@@ -129,6 +129,7 @@ export function isSandUserDeliveryToolCall(call: {
 }): boolean {
   const name = call.toolName.trim().toLowerCase();
   return name === "send_message" ||
+    name === "draftexternalmessage" || name === "requestuserform" ||
     name === "sendmessage" ||
     name === "send_message_tool" ||
     name.endsWith("__send_message");

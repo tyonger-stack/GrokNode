@@ -40,6 +40,7 @@ import { UpgradeRecreateResume } from "./upgrade-recreate-resume.js";
 import { WidgetResponses } from "./widget-responses.js";
 import { WorkflowCommands } from "./workflow-commands.js";
 import { ClientSideToolV2Producer } from "./client-side-tool-v2-producer.js";
+import { ReviewInteractionsUnavailableError, type ReviewInteractionsPort } from "./review-interactions-port.js";
 
 export interface TaskBoundary {
   settled(): Promise<void>;
@@ -52,6 +53,7 @@ export interface TurnExecutionPort {
   readonly canExecute: boolean;
   readonly canExecuteGroupMember: boolean;
   isRunReady(): Promise<boolean>;
+  waitForLocalWork?(): Promise<void>;
   createRunner(...args: any[]): any;
   createGroupMemberRunner(...args: any[]): any;
 }
@@ -142,6 +144,18 @@ function invoke(target: unknown, method: string, args: any[]): any {
 }
 
 export class TranscriptManager {
+  private reviewInteractions: ReviewInteractionsPort | undefined;
+  setReviewInteractions(port: ReviewInteractionsPort): void { this.reviewInteractions = port; }
+  private reviewPort(): ReviewInteractionsPort {
+    if (this.reviewInteractions === undefined) throw new ReviewInteractionsUnavailableError();
+    return this.reviewInteractions;
+  }
+  sendDraft(request: unknown): Promise<unknown> { return this.reviewPort().sendDraft(request); }
+  discardDraft(request: unknown): Promise<unknown> { return this.reviewPort().discardDraft(request); }
+  submitUserForm(request: unknown): Promise<unknown> { return this.reviewPort().submitUserForm(request); }
+  dismissUserForm(request: unknown): Promise<unknown> { return this.reviewPort().dismissUserForm(request); }
+  recoverReviewInteractions(): Promise<void> { return this.reviewInteractions?.recover() ?? Promise.resolve(); }
+  settleReviewInteractionTurn(agentId: string, requestId: string): void { this.reviewInteractions?.onTurnEnded(agentId, requestId); }
   readonly clientSideToolV2 = new ClientSideToolV2Producer();
   readonly sendPipeline = new SendPipeline(this);
   readonly turnRuntime = new TurnRuntime(this);
@@ -312,6 +326,7 @@ export class TranscriptManager {
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    await this.reviewInteractions?.dispose();
     await Promise.allSettled([this.sessions.windowedActivationTail]);
     (this.boxHandoff as any).foreverBoxListeners?.clear?.();
     (this.boxHandoff as any).boxHandoffs?.clear?.();
@@ -564,6 +579,7 @@ const delegations: ReadonlyArray<[string, keyof TranscriptManager]> = [
   ["runRemoteRequestedMemberTurn", "sharedRooms"],
   ["wakeForInbound", "backgroundWakes"],
   ["sendToAgent", "backgroundWakes"],
+  ["stopDelegatedFromAgent", "backgroundWakes"],
   ["broadcastToAgents", "backgroundWakes"],
   ["emitTimelineEvent", "backgroundWakes"],
   ["hasRunningBackgroundShellWork", "backgroundWakes"],
@@ -573,6 +589,7 @@ const delegations: ReadonlyArray<[string, keyof TranscriptManager]> = [
   ["isQuiescingForUpgrade", "upgradeResume"],
   ["markAllRunningAgentsForUpgradeResume", "upgradeResume"],
   ["resumeInterruptedUpgradeTurns", "upgradeResume"],
+  ["listUnacceptedResumeAgentIds", "upgradeResume"],
   ["quiesceForRecreate", "upgradeResume"],
   ["hasCarryablePendingWake", "upgradeResume"],
   ["hasMidDrainRevival", "upgradeResume"],

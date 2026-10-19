@@ -1,3 +1,5 @@
+import { SAND_BROWSER_RECOVERY_SOURCE } from "./sand-browser-recovery-source.js";
+
 export const SAND_BROWSER_DRIVER_VERSION = 3;
 export const SAND_BROWSER_DRIVER_BOX_DIR = "/tmp/.sand-browser";
 export const SAND_BROWSER_DRIVER_BOX_PATH = SAND_BROWSER_DRIVER_BOX_DIR + "/driver-v" + String(SAND_BROWSER_DRIVER_VERSION) + ".mjs";
@@ -99,26 +101,7 @@ async function cdpAlive(port) {
   }
 }
 
-async function ensureChrome(port, display) {
-  if (await cdpAlive(port)) return;
-  await new Promise((resolve) => {
-    const child = spawn("box-chrome", ["--new-window"], {
-      env: { ...process.env, DISPLAY: ":" + String(display) },
-      stdio: "ignore",
-    });
-    child.on("error", () => resolve(undefined));
-    child.on("exit", () => resolve(undefined));
-    setTimeout(() => resolve(undefined), 45000);
-  });
-  const deadline = Date.now() + 30000;
-  while (Date.now() < deadline) {
-    if (await cdpAlive(port)) return;
-    await sleep(500);
-  }
-  throw new Error(
-    "The box browser's CDP endpoint did not come up on port " + String(port)
-  );
-}
+${SAND_BROWSER_RECOVERY_SOURCE}
 
 // A minimal raw CDP socket for the pre-connect probe below. Uses the box
 // image's playwright-core bundled ws client (the driver already depends on
@@ -158,6 +141,7 @@ async function openCdpSocket(wsUrl) {
   }
   let nextId = 1;
   const pending = new Map();
+  const crashedSessions = new Set();
   ws.on("message", (data) => {
     let msg;
     try {
@@ -165,6 +149,8 @@ async function openCdpSocket(wsUrl) {
     } catch {
       return;
     }
+    if (msg.method === "Inspector.targetCrashed") crashedSessions.add(msg.sessionId);
+    if (msg.method === "Inspector.targetReloadedAfterCrash") crashedSessions.delete(msg.sessionId);
     if (msg.id !== undefined && pending.has(msg.id)) {
       pending.get(msg.id)(msg);
       pending.delete(msg.id);
@@ -193,6 +179,7 @@ async function openCdpSocket(wsUrl) {
     });
   return {
     send,
+    isCrashed: (sessionId) => crashedSessions.has(sessionId),
     close: () => {
       try {
         ws.close();
@@ -240,12 +227,21 @@ async function reviveDiscardedTabs(port) {
           ? attached.result.sessionId
           : undefined;
       if (sessionId === undefined) return undefined;
-      const evaluated = await socket.send(
+      await socket.send("Inspector.enable", {}, sessionId, 1500);
+      if (socket.isCrashed(sessionId)) await socket.send("Page.reload", {}, sessionId, 25000);
+      let evaluated = await socket.send(
         "Runtime.evaluate",
         { expression: "document.visibilityState", returnByValue: true },
         sessionId,
         1500
       );
+      if (evaluated?.error && /crash/i.test(evaluated.error.message ?? "")) {
+        // Recover before Playwright attaches: its Page object retains a crash flag.
+        await socket.send("Page.reload", {}, sessionId, 25000);
+        evaluated = await socket.send(
+          "Runtime.evaluate", { expression: "document.visibilityState", returnByValue: true }, sessionId, 1500
+        );
+      }
       socket.send("Target.detachFromTarget", { sessionId }, undefined, 1000);
       if (evaluated === undefined || evaluated.result === undefined) return undefined;
       return evaluated.result.result !== undefined ? evaluated.result.result.value : undefined;
@@ -347,6 +343,9 @@ async function resolvePage(request, context, state) {
         }
       });
     }
+  }
+  if (page === undefined && mappedTarget !== undefined && explicit && request.op !== "navigate") {
+    throw new Error("View " + JSON.stringify(viewId) + " has no open tab. Use browser_navigate to reopen it.");
   }
   if (page === undefined && !explicit && byTarget.size > 0) {
     const pages = [...byTarget.values()];
@@ -450,7 +449,7 @@ const SNAPSHOT_FN = (opts) => {
     const tag = el.tagName.toLowerCase();
     if ((tag === "input" || tag === "textarea") && typeof el.value === "string" && el.value.length > 0) {
       const inputType = (el.getAttribute("type") ?? "").toLowerCase();
-      const isSecret = inputType === "password" || el.getAttribute("autocomplete") === "current-password" || el.getAttribute("autocomplete") === "new-password";
+      const isSecret = inputType === "password" || el.getAttribute("autocomplete") === "current-password" || el.getAttribute("autocomplete") === "new-password" || el.getAttribute("data-sand-write-only") === "1";
       line += " value=" + (isSecret ? '"<redacted>"' : JSON.stringify(trim(el.value, 40)));
     }
     if (tag === "a") {
@@ -507,6 +506,11 @@ const OPS = {
     await page.goto(request.url, { waitUntil: "domcontentloaded", timeout: NAVIGATE_TIMEOUT_MS });
     await page.waitForLoadState("load", { timeout: 5000 }).catch(() => {});
     return { page, viewId, summary: "Navigated to " + request.url };
+  },
+  file_upload: async ({ request, context, state }) => {
+    const { page, viewId } = await resolvePage(request, context, state);
+    await uploadBrowserFiles(page, request.ref, request.paths);
+    return { page, viewId, summary: "Uploaded files" };
   },
   snapshot: async ({ request, context, state }) => {
     const { page, viewId } = await resolvePage(request, context, state);
@@ -710,7 +714,7 @@ const OPS = {
     writeFileSync(outPath, bytes);
     // Heuristic page count (Type/Page objects); official receipt includes page count + size.
     const asText = Buffer.from(bytes).toString("latin1");
-    const pageCount = Math.max(1, (asText.match(/\/Type\s*\/Page\b/g) || []).length);
+    const pageCount = Math.max(1, asText.split("/Type").slice(1).filter((part) => part.trimStart().startsWith("/Page") && !part.trimStart().startsWith("/Pages")).length);
     return {
       page,
       viewId,
@@ -851,14 +855,16 @@ const OPS = {
 };
 
 async function run(request) {
-  await ensureChrome(request.cdpPort, request.display);
+  await ensureChrome(request.cdpPort, request.display, request.launchBrowser !== false);
   await reviveDiscardedTabs(request.cdpPort);
   const { chromium } = await import("playwright-core");
   const browser = await chromium.connectOverCDP(
     "http://127.0.0.1:" + String(request.cdpPort),
     { timeout: 10000 }
   );
+  let downloads;
   try {
+    downloads = await configureBrowserDownloads(browser);
     const context = browser.contexts()[0] ?? (await browser.newContext());
     const state = loadState(request.display);
     const loadedViews = { ...state.views };
@@ -867,6 +873,7 @@ async function run(request) {
     const op = OPS[request.op];
     if (op === undefined) throw new Error("Unknown op: " + String(request.op));
     const result = await op({ request, context, state });
+    await downloads.finish();
     // Record the view's URL so a discard-churned target can be re-adopted by
     // URL on a later call (see resolvePage).
     if (result.viewId !== undefined && result.page !== undefined) {
@@ -915,6 +922,7 @@ async function run(request) {
     }
     return out;
   } finally {
+    if (downloads !== undefined) await downloads.dispose();
     await browser.close().catch(() => {});
   }
 }

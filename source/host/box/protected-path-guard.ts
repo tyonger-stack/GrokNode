@@ -31,6 +31,10 @@ export function isAgentMediaStorePath(protectedRoots: readonly string[], candida
 export async function assertPathOutsideProtectedRoots(
   protectedRoots: readonly string[], candidatePath: string, baseDir: string, agentId?: string,
 ): Promise<void> {
+  const privateDriver = resolve(baseDir, candidatePath);
+  if (privateDriver === "/tmp/.sand-user-form-private.mjs" || privateDriver === "/private/tmp/.sand-user-form-private.mjs") {
+    throw new SandProtectedPathError(refusalMessage(candidatePath));
+  }
   if (protectedRoots.length === 0) return;
   // resolve() collapses parent traversal before the filesystem follows symlinks.
   // Refuse ambiguous paths rather than authorize a different path from Read.

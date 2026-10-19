@@ -248,6 +248,17 @@ export class SandAgentDb {
   threadCountsFor(entries: readonly TranscriptEntry[]): Record<string, number> { const counts = branchReplyCounts(this.getBranchedEntries()); const result: Record<string, number> = {}; for (const entry of entries) { const count = counts.get(entry.id); if (count !== undefined) result[entry.id] = count; } return result; }
   getEntryById(id: string): TranscriptEntry | null { if (this.closed) return null; const row = this.statements.getTranscriptEntry!.get(id) as { entry?: unknown } | undefined; return typeof row?.entry === "string" ? parseTranscriptEntry(row.entry) as TranscriptEntry | null : null; }
   appendTranscriptEntry(entry: TranscriptEntry): boolean { let inserted = false; const committed = this.runWrite("appendTranscriptEntry", () => { inserted = Number((this.statements.insertTranscriptEntry!.run(entry.id, JSON.stringify(entry)) as { changes?: unknown }).changes) > 0; }); if (committed && inserted) publishTranscriptMutation({ kind: "entries-upserted", agentId: this.agentDirName, entries: [entry] }); return committed && inserted; }
+  compareAndSetTranscriptEntry(expected: TranscriptEntry, next: TranscriptEntry): boolean {
+    if (expected.id !== next.id) return false;
+    let changed = false;
+    const committed = this.runWrite("compareAndSetTranscriptEntry", () => {
+      const result = this.db.prepare("UPDATE transcript_entries SET entry = ? WHERE id = ? AND entry = ?")
+        .run(JSON.stringify(next), expected.id, JSON.stringify(expected));
+      changed = Number(result.changes) === 1;
+    });
+    if (committed && changed) publishTranscriptMutation({ kind: "entries-upserted", agentId: this.agentDirName, entries: [next] });
+    return committed && changed;
+  }
   appendTranscriptEntries(entries: readonly TranscriptEntry[]): boolean { if (!entries.length) return true; const inserted: TranscriptEntry[] = []; const committed = this.runWrite("appendTranscriptEntries", () => { this.db.exec("BEGIN IMMEDIATE"); try { for (const entry of entries) if (Number((this.statements.insertTranscriptEntry!.run(entry.id, JSON.stringify(entry)) as { changes?: unknown }).changes) > 0) inserted.push(entry); this.db.exec("COMMIT"); } catch (error) { this.db.exec("ROLLBACK"); throw error; } }); if (committed && inserted.length) publishTranscriptMutation({ kind: "entries-upserted", agentId: this.agentDirName, entries: inserted }); return committed; }
   updateTranscriptEntry(id: string, update: (entry: TranscriptEntry) => TranscriptEntry): TranscriptEntry | null { const current = this.getEntryById(id); if (current == null) return null; const next = update(current); const committed = this.runWrite("updateTranscriptEntry", () => { this.statements.updateTranscriptEntry!.run(JSON.stringify(next), id); }); if (!committed) return null; publishTranscriptMutation({ kind: "entries-upserted", agentId: this.agentDirName, entries: [next] }); return next; }
   deleteTranscriptEntry(id: string): boolean { const committed = this.runWrite("deleteTranscriptEntry", () => { this.statements.deleteTranscriptEntry!.run(id); }); if (committed) publishTranscriptMutation({ kind: "entry-deleted", agentId: this.agentDirName, entryId: id }); return committed; }

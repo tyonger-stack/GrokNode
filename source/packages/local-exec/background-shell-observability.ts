@@ -54,6 +54,7 @@ interface ShellArguments {
 }
 
 interface ShellExecutionContext {
+  readonly suppressStdinLogging?: boolean | undefined;
   readonly ctx?: Context | undefined;
   readonly shellId: number;
   readonly conversationId?: string | undefined;
@@ -457,6 +458,7 @@ export class FileLoggingShellFactory {
               const stdin = event.stdin;
               if (stdin) {
                 const logInputChunk = (chunk: unknown): void => {
+                  if (executionContext.suppressStdinLogging === true) return;
                   if (chunk === undefined || chunk === null) return;
                   const chunkString = typeof chunk === "string" ? chunk : Buffer.isBuffer(chunk) ? chunk.toString() : String(chunk);
                   if (chunkString) void safeWrite(`[stdin] ${chunkString.endsWith("\n") ? chunkString : `${chunkString}\n`}`);

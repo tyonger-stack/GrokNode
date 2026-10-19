@@ -859,6 +859,15 @@ export class TurnRuntime {
         return undefined;
       case "send-message": {
         const incoming = update.message as SendMessage;
+        if (typeof update.reviewEntryId === "string" && runSession !== null && runSession !== undefined
+          && ["email-draft", "slack-draft", "user-form"].includes(incoming.type)) {
+          const saved: unknown = runSession.db.getEntryById(update.reviewEntryId);
+          if (typeof saved !== "object" || saved === null || !("kind" in saved) || saved.kind !== "send-message"
+            || !("message" in saved) || typeof saved.message !== "object" || saved.message === null
+            || !("type" in saved.message) || saved.message.type !== incoming.type) throw new TypeError("Saved review card is unavailable");
+          this.tm.ackObligations.fulfillAckObligation(runSession.id, update.ackToken);
+          return update.reviewEntryId;
+        }
         if (
           (incoming.type === "text" || incoming.type === "attachment") &&
           typeof incoming.channel === "string" &&

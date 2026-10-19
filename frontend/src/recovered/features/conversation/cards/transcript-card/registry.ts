@@ -56,6 +56,7 @@ const metadata = (entryType: TranscriptCardEntryType, placeholderHeight: number,
 });
 
 export const TRANSCRIPT_CARD_REGISTRY: Readonly<Record<TranscriptCardProtocolKey, TranscriptCardMetadata>> = Object.freeze({
+  "send-message:user-form": metadata("user-form", 200, "/src/electron-renderer/features/chat/cards/send-message/user-form/view.tsx", "chunk-view-DbO2ying.js", { variant: "question", className: "sand-secret-request-wrap" }),
   "send-message:text": metadata(
     "text",
     60,

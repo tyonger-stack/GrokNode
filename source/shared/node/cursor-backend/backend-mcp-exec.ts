@@ -1,4 +1,5 @@
 import { Struct, type JsonValue } from "@bufbuild/protobuf";
+import { serializeConnectorFailure } from "../../../packages/agent/tools/mcp/mcp-connector-failure.js";
 
 export const LIST_TOOLS_TIMEOUT_MS = 60_000;
 export const CONTROL_RPC_TIMEOUT_MS = 30_000;
@@ -57,7 +58,11 @@ export function createDashboardSandBackendMcpExec(deps: DashboardMcpExecDependen
         const response = await client.executeSandMcpTool({ serverIdentifier: args.serverIdentifier, toolName: args.toolName, args: requestArgs, toolCallId: args.toolCallId, agentId: args.agentId ?? "" }, { timeoutMs: EXECUTE_TOOL_DIAL_DISCOVER_CALL_TIMEOUT_MS });
         return response.result ?? errorResult(`Backend MCP execution returned no result for "${args.toolName}".`);
       }
-      catch (error) { deps.recordExecError?.(args.toolCallId, error); if (deps.connectErrorCode?.(error)?.deadlineExceeded === true) return errorResult(`Backend MCP execution for "${args.toolName}" timed out after ${EXECUTE_TOOL_DIAL_DISCOVER_CALL_TIMEOUT_MS / 1_000}s. The connector may still have applied it, so retry only if repeating the call is safe.`); return errorResult(`Backend MCP execution failed for "${args.toolName}": ${errorLabel(error)}`); }
+      catch (error) {
+        deps.recordExecError?.(args.toolCallId, error);
+        if (deps.connectErrorCode?.(error)?.deadlineExceeded === true) return errorResult(`Backend MCP execution for "${args.toolName}" timed out after ${EXECUTE_TOOL_DIAL_DISCOVER_CALL_TIMEOUT_MS / 1_000}s. The connector may still have applied it, so retry only if repeating the call is safe.`);
+        return errorResult(serializeConnectorFailure(error) ?? `Backend MCP execution failed for "${args.toolName}": ${errorLabel(error)}`);
+      }
     },
     async checkAuthStatus(args: { serverId: string; oauthRedirectUri: string; forceReauth?: boolean; accountKey: string }) {
       try { const response = await client.checkHttpMcpStatus({ serverIds: [args.serverId], oauthRedirectUri: args.oauthRedirectUri, forceReauth: args.forceReauth === true, accountKey: args.accountKey }, { timeoutMs: CONTROL_RPC_TIMEOUT_MS }); const status = response.statuses.find((entry) => entry.id === args.serverId); if (status == null) throw new SandBackendMcpExecError("The backend did not report OAuth status for this connector."); return { isAvailable: status.isAvailable, requiresAuth: status.requiresAuth, hasValidToken: status.hasValidToken, authUrl: status.authUrl, error: status.error }; }

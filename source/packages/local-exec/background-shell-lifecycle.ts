@@ -28,6 +28,7 @@ export interface BackgroundSpawnContext {
   readonly conversationId?: string | undefined;
   readonly sandboxPolicy?: SandboxPolicy | undefined;
   readonly enableWriteShellStdinTool?: boolean | undefined;
+  readonly suppressStdinLogging?: boolean | undefined;
   readonly description?: string | undefined;
   readonly outputNotification?: unknown;
 }

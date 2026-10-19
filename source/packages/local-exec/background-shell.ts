@@ -158,6 +158,7 @@ export class LocalBackgroundShellExecutor {
     smartModeApproval?: { reason?: string; requestId?: string };
     classifierResult?: unknown;
     enableWriteShellStdinTool?: boolean;
+    suppressStdinLogging?: boolean;
     description?: string;
     outputNotification?: unknown;
     hookApprovalRequirement?: import("../proto/generated/agent/v1/shell_exec_pb.js").ShellHookApprovalRequirement;
@@ -208,6 +209,7 @@ export class LocalBackgroundShellExecutor {
         ...(args.conversationId === undefined ? {} : { conversationId: args.conversationId }),
         ...(policy === undefined ? {} : { sandboxPolicy: { perRepo: policy } }),
         ...(args.enableWriteShellStdinTool === undefined ? {} : { enableWriteShellStdinTool: args.enableWriteShellStdinTool }),
+        ...(args.suppressStdinLogging === undefined ? {} : { suppressStdinLogging: args.suppressStdinLogging }),
         ...(args.description === undefined ? {} : { description: args.description }),
         ...(args.outputNotification === undefined ? {} : { outputNotification: args.outputNotification }),
       }, this.core);

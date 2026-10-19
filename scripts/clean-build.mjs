@@ -63,6 +63,7 @@ import { applyComputerControlRendererPatch } from './lib/computer-control-render
 import { applyShapePickerPatch } from "./lib/shape-picker-patch.mjs";
 import { applyOriginalRendererConversationComputerCard } from "./lib/conversation-computer-card-renderer-patch.mjs";
 import { applyOriginalRendererAppLinkCards } from "./lib/app-link-card-renderer-patch.mjs";
+import { applyOriginalRendererServerPortCards } from "./lib/server-port-cards-renderer-patch.mjs";
 import { applyOriginalRendererWaitingOnResults } from "./lib/waiting-on-results-renderer-patch.mjs";
 import { applyOriginalRendererViewUnread } from "./lib/view-unread-renderer-patch.mjs";
 import { applyOriginalRendererScrollToBottom } from "./lib/scroll-to-bottom-renderer-patch.mjs";
@@ -179,6 +180,12 @@ async function attachCompositionAudit(clean) {
       "scripts/build-box-exec-daemon.mjs",
       "scripts/host-production-activation.mjs",
       "scripts/electron-main-production-activation.mjs",
+      "scripts/lib/server-port-cards-renderer-patch.mjs",
+      "frontend/src/production/server-port-card-entry.tsx",
+      "frontend/src/recovered/features/conversation/cards/transcript-card/server-port-utilities.css",
+      "frontend/src/recovered/features/conversation/cards/transcript-card/server-port-utilities.manifest.json",
+      "source/shared/external-drafts.ts",
+      "source/shared/user-forms.ts",
       "package.json",
       "package-lock.json",
       "src/app/package.json",
@@ -379,6 +386,7 @@ export async function buildFidelityReconstructedAsar({
   await applyComputerControlRendererPatch({ stageRoot });
   await applyOriginalRendererConversationComputerCard({ appRoot: stageRoot });
   await applyOriginalRendererAppLinkCards({ stageRoot });
+  await applyOriginalRendererServerPortCards({ stageRoot });
   // 0.71.2 View → "View Unread": MAIN chunk roster filter + menu event subscribe. No RLocT.
   // Must precede i18n only so later passes see a stable chunk; anchors do not overlap them.
   await applyOriginalRendererViewUnread({ stageRoot });

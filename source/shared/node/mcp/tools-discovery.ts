@@ -24,10 +24,20 @@ import {
 } from "./mcp-image-assets.js";
 import { toJsonArgs } from "./mcp-validation.js";
 import { notifyLibraryMcpResult } from "../../library/mcp-result-hook.js";
+import { classifyConnectorFailure } from "../../../packages/agent/tools/mcp/mcp-connector-failure.js";
+import { createConnectorRateLimitWaiter } from "../../../packages/agent/tools/mcp/mcp-connector-rate-limits.js";
 
 export const MCP_TOOLS_CACHE_TTL_MS = 24 * 60 * 60 * 1_000;
 export const TOOLS_DISCOVERY_DEADLINE_MS = 120_000;
 export const MCP_TURN_DISCOVERY_TIMEOUT_MS = 30_000;
+
+const connectorRateLimitWaiter = createConnectorRateLimitWaiter();
+
+function abortSignalOf(ctx: unknown): AbortSignal {
+  const signal = (ctx as { readonly signal?: unknown } | null)?.signal;
+  if (signal instanceof AbortSignal) return signal;
+  return new AbortController().signal;
+}
 
 export interface McpDiscoveryResultFactory extends McpResultFactory {
   error(message: string): McpResultLike;
@@ -530,7 +540,19 @@ export function createMcpToolsDiscovery(
           `Tool "${args.toolName}" is disabled for "${displayName}".`,
         );
       }
-      const raw = await executeToolRaw(args, auditIdentity);
+      await connectorRateLimitWaiter.wait(args.providerIdentifier, abortSignalOf(_ctx));
+      let raw: McpResultLike;
+      try {
+        raw = await executeToolRaw(args, auditIdentity);
+      } catch (error) {
+        return resultFactory.error(
+          `MCP execution failed for "${args.toolName}" on "${args.providerIdentifier}": ${errorMessage(error)}`,
+        );
+      }
+      const fault = classifyConnectorFailure(raw);
+      if (fault.kind === "rate_limited") {
+        connectorRateLimitWaiter.defer(args.providerIdentifier, fault);
+      }
       notifyLibraryMcpResult({
         providerIdentifier: args.providerIdentifier,
         toolName: args.toolName,
