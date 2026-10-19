@@ -100,11 +100,21 @@ export function resolveOpenRouterTransport(persistedOverride?: string | null, in
 let catalogCache: { path: string; mtimeMs: number; models: unknown[] | null } | null = null;
 function readCatalogModels(): unknown[] | null {
   const path = join(codexHome(), "opencodex-catalog.json");
-  const mtimeMs = statSync(path).mtimeMs;
-  if (catalogCache?.path === path && catalogCache.mtimeMs === mtimeMs) return catalogCache.models;
-  const parsed = JSON.parse(readFileSync(path, "utf8")) as { models?: unknown };
-  catalogCache = { path, mtimeMs, models: Array.isArray(parsed.models) ? parsed.models : null };
-  return catalogCache.models;
+  try {
+    const mtimeMs = statSync(path).mtimeMs;
+    if (catalogCache?.path === path && catalogCache.mtimeMs === mtimeMs) return catalogCache.models;
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+    const models = typeof parsed === "object" && parsed !== null && "models" in parsed && Array.isArray(parsed.models)
+      ? parsed.models : null;
+    catalogCache = { path, mtimeMs, models };
+    return models;
+  } catch (error) {
+    if (error instanceof SyntaxError || error instanceof Error && "code" in error && error.code === "ENOENT") {
+      catalogCache = null;
+      return null;
+    }
+    throw error;
+  }
 }
 
 export interface OpenRouterModelReasoning {
@@ -124,17 +134,22 @@ export function readOpenRouterModelReasoning(model: string | null | undefined): 
   if (!wanted) return null;
   try {
     const models = readCatalogModels();
-    if (models == null) return null;
-    const entry = models.find((candidate): candidate is Record<string, unknown> =>
-      typeof candidate === "object" && candidate != null && typeof (candidate as { slug?: unknown }).slug === "string" && (candidate as { slug: string }).slug.trim() === wanted);
-    if (entry == null || !Array.isArray(entry.supported_reasoning_levels)) return null;
-    const supported = new Set(entry.supported_reasoning_levels
-      .map((level) => normalizeOpenRouterReasoningEffort((level as { effort?: unknown } | null)?.effort))
-      .filter((level): level is OpenRouterReasoningEffort => level != null));
-    const levels = OPENROUTER_REASONING_EFFORTS.map((ladder) => ladder.value).filter((value) => supported.has(value));
-    if (levels.length === 0) return null;
-    const defaultLevel = normalizeOpenRouterReasoningEffort(entry.default_reasoning_level);
-    return { levels, defaultLevel: defaultLevel != null && supported.has(defaultLevel) ? defaultLevel : null };
+    if (models != null) {
+      const entry = findOpenRouterCatalogModel(models, wanted);
+      if (entry != null && Array.isArray(entry.supported_reasoning_levels)) {
+        const supported = new Set(entry.supported_reasoning_levels
+          .map((level) => normalizeOpenRouterReasoningEffort((level as { effort?: unknown } | null)?.effort))
+          .filter((level): level is OpenRouterReasoningEffort => level != null));
+        const levels = OPENROUTER_REASONING_EFFORTS.map((ladder) => ladder.value).filter((value) => supported.has(value));
+        if (levels.length > 0) {
+          const defaultLevel = normalizeOpenRouterReasoningEffort(entry.default_reasoning_level);
+          return { levels, defaultLevel: defaultLevel != null && supported.has(defaultLevel) ? defaultLevel : null };
+        }
+      }
+    }
+    const direct = directZaiCodingModelMeta(wanted);
+    if (direct == null) return null;
+    return { levels: direct.levels, defaultLevel: direct.defaultLevel };
   } catch { return null; }
 }
 
@@ -144,6 +159,119 @@ export function openRouterEffortOptionsFor(model: string | null | undefined): Ar
   return OPENROUTER_REASONING_EFFORTS
     .filter((entry) => entry.value === "none" || reasoning == null || reasoning.levels.includes(entry.value))
     .map((entry) => ({ value: entry.value, label: entry.label }));
+}
+
+export interface OpenRouterModelContextWindow {
+  /** Catalog `context_window` / `max_context_window` — hard provider limit. */
+  readonly contextWindow: number;
+  /**
+   * Catalog `auto_compact_token_limit` when present; otherwise ~90% of
+   * `contextWindow`. Used as the early background-compaction trigger.
+   */
+  readonly autoCompactTokenLimit: number;
+}
+
+function positiveSafeInt(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+function catalogSlug(entry: Record<string, unknown>): string | undefined {
+  return typeof entry.slug === "string" && entry.slug.trim().length > 0
+    ? entry.slug.trim()
+    : undefined;
+}
+
+function catalogContextWindow(entry: Record<string, unknown>): number | undefined {
+  return positiveSafeInt(entry.context_window) ?? positiveSafeInt(entry.max_context_window);
+}
+
+/**
+ * TokenHub / opencodex catalog slugs are exact (`zai/glm-5.3-flash`). Do not map a
+ * bare direct-API id onto a prefixed catalog row — those are different wire ids
+ * (direct Z.AI coding paas sends `glm-5.3-flash`; TokenHub sends `zai/…`).
+ */
+export function findOpenRouterCatalogModel(
+  models: readonly unknown[],
+  wanted: string,
+): Record<string, unknown> | null {
+  const records = models.filter((candidate): candidate is Record<string, unknown> =>
+    typeof candidate === "object" && candidate != null);
+  return records.find(entry => catalogSlug(entry) === wanted) ?? null;
+}
+
+/**
+ * Bare model ids for `https://api.z.ai/api/coding/paas/v4` (and sibling paas).
+ * Not TokenHub slugs — Windows / effort here follow Z.AI coding-plan docs
+ * (1M context; low/high/max), not `opencodex-catalog.json`'s `zai/` row.
+ */
+const DIRECT_ZAI_CODING_MODEL_META: Readonly<Record<string, {
+  contextWindow: number;
+  autoCompactTokenLimit: number;
+  levels: readonly OpenRouterReasoningEffort[];
+  defaultLevel: OpenRouterReasoningEffort;
+}>> = {
+  "glm-5.3-flash": {
+    contextWindow: 1_000_000,
+    autoCompactTokenLimit: 900_000,
+    levels: ["low", "high", "max"],
+    defaultLevel: "max",
+  },
+  "glm-5.3-flashx": {
+    contextWindow: 1_000_000,
+    autoCompactTokenLimit: 900_000,
+    levels: ["low", "high", "max"],
+    defaultLevel: "max",
+  },
+  "glm-5.3": {
+    contextWindow: 1_000_000,
+    autoCompactTokenLimit: 900_000,
+    levels: ["low", "high", "max"],
+    defaultLevel: "max",
+  },
+};
+
+function directZaiCodingModelMeta(model: string): (typeof DIRECT_ZAI_CODING_MODEL_META)[string] | null {
+  if (model.includes("/")) return null;
+  return DIRECT_ZAI_CODING_MODEL_META[model.toLowerCase()] ?? null;
+}
+
+/**
+ * Per-model context window: exact catalog slug first (TokenHub), else known
+ * direct Z.AI coding-paas bare ids. Local OpenRouter / Proxy providers do not
+ * report `maxTokens` on usage, so the host must resolve the real window before
+ * self-summary thresholds can fire early enough.
+ */
+export function readOpenRouterModelContextWindow(
+  model: string | null | undefined,
+): OpenRouterModelContextWindow | null {
+  const wanted = model?.trim();
+  if (!wanted) return null;
+  try {
+    const models = readCatalogModels();
+    if (models != null) {
+      const entry = findOpenRouterCatalogModel(models, wanted);
+      if (entry != null) {
+        const contextWindow = catalogContextWindow(entry);
+        if (contextWindow !== undefined) {
+          const autoCompactTokenLimit =
+            positiveSafeInt(entry.auto_compact_token_limit) ??
+            Math.floor(contextWindow * 0.9);
+          return {
+            contextWindow,
+            autoCompactTokenLimit: Math.min(autoCompactTokenLimit, contextWindow - 1),
+          };
+        }
+      }
+    }
+    const direct = directZaiCodingModelMeta(wanted);
+    if (direct == null) return null;
+    return {
+      contextWindow: direct.contextWindow,
+      autoCompactTokenLimit: Math.min(direct.autoCompactTokenLimit, direct.contextWindow - 1),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Drops an effort the catalog says `model` does not accept, so the endpoint default applies instead of a rejection. */

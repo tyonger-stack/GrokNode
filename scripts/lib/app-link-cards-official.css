@@ -1,0 +1,20 @@
+/* Missing 0.71.2 atomic rules from index-DkV65EBE.css; sha256 30beefeee1dd1b707732f529954a6ab7b9be5bbb43fa2ec4ac9525c4dee7ed5a. */
+.sand-19yoxgu:not(#\#):not(#\#){margin-inline:-3px}
+.sand-3y1lgt:not(#\#):not(#\#){padding-inline:3px}
+.sand-fwqdrz:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary)}
+.sand-yri2b:not(#\#):not(#\#):not(#\#){padding-inline-end:0}
+.sand-1c1uobl:not(#\#):not(#\#):not(#\#){padding-inline-start:0}
+:where(.sand--default-marker:is([data-role=user])) .sand-d2x0lb.sand-d2x0lb:not(#\#):not(#\#):not(#\#){background-color:transparent}
+.sand-1wpm9rq:focus-visible:not(#\#):not(#\#):not(#\#){outline-color:var(--sand-border-focus)}
+.sand-11hyl0l:hover:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary)}
+:where(.sand--default-marker:is([data-role=user])) .sand-1bo111n.sand-1bo111n:hover:not(#\#):not(#\#):not(#\#){background-color:color-mix(in srgb,currentColor 20%,transparent)}
+.sand-g2ss61:not(#\#):not(#\#):not(#\#):not(#\#){height:1lh}
+.r-app-link-chip{font-weight:var(--sand-font-weight-medium)}
+.r-app-link-chip:focus-visible{outline:2px solid var(--sand-border-focus);outline-offset:2px}
+.r-app-link-card p{margin:0;min-width:0}
+.r-app-link-title{font-size:var(--cursor-font-size-sm,13px);font-weight:var(--sand-font-weight-medium);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.r-app-link-byline{font-size:var(--cursor-font-size-xs,12px);color:var(--sand-text-tertiary)}
+.r-app-link-description{font-size:var(--cursor-font-size-sm,13px);color:var(--sand-text-secondary);overflow-wrap:anywhere}
+.r-app-link-footer{border-top:1px solid var(--sand-border-default);padding:8px}
+.r-app-link-footer button{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:0;border-radius:var(--cursor-radius-full,9999px);padding:4px 12px;background:var(--sand-fill-secondary);color:var(--sand-text-primary);font:inherit;font-size:var(--cursor-font-size-sm,13px);cursor:pointer}
+.r-app-link-footer button:hover{background:var(--sand-fill-secondary-hover)}

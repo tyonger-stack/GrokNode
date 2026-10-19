@@ -6,9 +6,23 @@
  * the top bar disables pointer events for all children except opted-in controls.
  */
 .sand-media-viewer { position: fixed; inset: 0; z-index: 4000; display: flex; overflow: hidden; background: rgba(13, 15, 12, .96); }
-.sand-media-viewer__top-bar { position: absolute; inset: 0 0 auto; z-index: 2; display: flex; justify-content: flex-end; padding: 12px 16px; pointer-events: none; }
-.sand-media-viewer__close { width: 34px; height: 34px; color: #d9ded4; background: #20231f; border: 1px solid #343832; border-radius: 8px; cursor: pointer; font-size: 22px; line-height: 1; pointer-events: auto; }
-.sand-media-viewer__download { color: #d9ded4; background: #20231f; border: 1px solid #343832; border-radius: 8px; cursor: pointer; font-size: 13px; line-height: 1; padding: 0 12px; height: 34px; pointer-events: auto; }
+/* Official top-bar: end-aligned circle secondary icon pair (gap 8px), not a text Download chip. */
+.sand-media-viewer__top-bar { position: absolute; inset: 0 0 auto; z-index: 2; display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 12px 16px; pointer-events: none; }
+.sand-media-viewer__close,
+.sand-media-viewer__download {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  color: #d9ded4;
+  background: #20231f;
+  border: 1px solid #343832;
+  border-radius: 9999px;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+}
 .sand-media-viewer__close:hover, .sand-media-viewer__close:focus-visible, .sand-media-viewer__download:hover, .sand-media-viewer__download:focus-visible, .sand-media-viewer__nav:hover, .sand-media-viewer__nav:focus-visible, .sand-media-viewer__thumb:hover, .sand-media-viewer__thumb:focus-visible { color: #eef3e7; background: #292d26; outline: 1px solid #a9c85d; outline-offset: 1px; }
 .sand-media-viewer__column { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .sand-media-viewer__media-cell { position: relative; display: grid; flex: 1; place-items: center; min-height: 0; overflow: hidden; }

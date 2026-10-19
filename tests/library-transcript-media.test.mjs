@@ -107,3 +107,36 @@ test("conversation media includes uploaded images while preserving returned arti
   const rows = media.extractConversationMedia(entries);
   assert.deepEqual(rows, [{ id: "image:visual:file:///workspace/shot.png", kind: "image", timestampMs: 6, source: "file:///workspace/shot.png", name: "My screenshot" }]);
 });
+
+test("unstamped user-attachment inherits the latest prior entry timestampMs", async () => {
+  const media = await loadModule();
+  const rows = media.extractConversationMedia([
+    { id: "m1", kind: "message", role: "user", timestampMs: 1_700_000_000_000, content: "hi" },
+    { id: "u1", kind: "user-attachment", file_path: "file:///a/today.pdf", file_name: "today.pdf" },
+    { id: "m2", kind: "send-message", timestampMs: 1_700_000_100_000, message: { type: "text", content: "ok" } },
+  ]);
+  assert.deepEqual(rows, [{
+    id: "u1:file:file:///a/today.pdf",
+    kind: "file",
+    timestampMs: 1_700_000_000_000,
+    source: "file:///a/today.pdf",
+    name: "today.pdf",
+  }]);
+});
+
+test("unstamped user-attachment stays null when no prior stamped entry exists", async () => {
+  const media = await loadModule();
+  const rows = media.extractConversationMedia([
+    { id: "u1", kind: "user-attachment", file_path: "file:///a/orphan.pdf", file_name: "orphan.pdf" },
+  ]);
+  assert.equal(rows[0]?.timestampMs, null);
+});
+
+test("unstamped bot artifacts do not inherit an unrelated prior timestamp", async () => {
+  const media = await loadModule();
+  const rows = media.extractConversationMedia([
+    { id: "m1", kind: "message", role: "user", timestampMs: 1_700_000_000_000, content: "hi" },
+    { id: "b1", kind: "send-message", message: { type: "attachment", url: "file:///a/unknown.pdf", file_name: "unknown.pdf" } },
+  ]);
+  assert.equal(rows[0]?.timestampMs, null);
+});

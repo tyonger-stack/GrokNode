@@ -25,6 +25,7 @@ export const SAND_GATEWAY_COMMANDS = {
   searchMedia: (api: GatewayApi, body: string) => api.searchMedia(parseCommandArgs(body)),
   createAgent: (api: GatewayApi, body: string) => api.createAgent(parseCommandArgs(body)),
   kickstartAgent: (api: GatewayApi, body: string) => api.kickstartAgent(parseCommandArgs(body)),
+  startFreshConversation: (api: GatewayApi, body: string) => api.startFreshConversation(parseCommandArgs(body)),
   requestDiskSaverAudit: (api: GatewayApi, body: string) => api.requestDiskSaverAudit(parseCommandArgs(body)),
   createGroup: (api: GatewayApi, body: string) => api.createGroup(parseCommandArgs(body)),
   setGroupMembers: (api: GatewayApi, body: string) => api.setGroupMembers(parseCommandArgs(body)),

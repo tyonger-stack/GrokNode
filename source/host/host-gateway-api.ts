@@ -10,6 +10,7 @@ import { applyLocalBotTemplateContents } from "./extensions/transcript/local-bot
 import type { SandAgentDb } from "./extensions/session/agent-db.js";
 import { z } from "zod";
 import { MainAgentService, MAIN_AGENT_PROFILE } from "./main-agent-service.js";
+import { refuseLocalConversationReset } from "./runner/start-fresh-conversation.js";
 
 export const HOST_CAPABILITIES = [
   "orderedReplicasV1",
@@ -363,6 +364,7 @@ export function createHostGatewayApi(
     kickstartAgent: async (args: any) => ({
       isIntroductionInFlight: await deps.kickstartIfPending(args.id)
     }),
+    startFreshConversation: async () => refuseLocalConversationReset(),
     requestDiskSaverAudit: async (args: any) => ({
       isAuditInFlight: await deps.requestDiskSaverAudit(args.id)
     }),

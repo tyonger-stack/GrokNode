@@ -31,6 +31,8 @@ import { renderUserIdentitySystemPrompt } from "../sand-user-identity.js";
 import { renderWorkflowsSystemPrompt } from "../../shared/workflow-model.js";
 import { renderChannelsSystemPrompt, type ChannelConnectionSummary } from "../../shared/channel-messaging.js";
 import { renderAgentDirectorySystemPrompt, type AgentAddress, type AgentGroupAddress } from "../agents/agent-messaging.js";
+import type { RelatedConversationLink } from "./sessions/related-conversations-prompt.js";
+import { createRelatedConversationsSection, type PromptSectionSnapshotStore } from "./sessions/related-conversations-section.js";
 import { spotlightPromptSection } from "../../shared/sand-spotlight.js";
 import type { ConnectorManifest } from "../../shared/channels.js";
 
@@ -83,6 +85,8 @@ export interface SystemPromptAssemblyDependencies {
   readonly sendToAgentImpl?: unknown;
   readonly agentManagement?: unknown;
   readonly agentDirectory?: () => readonly AgentAddress[];
+  readonly relatedConversations?: () => readonly RelatedConversationLink[] | undefined;
+  readonly promptSectionSnapshots?: () => PromptSectionSnapshotStore | null;
   readonly agentGroups?: () => readonly AgentGroupAddress[];
   readonly agentsRootDir?: () => string | null | undefined;
   readonly isSpotlightEnabled?: () => boolean;
@@ -235,6 +239,14 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
     return rendered.length > 0 ? rendered : null;
   }
 
+  const relatedConversationsSection = createRelatedConversationsSection({
+    related: () => deps.isSubagentRunner || deps.isSystemPromptOverridden ? undefined
+      : deps.relatedConversations === undefined ? (deps.agentDirectory?.() ?? []).map((agent) => ({ sessionId: agent.id, label: agent.name }))
+      : deps.relatedConversations(),
+    compactionEpoch: deps.compactionEpoch,
+    snapshots: () => deps.promptSectionSnapshots?.() ?? null,
+  });
+
   function getAgentDirectorySection(): string | null {
     if (deps.isSubagentRunner) return null;
     if (deps.sendToAgentImpl == null && deps.agentManagement == null) return null;
@@ -260,13 +272,14 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
     if (deps.isSystemPromptOverridden && !deps.isSubagentRunner && cloudDisabled) add(SAND_CLOUD_AGENTS_DISABLED_PROMPT_SECTION);
     if (!deps.isSubagentRunner && deps.mcpManagement() != null && deps.isMcpMultiAccountEnabled?.() === true) add(SAND_MCP_MULTI_ACCOUNT_PROMPT_SECTION);
     add(getTimeZoneSection());
-    add(getMemorySection()); add(getAutomationsSection()); add(getWorkflowsSection()); add(getChannelsSection()); add(getAgentDirectorySection());
+    add(getMemorySection()); add(relatedConversationsSection.render()); add(getAutomationsSection()); add(getWorkflowsSection()); add(getChannelsSection()); add(getAgentDirectorySection());
     add(deps.mcpCustomInstructionsSection()); add(deps.mcpDiscoveryStatusSection()); add(deps.remoteBoxSection()); add(deps.computerSection());
     return sections.join("\n\n");
   }
 
   return {
     getSystemPrompt, prepareAgentProfilePromptSnapshot, getAgentProfileUpdateForTurn, persistAnnouncedAgentProfile,
+    appendFrozenSectionUpdates: relatedConversationsSection.appendUpdates,
     resetProfileSnapshotFallback() { inMemoryProfilePromptSnapshot = null; },
   };
 }

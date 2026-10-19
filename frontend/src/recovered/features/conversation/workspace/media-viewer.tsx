@@ -2,6 +2,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { AttachmentBytesResult, AttachmentMedia } from "../../../contracts/desktop-bridge";
+import { SandIconButton } from "../../../ui/sand-kit-primitives";
 import { attachmentBasename, formatAttachmentBytes, inferAttachmentKind, type AttachmentKind, type DraftAttachment } from "./model";
 import { PdfAttachmentViewer, type PdfBytesResolver } from "./pdf-viewer";
 import { TextAttachmentViewer } from "./text-viewer";
@@ -189,8 +190,30 @@ export function MediaViewer({ attachments, startIndex, resolveMedia, onClose, re
   return createPortal(
     <div aria-label={title} aria-modal="true" className="sand-media-viewer" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }} onPointerCancel={onPointerUp} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} role="dialog">
       <div className="sand-media-viewer__top-bar">
-        {current == null || onDownload == null ? null : <button aria-label="Download file" className="sand-media-viewer__download" onClick={() => { void onDownload(current); }} style={{ pointerEvents: "auto" }} type="button">Download</button>}
-        <button aria-label="Close media preview" className="sand-media-viewer__close" onClick={onClose} type="button">×</button>
+        {/* Official 0.71 Zn: circle secondary icon buttons (XJgjjM / bpMYYF), not a text "Download" chip. */}
+        {current == null || onDownload == null ? null : (
+          <SandIconButton
+            aria-label="下载媒体"
+            className="sand-media-viewer__download"
+            icon="arrow-bracket-to-down"
+            onClick={() => { void onDownload(current); }}
+            shape="circle"
+            size="md"
+            style={{ pointerEvents: "auto" }}
+            type="button"
+            variant="default"
+          />
+        )}
+        <SandIconButton
+          aria-label="关闭媒体预览"
+          className="sand-media-viewer__close"
+          icon="close"
+          onClick={onClose}
+          shape="circle"
+          size="md"
+          type="button"
+          variant="default"
+        />
       </div>
       <div className="sand-media-viewer__column">
         <div className="sand-media-viewer__media-cell" onDoubleClick={fit} onWheel={onWheel}>

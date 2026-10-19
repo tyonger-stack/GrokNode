@@ -82,11 +82,11 @@ export function renderMemorySystemPrompt(value: MemoryRecall | readonly MemoryRe
   ];
   if (location != null) lines.push(
     `Your memory lives in a folder at ${location}: profile.md holds who the user is (kept in mind every turn) and log/ holds dated history.`,
-    'Read or grep those files with Read and Shell on your own computer when you need older facts that are not listed here. To CHANGE memory, prefer the update_state tool (target "memory"): action "write" with a fact and a tier (profile | log | note), or action "forget" with the exact text of a recorded fact.',
+    'Read or grep those files with Read and Shell on your own computer when you need older facts that are not listed here. To CHANGE memory, prefer the UpdateMemory tool: action "write" with a fact and the memory type it belongs in (profile, journal, shared_profile, shared_journal), or action "forget" with the exact text of a recorded fact. journal is the dated log. Older journal entries stay out of this section; RecallMemory searches them. update_state target "memory" still writes the same facts, including tier "note".',
   );
-  if (profile.length > 0) lines.push("About the user:", ...profile.map(factLine));
+  if (profile.length > 0) lines.push("About the user (profile):", ...profile.map(factLine));
   if (recent.length > 0) {
-    lines.push("Recently:");
+    lines.push("Recently (journal):");
     let budget = MEMORY_RECENT_PROMPT_CHAR_BUDGET;
     let shown = 0;
     for (const memory of recent) {
@@ -288,7 +288,7 @@ export function renderUserMemorySystemPrompt(recall: { readonly profile: readonl
   ];
   if (ctx.ownShardDir != null) {
     lines.push(
-      `User memory lives under ${ctx.userMemoryDir}, split into one shard folder per assistant so every file has a single writer. Your own shard is at ${ctx.ownShardDir} (a profile.md and log/YYYY-MM.md you can read and grep with Read and Shell on your own computer). To CHANGE shared user memory, prefer the update_state tool (target "memory", scope "user", action "write" or "forget"). Never edit another assistant's shard.`,
+      `User memory lives under ${ctx.userMemoryDir}, split into one shard folder per assistant so every file has a single writer. Your own shard is at ${ctx.ownShardDir} (a profile.md and log/YYYY-MM.md you can read and grep with Read and Shell on your own computer). To CHANGE shared user memory, prefer UpdateMemory with memory_type shared_profile or shared_journal (or update_state target "memory", scope "user"). Never edit another assistant's shard.`,
       'To fix or replace a shared fact another assistant recorded, write the corrected fact into YOUR shard via update_state \u2014 the newest wins on conflict. Record a fact here only when it is clearly about the user and useful to every assistant; keep role-specific facts in your own memory (scope "agent").',
     );
   }
@@ -296,11 +296,11 @@ export function renderUserMemorySystemPrompt(recall: { readonly profile: readonl
     lines.push("Shared facts are tagged [via <assistant>] so you can tell which assistant learned each one.");
   }
   if (recall.profile.length > 0) {
-    lines.push("About the user (shared):");
+    lines.push("About the user (shared_profile):");
     appendBudgetedProvenancedFacts(lines, recall.profile, MEMORY_USER_PROFILE_CHAR_BUDGET, "profile facts", "the user-memory/ folder");
   }
   if (recall.recent.length > 0) {
-    lines.push("Recently (shared):");
+    lines.push("Recently (shared_journal):");
     appendBudgetedProvenancedFacts(lines, recall.recent, MEMORY_USER_RECENT_CHAR_BUDGET, "log facts", "the user-memory/ folder");
   }
   if (recall.profile.length === 0 && recall.recent.length === 0) lines.push("No shared facts recorded yet.");

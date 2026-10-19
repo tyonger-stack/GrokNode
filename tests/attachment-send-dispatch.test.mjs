@@ -82,6 +82,8 @@ test("attachment entry reads dimensions through the service's object request sha
   assert.equal(entry.file_name, "wechat-steward-bot-template.md");
   assert.equal(entry.byteSize, 4154);
   assert.deepEqual({ width: entry.width, height: entry.height }, { width: 12, height: 34 });
+  assert.equal(typeof entry.timestampMs, "number");
+  assert.ok(entry.timestampMs > 0);
 });
 
 test("a non-image attachment still resolves when the port reports no dimensions", async () => {

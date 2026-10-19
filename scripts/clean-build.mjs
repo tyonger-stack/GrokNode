@@ -62,6 +62,7 @@ import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-p
 import { applyComputerControlRendererPatch } from './lib/computer-control-renderer-patch.mjs';
 import { applyShapePickerPatch } from "./lib/shape-picker-patch.mjs";
 import { applyOriginalRendererConversationComputerCard } from "./lib/conversation-computer-card-renderer-patch.mjs";
+import { applyOriginalRendererAppLinkCards } from "./lib/app-link-card-renderer-patch.mjs";
 import { applyOriginalRendererWaitingOnResults } from "./lib/waiting-on-results-renderer-patch.mjs";
 import { applyOriginalRendererViewUnread } from "./lib/view-unread-renderer-patch.mjs";
 import { applyOriginalRendererScrollToBottom } from "./lib/scroll-to-bottom-renderer-patch.mjs";
@@ -377,6 +378,7 @@ export async function buildFidelityReconstructedAsar({
   // own labels, no RLocT: order-free against the passes above.
   await applyComputerControlRendererPatch({ stageRoot });
   await applyOriginalRendererConversationComputerCard({ appRoot: stageRoot });
+  await applyOriginalRendererAppLinkCards({ stageRoot });
   // 0.71.2 View → "View Unread": MAIN chunk roster filter + menu event subscribe. No RLocT.
   // Must precede i18n only so later passes see a stable chunk; anchors do not overlap them.
   await applyOriginalRendererViewUnread({ stageRoot });

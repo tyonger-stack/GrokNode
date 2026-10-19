@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "extraction": "Complete top-level AST nodes selected by application-card patch anchors, in original order.",
+  "sources": {
+    "index-UbX-y3il.js": {
+      "sourcePath": "src/app/dist/renderer/assets/index-UbX-y3il.js",
+      "sourceSha256": "ef4e9831b65d39633f09c9ad0c083b98b7ebf52e3bb558182aee5bde31f876fa",
+      "fixtureSha256": "7f52731adf34d4c3548f15f6dfe8b1e5f5a6d352aecda27da2b125f1c02daa11",
+      "nodes": [
+        {
+          "type": "FunctionDeclaration",
+          "start": 375943,
+          "end": 377110,
+          "sha256": "096c1e1ca8b3a7f60b5b27686eb57d63c2cb22997b2233677bb98b8c525fde86"
+        },
+        {
+          "type": "FunctionDeclaration",
+          "start": 4665128,
+          "end": 4665297,
+          "sha256": "6aa2d72dbb890c677a4c32193308f9ce4b19fe8cb8cebb09de0468fd1d13d6db"
+        },
+        {
+          "type": "FunctionDeclaration",
+          "start": 4918089,
+          "end": 4918150,
+          "sha256": "e1034fe05e4bc66f6d8a4182de77188382bee33052da15fc1a09a1ac09f23606"
+        },
+        {
+          "type": "VariableDeclaration",
+          "start": 5166859,
+          "end": 5172741,
+          "sha256": "11eaa4598ee2283fe3ccdde38ee208692aa0d1f64bd3e78c0a35508ed398a30a"
+        },
+        {
+          "type": "FunctionDeclaration",
+          "start": 5452687,
+          "end": 5457044,
+          "sha256": "a797afeaa1e156517ead1d2f6a0317f69ddbfed1a7786040e3b150fa7b66855c"
+        },
+        {
+          "type": "FunctionDeclaration",
+          "start": 5457044,
+          "end": 5457154,
+          "sha256": "28276c88ff42239ee64c72e3fb244114db00f11e041c7c8ab9bfc785a876bbfa"
+        },
+        {
+          "type": "VariableDeclaration",
+          "start": 5461310,
+          "end": 5461479,
+          "sha256": "6228aaa57a4c4a345a212d7002294fbdcdb50ed5d1ab861f49c955486fccc324"
+        },
+        {
+          "type": "FunctionDeclaration",
+          "start": 5461479,
+          "end": 5461685,
+          "sha256": "3d9c59cd2e6cd5fde1c458d3edae4935c6138a187d19f4a61808f8c80e42a351"
+        },
+        {
+          "type": "FunctionDeclaration",
+          "start": 5463473,
+          "end": 5465566,
+          "sha256": "f197980703ec84d550f37c59d3bbf993d9d6f66b091d7ecd5e2b3267347068b7"
+        },
+        {
+          "type": "FunctionDeclaration",
+          "start": 5493734,
+          "end": 5493811,
+          "sha256": "b0787275a911c7ae2499f1987f9d3a6a92b9789404195b416a1c2057f9b73214"
+        }
+      ]
+    },
+    "index-BlqerJhg.js": {
+      "sourcePath": "src/app/dist/renderer/assets/index-BlqerJhg.js",
+      "sourceSha256": "2c67b8d60a116718cdfbc198c357885b87dfbd92e6a40800dfab91af7b6172fb",
+      "fixtureSha256": "5a80da7d6d807d8b58aa84ac2c26e545a47eeeebc3e9ca92f25f2c960a8c9a15",
+      "nodes": [
+        {
+          "type": "FunctionDeclaration",
+          "start": 21186,
+          "end": 22159,
+          "sha256": "0dd210eea946fa88d6ad845717a6f4b9a23b0b894350792b9d93cc3a65d59a2a"
+        },
+        {
+          "type": "FunctionDeclaration",
+          "start": 39648,
+          "end": 45377,
+          "sha256": "777311d44fc2cd8972027ac79f16c733f032d97fbae3e39698e9fa85178cbd5f"
+        }
+      ]
+    }
+  }
+}

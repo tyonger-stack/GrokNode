@@ -106,18 +106,27 @@ function mediaSource(item: TranscriptMediaRow): { source: string; name: string }
   return "source" in item ? { source: item.source, name: item.name } : null;
 }
 const TRANSCRIPT_SELECTOR = ".sand-virtual-transcript__inner, .sand-transcript";
-const LIBRARY_FILE_SELECTOR = 'button[aria-label^="Open "], [role="button"][aria-label^="Open "]';
+/**
+ * Replay only image/video chips into the native media gallery.
+ *
+ * File chips (`Open ${name}`) must NOT be replayed: upstream `lkn` freezes the
+ * first `onClose` in `useState(() => onClose)`, and the transcript virtualizer
+ * often unmounts the chip owner after the library click — leaving a stuck
+ * sand-file-viewer whose Close / Download buttons no longer work. Library-owned
+ * `LibraryFileViewer` keeps a live `onClose` / `onDownload` instead.
+ *
+ * @evidence src/app/dist/renderer/assets/index-UbX-y3il.js — `function lkn` /
+ *   `const[d]=S.useState(u)` with `u=()=>l`
+ */
 function replayNativeViewerChip(row: LibraryRow): boolean {
   if (row.kind !== "media" || row.item === undefined || !("source" in row.item)) return false;
   const item = row.item;
+  if (item.kind !== "image" && item.kind !== "video") return false;
   const root = document.querySelector(TRANSCRIPT_SELECTOR);
   if (root === null) return false;
-  const chip = item.kind === "image" || item.kind === "video"
-    ? Array.from(root.querySelectorAll('button[aria-label="Media preview"]'))
-      .find((candidate) => candidate.querySelector(item.kind === "video" ? "video[src]" : "img[src]")
-        ?.getAttribute("src") === item.source)
-    : Array.from(root.querySelectorAll(LIBRARY_FILE_SELECTOR))
-      .find((candidate) => candidate.getAttribute("aria-label") === `Open ${item.name}`);
+  const chip = Array.from(root.querySelectorAll('button[aria-label="Media preview"]'))
+    .find((candidate) => candidate.querySelector(item.kind === "video" ? "video[src]" : "img[src]")
+      ?.getAttribute("src") === item.source);
   if (!(chip instanceof HTMLElement)) return false;
   chip.click();
   return true;
@@ -259,7 +268,7 @@ export function LibraryHost(props: LibraryHostProps) {
     }
     return mergeLibrarySources({ pages: pages?.pages ?? [], docs: docs?.docs ?? [], media });
   }, [media, pages, docs, gates]);
-  const groups = useMemo<LibraryGroup[]>(() => (rows === null ? [] : groupLibraryRows(rows, now())), [rows]);
+  const groups = useMemo<LibraryGroup[]>(() => (rows === null ? [] : groupLibraryRows(rows, now())), [rows, now]);
   const galleryVisuals = useMemo<readonly MediaViewerAttachment[]>(() => {
     if (rows === null) return [];
     const visuals: MediaViewerAttachment[] = [];
@@ -360,13 +369,13 @@ export function LibraryHost(props: LibraryHostProps) {
   const renderedRun = runId.current;
   if (entriesFailed) {
     return <section aria-label="资料库" className="sand-agent-library">
-      <div className="sand-library-heading"><h2>资料库</h2><p>对话中的文件</p></div><p role="alert">资料加载失败。</p>
+      <p role="alert">资料加载失败。</p>
       <button onClick={() => { setEntriesFailed(false); setReload((n) => n + 1); }} type="button">重试</button>
     </section>;
   }
   if (rows === null) {
     return <section aria-label="资料库" className="sand-agent-library">
-      <div className="sand-library-heading"><h2>资料库</h2><p>对话中的文件</p></div><p role="status">正在加载资料…</p>
+      <p role="status">正在加载资料…</p>
     </section>;
   }
   const openRow = (row: LibraryRow): void => {
@@ -386,7 +395,6 @@ export function LibraryHost(props: LibraryHostProps) {
     setOpened(row);
   };
   return <section aria-label="资料库" className="sand-agent-library">
-    <div className="sand-library-heading"><h2>资料库</h2><p>对话中的文件</p></div>
     {pages?.failed ? <p className="sand-library-alert" role="alert">
       {pages.pages.length === 0 ? "无法加载你的页面" : "无法加载你的部分页面"}
       <button aria-label="重试" onClick={() => setSourceRetry((n) => n + 1)} type="button">重试</button>

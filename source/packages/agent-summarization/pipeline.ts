@@ -9,6 +9,8 @@ export interface SummarizationPipelineMessage {
 export interface SummarizationPartition<TMessage extends SummarizationPipelineMessage> {
   readonly messagesToSummarize: readonly TMessage[];
   readonly preservedTailMessages: readonly TMessage[];
+  /** Delivery-tail messages kept after the summary (send_message answers, etc.). */
+  readonly trailingMessages?: readonly TMessage[] | undefined;
   readonly skillBlocks: readonly string[];
 }
 
@@ -23,7 +25,7 @@ export interface SummarizationPipelineOptions {
   readonly automationTriggerContext?: unknown;
   readonly agentTranscriptsFolder?: unknown;
   readonly conversationId?: unknown;
-  readonly [key: string]: unknown;
+  readonly subagentId?: unknown;
 }
 
 export interface SummarizationEnrichments {
@@ -35,6 +37,7 @@ export interface SummarizationEnrichments {
   readonly automationTriggerContext: unknown;
   readonly agentTranscriptsFolder: unknown;
   readonly conversationId: unknown;
+  readonly subagentId?: unknown;
 }
 
 export interface SummarizationPipelineAdapter<
@@ -111,14 +114,19 @@ export async function runSummarizationPipeline<
     automationTriggerContext: options.automationTriggerContext,
     agentTranscriptsFolder: options.agentTranscriptsFolder,
     conversationId: options.conversationId,
+    ...(options.subagentId === undefined ? {} : { subagentId: options.subagentId }),
   };
   const rawSummary = await summarizer.generateSummary(context, partitioned, options);
   const builtSummary = summarizer.buildSummaryMessage(rawSummary, partitioned, enrichments);
-  const finalMessages = summarizer.assembleFinalMessages(partitioned, builtSummary.message);
+  const trailingMessages = partitioned.trailingMessages ?? [];
+  const finalMessages = [
+    ...summarizer.assembleFinalMessages(partitioned, builtSummary.message),
+    ...trailingMessages,
+  ];
   return {
     messagesActuallySummarized: partitioned.messagesToSummarize,
     newSummaryMessage: builtSummary.message,
-    preservedOriginalTailMessages: partitioned.preservedTailMessages,
+    preservedOriginalTailMessages: [...partitioned.preservedTailMessages, ...trailingMessages],
     fullReplacementMessages: finalMessages,
     rawSummary,
     summaryTextLength: builtSummary.summaryTextLength,

@@ -28,6 +28,9 @@ import {
   type SelfSummaryTool,
 } from "./self-summary-handler.js";
 import { extractTextContent } from "./token-estimate.js";
+import { selectSelfSummaryDeliveryTail, type DeliveryTailConfig } from "../../agent-summarization/delivery-tail.js";
+import { findLastUserMessageIndex } from "./self-summary.js";
+import type { SummarizationResult } from "../summarization-orchestrator.js";
 
 type RedactedCoreMessage = Parameters<typeof fromRedactedCoreMessage>[0];
 type RedactedInteractionListener = Parameters<typeof executeSelfSummaryWithRetry>[3];
@@ -37,6 +40,7 @@ interface OpenAIPartition {
   readonly userInfoMessage: RedactedCoreMessage | undefined;
   readonly messagesToSummarize: readonly RedactedCoreMessage[];
   readonly preservedTailMessages: readonly RedactedCoreMessage[];
+  readonly trailingMessages: readonly RedactedCoreMessage[];
   readonly skillBlocks: readonly string[];
 }
 
@@ -88,6 +92,7 @@ export class OpenAICompactionHandler {
   declare readonly extraT: unknown;
   declare readonly modelId: string;
   declare readonly retryOptions: SelfSummaryRetryOptions;
+  declare readonly deliveryTail: DeliveryTailConfig | undefined;
 
   constructor(
     promptSession: SelfSummaryPromptSession,
@@ -96,7 +101,7 @@ export class OpenAICompactionHandler {
     tools: SelfSummaryTool[],
     extraT: unknown,
     modelId: string,
-    retryOptions?: SelfSummaryRetryOptions,
+    retryOptions?: SelfSummaryRetryOptions & { readonly deliveryTail?: DeliveryTailConfig | undefined },
   ) {
     this.promptSession = promptSession;
     this.stateHandler = stateHandler;
@@ -104,13 +109,15 @@ export class OpenAICompactionHandler {
     this.tools = tools;
     this.extraT = extraT;
     this.modelId = modelId;
-    this.retryOptions = retryOptions ?? {};
+    const { deliveryTail, ...retry } = retryOptions ?? {};
+    this.deliveryTail = deliveryTail;
+    this.retryOptions = retry;
   }
 
   getModelId(): string { return this.modelId; }
   getMetricsModelLabel(): string { return this.modelId; }
 
-  partitionMessages(messages: readonly RedactedCoreMessage[], _options: SummarizationPipelineOptions): OpenAIPartition {
+  partitionMessages(messages: readonly RedactedCoreMessage[], options: SummarizationPipelineOptions): OpenAIPartition {
     const { systemMessage, userInfoMessage, messagesForSummarization } = prepareMessagesForCompaction(messages);
     const skillBlocks = collectAllSkillBlocks(messagesForSummarization);
     const preservedTailMessages = collectBudgetedUserMessages(
@@ -122,6 +129,7 @@ export class OpenAICompactionHandler {
       userInfoMessage,
       messagesToSummarize: messagesForSummarization,
       preservedTailMessages,
+      trailingMessages: selectSelfSummaryDeliveryTail(messages, options, this.deliveryTail, findLastUserMessageIndex),
       skillBlocks,
     };
   }
@@ -217,7 +225,7 @@ ${rawSummary.text}`;
     ctx: Context,
     messages: readonly RedactedCoreMessage[],
     options: SummarizationPipelineOptions,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<SummarizationResult> {
     using spanContext = createSpan(ctx.withName("OpenAICompactionHandler.summarize"));
     const innerCtx = spanContext.ctx;
     const startTime = performance.now();

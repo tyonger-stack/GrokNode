@@ -38,6 +38,8 @@ let active = 0;
 const waiters: Waiter[] = [];
 /** Agents currently parked on acquireInferenceSlot (no upstream dial yet). */
 const waitingAgentIds = new Set<string>();
+/** Agents that hold a slot (dial / first-token / stream in progress). */
+const holdingAgentIds = new Set<string>();
 
 export function resolveMaxInferenceInflight(
   env: NodeJS.ProcessEnv = process.env,
@@ -66,6 +68,19 @@ export function isAgentWaitingForInferenceSlot(agentId: string): boolean {
   return waitingAgentIds.has(agentId);
 }
 
+/** True while this agent holds a slot (upstream dial / first-token / stream). */
+export function isAgentHoldingInferenceSlot(agentId: string): boolean {
+  return holdingAgentIds.has(agentId);
+}
+
+/**
+ * True while this agent is either queued for or holding a global inference
+ * slot. Run-idle must suspend for both — first-token silence is not a wedge.
+ */
+export function isAgentBusyOnInferenceSlot(agentId: string): boolean {
+  return waitingAgentIds.has(agentId) || holdingAgentIds.has(agentId);
+}
+
 /** Test / restart seam: drops waiters and clears the counter. */
 export function resetInferenceInflightForTests(): void {
   for (const waiter of waiters.splice(0)) {
@@ -74,6 +89,7 @@ export function resetInferenceInflightForTests(): void {
     waiter.reject(new Error("inference inflight reset"));
   }
   waitingAgentIds.clear();
+  holdingAgentIds.clear();
   active = 0;
 }
 
@@ -84,6 +100,21 @@ function releaseSlot(): void {
 
 function clearWaiterAgent(waiter: Waiter): void {
   if (waiter.agentId !== undefined) waitingAgentIds.delete(waiter.agentId);
+}
+
+function makeTrackedRelease(agentId: string | undefined): () => void {
+  if (agentId !== undefined && agentId.length > 0) {
+    holdingAgentIds.add(agentId);
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (agentId !== undefined && agentId.length > 0) {
+      holdingAgentIds.delete(agentId);
+    }
+    releaseSlot();
+  };
 }
 
 function pump(): void {
@@ -98,7 +129,7 @@ function pump(): void {
       continue;
     }
     active += 1;
-    next.resolve(releaseSlot);
+    next.resolve(makeTrackedRelease(next.agentId));
   }
 }
 
@@ -112,7 +143,10 @@ function abortError(signal: AbortSignal): Error {
 
 export type AcquireInferenceSlotOptions = {
   readonly signal?: AbortSignal;
-  /** When set, run-idle deadline suspends for this agent while queued. */
+  /**
+   * When set, run-idle deadline suspends for this agent while queued AND
+   * while the slot is held (first-token / stream silence is not a wedge).
+   */
   readonly agentId?: string;
 };
 
@@ -128,18 +162,15 @@ export function acquireInferenceSlot(
       ? { signal: signalOrOptions }
       : (signalOrOptions ?? {});
   const { signal, agentId } = options;
+  const trackedId =
+    agentId === undefined || agentId.length === 0 ? undefined : agentId;
 
   if (signal?.aborted) return Promise.reject(abortError(signal));
 
   const limit = resolveMaxInferenceInflight();
   if (active < limit) {
     active += 1;
-    let released = false;
-    return Promise.resolve(() => {
-      if (released) return;
-      released = true;
-      releaseSlot();
-    });
+    return Promise.resolve(makeTrackedRelease(trackedId));
   }
 
   return new Promise<() => void>((resolve, reject) => {
@@ -176,7 +207,7 @@ export function acquireInferenceSlot(
       },
       onAbort,
       ...(signal === undefined ? {} : { signal }),
-      ...(agentId === undefined || agentId.length === 0 ? {} : { agentId }),
+      ...(trackedId === undefined ? {} : { agentId: trackedId }),
     };
     if (waiter.agentId !== undefined) waitingAgentIds.add(waiter.agentId);
     waiters.push(waiter);

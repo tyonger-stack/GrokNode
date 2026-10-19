@@ -32,41 +32,44 @@ function record(name, details) {
 }
 after(async () => { await ui.act(async () => root.unmount()); await closeLibraryDom(window); });
 
-test('official 0.71.2 get-file-icon glyphs + colors preserve names and click action', async () => {
-  // Ported from chunk-get-file-icon-ZAkFyGfn.js (md→markdown/iconSecondary, pdf→file-type-pdf/iconRedPrimary, …).
+test('official 0.71.2 Xg file-kind tiles preserve names, stripe kinds, and click action', async () => {
+  // Ported from index-wlkGG389.js Xg/KF + platform tF ($P/OP).
   const cases = {
-    'a.pdf': { glyph: 'file-type-pdf', color: 'red' },
-    'a.docx': { glyph: 'file-text', color: 'blue' },
-    'a.csv': { glyph: 'table', color: 'green' },
-    'a.xlsx': { glyph: 'table', color: 'green' },
-    'a.md': { glyph: 'markdown', color: 'secondary' },
-    'a.mdx': { glyph: 'markdown', color: 'secondary' },
-    'a.json': { glyph: 'brackets-curly', color: 'yellow' },
-    'a.jsonc': { glyph: 'brackets-curly', color: 'yellow' },
-    'a.ndjson': { glyph: 'brackets-curly', color: 'yellow' },
-    'a.py': { glyph: 'file-type-python', color: 'blue' },
-    'a.sh': { glyph: 'currency-dollar', color: 'green' },
-    'a.zip': { glyph: 'package-zipper', color: 'yellow' },
-    'a.txz': { glyph: 'package-zipper', color: 'yellow' },
-    'a.mp3': { glyph: 'waveform', color: 'purple' },
-    'a.avif': { glyph: 'image-square', color: 'cyan' },
-    'a.mov': { glyph: 'play-circle', color: 'red' },
-    'a.unknown': { glyph: 'file', color: 'secondary' },
-    '.pdf': { glyph: 'file-type-pdf', color: 'red' },
-    'https://x.test/a%2Epdf?q=1': { glyph: 'file-type-pdf', color: 'red' },
+    'a.pdf': { kind: 'pdf', stripe: 'red' },
+    'a.docx': { kind: 'docx', stripe: 'blue' },
+    'a.csv': { kind: 'spreadsheet', stripe: 'green' },
+    'a.xlsx': { kind: 'spreadsheet', stripe: 'green' },
+    'a.md': { kind: 'generic', stripe: null },
+    'a.mdx': { kind: 'generic', stripe: null },
+    'a.json': { kind: 'json', stripe: null },
+    'a.jsonc': { kind: 'json', stripe: null },
+    'a.ndjson': { kind: 'json', stripe: null },
+    'a.py': { kind: 'generic', stripe: null },
+    'a.sh': { kind: 'generic', stripe: null },
+    'a.zip': { kind: 'zip', stripe: null },
+    'a.pptx': { kind: 'ppt', stripe: 'orange' },
+    'a.mp3': { kind: 'audio', stripe: null },
+    'a.unknown': { kind: 'unknown', stripe: null },
+    // Official tF rejects leading-dot basenames (`r<=0`); bare `.pdf` stays unknown.
+    'https://x.test/a%2Epdf?q=1': { kind: 'pdf', stripe: 'red' },
   };
   let opened = 0;
   for (const [name, expect] of Object.entries(cases)) {
     await render(ui.LibraryMediaRow, { ...base, row: row('file', name), onOpen: () => opened++ });
-    const icon = host.querySelector('[data-icon-name]');
-    assert.equal(icon.dataset.iconName, expect.glyph, name);
-    assert.equal(icon.dataset.color, expect.color, `${name} color`);
+    const icon = host.querySelector('[data-file-kind]');
+    assert.ok(icon, name);
+    assert.equal(icon.dataset.fileKind, expect.kind, name);
+    const stripe = host.querySelector('.sand-library-fk-stripe');
+    if (expect.stripe == null) assert.equal(stripe, null, `${name} no stripe`);
+    else {
+      assert.ok(stripe, `${name} stripe`);
+      assert.ok(stripe.className.includes(`sand-library-fk-stripe--${expect.stripe}`), `${name} stripe color`);
+    }
     assert.equal(host.querySelector('bdi').textContent, name);
-    assert.equal(icon.dataset.size, 'lg');
     await ui.act(async () => host.querySelector('button').click());
   }
   assert.equal(opened, Object.keys(cases).length);
-  record('file-glyphs', { cases, opened });
+  record('file-kind-tiles', { cases, opened });
 });
 
 test('image resolution and decode failures retain a 24px placeholder; stale sources cannot bleed', async () => {

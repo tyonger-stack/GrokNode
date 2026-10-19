@@ -106,14 +106,14 @@ test("page rows show kind, visibility and edit age; media age is hover-only", as
   assert.doesNotMatch(host.textContent, /筛选|导出|公开写入/);
 });
 
-test("an empty library uses the original empty copy under the required explanation", async (t) => {
+test("an empty library uses the original empty copy without the DIY heading", async (t) => {
   const ui = await loadBundle();
   const empty = desktopFor({});
   empty.getLibraryTranscript = async () => ({ entries: [] });
   empty.listLibraryDocs = async () => ({ docs: [] });
   const host = await render(t, ui, empty);
-  assert.match(host.textContent, /资料库/);
-  assert.match(host.textContent, /对话中的文件/);
+  assert.equal(host.querySelector("section")?.getAttribute("aria-label"), "资料库");
+  assert.equal(host.textContent.includes("对话中的文件"), false);
   assert.match(host.textContent, /此 Bot 创建的页面、文件和应用会显示在这里/);
 });
 

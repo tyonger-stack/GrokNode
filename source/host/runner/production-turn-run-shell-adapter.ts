@@ -93,6 +93,9 @@ export interface ProductionTurnRunShellAdapterInput {
   readonly context: () => Context;
   readonly createSettleHost: () => TurnSettleHost;
   readonly profilePromptSnapshots: () => unknown;
+  readonly memoryStore?: TurnRunShellHost["memoryStore"];
+  readonly episodeProgress?: TurnRunShellHost["episodeProgress"];
+  readonly isMemorableExchange?: TurnRunShellHost["isMemorableExchange"];
   readonly isSubagentRunner: boolean;
   readonly subagentType?: string;
   readonly inheritedRequestSource?: string;
@@ -453,6 +456,9 @@ export function createProductionTurnRunShellAdapter(
     },
     createSettleHost: input.createSettleHost,
     profilePromptSnapshots: input.profilePromptSnapshots,
+    ...(input.memoryStore === undefined ? {} : { memoryStore: input.memoryStore }),
+    ...(input.episodeProgress === undefined ? {} : { episodeProgress: input.episodeProgress }),
+    ...(input.isMemorableExchange === undefined ? {} : { isMemorableExchange: input.isMemorableExchange }),
     onRunUnwind: () => {
       const owner = activeOwner;
       activeOwner = undefined;

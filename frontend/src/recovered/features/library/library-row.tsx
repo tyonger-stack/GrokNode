@@ -3,7 +3,7 @@ import type { LibraryExternalDoc, LibraryPage } from "../../../../../source/shar
 import type { TranscriptMediaRow } from "../../../../../source/host/extensions/library/transcript-media";
 import { formatWhen } from "../../../extensions/library-core";
 import { SandIcon } from "../../ui/sand-kit-primitives";
-import { mapOfficialIconColor, resolveFileIcon } from "./get-file-icon";
+import { FileKindIcon } from "./file-kind-icon";
 import type { LibraryPageProvider } from "./canvas-provider";
 import { LibraryPageMenu } from "./page-menu";
 import type { LibraryLinkActions } from "./page-share";
@@ -50,12 +50,6 @@ function externalTitle(doc: LibraryExternalDoc): string {
   try { return new URL(doc.url).hostname; } catch { return doc.url; }
 }
 
-/** Official 0.71.2 get-file-icon (`chunk-get-file-icon-ZAkFyGfn.js`). */
-function fileIcon(name: string) {
-  const mapping = resolveFileIcon(name);
-  return { name: mapping.icon, color: mapOfficialIconColor(mapping.color) };
-}
-
 type ResolveThumb = (source: string) => Promise<{ readonly kind: "image" | "video"; readonly url: string }>;
 
 function LibraryThumbnail({ source, kind, resolveThumb }: {
@@ -91,9 +85,6 @@ export function LibraryMediaRow(props: {
 }): ReactNode {
   const title = mediaTitle(props.row);
   const age = formatWhen(props.row.timestampMs, props.nowMs);
-  const file = props.row.kind === "link" || props.row.kind === "image" || props.row.kind === "video"
-    ? null
-    : fileIcon(props.row.name);
   return (
     <button className="sand-library-row" data-library-media={props.row.kind} onClick={props.onOpen} title={title} type="button">
       <span className="sand-library-lead">
@@ -101,7 +92,7 @@ export function LibraryMediaRow(props: {
           ? <LibraryThumbnail key={`${props.row.kind}:${props.row.source}`} source={props.row.source} kind={props.row.kind} resolveThumb={props.resolveThumb} />
           : props.row.kind === "link"
             ? <SandIcon name="globe" size="lg" />
-            : file == null ? null : <SandIcon color={file.color} name={file.name} size="lg" />}
+            : <FileKindIcon name={props.row.name} />}
       </span>
       <span className="sand-library-copy"><span className="sand-library-title-line">
         <span className="sand-library-title"><bdi>{title}</bdi></span>

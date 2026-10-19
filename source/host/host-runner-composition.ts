@@ -32,6 +32,12 @@ import type {
   AutomationReview,
   WorkflowRecord,
 } from "./runner/tools/sand-state-tool.js";
+import { buildContextToolDependencies } from "./runner/tools/context-tools.js";
+import { createRunnerMemoryContext, isTurnMemoryStore, isEpisodeProgress } from "./runner/memory-context.js";
+import { isMemorableExchange } from "./runner/sand-memory.js";
+import { createPromptTranscriptSource, hasPromptTranscriptState, readOwnedSubagentTranscript } from "./runner/transcript-blobs.js";
+import { createLocalConversationAccess } from "./runner/sessions/transcript-reader.js";
+import { promptSectionSnapshotStore } from "./runner/sessions/related-conversations-section.js";
 import type {
   CloudAgentApi,
   CloudAgentToolContext,
@@ -77,6 +83,10 @@ import {
 } from "./sand-activity.js";
 import { connectorCardEmissionToMessage } from "./runner/tools/box-help-tool.js";
 import { createAgentPromptSession } from "./extensions/inference/extension.js";
+import { resolveInferenceContextWindowTokens } from "./extensions/inference/provider-session.js";
+import { readOpenRouterModelContextWindow } from "../shared/node/openrouter-proxy.js";
+import { localBackgroundSummarizationPropsForWindow } from "../packages/agent-summarization/background-summarization.js";
+import { SAND_COMPACTION_DELIVERY_TAIL } from "../packages/agent-summarization/delivery-tail.js";
 import { LIBRARY_MAIN_STORE } from "./extensions/library/extension.js";
 import { captureLibraryMcpExecution } from "../shared/library/mcp-result-hook.js";
 import { CONNECTOR_MANIFESTS } from "../shared/channels.js";
@@ -657,6 +667,11 @@ function createTypedInferenceOwner(
       ? {}
       : { createSummarizationSession: (onRequestId: (requestId: string) => void, options?: Readonly<Record<string, unknown>>) => createSummarizationSession(onRequestId, options) }),
   };
+}
+
+function isTextPromptExecutor(value: unknown): value is Parameters<typeof createTextExecutor>[0] {
+  return typeof value === "object" && value !== null
+    && ["appendMessages", "clearMessages", "getMessages", "getState", "stream"].every((key) => typeof Reflect.get(value, key) === "function");
 }
 
 function createTextExecutor(executor: {
@@ -1368,6 +1383,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           },
         });
       })();
+    const conversationAccess = createLocalConversationAccess(session.id, () => method(transcript, "listAgentsSync")?.() ?? []);
     const productionSystemPromptAssembly = productionContext === undefined
       || productionRequestContext === undefined
       ? undefined
@@ -1385,11 +1401,27 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               ? { getMetadata: (key: string) => String(store.getMetadata(key)) }
               : null;
           },
-          compactionEpoch: () => 0,
-          memoryStore: () => null,
-          memorySnapshots: () => null,
-          userMemory: () => null,
-          projectMemory: () => null,
+          compactionEpoch: () => {
+            try {
+              const store = session.agentStore as {
+                getConversationStateStructure?: () => { summaryArchives?: readonly unknown[] };
+              } | null | undefined;
+              const state = store?.getConversationStateStructure?.();
+              return Array.isArray(state?.summaryArchives) ? state.summaryArchives.length : 0;
+            } catch {
+              return 0;
+            }
+          },
+          ...createRunnerMemoryContext({
+            agentId: session.id,
+            dbPath: session.dbPath,
+            sandRoot: memory.options?.sandRoot,
+            store: session.memory,
+            snapshots: session.db,
+            resolveAgentName: (id) => resolveAgentDisplayName(id) ?? id,
+          }),
+          relatedConversations: () => conversationAccess.related().map((link) => ({ sessionId: link.id, label: link.name })),
+          promptSectionSnapshots: () => promptSectionSnapshotStore(session.db),
           isBoxScopedSubagent: () => false,
           requestContext: {
             resolve: () => {
@@ -1408,7 +1440,12 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           connectorManifests: CONNECTOR_MANIFESTS,
           sendToAgentImpl: sendToAgent,
           agentManagement,
-          agentDirectory: () => [],
+          agentDirectory: () => (method(transcript, "listAgentsSync")?.() ?? [])
+            .filter((agent: { id: string; isGroup?: boolean; remoteRoom?: unknown }) =>
+              agent.id !== session.id && !agent.isGroup && agent.remoteRoom == null)
+            .map((agent: { id: string; name: string; description?: string }) => ({
+              id: agent.id, name: agent.name, description: agent.description ?? "",
+            })),
           agentGroups: () => [],
           agentsRootDir: () => dirname(dirname(session.dbPath)),
           isSpotlightEnabled: () => method(experiments, "isSpotlightEnabled")?.() ?? false,
@@ -2496,6 +2533,38 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         ...provider,
         createStateToolInputs: () => ({
           dependencies: state,
+          context: buildContextToolDependencies({
+            state: state.state,
+            selfId: session.id,
+            ownMemory: session.memory,
+            ...(typeof (memory as { options?: { sandRoot?: unknown } }).options?.sandRoot === "string"
+              ? { sandRoot: (memory as { options: { sandRoot: string } }).options.sandRoot }
+              : {}),
+            resolveAgentName: (id) => resolveAgentDisplayName(id) ?? id,
+            loadSubagentTranscript: (id) => readOwnedSubagentTranscript(builtRunner, id),
+            agents: conversationAccess.agents,
+            related: conversationAccess.related,
+            ownSource: () => {
+              const store = session.agentStore;
+              const blobs = method(store, "getBlobStore")?.();
+              if (productionContext === undefined || blobs === undefined || typeof blobs.getBlob !== "function") return null;
+              const current = method(builtRunner, "getAgentConversationStateStructure")?.() ?? method(store, "getConversationStateStructure")?.();
+              if (!hasPromptTranscriptState(current)) return null;
+              return createPromptTranscriptSource({ label: resolveAgentDisplayName(session.id) ?? session.id,
+                state: () => method(builtRunner, "getAgentConversationStateStructure")?.() ?? method(store, "getConversationStateStructure")?.(),
+                getBlob: async (id) => { const bytes: unknown = await blobs.getBlob(productionContext, id); return bytes instanceof Uint8Array ? bytes : undefined; } });
+            },
+            loadTranscript: async (id) => {
+              const store = sessionApi.store as { getAgentTranscriptEntries?: (agentId: string) => Promise<unknown> } | undefined;
+              if (store?.getAgentTranscriptEntries == null) return null;
+              let entries: unknown;
+              try { entries = await store.getAgentTranscriptEntries(id); } catch { return null; }
+              if (!Array.isArray(entries)) return null;
+              const roster = method(transcript, "listAgentsSync")?.() ?? [];
+              const agent = roster.find((item: { id?: string }) => item.id === id) as { name?: string } | undefined;
+              return { label: typeof agent?.name === "string" && agent.name.length > 0 ? agent.name : id, entries };
+            },
+          }),
         }),
       };
     };
@@ -2607,6 +2676,12 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         subagentConfigs: builtinSubagentConfigs(method(remoteBox, "isAvailable")?.() !== false),
       };
       const staticModelId = process.env.SAND_AGENT_MODEL ?? DEFAULT_SAND_MODEL;
+      const inferenceContextWindow = resolveInferenceContextWindowTokens(staticModelId);
+      const catalogContext = readOpenRouterModelContextWindow(staticModelId);
+      const localBackgroundSummarizationProps = localBackgroundSummarizationPropsForWindow(
+        inferenceContextWindow,
+        catalogContext?.autoCompactTokenLimit,
+      );
       const lazyToolHost = () => createProductionTurnToolsetHost({
         turn: baseTurn,
         factoryProvider: createTurnToolsetFactoryProvider(hostDependencies()),
@@ -2833,7 +2908,17 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                     }),
                     promptOptions: (_prompt, options) => toGeneratedTurnPromptOptions(options),
                     assembleGeneratedTurnAction: productionPromptGlue.assembleGeneratedTurnAction,
-                    compactionEpoch: () => 0,
+                    compactionEpoch: () => {
+                      try {
+                        const stateful = child as {
+                          getAgentConversationStateStructure?: () => { summaryArchives?: readonly unknown[] };
+                        } | undefined;
+                        const state = stateful?.getAgentConversationStateStructure?.();
+                        return Array.isArray(state?.summaryArchives) ? state.summaryArchives.length : 0;
+                      } catch {
+                        return 0;
+                      }
+                    },
                     getConversationState: () => {
                       const stateful = child as {
                         getAgentConversationStateStructure?: () => ConversationStateStructure;
@@ -3018,13 +3103,29 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             turn,
             staticConfig: {
               modelId: staticModelId,
-              agentTokenLimit: 200_000,
+              agentTokenLimit: inferenceContextWindow,
+              backgroundSummarizationPropsOverride: localBackgroundSummarizationProps,
               conversationId: scope.agentId,
               isBoxScopedSubagent: false,
               isSubagentRunner: scope.isSubagentRunner,
               isSharedRoomRunner: isSharedRoomTurn,
               sandSendMessageDeliveryOwed: method(experiments, "isSendMessageDeliveryOwedEnabled")?.() ?? false,
               systemPromptGenerator: () => productionSystemPromptAssembly?.getSystemPrompt() ?? DEFAULT_SAND_SYSTEM_PROMPT,
+              ...(!scope.isSubagentRunner && productionSystemPromptAssembly !== undefined ? {
+                messageHistoryModifier: (...args: readonly unknown[]) => {
+                  const messages = args[0];
+                  if (!Array.isArray(messages)) throw new TypeError("prompt history is not an array");
+                  return productionSystemPromptAssembly.appendFrozenSectionUpdates(messages);
+                },
+              } : {}),
+              // Official 0.71 Xai compaction path: model-window-aware early self-summary.
+              selfSummaryConfig: {
+                flavor: "xai-compact",
+                promptVariant: "generalized",
+                preserveUserDeliveryTail: SAND_COMPACTION_DELIVERY_TAIL,
+                tokenLimit: catalogContext?.autoCompactTokenLimit ?? Math.floor(inferenceContextWindow * 0.9),
+                canUseSelfSummary: () => true,
+              },
             },
             emitUpdate,
             interactionObservers: {},
@@ -3050,7 +3151,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         createAgentOwnerInput: createMainAgentOwnerInput,
         promptOptions: (_prompt, options) => toGeneratedTurnPromptOptions(options),
         assembleGeneratedTurnAction: productionPromptGlue.assembleGeneratedTurnAction,
-        compactionEpoch: () => 0,
+        compactionEpoch: () => {
+          try {
+            const state = getProductionConversationState() as { summaryArchives?: readonly unknown[] };
+            return Array.isArray(state.summaryArchives) ? state.summaryArchives.length : 0;
+          } catch {
+            return 0;
+          }
+        },
         getConversationState: getProductionConversationState,
         ...(mcp.mcp != null && typeof mcp.mcp.getTools === "function"
           ? {
@@ -3062,11 +3170,20 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           : {}),
         createSession: owner => ({
           getModelId: () => owner.runContext.sessions.agent.getModelId(),
-          getExecutor: () => createTextExecutor(owner.runContext.toolSession.getExecutor()),
+          getExecutor: () => {
+            const executor = createAgentPromptSession(extensions.api("inference").port, () => {}, {
+              modelId: owner.runContext.sessions.agent.getModelId(), agentId: session.id, isSummarizationSession: true, skipLabeling: true,
+            }).getExecutor();
+            if (!isTextPromptExecutor(executor)) throw new TypeError("memory inference executor is not bound");
+            return createTextExecutor(executor);
+          },
         }),
         context: () => productionContext,
         createSettleHost: createProductionTurnSettleHost,
         profilePromptSnapshots: () => session.db,
+        memoryStore: () => !isSharedRoomTurn && isTurnMemoryStore(session.memory) ? session.memory : undefined,
+        episodeProgress: () => isEpisodeProgress(session.db) ? session.db : undefined,
+        isMemorableExchange,
         isSubagentRunner: false,
         subagents: { sessions: new Map() },
         getConversationId: () => session.id,

@@ -33,6 +33,7 @@ import {
   SAND_EXTERNAL_SHELL_TOOL_NAME,
 } from "../sand-activity.js";
 import type { SummarizationPromptSession } from "../../packages/agent-summarization/summarization-handler.js";
+import type { BackgroundSummarizationProps } from "../../packages/agent-summarization/background-summarization.js";
 import type {
   CloudAgentToolDeps,
 } from "../cloud-agents/cloud-agent-tool.js";
@@ -206,10 +207,10 @@ export function createTurnToolSession(
 }
 
 const DEFAULT_BACKGROUND_SUMMARIZATION = {
-  unusedTokensThresholdToStartBackgroundSummarization: 10_000,
-  unusedPercentTokensThresholdToStartBackgroundSummarization: 0.1,
-  unusedTokensThresholdToPersistBackgroundSummarization: 5_000,
-  unusedPercentTokensThresholdToPersistBackgroundSummarization: 0.05,
+  // Start ~80% used (20% unused); persist ~90% used (10% unused). Host may
+  // override with absolute usedTokens thresholds from the model catalog.
+  unusedPercentTokensThresholdToStartBackgroundSummarization: 0.2,
+  unusedPercentTokensThresholdToPersistBackgroundSummarization: 0.1,
   discardOnError: true,
   requireTriggerThresholdForMidLoopPersist: true,
 } as const;
@@ -223,9 +224,7 @@ export interface TurnAgentStaticConfigInputs {
   readonly isSharedRoomRunner: boolean;
   readonly sandSendMessageDeliveryOwed: boolean;
   readonly transcriptsFolderAvailable?: boolean;
-  readonly backgroundSummarizationPropsOverride?: Partial<
-    typeof DEFAULT_BACKGROUND_SUMMARIZATION
-  >;
+  readonly backgroundSummarizationPropsOverride?: Readonly<BackgroundSummarizationProps>;
   readonly systemPromptGenerator: (...args: readonly unknown[]) => unknown;
   readonly toolsGenerator: (
     props: TurnToolsetBuildProps,

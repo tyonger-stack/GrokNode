@@ -25,6 +25,8 @@ await build({
 const {
   acquireInferenceSlot,
   getInferenceInflightSnapshot,
+  isAgentBusyOnInferenceSlot,
+  isAgentHoldingInferenceSlot,
   isAgentWaitingForInferenceSlot,
   resetInferenceInflightForTests,
   resolveMaxInferenceInflight,
@@ -97,6 +99,7 @@ test("queued agents are visible for run-idle suspension", async () => {
   const held = await acquireInferenceSlot();
   const agentId = "agent-waiting-for-slot";
   assert.equal(isAgentWaitingForInferenceSlot(agentId), false);
+  assert.equal(isAgentBusyOnInferenceSlot(agentId), false);
   let released = false;
   const waiting = acquireInferenceSlot({ agentId }).then((release) => {
     released = true;
@@ -104,12 +107,28 @@ test("queued agents are visible for run-idle suspension", async () => {
   });
   await Promise.resolve();
   assert.equal(isAgentWaitingForInferenceSlot(agentId), true);
+  assert.equal(isAgentBusyOnInferenceSlot(agentId), true);
   assert.equal(released, false);
   held();
   const release = await waiting;
   assert.equal(released, true);
   assert.equal(isAgentWaitingForInferenceSlot(agentId), false);
+  assert.equal(isAgentHoldingInferenceSlot(agentId), true);
+  assert.equal(isAgentBusyOnInferenceSlot(agentId), true);
   release();
+  assert.equal(isAgentHoldingInferenceSlot(agentId), false);
+  assert.equal(isAgentBusyOnInferenceSlot(agentId), false);
+});
+
+test("holding a slot (first-token / dial) is visible for run-idle suspension", async () => {
+  process.env.SAND_MAX_INFERENCE_INFLIGHT = "1";
+  const agentId = "agent-holding-slot";
+  const release = await acquireInferenceSlot({ agentId });
+  assert.equal(isAgentWaitingForInferenceSlot(agentId), false);
+  assert.equal(isAgentHoldingInferenceSlot(agentId), true);
+  assert.equal(isAgentBusyOnInferenceSlot(agentId), true);
+  release();
+  assert.equal(isAgentHoldingInferenceSlot(agentId), false);
 });
 
 test("a pre-aborted signal is refused without queueing", async () => {
@@ -198,10 +217,15 @@ test("run-lifecycle suspends idle while inferenceQueued", () => {
     path.join(repoRoot, "source/host/extensions/transcript/run-lifecycle.ts"),
     "utf8",
   );
-  assert.match(source, /isAgentWaitingForInferenceSlot/);
+  assert.match(source, /isAgentBusyOnInferenceSlot/);
   assert.match(source, /inferenceQueued:\s*true/);
   assert.match(
     source,
     /progress\?\.inferenceQueued === true/,
   );
+  // Compaction / self-summary awaits do not emit text-delta; idle must
+  // suspend on the summaryStarted→summaryCompleted window instead.
+  assert.match(source, /progress\?\.summarizing === true/);
+  assert.match(source, /"summary-started"/);
+  assert.match(source, /"summary-completed"/);
 });

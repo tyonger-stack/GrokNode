@@ -12,6 +12,7 @@ import {
   REQUEST_ID_PROMPT_MAX,
   parseAwaitingState,
   parseMemoryPromptSnapshot,
+  parsePromptSectionSnapshots,
   parsePendingEpisodeTurns,
   parseProfile,
   parseRequestRecords,
@@ -63,7 +64,7 @@ const KV = {
   metadata: "metadata", profile: "sandProfile", unread: "unreadState",
   awaiting: "awaitingUserResponse", requestIds: "requestIds", latestRequestId: "latestRequestId",
   episode: "episodePending", memorySnapshot: "memoryPromptSnapshot",
-  profileSnapshot: "agentProfilePromptSnapshot", origin: "origin",
+  profileSnapshot: "agentProfilePromptSnapshot", promptSections: "promptSectionSnapshots", origin: "origin",
   introduction: "introductionPending", spendGuard: "automationSpendGuardState",
   spendGuardLegacy: "automationSpendGuardNudgedAt", partners: "conversationPartners",
   hiddenRepair: "hiddenEntryRepairVersion", staleRootCleanup: "staleRootCleanupVersion",
@@ -257,11 +258,13 @@ export class SandAgentDb {
   getMemoryPromptSnapshot() { return parseMemoryPromptSnapshot(this.readKv(KV.memorySnapshot)); }
   setMemoryPromptSnapshot(snapshot: unknown): void { this.writeKv(KV.memorySnapshot, JSON.stringify(snapshot)); }
   clearMemoryPromptSnapshot(): void { this.deleteKv(KV.memorySnapshot); }
+  getPromptSectionSnapshot(name: string): unknown { return parsePromptSectionSnapshots(this.readKv(KV.promptSections))[name] ?? null; }
+  setPromptSectionSnapshot(name: string, snapshot: unknown): void { this.writeKv(KV.promptSections, JSON.stringify({ ...parsePromptSectionSnapshots(this.readKv(KV.promptSections)), [name]: snapshot })); }
   getAgentProfilePromptSnapshot(): unknown { try { return JSON.parse(this.readKv(KV.profileSnapshot) ?? "null") as unknown; } catch { return null; } }
   setAgentProfilePromptSnapshot(snapshot: unknown): void { this.writeKv(KV.profileSnapshot, JSON.stringify(snapshot)); }
   clearAgentProfilePromptSnapshot(): void { this.deleteKv(KV.profileSnapshot); }
-  clearTransientState(): void { for (const key of [KV.unread, KV.spendGuardLegacy, KV.spendGuard, KV.awaiting, KV.latestRequestId, KV.requestIds, KV.episode, KV.memorySnapshot, KV.profileSnapshot]) this.deleteKv(key); }
-  clearConversation(): boolean { if (this.closed) return false; const metadata = this.readMetadata(); const committed = this.runWrite("clearConversation", () => { this.db.exec("BEGIN IMMEDIATE"); try { this.statements.clearBlobs!.run(); this.statements.clearTranscriptEntries!.run(); for (const key of [KV.awaiting, KV.latestRequestId, KV.requestIds, KV.episode, KV.memorySnapshot, KV.profileSnapshot]) this.statements.deleteKv!.run(key); this.statements.setKv!.run(KV.metadata, this.serializeMetadata({ ...metadata, latestRootBlobId: new Uint8Array(), currentPlanUri: "" })); this.db.exec("COMMIT"); } catch (error) { this.db.exec("ROLLBACK"); throw error; } }); if (!committed) return false; publishTranscriptMutation({ kind: "conversation-cleared", agentId: this.agentDirName }); this.notify(this.awaitingListeners); this.notify(this.listeners.get("latestRootBlobId") ?? new Set()); return true; }
+  clearTransientState(): void { for (const key of [KV.unread, KV.spendGuardLegacy, KV.spendGuard, KV.awaiting, KV.latestRequestId, KV.requestIds, KV.episode, KV.memorySnapshot, KV.profileSnapshot, KV.promptSections]) this.deleteKv(key); }
+  clearConversation(): boolean { if (this.closed) return false; const metadata = this.readMetadata(); const committed = this.runWrite("clearConversation", () => { this.db.exec("BEGIN IMMEDIATE"); try { this.statements.clearBlobs!.run(); this.statements.clearTranscriptEntries!.run(); for (const key of [KV.awaiting, KV.latestRequestId, KV.requestIds, KV.episode, KV.memorySnapshot, KV.profileSnapshot, KV.promptSections]) this.statements.deleteKv!.run(key); this.statements.setKv!.run(KV.metadata, this.serializeMetadata({ ...metadata, latestRootBlobId: new Uint8Array(), currentPlanUri: "" })); this.db.exec("COMMIT"); } catch (error) { this.db.exec("ROLLBACK"); throw error; } }); if (!committed) return false; publishTranscriptMutation({ kind: "conversation-cleared", agentId: this.agentDirName }); this.notify(this.awaitingListeners); this.notify(this.listeners.get("latestRootBlobId") ?? new Set()); return true; }
   getAgentPurpose(): string | null { const value = this.readKv(KV.purpose); return value && /^[a-z][a-z0-9_-]*$/.test(value) ? value : null; }
   setAgentPurpose(purpose: string): void { this.writeKv(KV.purpose, purpose); }
   clearAgentPurpose(): void { this.deleteKv(KV.purpose); }

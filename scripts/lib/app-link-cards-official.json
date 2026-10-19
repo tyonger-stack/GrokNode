@@ -1,0 +1,438 @@
+{
+  "settings": {
+    "account": {
+      "section": "general",
+      "label": [
+        "Account",
+        "账户"
+      ],
+      "description": [
+        "Manage your sign-in, team, and saved accounts",
+        "管理你的登录、团队和已保存的账户"
+      ]
+    },
+    "theme": {
+      "section": "general",
+      "label": [
+        "Theme",
+        "主题"
+      ],
+      "description": [
+        "Pick the light or dark look for Grok Bot",
+        "为 Grok Bot 选择浅色或深色外观"
+      ]
+    },
+    "accent": {
+      "section": "general",
+      "label": [
+        "Accent",
+        "强调色"
+      ],
+      "description": [
+        "Color 1:1 Bot messages and cards with the Bot's color, or keep them black",
+        "用 Bot 的颜色为 1:1 Bot 消息和卡片上色，或保持黑色"
+      ]
+    },
+    "language": {
+      "section": "general",
+      "label": [
+        "Language",
+        "语言"
+      ],
+      "description": [
+        "Choose the language Grok Bot uses for menus and messages",
+        "选择 Grok Bot 菜单和消息使用的语言"
+      ]
+    },
+    "spell-check": {
+      "section": "general",
+      "label": [
+        "Check Spelling While Typing",
+        "输入时检查拼写"
+      ],
+      "description": [
+        "Underline misspelled words as you type",
+        "输入时为拼写错误的单词加下划线"
+      ]
+    },
+    "microphone": {
+      "section": "general",
+      "label": [
+        "Microphone",
+        "麦克风"
+      ],
+      "description": [
+        "Choose which microphone Grok Bot listens to when you talk to it",
+        "选择你和 Grok Bot 说话时使用的麦克风"
+      ]
+    },
+    "hardware-acceleration": {
+      "section": "general",
+      "label": [
+        "Use hardware acceleration",
+        "使用硬件加速"
+      ],
+      "description": [
+        "Let your graphics card draw the app, or turn it off if the window flickers or stays blank",
+        "让显卡来绘制应用；如果窗口闪烁或一直空白，请关闭此选项"
+      ]
+    },
+    "hardware-acceleration-restart": {
+      "section": "general",
+      "label": [
+        "Restart to Apply",
+        "重启以应用"
+      ],
+      "description": [
+        "Restart Grok Bot so the graphics change takes effect",
+        "重启 Grok Bot 以使图形设置的更改生效"
+      ]
+    },
+    "network-debugger": {
+      "section": "general",
+      "label": [
+        "Network Debugger",
+        "网络调试器"
+      ],
+      "description": [
+        "Check Grok Bot's connection",
+        "检查 Grok Bot 的连接"
+      ]
+    },
+    "notification-sound-enabled": {
+      "section": "general",
+      "label": [
+        "Play Sound for Notifications",
+        "为通知播放声音"
+      ],
+      "description": [
+        "Turn the sound that plays when Grok Bot sends you a message on or off",
+        "开启或关闭 Grok Bot 给你发消息时播放的声音"
+      ]
+    },
+    "notification-sound": {
+      "section": "general",
+      "label": [
+        "Notification Sound",
+        "通知声音"
+      ],
+      "description": [
+        "Pick the sound that plays when Grok Bot sends you a message",
+        "选择 Grok Bot 给你发消息时播放的声音"
+      ]
+    },
+    "model": {
+      "section": "general",
+      "label": [
+        "Model",
+        "模型"
+      ],
+      "description": [
+        "Choose which AI model Grok Bot thinks with",
+        "选择 Grok Bot 用来思考的模型"
+      ]
+    },
+    "timezone": {
+      "section": "general",
+      "label": [
+        "Timezone",
+        "时区"
+      ],
+      "description": [
+        "Set the time zone Grok Bot uses for schedules and reminders",
+        "设置 Grok Bot 用于日程和提醒的时区"
+      ]
+    },
+    "local-execution": {
+      "section": "computer",
+      "label": [
+        "Execution on Local Computer",
+        "在本地电脑上执行"
+      ],
+      "description": [
+        "Allow Grok Bot to run tasks on this computer, not only on its own computer",
+        "允许 Grok Bot 在这台电脑上运行任务，而不只是在它自己的电脑上"
+      ]
+    },
+    "computers": {
+      "section": "computer",
+      "label": [
+        "Your computer",
+        "你的电脑"
+      ],
+      "description": [
+        "See and manage the computers Grok Bot can work on",
+        "查看和管理 Grok Bot 可以使用的电脑"
+      ]
+    },
+    "chrome-cookie-import": {
+      "section": "computer",
+      "label": [
+        "Import cookies from Chrome",
+        "从 Chrome 导入 Cookie"
+      ],
+      "description": [
+        "Copy your Chrome logins to Grok Bot's computer so it can use the sites you are signed in to",
+        "把你的 Chrome 登录信息复制到 Grok Bot 的电脑，让它能使用你已登录的网站"
+      ]
+    },
+    "messages": {
+      "section": "computer",
+      "label": [
+        "Use Messages",
+        "使用「消息」"
+      ],
+      "description": [
+        "Lets Grok Bot read and send texts on this Mac",
+        "允许 Grok Bot 在这台 Mac 上读取和发送消息"
+      ]
+    },
+    "messages-send-without-asking": {
+      "section": "computer",
+      "label": [
+        "Send Without Asking",
+        "无需询问直接发送"
+      ],
+      "description": [
+        "Choose whether Grok Bot asks before it sends a text",
+        "选择 Grok Bot 是否在发送消息前询问"
+      ]
+    },
+    "messages-allowed-recipients": {
+      "section": "computer",
+      "label": [
+        "Allowed recipients",
+        "允许的收件人"
+      ],
+      "description": [
+        "Manage who Grok Bot can text without asking first",
+        "管理 Grok Bot 无需事先询问即可发送消息的对象"
+      ]
+    },
+    "auto-review": {
+      "section": "general",
+      "label": [
+        "Auto-review",
+        "自动审核"
+      ],
+      "description": [
+        "Choose how closely Grok Bot checks its own risky actions before it runs them",
+        "选择 Grok Bot 在执行有风险的操作前要检查得多仔细"
+      ]
+    },
+    "auto-review-rules": {
+      "section": "general",
+      "label": [
+        "Custom Rules",
+        "自定义规则"
+      ],
+      "description": [
+        "Set rules for which actions Grok Bot can take automatically",
+        "为 Grok Bot 可以自动执行的操作设置规则"
+      ]
+    },
+    "security-keys": {
+      "section": "general",
+      "label": [
+        "Use hardware security keys",
+        "使用硬件安全密钥"
+      ],
+      "description": [
+        "Require a hardware security key, like a YubiKey, for sensitive actions",
+        "敏感操作需要使用硬件安全密钥（如 YubiKey）"
+      ]
+    },
+    "team-bot-connector-preferences": {
+      "section": "general",
+      "label": [
+        "Clear connector preferences",
+        "清除连接器偏好设置"
+      ],
+      "description": [
+        "Remove any preferences you have set with Team Bots which give them access to your personal connectors",
+        "移除你为团队 Bot 设置的、允许其访问你个人连接器的所有偏好设置"
+      ]
+    },
+    "team-bot-slack-link": {
+      "section": "general",
+      "label": [
+        "Slack account",
+        "Slack 账号"
+      ],
+      "description": [
+        "Link your Slack account to Cursor so Team Bots and Cloud Agents know who you are in Slack",
+        "将你的 Slack 账号关联到 Cursor，让团队 Bot 和云端智能体知道你在 Slack 中的身份"
+      ]
+    },
+    "passkeys": {
+      "section": "general",
+      "label": [
+        "Passkeys",
+        "通行密钥"
+      ],
+      "description": [
+        "Save a passkey so Grok Bot can confirm it's you before it approves a purchase",
+        "保存通行密钥，让 Grok Bot 在批准购买前确认是你本人"
+      ]
+    },
+    "usage": {
+      "section": "usage",
+      "label": [
+        "Usage",
+        "用量"
+      ],
+      "description": [
+        "See your included usage and when it resets",
+        "查看你的附带用量及其重置时间"
+      ]
+    },
+    "plan": {
+      "section": "usage",
+      "label": [
+        "Manage Plan",
+        "管理计划"
+      ],
+      "description": [
+        "See your plan, change it, or update billing",
+        "查看或更换你的计划，或更新账单信息"
+      ]
+    },
+    "cancel-trial": {
+      "section": "usage",
+      "label": [
+        "Cancel Trial",
+        "取消试用"
+      ],
+      "description": [
+        "End your free trial early",
+        "提前结束你的免费试用"
+      ]
+    },
+    "on-demand": {
+      "section": "usage",
+      "label": [
+        "On-Demand",
+        "按需用量"
+      ],
+      "description": [
+        "Allow extra usage beyond your plan, billed as you go",
+        "允许超出计划的额外用量，按实际使用计费"
+      ]
+    },
+    "billing": {
+      "section": "usage",
+      "label": [
+        "Manage Billing",
+        "管理账单"
+      ],
+      "description": [
+        "Manage your billing on Cursor",
+        "在 Cursor 上管理你的账单"
+      ]
+    },
+    "egress": {
+      "section": "computer",
+      "label": [
+        "Route traffic through this computer",
+        "经此电脑转发流量"
+      ],
+      "description": [
+        "Send Grok Bot's internet traffic through this desktop instead of its own computer",
+        "让 Grok Bot 的网络流量经由本机而非它自己的电脑发出"
+      ]
+    },
+    "update-status": {
+      "section": "updates",
+      "label": [
+        "Grok Bot Updates",
+        "Grok Bot 更新"
+      ],
+      "description": [
+        "See which version of Grok Bot you have and whether an update is ready",
+        "查看你的 Grok Bot 版本，以及是否有可用更新"
+      ]
+    },
+    "update-channel": {
+      "section": "updates",
+      "label": [
+        "Update Track",
+        "更新通道"
+      ],
+      "description": [
+        "Choose whether Grok Bot installs stable releases only or tries beta builds early",
+        "选择 Grok Bot 只安装稳定版，还是提前尝试测试版"
+      ]
+    },
+    "automatic-updates": {
+      "section": "updates",
+      "label": [
+        "Automatic Updates",
+        "自动更新"
+      ],
+      "description": [
+        "Let Grok Bot install updates on its own",
+        "让 Grok Bot 自行安装更新"
+      ]
+    },
+    "update-computer": {
+      "section": "computer",
+      "label": [
+        "Update Bot's Computer",
+        "更新 Bot 的电脑"
+      ],
+      "description": [
+        "Install the latest software on Grok Bot's computer and keep your files in place",
+        "在 Grok Bot 的电脑上安装最新软件，并保留你的文件"
+      ]
+    },
+    "reset-computer": {
+      "section": "computer",
+      "label": [
+        "Reset Bot's Computer",
+        "重置 Bot 的电脑"
+      ],
+      "description": [
+        "Restart Grok Bot's computer from your last saved snapshot if it gets stuck",
+        "Grok Bot 的电脑卡住时，从你上次保存的快照重启它"
+      ]
+    }
+  },
+  "ui": {
+    "6ER1KZ": [
+      "Show me in Settings",
+      "在设置中查看"
+    ],
+    "hoaPGZ": [
+      "Show me in the right pane",
+      "在右侧面板中显示"
+    ],
+    "ixkTse": [
+      "Bot",
+      "Bot"
+    ],
+    "/K2CvV": [
+      "Template",
+      "模板"
+    ],
+    "kthsWj": [
+      "View this template",
+      "查看此模板"
+    ],
+    "fOuPPd": [
+      "Plugin",
+      "插件"
+    ],
+    "PY6dvu": [
+      "Add from Plugins",
+      "从插件添加"
+    ],
+    "hZyuat": [
+      "Show me in the routine",
+      "在例行任务中查看"
+    ],
+    "B3ngzJ": [
+      "Link destination",
+      "链接目标"
+    ]
+  }
+}

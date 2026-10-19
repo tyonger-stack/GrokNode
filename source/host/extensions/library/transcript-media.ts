@@ -310,10 +310,16 @@ function projectTranscriptMedia(entries: readonly TranscriptMediaEntry[], includ
   const excluded = buildUserUploadExclusionSet(entries);
   const seen = new Set<string>();
   const out: TranscriptMediaRow[] = [];
+  // user-attachment rows historically omit timestampMs (createUserAttachmentEntry
+  // only started stamping it later). Carry the latest prior stamped entry so
+  // library buckets/hover age still resolve for already-persisted uploads.
+  let lastKnownMs: number | null = null;
   for (const entry of entries) {
+    const ownMs = entryTimestamp(entry);
+    if (ownMs != null) lastKnownMs = ownMs;
     const entryClass = classifyMediaEntry(entry);
     if (entryClass === "returned-artifact" || (!includeUserUploads && entryClass !== "bot")) continue;
-    const timestampMs = entryTimestamp(entry);
+    const timestampMs = ownMs ?? (entry.kind === "user-attachment" ? lastKnownMs : null);
     const visuals = textImages(entry);
     const link = lreLink(entry);
     const visualSources = new Set(visuals.map(item => item.source));

@@ -37,9 +37,12 @@ import {
 import { MAX_SELF_SUMMARY_RETRIES, SELF_SUMMARIZATION_PROMPT } from "./constants.js";
 import { extractTextContent } from "./token-estimate.js";
 import { findLastUserMessageIndex, type SelfSummaryMessage } from "./self-summary.js";
+import { selectSelfSummaryDeliveryTail, type DeliveryTailConfig } from "../../agent-summarization/delivery-tail.js";
+import type { SummarizationResult } from "../summarization-orchestrator.js";
 
 type RedactedCoreMessage = Parameters<typeof fromRedactedCoreMessage>[0];
-type RedactedInteractionListener = Parameters<typeof toUnredactedInteractionListener<Context>>[0];
+export type SelfSummaryInteractionListener = Parameters<typeof toUnredactedInteractionListener<Context>>[0];
+type RedactedInteractionListener = SelfSummaryInteractionListener;
 
 export interface SelfSummaryExtendedUsage {
   readonly inputTokens: number;
@@ -112,6 +115,7 @@ interface SelfSummaryPartition {
   readonly userInfoMessage: RedactedCoreMessage | undefined;
   readonly messagesToSummarize: readonly RedactedCoreMessage[];
   readonly preservedTailMessages: readonly RedactedCoreMessage[];
+  readonly trailingMessages: readonly RedactedCoreMessage[];
   readonly skillBlocks: readonly string[];
 }
 
@@ -467,6 +471,7 @@ export class SelfSummarizer {
     modelId: string,
     retryOptions?: SelfSummaryRetryOptions,
     enableTranscriptEnrichment?: boolean,
+    readonly deliveryTail?: DeliveryTailConfig,
   ) {
     this.promptSession = promptSession;
     this.stateHandler = stateHandler;
@@ -481,7 +486,7 @@ export class SelfSummarizer {
   getModelId(): string { return this.modelId; }
   getMetricsModelLabel(): string { return this.modelId; }
 
-  partitionMessages(messages: readonly RedactedCoreMessage[], _options: SummarizationPipelineOptions): SelfSummaryPartition {
+  partitionMessages(messages: readonly RedactedCoreMessage[], options: SummarizationPipelineOptions): SelfSummaryPartition {
     if (messages.length < 3) {
       throw new Error(`Self-summary requires at least 3 messages, got ${messages.length}`);
     }
@@ -489,7 +494,7 @@ export class SelfSummarizer {
     if (!systemMessage || systemMessage.role !== "system") {
       throw new Error("Expected system message in conversation");
     }
-    const lastUserIndex = findLastUserMessageIndex(messages as SelfSummaryMessage[]);
+    const lastUserIndex = findLastUserMessageIndex(messages);
     const lastUserQuery = messages[lastUserIndex];
     const skillBlocks = collectAllSkillBlocks(messagesForSummarization);
     return {
@@ -497,6 +502,7 @@ export class SelfSummarizer {
       userInfoMessage,
       messagesToSummarize: messagesForSummarization,
       preservedTailMessages: lastUserQuery ? [lastUserQuery] : [],
+      trailingMessages: selectSelfSummaryDeliveryTail(messages, options, this.deliveryTail, findLastUserMessageIndex),
       skillBlocks,
     };
   }
@@ -590,7 +596,7 @@ If the task is complete, respond to the user. Otherwise, continue working on the
     ctx: Context,
     messages: readonly RedactedCoreMessage[],
     options: SummarizationPipelineOptions,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<SummarizationResult> {
     using spanContext = createSpan(ctx.withName("SelfSummarizer.summarize"));
     const innerCtx = spanContext.ctx;
     const startTime = performance.now();

@@ -28,6 +28,9 @@ import {
   type SelfSummaryTool,
 } from "./self-summary-handler.js";
 import { extractTextContent } from "./token-estimate.js";
+import { selectSelfSummaryDeliveryTail, type DeliveryTailConfig } from "../../agent-summarization/delivery-tail.js";
+import { findLastUserMessageIndex } from "./self-summary.js";
+import type { SummarizationResult } from "../summarization-orchestrator.js";
 
 type RedactedCoreMessage = Parameters<typeof fromRedactedCoreMessage>[0];
 type RedactedInteractionListener = Parameters<typeof executeSelfSummaryWithRetry>[3];
@@ -37,6 +40,7 @@ interface AnthropicPartition {
   readonly userInfoMessage: RedactedCoreMessage | undefined;
   readonly messagesToSummarize: readonly RedactedCoreMessage[];
   readonly preservedTailMessages: readonly RedactedCoreMessage[];
+  readonly trailingMessages: readonly RedactedCoreMessage[];
   readonly skillBlocks: readonly string[];
 }
 
@@ -49,6 +53,7 @@ interface AnthropicRawSummary {
 export interface AnthropicCompactionOptions extends SelfSummaryRetryOptions {
   readonly explicit?: boolean | undefined;
   readonly anthropicCompactionInstructions?: string | undefined;
+  readonly deliveryTail?: DeliveryTailConfig | undefined;
 }
 
 const logger = createLogger("@anysphere/agent");
@@ -88,6 +93,7 @@ export class AnthropicCompactionHandler {
   declare readonly modelId: string;
   declare readonly compactionMode: "explicit" | "beta";
   declare readonly anthropicCompactionInstructions: string | undefined;
+  declare readonly deliveryTail: DeliveryTailConfig | undefined;
   declare readonly retryOptions: SelfSummaryRetryOptions;
 
   constructor(
@@ -105,7 +111,8 @@ export class AnthropicCompactionHandler {
     this.tools = tools;
     this.extraT = extraT;
     this.modelId = modelId;
-    const { explicit, anthropicCompactionInstructions, ...retry } = options ?? {};
+    const { explicit, anthropicCompactionInstructions, deliveryTail, ...retry } = options ?? {};
+    this.deliveryTail = deliveryTail;
     this.compactionMode = explicit === true ? "explicit" : "beta";
     this.anthropicCompactionInstructions = anthropicCompactionInstructions;
     this.retryOptions = retry;
@@ -114,7 +121,7 @@ export class AnthropicCompactionHandler {
   getModelId(): string { return this.modelId; }
   getMetricsModelLabel(): string { return this.modelId; }
 
-  partitionMessages(messages: readonly RedactedCoreMessage[], _options: SummarizationPipelineOptions): AnthropicPartition {
+  partitionMessages(messages: readonly RedactedCoreMessage[], options: SummarizationPipelineOptions): AnthropicPartition {
     const { systemMessage, userInfoMessage, messagesForSummarization } = prepareMessagesForCompaction(messages);
     const skillBlocks = collectAllSkillBlocks(messagesForSummarization);
     return {
@@ -122,6 +129,7 @@ export class AnthropicCompactionHandler {
       userInfoMessage,
       messagesToSummarize: messagesForSummarization,
       preservedTailMessages: [],
+      trailingMessages: selectSelfSummaryDeliveryTail(messages, options, this.deliveryTail, findLastUserMessageIndex),
       skillBlocks,
     };
   }
@@ -248,7 +256,7 @@ ${rawSummary.text}
     ctx: Context,
     messages: readonly RedactedCoreMessage[],
     options: SummarizationPipelineOptions,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<SummarizationResult> {
     using spanContext = createSpan(ctx.withName("AnthropicCompactionHandler.summarize"));
     const innerCtx = spanContext.ctx;
     const startTime = performance.now();

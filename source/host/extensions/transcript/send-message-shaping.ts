@@ -158,6 +158,9 @@ export async function createUserAttachmentEntry(
     kind: "user-attachment",
     id,
     file_path: filePath,
+    // Library grouping/hover age read top-level timestampMs (FRe/MRe). Without
+    // this stamp every upload falls into 「更早」 and formatWhen returns "".
+    timestampMs: Date.now(),
     ...(fileName ? { file_name: fileName } : {}),
     ...(options.batchId != null ? { batchId: options.batchId } : {}),
     ...(options.clientNonce ? { clientNonce: options.clientNonce } : {}),

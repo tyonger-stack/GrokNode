@@ -114,8 +114,8 @@ test("v2 merges pages, docs and media with groups and reveal", async (t) => {
   const ui = await loadBundle();
   const desktop = mockDesktop();
   const host = await renderHost(t, ui, desktop);
-  assert.match(host.textContent, /资料库/);
-  assert.match(host.textContent, /对话中的文件/);
+  assert.equal(host.querySelector("section")?.getAttribute("aria-label"), "资料库");
+  assert.equal(host.textContent.includes("对话中的文件"), false, "official panel has no DIY heading");
   assert.deepEqual(headings(host), ["今天", "本周", "更早"]);
   const today = rows(host);
   assert.ok(today.some((text) => text.includes("Spec")));
@@ -141,7 +141,7 @@ test("external and link rows open outside, file rows open a viewer", async (t) =
   const current = gallery.querySelector("img.sand-media-viewer__image");
   assert.ok(current !== null && (current.getAttribute("src") || "").startsWith("data:image/"), "gallery resolves the current source through the media DTO");
   assert.equal(host.contains(gallery), false, "gallery mounts outside the list");
-  await ui.act(async () => { gallery.querySelector('[aria-label="Close media preview"]').click(); });
+  await ui.act(async () => { gallery.querySelector('[aria-label="关闭媒体预览"]').click(); });
   assert.equal(document.querySelector('[role="dialog"]'), null);
   record("R1-gallery-open", host, { gallery: true });
 });
@@ -165,7 +165,7 @@ test("gallery pages through every visual source and downloads the original", asy
   assert.match(gallery.getAttribute("aria-label"), /Media 2 of 2/);
   await ui.act(async () => { gallery.querySelector('[aria-label="Next media"]').click(); });
   assert.match(document.querySelector('[role="dialog"]').getAttribute("aria-label"), /Media 1 of 2/);
-  await ui.act(async () => { document.querySelector('[aria-label="Download file"]').click(); });
+  await ui.act(async () => { document.querySelector('[aria-label="下载媒体"]').click(); });
   assert.deepEqual(downloads, [["file:///a/one.png", "One"]]);
   record("R1-gallery-nav-download", host, { downloads });
 });
@@ -242,7 +242,7 @@ test("every gate combination keeps enabled sources and drops only gated ones", a
     assert.equal(text.includes("Today"), true, `media stays visible for ${mask}`);
     assert.equal(text.includes("Spec"), (v2 || on.grok_bot_library_pages) && on.grok_bot_documents_ui, `document page for ${mask}`);
     assert.equal(text.includes("Notes"), v2 && on.grok_bot_library_external_docs, `external doc for ${mask}`);
-    assert.equal(text.includes("对话中的文件"), true, `explanation stays for ${mask}`);
+    assert.equal(text.includes("对话中的文件"), false, `no DIY heading for ${mask}`);
   }
 });
 
@@ -493,6 +493,35 @@ test("file reads and downloads preserve the original non-file-URL locator", asyn
   await ui.act(async () => document.querySelector('[aria-label="下载"]').click());
   assert.deepEqual(seen.map((call) => [call.method, call.path]), [["read", source], ["download", source]]);
   record("R1-original-source", document.body, { seen });
+});
+
+test("library file preview owns close even when a native Open chip is in the transcript", async (t) => {
+  const ui = await loadBundle();
+  const source = "/home/box/agent-data/report.docx";
+  let chipClicks = 0;
+  const transcript = document.createElement("div");
+  transcript.className = "sand-transcript";
+  const chip = document.createElement("button");
+  chip.setAttribute("aria-label", "Open report.docx");
+  chip.addEventListener("click", () => { chipClicks += 1; });
+  transcript.append(chip);
+  document.body.append(transcript);
+  t.after(() => transcript.remove());
+  const desktop = mockDesktop({
+    getLibraryTranscript: async () => ({ entries: [{ id: "docx", kind: "send-message", timestampMs: NOW - HOUR, seq: 1001, message: { type: "attachment", url: source, file_name: "report.docx" } }] }),
+    readAttachmentBytes: async () => ({ kind: "bytes", bytes: new Uint8Array([0x50, 0x4b]) }),
+    downloadAttachment: async () => true,
+  });
+  const host = await renderHost(t, ui, desktop);
+  await ui.act(async () => [...host.querySelectorAll("li button")].find((b) => b.textContent.includes("report.docx")).click());
+  assert.equal(chipClicks, 0, "must not replay the native Open chip (stale lkn onClose)");
+  const dialog = document.querySelector(".sand-file-viewer");
+  assert.ok(dialog !== null, "library-owned sand-file-viewer must open");
+  assert.ok(dialog.querySelector('[aria-label="下载"]'), "download control present");
+  assert.ok(dialog.querySelector('[aria-label="关闭"]'), "close control present");
+  await ui.act(async () => dialog.querySelector('[aria-label="关闭"]').click());
+  assert.equal(document.querySelector(".sand-file-viewer"), null, "close must unmount the library viewer");
+  record("R1-library-owned-file-close", host, { chipClicks });
 });
 
 test("visibility echo refreshes host page rows", async (t) => {
