@@ -1,9 +1,44 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { parse } from 'acorn';
 import vm from 'node:vm';
 import { parseAppCardLink, openAppCardLink, patchAppLinkCards, patchAppComputerSettings } from '../scripts/lib/app-link-card-renderer-patch.mjs';
+
+const rendererManifest = JSON.parse(await readFile(new URL('./fixtures/app-link-card-renderer/manifest.json', import.meta.url), 'utf8'));
+const sha256 = value => createHash('sha256').update(value).digest('hex');
+async function rendererFixture(file) {
+  const source = await readFile(new URL(`./fixtures/app-link-card-renderer/${file}`, import.meta.url), 'utf8');
+  assert.equal(sha256(source), rendererManifest.sources[file].fixtureSha256);
+  return source;
+}
+async function pinnedRenderer(file) {
+  try {
+    return await readFile(new URL(`../src/app/dist/renderer/assets/${file}`, import.meta.url), 'utf8');
+  } catch (error) {
+    if (!(error instanceof Error) || error.code !== 'ENOENT') throw error;
+    return rendererFixture(file);
+  }
+}
+
+test('recorded renderer nodes retain provenance and both patches execute without hydrated app files', async () => {
+  for (const [file, record] of Object.entries(rendererManifest.sources)) {
+    const fixture = await rendererFixture(file);
+    const source = await pinnedRenderer(file);
+    if (source !== fixture) {
+      assert.equal(sha256(source), record.sourceSha256);
+      const nodes = record.nodes.map(({ start, end, sha256: expected }) => {
+        const node = source.slice(start, end);
+        assert.equal(sha256(node), expected);
+        return node;
+      });
+      assert.equal(fixture, nodes.join('\n') + '\n');
+    }
+    const patched = file === 'index-UbX-y3il.js' ? patchAppLinkCards(fixture) : patchAppComputerSettings(fixture);
+    parse(patched, { ecmaVersion: 'latest', sourceType: 'module' });
+  }
+});
 
 test('computer, settings and the other canonical card families parse', () => {
   for (const scheme of ['sand', 'grokbot', 'groknode']) {
@@ -43,7 +78,7 @@ test('destinations preserve owner and explicit Bot/routine identity', () => {
 });
 
 test('the pinned renderer accepts the patch and a drifted anchor fails closed', async () => {
-  const source = await readFile(new URL('../src/app/dist/renderer/assets/index-UbX-y3il.js', import.meta.url), 'utf8');
+  const source = await pinnedRenderer('index-UbX-y3il.js');
   const patched = patchAppLinkCards(source);
   const ast = parse(patched, { ecmaVersion: 'latest', sourceType: 'module' });
   const transform = ast.body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'p1t');
@@ -57,7 +92,7 @@ test('the pinned renderer accepts the patch and a drifted anchor fails closed', 
 });
 
 test('Computer settings is a real native section with live permission and maintenance controls', async () => {
-  const source = await readFile(new URL('../src/app/dist/renderer/assets/index-BlqerJhg.js', import.meta.url), 'utf8');
+  const source = await pinnedRenderer('index-BlqerJhg.js');
   const patched = patchAppComputerSettings(source);
   const ast = parse(patched, { ecmaVersion: 'latest', sourceType: 'module' });
   const shell = ast.body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'Ta');
@@ -72,7 +107,7 @@ test('Computer settings is a real native section with live permission and mainte
 });
 
 test('rendered chips and preview footer use the same native destination; keyboard activation works', async () => {
-  const source = await readFile(new URL('../src/app/dist/renderer/assets/index-UbX-y3il.js', import.meta.url), 'utf8');
+  const source = await pinnedRenderer('index-UbX-y3il.js');
   const patched = patchAppLinkCards(source), ast = parse(patched, { ecmaVersion: 'latest', sourceType: 'module' });
   const component = ast.body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'RAppLinkCard');
   const catalog = JSON.parse(await readFile(new URL('../scripts/lib/app-link-cards-official.json', import.meta.url), 'utf8'));
