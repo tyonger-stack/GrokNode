@@ -7,6 +7,7 @@ import { describeAgentRunError } from "./agent-run-error.js";
 import { classifyAgentError } from "./turn-runtime.js";
 import { sandErrorDetail } from "../../ports/telemetry.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
+import { resumeMarkerKey } from "./sand-upgrade-resume-store.js";
 
 export function buildUpgradeResumePrompt(source: string): string {
   const tail =
@@ -30,6 +31,8 @@ export interface UpgradeResumeMarker {
 
 export class UpgradeRecreateResume {
   private quiescingForUpgrade = false;
+  private readonly accepted = new Set<string>();
+  private readonly starting = new Map<string, Promise<void>>();
 
   constructor(readonly tm: TranscriptManagerLike) {}
 
@@ -104,21 +107,37 @@ export class UpgradeRecreateResume {
     const pending: UpgradeResumeMarker[] =
       this.tm.upgradeResumeStore.listPending();
     if (pending.length === 0) return;
-    this.tm.upgradeResumeStore.clearAll();
     for (const marker of pending) {
-      if (!this.tm.sessions.isAgentGone(marker.agentId))
-        void this.resumeUpgradeAgent(marker);
+      if (this.tm.sessions.isAgentGone(marker.agentId)) this.tm.upgradeResumeStore.clearIfUnchanged(marker);
+      else await this.acceptResume(marker);
     }
   }
 
-  async resumeUpgradeAgent(marker: UpgradeResumeMarker): Promise<void> {
+  private async acceptResume(marker: UpgradeResumeMarker): Promise<void> {
+    const key = resumeMarkerKey(marker);
+    if (this.accepted.has(key)) return;
+    const existing = this.starting.get(key);
+    if (existing !== undefined) return existing;
+    let started: () => void = () => {};
+    const accepted = new Promise<void>(resolve => { started = resolve; });
+    this.starting.set(key, accepted);
+    void this.resumeUpgradeAgent(marker, () => { this.accepted.add(key); started(); })
+      .catch(error => console.warn("[sand:recovery] resume could not start", error instanceof Error ? error.name : "UnknownError"))
+      .finally(() => { this.starting.delete(key); started(); });
+    return accepted;
+  }
+
+  async resumeUpgradeAgent(marker: UpgradeResumeMarker, onStarted: () => void = () => {}): Promise<void> {
     let session: any;
     try {
       session = await this.tm.sessions.resolveBackgroundSession(marker.agentId);
     } catch {
       return;
     }
-    if (this.tm.groupChat.isGroupSession(session)) return;
+    if (this.tm.groupChat.isGroupSession(session)) {
+      this.tm.upgradeResumeStore?.clearIfUnchanged(marker);
+      return;
+    }
     const runner = this.tm.runnerRegistry.getRunner(session);
     this.tm.runLifecycle.beginSessionRun(session);
     const resumedSource =
@@ -132,6 +151,7 @@ export class UpgradeRecreateResume {
     await this.tm.runLifecycle.enqueueExclusiveRun(
       session.id,
       async () => {
+        onStarted();
         this.tm.turnRuntime.activeRequestSources.set(session.id, resumedSource);
         try {
           const automation =
@@ -153,6 +173,7 @@ export class UpgradeRecreateResume {
           });
           await this.tm.roster.emitAgentUpdate(session.id);
           this.tm.automationRuntime.emitAutomations(session);
+          if (!this.quiescingForUpgrade) this.tm.upgradeResumeStore?.clearIfUnchanged(marker);
         } catch (error) {
           this.tm.telemetry.reportAgentError({
             source: "resume",
@@ -170,7 +191,6 @@ export class UpgradeRecreateResume {
           });
         } finally {
           this.tm.ackObligations.retireAckRunToken(session.id, ackToken);
-          this.tm.runLifecycle.endSessionRun(session);
         }
       },
       {
@@ -178,7 +198,7 @@ export class UpgradeRecreateResume {
         source: "upgrade-resume",
         ackToken,
       },
-    );
+    ).finally(() => this.tm.runLifecycle.endSessionRun(session));
   }
 
   async quiesceForRecreate(): Promise<{
@@ -206,6 +226,12 @@ export class UpgradeRecreateResume {
     return (this.tm.upgradeResumeStore?.listPending() ?? []).map(
       (marker: UpgradeResumeMarker) => marker.agentId,
     );
+  }
+
+  listUnacceptedResumeAgentIds(): string[] {
+    return (this.tm.upgradeResumeStore?.listPending() ?? [])
+      .filter((marker: UpgradeResumeMarker) => !this.accepted.has(resumeMarkerKey(marker)))
+      .map((marker: UpgradeResumeMarker) => marker.agentId);
   }
 
   listRecreateCarryPendingWakes(): DurablePendingWakeMarker[] {
@@ -253,10 +279,9 @@ export class UpgradeRecreateResume {
         .find(
           (candidate: UpgradeResumeMarker) => candidate.agentId === agentId,
         );
-      this.tm.upgradeResumeStore?.clear(agentId);
-      void this.resumeUpgradeAgent(
-        marker ?? { agentId, markedAtMs: Date.now() },
-      );
+      const pending = marker ?? { agentId, markedAtMs: Date.now() };
+      if (marker === undefined) this.tm.upgradeResumeStore?.markPending(pending);
+      await this.acceptResume(pending);
       resumed += 1;
     }
     this.restoreCarriedPendingWakes(carriedPendingWakes);

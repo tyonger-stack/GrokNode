@@ -123,7 +123,7 @@ test("the bridge is wired end to end: rpc contract, preload, main-edge, resync, 
   // The whole map is synced, so the box never keeps an override the Mac already cleared.
   assert.match(edge, /syncHostSettingsToBox\(\{ openRouterAgentModels: all \}\)/);
   assert.match(resync, /openRouterAgentModels/);
-  assert.equal(turn.split("createProviderPromptSession(inferenceProvider, { agentId: input.conversationId })").length - 1, 2);
+  assert.equal((turn.match(/createProviderPromptSession\(inferenceProvider, \{ agentId: input\.conversationId, \.\.\.prefixOptions(?:, inferenceReason: "summarization")? \}\)/g) ?? []).length, 2);
 });
 
 test("the model is fixed when the session starts, not re-read per request", () => {

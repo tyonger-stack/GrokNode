@@ -21,6 +21,7 @@ import { stageAttachmentsIntoBox, type BoxStagingDependencies } from "./box-stag
 import { readEncodedImageSize, type ImageSize } from "./link-preview-image-bounds.js";
 import { fetchSafeLinkPreviewResource, parseSafeLinkPreviewUrl, SandLinkPreviewError } from "./safe-link-preview-fetch.js";
 import { withVideoPlaybackSource } from "./video-playback-rendition.js";
+import { imageDisplayCache } from "./image-display-rendition.js";
 
 export const LINK_CACHE_DIRNAME = "link-cache";
 export const LINK_CACHE_VERSION = 3;
@@ -243,7 +244,7 @@ async function openOwnedMediaFile(agentDir: string, filePath: string): Promise<{
   }
 }
 
-async function readOwnedMediaBytes(agentDir: string, filePath: string): Promise<{ bytes: Buffer; resolved: string } | null> {
+export async function readOwnedMediaBytes(agentDir: string, filePath: string): Promise<{ bytes: Buffer; resolved: string } | null> {
   const opened = await openOwnedMediaFile(agentDir, filePath);
   if (opened == null) return null;
   try {
@@ -260,10 +261,16 @@ export async function readHostAttachmentImage(filePath: string, agentDir?: strin
   if (agentDir != null) {
     const owned = await readOwnedMediaBytes(agentDir, filePath);
     if (owned == null) return null;
-    const size = imageSize(owned.bytes, mime);
-    return { dataUrl: `data:${mime};base64,${owned.bytes.toString("base64")}`, width: size?.width ?? null, height: size?.height ?? null };
+    return renderAttachmentImage(owned.bytes, mime);
   }
-  try { const data = await fs.readFile(resolved), size = imageSize(data, mime); return { dataUrl: `data:${mime};base64,${data.toString("base64")}`, width: size?.width ?? null, height: size?.height ?? null }; } catch { return null; }
+  try { return await renderAttachmentImage(await fs.readFile(resolved), mime); } catch { return null; }
+}
+async function renderAttachmentImage(original: Buffer, mime: string) {
+  const converted = await imageDisplayCache.read(original, mime);
+  const data = converted === null ? original : Buffer.from(converted);
+  const displayMime = converted === null ? mime : "image/jpeg";
+  const size = imageSize(data, displayMime);
+  return { dataUrl: `data:${displayMime};base64,${data.toString("base64")}`, width: size?.width ?? null, height: size?.height ?? null };
 }
 export async function readHostAttachmentVideoBytes(filePath: string, agentDir?: string): Promise<Uint8Array | null> {
   const resolved = reanchorSandPath(filePath);

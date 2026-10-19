@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { LocalResumeCoordinator } from "./local-resume-coordinator.js";
 import { bindAttachmentStagingPort } from "./attachment-runtime-ports.js";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -246,6 +247,7 @@ export class SandHost {
   readonly listeners = new Set<(event: unknown) => void>();
 
   private readonly backgroundWorkReady = deferred<void>();
+  private resumeCoordinator: LocalResumeCoordinator | undefined;
   private hostExtensions: HostExtensionRegistry | undefined;
   private rosterBookkeeping: HostRosterBookkeeping | undefined;
   private runnerComposition: HostRunnerComposition | undefined;
@@ -530,10 +532,29 @@ export class SandHost {
   private finishBackgroundStartup(hostBundleVersion: string): void {
     const extensions = this.requireHostExtensions();
     const transcript = this.transcript;
-    const activeAgentId = optionalMethod(transcript, "getActiveAgentId")?.();
-    if (typeof activeAgentId === "string") {
-      void this.kickstartIfPending(activeAgentId);
-    }
+    const execution = extensions.api("turn-execution");
+    const automations = extensions.api("automations");
+    this.resumeCoordinator = new LocalResumeCoordinator({
+      setAllowed: allowed => { optionalMethod(execution, "setLocalWorkAllowed")?.(allowed); },
+      runDuringRecovery: run => optionalMethod(execution, "runDuringRecovery")?.(run) ?? run(),
+      isReady: async () => await optionalMethod(extensions.api("inference"), "isReady")?.() ?? false,
+      suspendWakes: async () => { await optionalMethod(automations, "suspendWakes")?.(); },
+      resumeTurns: async () => {
+        await optionalMethod(transcript, "recoverReviewInteractions")?.();
+        await optionalMethod(transcript, "resumeInterruptedUpgradeTurns")?.();
+      },
+      unacceptedAgentIds: () => optionalMethod(transcript, "listUnacceptedResumeAgentIds")?.() ?? [],
+      rearmWakes: async () => await optionalMethod(transcript, "rearmPendingWakes")?.() !== false,
+      afterRelease: async () => {
+        this.backgroundWorkReady.resolve(undefined);
+        optionalMethod(automations, "resumeWakes")?.();
+        await optionalMethod(automations, "reconcileNow")?.();
+        void optionalMethod(transcript, "redriveUnfulfilledAckObligations")?.();
+        const activeAgentId = optionalMethod(transcript, "getActiveAgentId")?.();
+        if (typeof activeAgentId === "string") void this.kickstartIfPending(activeAgentId);
+      },
+      report: event => this.log.log(`[sand:recovery] ${JSON.stringify(event)}`)
+    });
 
     const attachmentStaging = bindAttachmentStagingPort(extensions.api("attachments"));
     optionalMethod(transcript, "setAgentForgottenObserver")?.(
@@ -553,22 +574,15 @@ export class SandHost {
     );
 
     this.wireEvents();
-    this.backgroundWorkReady.resolve(undefined);
 
     optionalMethod(extensions.api("host-upgrade"), "startSharedUpdateWatch")?.({
       isBoxAutoUpdateEnabled: false,
       runRootUpdateTick: async () => {}
     });
-    void optionalMethod(extensions.api("automations"), "reconcileNow")?.();
     optionalMethod(transcript, "setConnectorConnectCardObserver")?.(
       (event: unknown) => this.runtime.registerConnectorConnectCard(event)
     );
-    void optionalMethod(
-      extensions.api("host-upgrade"),
-      "resumeInterruptedUpgradeTurns"
-    )?.();
-    void optionalMethod(transcript, "rearmPendingWakes")?.();
-    void optionalMethod(transcript, "redriveUnfulfilledAckObligations")?.();
+    void this.resumeCoordinator.request();
 
     optionalMethod(this.telemetryLogsOrUndefined() ?? {}, "reportHostStartup")?.({
       auto_update: String(
@@ -648,7 +662,7 @@ export class SandHost {
   getApi(): Record<string, DynamicMethod> {
     const extensions = this.requireHostExtensions();
     const rosterBookkeeping = this.requireRosterBookkeeping();
-    return createHostGatewayApi(this.runtime.createGatewayDependencies({
+    return createHostGatewayApi({ ...this.runtime.createGatewayDependencies({
       extensions,
       hostEvents: this.hostEvents,
       rosterBookkeeping,
@@ -658,7 +672,15 @@ export class SandHost {
       requestDiskSaverAudit: agentId => this.requestDiskSaverAudit(agentId),
       releaseAgentBox: agentId => this.releaseAgentBox(agentId),
       forgetLocalToolPermission: agentId => this.forgetLocalToolPermission(agentId)
-    }));
+    }), resumeAfterRecreate: async (agentIds, pendingWakes) => {
+      let resumed = 0;
+      await this.resumeCoordinator?.request(async () => {
+        await optionalMethod(extensions.api("cross-user-sharing"), "resumeAfterRecreate")?.();
+        const result: unknown = await optionalMethod(this.transcript, "resumeAfterRecreate")?.(agentIds, pendingWakes);
+        if (typeof result === "object" && result !== null && "resumed" in result && typeof result.resumed === "number") resumed = result.resumed;
+      });
+      return { resumed };
+    } });
   }
 
   forgetLocalToolPermission(agentId: string): void {
@@ -730,6 +752,8 @@ export class SandHost {
   async dispose(): Promise<void> {
     const extensions = this.hostExtensions;
     if (extensions == null) return;
+    this.resumeCoordinator?.dispose();
+    optionalMethod(extensions.api("turn-execution"), "dispose")?.();
 
     if (optionalMethod(this.transcript, "isQuiescingForUpgrade")?.()) {
       optionalMethod(

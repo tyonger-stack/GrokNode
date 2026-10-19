@@ -164,8 +164,9 @@ export class BoxHandoffResume {
   async resumeWithHiddenPrompt(
     agentId: string,
     prompt: string,
-    errorTitle: string,
+    resumeOptions: string | { readonly errorTitle: string; readonly inferenceRequestId: string },
   ): Promise<void> {
+    const errorTitle = typeof resumeOptions === "string" ? resumeOptions : resumeOptions.errorTitle;
     if (!this.tm.execution.canExecute) return;
     let session: any;
     try {
@@ -189,6 +190,7 @@ export class BoxHandoffResume {
           await runner.run(prompt, {
             hidden: true,
             ackToken,
+            ...(typeof resumeOptions === "string" ? {} : { inferenceRequestId: resumeOptions.inferenceRequestId }),
             requestSource: "handoff-resume",
           });
           await this.tm.roster.emitAgentUpdate(session.id);

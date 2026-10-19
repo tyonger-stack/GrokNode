@@ -43,6 +43,7 @@ export interface HostGatewayDependencies {
   handleDesktopMcpAuthCompletion(completion: unknown): Promise<void>;
   forgetLocalToolPermission(agentId: string): void;
   readonly now?: () => number;
+  resumeAfterRecreate?(agentIds: readonly string[], pendingWakes?: readonly unknown[]): Promise<{ resumed: number }>;
 }
 
 function isSandAgentPurpose(value: unknown): value is string {
@@ -323,6 +324,10 @@ export function createHostGatewayApi(
         args.value,
         args.agentId
       ),
+    sendDraft: (args: unknown) => method(manager, "sendDraft")(args),
+    discardDraft: (args: unknown) => method(manager, "discardDraft")(args),
+    submitUserForm: (args: unknown) => method(manager, "submitUserForm")(args),
+    dismissUserForm: (args: unknown) => method(manager, "dismissUserForm")(args),
     reactToMessage: (args: any) => {
       markActive("user_action");
       method(telemetry.analytics, "trackEvent")("sand.reaction.added", {
@@ -677,12 +682,14 @@ export function createHostGatewayApi(
       return await method(manager, "quiesceForRecreate")();
     },
     resumeBoxAfterRecreate: async (args: any) => {
-      method(automations, "resumeWakes")();
+      if (deps.resumeAfterRecreate !== undefined) return deps.resumeAfterRecreate(args.agentIds ?? [], args.pendingWakes);
       await method(sharing, "resumeAfterRecreate")();
-      return await method(manager, "resumeAfterRecreate")(
+      const result = await method(manager, "resumeAfterRecreate")(
         args.agentIds ?? [],
         args.pendingWakes
       );
+      method(automations, "resumeWakes")();
+      return result;
     },
     handBackForeverBox: (args: any) =>
       method(deps.extensions.api("session"), "endHandoff")(

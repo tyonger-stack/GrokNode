@@ -34,6 +34,8 @@ import type {
 } from "./system-prompt-assembly.js";
 import type { SummarizationPromptSession } from "../../packages/agent-summarization/summarization-handler.js";
 import { createProviderPromptSession } from "../extensions/inference/provider-session.js";
+import type { PromptPrefixObserver } from "./prompt-prefix-observation.js";
+import { withSandLoopDetection, type SandLoopDetectionPolicy } from "./loop-detection-policy.js";
 import { getSandRootDir } from "../host-paths.js";
 import { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
 import type { AgentProfilePromptSnapshot } from "./sand-agent-profile-prompt.js";
@@ -93,6 +95,8 @@ export interface TurnAgentShellWatchInput<ContextValue> {
 }
 
 export interface TurnAgentRunContextInput<ContextValue> {
+  readonly promptPrefixObserver?: PromptPrefixObserver;
+  readonly loopDetectionPolicy?: SandLoopDetectionPolicy;
   readonly context: ContextValue;
   readonly conversationId: string;
   readonly requestId: string;
@@ -188,8 +192,9 @@ export async function createTurnAgentRunContext<ContextValue>(
     ...(input.lineage === undefined ? {} : { lineage: input.lineage }),
   };
   const inferenceProvider = new SandSettingsStore(join(getSandRootDir(), "settings.json")).getInferenceProvider();
-  const agent = createProviderPromptSession(inferenceProvider, { agentId: input.conversationId }) as unknown as TurnAgentPromptSession;
-  const summarization = createProviderPromptSession(inferenceProvider, { agentId: input.conversationId }) as unknown as SummarizationPromptSession;
+  const prefixOptions = input.promptPrefixObserver === undefined ? {} : { prefixObserver: input.promptPrefixObserver };
+  const agent = createProviderPromptSession(inferenceProvider, { agentId: input.conversationId, ...prefixOptions }) as unknown as TurnAgentPromptSession;
+  const summarization = createProviderPromptSession(inferenceProvider, { agentId: input.conversationId, ...prefixOptions, inferenceReason: "summarization" }) as unknown as SummarizationPromptSession;
   const profilePromptSnapshot = input.profilePromptSnapshot
     ?? input.systemPromptAssembly?.prepareAgentProfilePromptSnapshot(
       input.profilePromptSnapshotStore,
@@ -200,8 +205,10 @@ export async function createTurnAgentRunContext<ContextValue>(
   const applyModelStreamWallClockLimit = createModelStreamWallClockMiddleware(
     resolveModelStreamWallClockLimitMs(),
   );
-  const baseExecutor = (): PromptExecutor =>
-    applyModelStreamWallClockLimit(agent.getExecutor());
+  const baseExecutor = (): PromptExecutor => {
+    const executor = applyModelStreamWallClockLimit(agent.getExecutor());
+    return input.loopDetectionPolicy === undefined ? executor : withSandLoopDetection(executor, input.loopDetectionPolicy);
+  };
   const toolSession = {
     getExecutor: () => {
       const withDiskPressure = diskPressureReminderEpisodeId == null

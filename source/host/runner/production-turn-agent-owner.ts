@@ -1,4 +1,6 @@
 import type { Context } from "../../packages/context/core.js";
+import type { PromptPrefixObserver } from "./prompt-prefix-observation.js";
+import type { SandLoopDetectionPolicy } from "./loop-detection-policy.js";
 import type { BlobStore } from "../../packages/agent-kv/blob-store.js";
 import {
   ConversationStateStructure,
@@ -49,6 +51,8 @@ import {
  * one Agent.  The caller retains ownership of the Agent stream lifecycle.
  */
 export interface ProductionTurnAgentOwnerInput {
+  readonly promptPrefixObserver?: PromptPrefixObserver;
+  readonly loopDetectionPolicy?: SandLoopDetectionPolicy;
   readonly context: Context;
   readonly conversationId: string;
   readonly requestId: string;
@@ -155,6 +159,8 @@ export async function createProductionTurnAgentOwner(
   input: ProductionTurnAgentOwnerInput,
 ): Promise<ProductionTurnAgentOwner> {
   const runContext = await createTurnAgentRunContext({
+    ...(input.promptPrefixObserver === undefined ? {} : { promptPrefixObserver: input.promptPrefixObserver }),
+    ...(input.loopDetectionPolicy === undefined ? {} : { loopDetectionPolicy: input.loopDetectionPolicy }),
     context: input.context,
     conversationId: input.conversationId,
     requestId: input.requestId,

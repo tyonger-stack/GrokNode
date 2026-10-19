@@ -549,7 +549,7 @@ export class RunLifecycle {
     }
   }
 
-  enqueueExclusiveRun(
+  async enqueueExclusiveRun(
     agentId: string,
     task: () => Promise<void>,
     options: {
@@ -559,6 +559,8 @@ export class RunLifecycle {
       ackToken?: string;
     },
   ): Promise<void> {
+    if (this.tm.execution?.waitForLocalWork !== undefined)
+      await this.tm.execution.waitForLocalWork();
     // Deadline INSIDE the notice wrapper: the deadline rejection must flow
     // through the turn-failure notice catch, or a wedged run would fail
     // silently (the notice wrapper's catch only sees rejections of the task

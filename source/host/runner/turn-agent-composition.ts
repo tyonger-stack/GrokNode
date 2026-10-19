@@ -120,6 +120,7 @@ import {
   type PromptExecutor as ReminderPromptExecutor,
 } from "./send-message-reminder-middleware.js";
 import { createStartOfTurnAckReminderMiddleware } from "./start-of-turn-ack-reminder-middleware.js";
+import type { SandLoopDetectionMode } from "./loop-detection-policy.js";
 import { builtinSubagentConfigs } from "./tools/sand-computer-use-subagent.js";
 import { createSandExecutorSubagentConfig } from "../sand-multitask.js";
 import {
@@ -216,6 +217,7 @@ const DEFAULT_BACKGROUND_SUMMARIZATION = {
 } as const;
 
 export interface TurnAgentStaticConfigInputs {
+  readonly loopDetectionMode?: SandLoopDetectionMode;
   readonly modelId: string;
   readonly agentTokenLimit: number;
   readonly conversationId: string;
@@ -278,6 +280,7 @@ export function createSandAgentStaticConfig(
       ? {}
       : { selfSummaryConfig: input.selfSummaryConfig }),
     featureFlags: {
+      ...(input.loopDetectionMode === undefined || input.loopDetectionMode === "off" ? {} : { nalLoopDetection: input.loopDetectionMode === "on" }),
       enableWatchVideoInIdeSubagent: true,
       sandSendMessageDeliveryOwed: input.sandSendMessageDeliveryOwed,
       userMessageTimestamps: true,

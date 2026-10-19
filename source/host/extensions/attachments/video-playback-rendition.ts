@@ -11,7 +11,7 @@ const renditionCacheDir = join(tmpdir(), `sand-video-playback-${process.pid}`);
 interface Resolution { readonly renditionPath: string; readonly promise: Promise<string | null>; activeReaders: number; evicted: boolean; retryAfter?: number }
 const playbackResolutionBySourceVersion = new Map<string, Resolution>();
 let activeTranscodes = 0; const waiting: Array<() => void> = [];
-async function withTranscodeSlot<T>(run: () => Promise<T>): Promise<T> { if (activeTranscodes >= 2) await new Promise<void>((resolve) => waiting.push(resolve)); activeTranscodes += 1; try { return await run(); } finally { activeTranscodes -= 1; waiting.shift()?.(); } }
+export async function withTranscodeSlot<T>(run: () => Promise<T>): Promise<T> { if (activeTranscodes >= 2) await new Promise<void>((resolve) => waiting.push(resolve)); activeTranscodes += 1; try { return await run(); } finally { activeTranscodes -= 1; waiting.shift()?.(); } }
 function removeEvictedRendition(resolution: Resolution): void { if (!resolution.evicted || resolution.activeReaders > 0) return; void resolution.promise.then(async () => { await Promise.allSettled([fs.rm(resolution.renditionPath, { force: true })]); }); }
 export async function runVideoTool(command: string, args: readonly string[]): Promise<string> { return await new Promise((resolve, reject) => execFile(command, [...args], { encoding: "utf8", maxBuffer: 64 * 1024, timeout: VIDEO_TOOL_TIMEOUT_MS }, (error, stdout) => error == null ? resolve(stdout) : reject(error))); }
 async function hasPlaybackRendition(path: string): Promise<boolean> { try { const info = await fs.stat(path); return info.isFile() && info.size > 0; } catch { return false; } }
