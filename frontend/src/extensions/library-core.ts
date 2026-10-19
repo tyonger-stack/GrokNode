@@ -187,15 +187,18 @@ export function itemLabel(item: LibraryItem): string {
   return item.kind === "link" ? item.url : item.name;
 }
 
-/** 相对时间（沿用官方视图的量级口径）。 */
+/**
+ * Relative age for library hover labels.
+ * Official `Og` / i18n `/oqig9` + `ZSWUwq` use `"N 小时"` / `"N 分钟"` (no 前).
+ */
 export function formatWhen(ms: number | null, nowMs: number): string {
   if (ms == null) return "";
   const age = nowMs - ms;
   if (age < 0) return "";
   if (age < 60_000) return "刚刚";
-  if (age < 3_600_000) return `${Math.floor(age / 60_000)} 分钟前`;
-  if (age < 86_400_000) return `${Math.floor(age / 3_600_000)} 小时前`;
+  if (age < 3_600_000) return `${Math.floor(age / 60_000)} 分钟`;
+  if (age < 86_400_000) return `${Math.floor(age / 3_600_000)} 小时`;
   const days = Math.floor(age / 86_400_000);
-  if (days < 7) return `${days} 天前`;
+  if (days < 7) return `${days} 天`;
   return new Date(ms).toISOString().slice(0, 10);
 }
