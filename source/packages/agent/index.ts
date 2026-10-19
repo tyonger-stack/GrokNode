@@ -12,6 +12,7 @@ import { RedactedPromptToolExecutor } from "./tool-stream-executor.js";
 import { ConversationStateHandle } from "./state.js";
 import { SummarizationOrchestrator } from "./summarization-orchestrator.js";
 import { estimateTokenCount } from "./self-summary/token-estimate.js";
+import { createSelfSummarizerFactory } from "./self-summary/self-summarizer-factory.js";
 import { drainPendingWritesOnRunStreamError } from "./abort-drain.js";
 import { buildRunStreamStateHandleOptions, shouldTrackAgentTypeChange, createRunStreamStateUpdateWithFlush } from "./run-stream-lifecycle.js";
 import { conversationGroupIdKey, conversationIdKey, bubbleRetryableTaskErrorsKey } from "./utils/request-id.js";
@@ -64,7 +65,18 @@ export class AnysphereAgent {
     this.summarizationHandler = summarizationHandler;
     this.conversationActionReceiver = conversationActionReceiver;
     this.config = normalizeAnysphereAgentConfig(config);
-    this.orchestrator = new SummarizationOrchestrator(summarizationHandler, undefined, this.config.backgroundSummarizationProps, this.config.selfSummaryConfig?.tokenLimit, this.config.selfSummaryConfig?.canUseSelfSummary);
+    const selfSummarizerFactory = createSelfSummarizerFactory({
+      config: this.config.selfSummaryConfig,
+      fallbackPromptSession: promptSession,
+      modelId: this.config.modelId ?? "unknown",
+    });
+    this.orchestrator = new SummarizationOrchestrator(
+      summarizationHandler,
+      selfSummarizerFactory,
+      this.config.backgroundSummarizationProps,
+      this.config.selfSummaryConfig?.tokenLimit,
+      this.config.selfSummaryConfig?.canUseSelfSummary,
+    );
     this.actionHandlers = new Map();
     const user = new UserMessageActionHandler(this.config, resourceAccessor, interactionListener, summarizationHandler, conversationActionReceiver, this.orchestrator);
     this.actionHandlers.set("userMessageAction", user);

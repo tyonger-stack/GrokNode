@@ -109,6 +109,7 @@ export interface SummarizationRawResult {
   readonly outputTokens: number | undefined;
   readonly hadError: boolean;
   readonly errorKind?: string | undefined;
+  readonly isPlaceholder?: boolean | undefined;
 }
 
 interface PartitionedMessages {
@@ -642,6 +643,7 @@ async function executeSummarizationWithRetry(
     outputTokens: undefined,
     hadError: true,
     errorKind,
+    isPlaceholder: true,
   };
 }
 
@@ -1136,6 +1138,7 @@ export class SummarizationHandler {
     summary: { summary: RedactedString };
     hadError: boolean;
     errorKind: string | undefined;
+    isPlaceholder?: boolean | undefined;
   }> {
     if (!messages.find(message => message.role === "system")) {
       logger.warn(context, "Compaction input has no system message", {
@@ -1216,6 +1219,7 @@ export class SummarizationHandler {
         summary: { summary },
         hadError,
         errorKind: pipelineResult.rawSummary.errorKind,
+        isPlaceholder: pipelineResult.rawSummary.isPlaceholder === true,
       };
     } catch (error) {
       const durationMs = performance.now() - startTime;

@@ -8,6 +8,20 @@ export class NoSummaryResponseError extends Error {
   }
 }
 
+/** Thrown when WaitForCompletion would otherwise persist a placeholder summary. */
+export class SummaryPlaceholderRejectedError extends Error {
+  readonly errorKind: string;
+  readonly summarizerModelId: string | undefined;
+
+  constructor(args: { readonly errorKind: string; readonly summarizerModelId?: string | undefined }) {
+    super(`Refusing to persist a placeholder summary (${args.errorKind})`);
+    this.name = "SummaryPlaceholderRejectedError";
+    Object.setPrototypeOf(this, SummaryPlaceholderRejectedError.prototype);
+    this.errorKind = args.errorKind;
+    this.summarizerModelId = args.summarizerModelId;
+  }
+}
+
 const CONNECT_ERROR_CODES = {
   InvalidArgument: 3,
   NotFound: 5,

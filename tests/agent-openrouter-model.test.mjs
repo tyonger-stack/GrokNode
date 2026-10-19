@@ -134,3 +134,31 @@ test("the model is fixed when the session starts, not re-read per request", () =
   assert.throws(() => started.getExecutor().stream(undefined), /stub chat/);
   assert.deepEqual(chatIds, ["first/model"]);
 });
+
+test("oversized restored history triggers compaction before opening the provider", () => {
+  // Given a legacy conversation whose last usage had no context-window value.
+  writeSettings({ openRouterModel: "glm-5.3-flash" });
+  chatIds.length = 0;
+  const executor = session.createProviderPromptSession("openrouter").getExecutor();
+  executor.appendMessages({ role: "user", content: "x".repeat(2_600_000) });
+
+  // When the restored conversation is sent, then use the agent's token-limit
+  // recovery path immediately, without waiting for a provider response.
+  assert.throws(() => executor.stream(undefined), { name: "InputTokenLimitError" });
+  assert.deepEqual(chatIds, []);
+});
+
+test("oversized structured tool results also trigger compaction before dial", () => {
+  // Given history dominated by a structured tool result rather than text parts.
+  writeSettings({ openRouterModel: "glm-5.3-flash" });
+  chatIds.length = 0;
+  const executor = session.createProviderPromptSession("openrouter").getExecutor();
+  executor.appendMessages({ role: "tool", content: [{
+    type: "tool-result", toolCallId: "large-read", toolName: "Read",
+    result: { text: "x".repeat(2_600_000) },
+  }] });
+
+  // When sent, then the structured content must not bypass the window check.
+  assert.throws(() => executor.stream(undefined), { name: "InputTokenLimitError" });
+  assert.deepEqual(chatIds, []);
+});

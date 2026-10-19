@@ -4,6 +4,8 @@ import {
   shouldStartBackgroundSummarization,
   type BackgroundSummarizationProps,
 } from "../agent-summarization/background-summarization.js";
+import { SummaryPlaceholderRejectedError } from "../agent-summarization/error-handling.js";
+import { persistCompactionSegmentSafe } from "./self-summary/compaction-segments.js";
 import { getRetryDirective } from "../agent-summarization/error-handling.js";
 import { prepareMessagesForCompaction } from "../agent-summarization/prepare-messages.js";
 import type { RedactedCoreMessage } from "../agent-summarization/summarization-handler.js";
@@ -44,6 +46,7 @@ import { refreshNamedAgentSelfDocumentInMessages } from "./prompts/cloud-meta-ag
 import { SELF_SUMMARY_CONTEXT_WINDOW_FRACTION } from "./self-summary/constants.js";
 import { shouldPerformSelfSummary } from "./self-summary/self-summary.js";
 import { estimateTokenCount } from "./self-summary/token-estimate.js";
+import type { SelfSummaryInteractionListener, SelfSummaryStateHandler, SelfSummaryTool } from "./self-summary/self-summary-handler.js";
 import { collectLiveAskQuestionOriginalIds } from "./tools/core/ask-question/replay-horizon.js";
 import { formatTodosForSummarization } from "./tools/core/todo/common.js";
 import { AgentType } from "./utils/agent-config.js";
@@ -80,6 +83,8 @@ export interface SummarizationResult {
   readonly fullReplacementMessages: readonly RedactedCoreMessage[];
   readonly hadError?: boolean | undefined;
   readonly errorKind?: string | undefined;
+  readonly isPlaceholder?: boolean | undefined;
+  readonly compactionSegmentsDir?: string | undefined;
   readonly onPersisted?: (() => void) | undefined;
 }
 
@@ -117,13 +122,12 @@ export interface BackgroundSummarizationPromiseInfo {
   readonly startMaxTokens: number;
 }
 
-export interface SummarizationStateHandler extends ProjectConversationState {
+export interface SummarizationStateHandler extends ProjectConversationState, SelfSummaryStateHandler {
   mode?: AgentMode | undefined;
   isRootProjectConversation?: boolean;
   readonly todos: readonly { get(ctx: Context): Promise<RedactedTodoItem> }[];
   readonly tokenDetails: SummarizationTokenDetails;
   readonly summaryArchives: readonly unknown[];
-  readonly selfSummaryCount: number;
   backgroundSummarizationPromiseInfo: BackgroundSummarizationPromiseInfo | null;
   messagesUndergoingSummarization: readonly RedactedCoreMessage[] | null;
   readonly backgroundSummarizationHasCompleted: boolean;
@@ -139,7 +143,6 @@ export interface SummarizationStateHandler extends ProjectConversationState {
   setSelfSummaryInputLimitFailureTokenCount(tokenCount: number): void;
   clearSelfSummaryInputLimitFailureTokenCount(): void;
   pushSummaryArchive(archive: SummaryArchive): void;
-  getPrivacyMode(): PrivacyMode;
   getBlobStore(): {
     setBlob(ctx: Context, blobId: Uint8Array, data: Uint8Array): Promise<void>;
   };
@@ -152,9 +155,7 @@ export interface SummarizationPromptExecutor {
   appendMessages(messages: readonly RedactedCoreMessage[]): void;
 }
 
-export interface SummarizationInteractionListener {
-  sendUpdate(ctx: Context, update: unknown): Promise<void>;
-}
+export type SummarizationInteractionListener = SelfSummaryInteractionListener;
 
 export interface SummarizationResourceAccessor {
   get(resource: typeof hookExecutorResource): {
@@ -183,7 +184,7 @@ export interface SummarizationOrchestratorConfig extends ModeProcessingConfig {
 
 export interface HandleSummarizationOptions {
   readonly forceExternalModel?: boolean | undefined;
-  readonly tools?: unknown[] | undefined;
+  readonly tools?: SelfSummaryTool[] | undefined;
   readonly extraT?: unknown;
   readonly descriptionProps?: Record<string, unknown> | undefined;
   readonly backgroundSummarizationMode: BackgroundSummarizationMode;
@@ -199,7 +200,7 @@ export interface HandleSummarizationOptions {
 export type SelfSummarizerFactory = (
   stateHandler: SummarizationStateHandler,
   interactionListener: SummarizationInteractionListener,
-  tools: unknown[],
+  tools: SelfSummaryTool[],
   extraT: unknown,
   descriptionProps: Record<string, unknown> | undefined,
 ) => Summarizer;
@@ -519,17 +520,14 @@ export class SummarizationOrchestrator {
           backgroundSummarizationStarted.increment(ctx, 1, { model: summarizerModelId });
           const todoItems = await Promise.all(stateHandler.todos.map(todoRef => todoRef.get(ctx)));
           const todoContent = formatTodosForSummarization(todoItems);
-          const includeTranscriptInSummary = config.enableTranscriptInSummary === true &&
-            requestContext.env?.agentTranscriptsFolder !== undefined &&
-            config.agentType !== AgentType.BACKGROUND;
           const result = await summarizer.summarize(ctx, allMessages, {
             fullSummarization: options.fullSummarization,
             currentPlan: options.currentPlan,
             modePrompt,
             projectRootPrompt,
-            agentTranscriptsFolder: includeTranscriptInSummary
-              ? requestContext.env?.agentTranscriptsFolder
-              : undefined,
+            // Pass folder whenever present so xAI compaction can write segment_*.md
+            // even if durable transcript enrichment is off for this agent type.
+            agentTranscriptsFolder: requestContext.env?.agentTranscriptsFolder,
             conversationId: config.conversationId,
             automationTriggerContext: options.automationTriggerContext,
             todoContent,
@@ -689,6 +687,7 @@ export class SummarizationOrchestrator {
         rawSummary,
         summary,
         fullReplacementMessages,
+        compactionSegmentsDir: compactionSegmentsDirFromResult,
         onPersisted,
       } = result;
       const summarizationDuration = performance.now() - beforeSummarize;
@@ -710,6 +709,32 @@ export class SummarizationOrchestrator {
         logger.warn(ctx, "Discarding background summarization due to generation error", {
           summarization: { ...summarizationLogFields, errorKind: result.errorKind ?? "unknown" },
         });
+        return undefined;
+      }
+      if (result.isPlaceholder === true) {
+        stateHandler.clearBackgroundSummarizationState();
+        backgroundSummarizationDiscarded.increment(ctx, 1, {
+          reason: "placeholder_summary",
+          model: backgroundSummarizationModelId,
+        });
+        const errorKind = result.errorKind ?? "unknown";
+        const placeholderLogFields = {
+          summarization: {
+            ...summarizationLogFields,
+            errorKind,
+            summarizationMode: options.backgroundSummarizationMode,
+          },
+        };
+        logger.error(ctx, "Refusing to persist a placeholder summary; keeping the pre-summary context", placeholderLogFields);
+        if (
+          options.backgroundSummarizationMode === BackgroundSummarizationMode.WaitForCompletion ||
+          options.backgroundSummarizationMode === BackgroundSummarizationMode.WaitForCompletionIfStarted
+        ) {
+          throw new SummaryPlaceholderRejectedError({
+            errorKind,
+            summarizerModelId: backgroundSummarizationModelId,
+          });
+        }
         return undefined;
       }
       const redactedCoreMessageSerde = createRedactedCoreMessageSerde(stateHandler.getPrivacyMode());
@@ -809,6 +834,16 @@ export class SummarizationOrchestrator {
       }
       stateHandler.clearSelfSummaryInputLimitFailureTokenCount();
       onPersisted?.();
+      if (
+        typeof compactionSegmentsDirFromResult === "string" &&
+        compactionSegmentsDirFromResult.length > 0
+      ) {
+        persistCompactionSegmentSafe(ctx, {
+          compactionDir: compactionSegmentsDirFromResult,
+          messages: messagesSummarized,
+          rawSummary: rawSummary.text,
+        });
+      }
       summarizationTime.histogram(ctx, summarizationDuration, {
         strategy,
         triggerReason,

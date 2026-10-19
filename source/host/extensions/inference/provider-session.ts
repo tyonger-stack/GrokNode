@@ -4,11 +4,13 @@ import { join } from "node:path";
 
 import { createOpenAI } from "@ai-sdk/openai";
 import { jsonSchema, streamText, tool, type CoreMessage, type LanguageModelV1, type ToolSet } from "ai";
- import { zodToJsonSchema } from "zod-to-json-schema";
+import { zodToJsonSchema } from "zod-to-json-schema";
 
 import { BasePromptBuilder, BasePromptExecutor } from "../../../packages/chat-inference/base.js";
+import { InputTokenLimitError } from "../../../packages/chat-inference/prompt-executor.js";
+import { estimateTokenCount } from "../../../packages/agent-summarization/token-estimate.js";
 import type { SandInferenceProvider } from "../../../shared/inference-router.js";
-import { effortSupportedByModel, isOpenRouterProxyMode, noneThinkingStrategy, normalizeOpenRouterReasoningEffort, readCodexConfigValue, resolveOpenRouterTransport, withDisabledThinkingFetch } from "../../../shared/node/openrouter-proxy.js";
+import { effortSupportedByModel, isOpenRouterProxyMode, noneThinkingStrategy, normalizeOpenRouterReasoningEffort, readCodexConfigValue, readOpenRouterModelContextWindow, resolveOpenRouterTransport, withDisabledThinkingFetch } from "../../../shared/node/openrouter-proxy.js";
 import { classifyOpenRouterError, openRouterOkStatus } from "../../../shared/openrouter-channel-status.js";
 import { DEFAULT_FIRST_TOKEN_STALL_DEADLINE_MS, resolveFirstTokenStallDeadlineMs } from "../../runner/transient-stream-error.js";
 import { getSandRootDir } from "../../host-paths.js";
@@ -17,6 +19,14 @@ import { getBoxSecretsStorePath } from "../secrets/secrets-service.js";
 import { streamCodexDirectResponses, type CodexDirectTool } from "./codex-direct-responses.js";
 import { acquireInferenceSlot, takePreheldInferenceSlot } from "./inference-inflight.js";
 import type { LabelMessage, PromptExecutor } from "./sand-labeling.js";
+
+/** Default context window when the provider does not report maxTokens (local OpenRouter/Z.AI). */
+export const DEFAULT_INFERENCE_CONTEXT_WINDOW_TOKENS = 1_000_000;
+
+/** Prefer catalog `context_window` so self-summary fires before a smaller model overflows. */
+export function resolveInferenceContextWindowTokens(modelId: string | null | undefined): number {
+  return readOpenRouterModelContextWindow(modelId)?.contextWindow ?? DEFAULT_INFERENCE_CONTEXT_WINDOW_TOKENS;
+}
 
 type Loose = Record<string, any>;
 interface ProviderMessage extends LabelMessage { role: string; content: string | readonly unknown[] }
@@ -450,7 +460,7 @@ function codexExecutor(messages: readonly ProviderMessage[], invocationId: strin
         if (event.type === "tool-call") { yield { type: "tool-call" as const, toolCallId: event.toolCallId, toolName: event.toolName, args: event.args }; continue; }
         const inputTokens = finiteTokenCount(event.usage?.inputTokens), outputTokens = finiteTokenCount(event.usage?.outputTokens);
         const basic = { promptTokens: inputTokens, completionTokens: outputTokens, totalTokens: inputTokens + outputTokens };
-        const extended = { ...event.usage, maxTokens: 0 };
+        const extended = { ...event.usage, maxTokens: resolveInferenceContextWindowTokens(model) };
         onUsage?.(event.usage);
         usage.resolve(basic);
         extendedUsage.resolve(extended);
@@ -491,6 +501,24 @@ const finiteTokenCount = (value: unknown): number => typeof value === "number" &
 const CHAT_IDLE_TIMEOUT_MS = resolveFirstTokenStallDeadlineMs() || DEFAULT_FIRST_TOKEN_STALL_DEADLINE_MS;
 
 function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void, signal?: AbortSignal, modelId?: string, agentId?: string) {
+  const id = modelId ?? resolveOpenRouterModel();
+  const window = readOpenRouterModelContextWindow(id);
+  const inputLimit = window?.autoCompactTokenLimit ?? Math.floor(resolveInferenceContextWindowTokens(id) * 0.9);
+  // Restored conversations can have maxTokens=0 from older provider usage.
+  // Signal the existing blocking-compaction path before dialing an oversized
+  // request; waiting for an upstream rejection can otherwise stall every retry.
+  const estimatedInputTokens = estimateTokenCount([
+    { content: GROK_ROUTER_SYSTEM_PROMPT },
+    ...messages.map(message => ({
+      content: typeof message.content === "string" ? message.content : jsonString(
+        message.content.filter(part => !isRecord(part) || (part.type !== "image" && part.type !== "file")),
+      ),
+    })),
+    { content: jsonString(definitions ?? []) },
+  ]);
+  if (estimatedInputTokens >= inputLimit) {
+    throw new InputTokenLimitError(`Estimated provider input (${estimatedInputTokens} tokens) reached the ${inputLimit}-token compaction threshold for ${id}`);
+  }
   const chatStartedAt = Date.now();
   const chatStatusStore = new SandSettingsStore(join(getSandRootDir(), "settings.json"));
   let recordedChatStatusSignature = "";
@@ -501,7 +529,6 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     try { chatStatusStore.setOpenRouterChatStatus(status); } catch {}
   }
   const transport = resolveOpenRouterTransport(readPersistedOpenRouterBaseUrl());
-  const id = modelId ?? resolveOpenRouterModel();
   function recordChatError(error: unknown): void {
     const status = classifyOpenRouterError(error, "chat", chatStartedAt);
     if (status == null) {
@@ -639,7 +666,7 @@ function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: 
     outputTokens: value.completionTokens,
     cacheReadTokens: 0,
     cacheWriteTokens: 0,
-    maxTokens: 0,
+    maxTokens: resolveInferenceContextWindowTokens(id),
   }));
   if (onUsage != null) void extendedUsage.then(onUsage);
   const response = ensureStream().then((result) => result.response);

@@ -77,6 +77,10 @@ import {
 } from "./sand-activity.js";
 import { connectorCardEmissionToMessage } from "./runner/tools/box-help-tool.js";
 import { createAgentPromptSession } from "./extensions/inference/extension.js";
+import { resolveInferenceContextWindowTokens } from "./extensions/inference/provider-session.js";
+import { readOpenRouterModelContextWindow } from "../shared/node/openrouter-proxy.js";
+import { localBackgroundSummarizationPropsForWindow } from "../packages/agent-summarization/background-summarization.js";
+import { SAND_COMPACTION_DELIVERY_TAIL } from "../packages/agent-summarization/delivery-tail.js";
 import { LIBRARY_MAIN_STORE } from "./extensions/library/extension.js";
 import { captureLibraryMcpExecution } from "../shared/library/mcp-result-hook.js";
 import { CONNECTOR_MANIFESTS } from "../shared/channels.js";
@@ -2607,6 +2611,12 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         subagentConfigs: builtinSubagentConfigs(method(remoteBox, "isAvailable")?.() !== false),
       };
       const staticModelId = process.env.SAND_AGENT_MODEL ?? DEFAULT_SAND_MODEL;
+      const inferenceContextWindow = resolveInferenceContextWindowTokens(staticModelId);
+      const catalogContext = readOpenRouterModelContextWindow(staticModelId);
+      const localBackgroundSummarizationProps = localBackgroundSummarizationPropsForWindow(
+        inferenceContextWindow,
+        catalogContext?.autoCompactTokenLimit,
+      );
       const lazyToolHost = () => createProductionTurnToolsetHost({
         turn: baseTurn,
         factoryProvider: createTurnToolsetFactoryProvider(hostDependencies()),
@@ -3018,13 +3028,22 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             turn,
             staticConfig: {
               modelId: staticModelId,
-              agentTokenLimit: 200_000,
+              agentTokenLimit: inferenceContextWindow,
+              backgroundSummarizationPropsOverride: localBackgroundSummarizationProps,
               conversationId: scope.agentId,
               isBoxScopedSubagent: false,
               isSubagentRunner: scope.isSubagentRunner,
               isSharedRoomRunner: isSharedRoomTurn,
               sandSendMessageDeliveryOwed: method(experiments, "isSendMessageDeliveryOwedEnabled")?.() ?? false,
               systemPromptGenerator: () => productionSystemPromptAssembly?.getSystemPrompt() ?? DEFAULT_SAND_SYSTEM_PROMPT,
+              // Official 0.71 Xai compaction path: model-window-aware early self-summary.
+              selfSummaryConfig: {
+                flavor: "xai-compact",
+                promptVariant: "generalized",
+                preserveUserDeliveryTail: SAND_COMPACTION_DELIVERY_TAIL,
+                tokenLimit: catalogContext?.autoCompactTokenLimit ?? Math.floor(inferenceContextWindow * 0.9),
+                canUseSelfSummary: () => true,
+              },
             },
             emitUpdate,
             interactionObservers: {},

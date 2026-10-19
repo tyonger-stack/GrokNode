@@ -1,29 +1,16 @@
 import type { Context } from "../../context/core.js";
 import { createLogger } from "../../context/logger.js";
-import { prepareMessagesForCompaction } from "../../agent-summarization/prepare-messages.js";
-import type { PrivacyMode } from "../../redaction/privacy-mode.js";
+import type { fromRedactedCoreMessage } from "../../redaction/core-message.js";
+import { isSummaryCursorMessage } from "./compaction-user-message.js";
 import {
   EVAL_ENFORCED_SELF_SUMMARY_TOKEN_LIMIT,
 } from "../utils/overridable-config.js";
 import {
   SELF_SUMMARY_CONTEXT_WINDOW_FRACTION,
-  SELF_SUMMARY_NUM_TURNS,
 } from "./constants.js";
 import { estimateTokenCount } from "./token-estimate.js";
 
-export interface SelfSummaryMessage {
-  readonly role: string;
-  readonly content: unknown;
-  readonly providerOptions?: {
-    readonly cursor?: {
-      readonly isSummary?: unknown;
-      readonly [key: string]: unknown;
-    } | undefined;
-    readonly [key: string]: unknown;
-  } | undefined;
-  readonly _privacyMode: PrivacyMode;
-  readonly [key: string]: unknown;
-}
+export type SelfSummaryMessage = Parameters<typeof fromRedactedCoreMessage>[0];
 
 export interface SelfSummaryTokenDetails {
   readonly usedTokens?: number | undefined;
@@ -40,29 +27,12 @@ export function findLastUserMessageIndex(
     const message = messages[index]!;
     if (
       message.role === "user" &&
-      (options?.includeSummaryMessages || !message.providerOptions?.cursor?.isSummary)
+      (options?.includeSummaryMessages || !isSummaryCursorMessage(message))
     ) {
       return index;
     }
   }
   return -1;
-}
-
-function getMessagesToSummarize(messages: readonly SelfSummaryMessage[]): SelfSummaryMessage[] {
-  const { messagesForSummarization } = prepareMessagesForCompaction(messages);
-  return messagesForSummarization as SelfSummaryMessage[];
-}
-
-function countTurns(messages: readonly SelfSummaryMessage[]): number {
-  if (messages.length < 2) return 0;
-  const messagesToBeSummarized = getMessagesToSummarize(messages);
-  let turnCount = 0;
-  for (const message of messagesToBeSummarized) {
-    if (message.role === "user" && !message.providerOptions?.cursor?.isSummary) {
-      turnCount++;
-    }
-  }
-  return turnCount;
 }
 
 export function shouldPerformSelfSummary(
@@ -71,9 +41,6 @@ export function shouldPerformSelfSummary(
   ctx: Context | undefined,
   configTokenLimit: number | undefined,
 ): boolean {
-  const turnCount = countTurns(messages);
-  if (turnCount >= SELF_SUMMARY_NUM_TURNS) return true;
-
   const tokenCount = tokenDetails?.usedTokens !== undefined &&
       Number.isFinite(tokenDetails.usedTokens) && tokenDetails.usedTokens > 0
     ? tokenDetails.usedTokens
