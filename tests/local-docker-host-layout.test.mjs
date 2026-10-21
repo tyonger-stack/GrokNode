@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 //     → /home/box/sand-host, deps /home/box/deps
 //   universal@sha256:a8813ae… (git-sha 726deab, Chrome 154)
 //     → /opt/sand/sand-host, deps /opt/sand/deps
-//   universal@sha256:8c489b5f… (git-sha unknown for this build, created
+//   universal@sha256:8c489b5f… (git-sha 2e44baf, Chrome 155, created
 //   2026-10-21T01:03:42Z)
 //     → /opt/sand/sand-host, deps /opt/sand/deps
 //

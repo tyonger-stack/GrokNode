@@ -22,8 +22,9 @@ export const SAND_BOX_HOST_UPGRADE_MARKER_PATH = `${SAND_BOX_AGENT_DATA_ROOT}/.s
 //               image universal@sha256:f9dff5cd… (git-sha 12c7367, Chrome 151)
 //
 //   /opt/sand   host dir /opt/sand/sand-host   deps /opt/sand/deps
-//               image universal@sha256:8c489b5f… (the pinned image);
-//               universal@sha256:a8813ae… shares this layout
+//               image universal@sha256:8c489b5f… (the pinned image, git-sha
+//               2e44baf, Chrome 155); universal@sha256:a8813ae… shares this
+//               layout
 //
 // BEFORE CHANGING EITHER VALUE: read the target image's
 // /usr/local/bin/sand-supervisor-contract.mjs and confirm its host dir and

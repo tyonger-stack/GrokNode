@@ -374,7 +374,7 @@ TokenHub 的 API 地址按以下顺序解析（`resolveOpenRouterBaseUrl`）：
 | 项目 | 值 |
 | --- | --- |
 | 容器名 | `grok-node-local-vm`（打包后的 Grok Node.app）；开发运行时为 `grok-bot-local-vm` |
-| 镜像 | `cursorenvironments/universal@sha256:8c489b5f…`（按 digest 固定，构建于 2026-10-21T01:03:42Z，完整地址见表下）。`:sand-box-latest` 标签只用来展示和兼容校验，**不要**换回这个会变动的标签 |
+| 镜像 | `cursorenvironments/universal@sha256:8c489b5f…`（按 digest 固定，git-sha `2e44baf`，Chrome 155，构建于 2026-10-21T01:03:42Z，完整地址见表下）。`:sand-box-latest` 标签只用来展示和兼容校验，**不要**换回这个会变动的标签 |
 | 平台 | `linux/amd64`，`--restart unless-stopped` |
 | 持久卷 | `<容器名>-workspace` → `/workspace`，`<容器名>-data` → `/home/box/sand-data` |
 | 只读挂载 | 重建的 `host-main.cjs` → `/opt/sand/sand-host/host-main.cjs`、`box-exec-daemon` → `/opt/sand/box-exec-daemon`、`~/.codex` → `/root/.codex`（存在时）。挂载目标取自镜像自己的 host 目录（上游 2026-10-12 起改到 `/opt/sand/sand-host`，本项目已迁到该根），不是自选路径 |
@@ -622,7 +622,7 @@ npm run typecheck && npm run source:typecheck && npm run test:offline && npm run
 - 应用可以启动，核心本地化链路可用：路由推理、已连接插件、本地 Docker 沙箱。
 - 只面向一个固定的 macOS/arm64 版本（0.18.0），不提供 Windows / Intel 包，也不承诺兼容未来的 Grok Bot 版本。
 - 依赖外部 provider 会话；`npm audit` 仍有与固定 Electron 42.1、Undici 5、AI SDK 4 等相关的告警（见 [SECURITY.md](SECURITY.md)）。
-- 镜像固定在 digest `8c489b5f…`（构建于 2026-10-21T01:03:42Z），in-box host bundle 根目录为 `/opt/sand/sand-host`：上游 2026-10-12 起把该根目录从 `/home/box/sand-host` 迁到 `/opt/sand/sand-host`，重建 host 必须挂到镜像自己的启动路径上才会被 supervisor 拉起（挂错位置 = 死文件 + 上游 host 顶替，重建功能静默失效）。切换镜像时，镜像 pin 与挂载根必须一起改。
+- 镜像固定在 digest `8c489b5f…`（git-sha `2e44baf`，Chrome 155，构建于 2026-10-21T01:03:42Z），in-box host bundle 根目录为 `/opt/sand/sand-host`：上游 2026-10-12 起把该根目录从 `/home/box/sand-host` 迁到 `/opt/sand/sand-host`，重建 host 必须挂到镜像自己的启动路径上才会被 supervisor 拉起（挂错位置 = 死文件 + 上游 host 顶替，重建功能静默失效）。切换镜像时，镜像 pin 与挂载根必须一起改。
 
 ## 溯源与安全
 
