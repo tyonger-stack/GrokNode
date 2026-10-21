@@ -21,21 +21,20 @@ import type { GatewayConnection } from "./gateway-descriptor-cache.js";
 import { libraryDockerForwardingArgs, resolveLibraryDockerForwarding, type LibraryDockerForwarding } from "./library-docker-config.js";
 
 // PINNED BY DIGEST — do not "upgrade" back to the moving :sand-box-latest tag.
-// 2026-10-01: the upstream image moved the host launch path from
-// /home/box/sand-host/host-main.cjs to a hardcoded /opt/sand/sand-host/host-main.cjs
-// with no env override, silently disabling every host-side rebuild feature
-// while the desktop shell kept working on the stock upstream host. We pinned
-// back to f9dff5cd… (image git-sha 12c7367, Chrome 151) to keep our bundle
-// launchable.
-// 2026-10-21: moved forward to a8813ae… (image git-sha 726deab, Chrome 154)
-// after re-deriving the upstream layout from the image itself and proving it
-// on the real image (supervisor served :1340 from our bytes: cmdline → the
-// mounted path, sha256 match, /health 200). The layout stopped being a
-// duplicated magic value: it is derived from SAND_BOX_HOST_BUNDLE_ROOT.
-// 2026-10-21 (later): reverted to f9dff5cd… on request. The newer image stays
-// available locally, but the app runs the older one, so the root goes back to
-// /home/box in the same commit as the pin. The two always move together.
-export const LOCAL_DOCKER_BOX_IMAGE_DIGEST = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal@sha256:f9dff5cd254d9fac936f33754b8950e50443bacffdf0fdc61cf5b23d72a82856";
+//
+// The digest and the in-box host bundle root are ONE fact: the image's own
+// /usr/local/bin/sand-supervisor-contract.mjs hardcodes the host dir and
+// spawns `node <HOST_DIR>/host-main.cjs` with that path (no env override, no
+// fallback), so a reconstructed bundle mounted anywhere else is a dead file
+// while the upstream host keeps serving :1340.
+//
+// Current pairing: universal@sha256:8c489b5f… → root /opt/sand.
+//
+// BEFORE CHANGING EITHER VALUE: read the target image's
+// /usr/local/bin/sand-supervisor-contract.mjs and confirm its host dir and
+// deps dir, then move the digest and SAND_BOX_HOST_BUNDLE_ROOT in the same
+// commit.
+export const LOCAL_DOCKER_BOX_IMAGE_DIGEST = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal@sha256:8c489b5f7f690b38acbf991e584a474bcc15cf81ebfe858c60235761191df1bd";
 // Kept for diagnostics display and backward-compatible status reporting; the
 // container is created from LOCAL_DOCKER_BOX_IMAGE_DIGEST above.
 export const LOCAL_DOCKER_BOX_IMAGE = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal:sand-box-latest";
@@ -51,7 +50,8 @@ export const LOCAL_DOCKER_OWNER_LABEL = "com.grok-bot.local-vm=1";
 // /home/box layout. The schema version tracks "which in-box layout this
 // build expects", so a container left over from a different layout is
 // replaced automatically instead of being rejected as an unexpected image.
-export const LOCAL_DOCKER_SCHEMA_VERSION = "9";
+// v10: the in-box host bundle root is /opt/sand and the image pin is 8c489b5f….
+export const LOCAL_DOCKER_SCHEMA_VERSION = "10";
 const READY_TIMEOUT_MS = 180_000;
 
 export interface LocalDockerStatus {

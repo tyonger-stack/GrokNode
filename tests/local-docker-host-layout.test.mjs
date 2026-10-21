@@ -8,10 +8,13 @@ import { readFileSync } from "node:fs";
 // image's own /usr/local/bin/sand-supervisor-contract.mjs hardcodes the host
 // dir and spawns `node <HOST_DIR>/host-main.cjs`.
 //
-// Two upstream layouts are known:
-//   image git-sha 12c7367 (universal@sha256:f9dff5cd…, Chrome 151)
+// Known upstream images and the layout each one launches the host from:
+//   universal@sha256:f9dff5cd… (git-sha 12c7367, Chrome 151)
 //     → /home/box/sand-host, deps /home/box/deps
-//   image git-sha 726deab (universal@sha256:a8813ae…, Chrome 154)
+//   universal@sha256:a8813ae… (git-sha 726deab, Chrome 154)
+//     → /opt/sand/sand-host, deps /opt/sand/deps
+//   universal@sha256:8c489b5f… (git-sha unknown for this build, created
+//   2026-10-21T01:03:42Z)
 //     → /opt/sand/sand-host, deps /opt/sand/deps
 //
 // The pinned image and the root are ONE fact — they move together. This test
@@ -33,10 +36,10 @@ import { readFileSync } from "node:fs";
 // of the other layout's path, which is what silently disabled the host-side
 // rebuild features for three days in 2026-10.
 
-const PINNED_DIGEST = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal@sha256:f9dff5cd254d9fac936f33754b8950e50443bacffdf0fdc61cf5b23d72a82856";
-const PINNED_ROOT = "/home/box";
+const PINNED_DIGEST = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal@sha256:8c489b5f7f690b38acbf991e584a474bcc15cf81ebfe858c60235761191df1bd";
+const PINNED_ROOT = "/opt/sand";
 const PINNED_HOST_ENTRY = `${PINNED_ROOT}/sand-host/host-main.cjs`;
-const PINNED_SCHEMA_VERSION = "9";
+const PINNED_SCHEMA_VERSION = "10";
 
 const CONNECTOR_PATH = new URL("../source/electron-main/box/local-docker-host-connector.ts", import.meta.url).pathname;
 const CONSTANTS_PATH = new URL("../source/packages/constants/sand-supervisor.ts", import.meta.url).pathname;
@@ -75,6 +78,7 @@ test("the bundle is mounted at the image's host entry path", () => {
   assert.ok(!connector.includes("dst=/home/box/sand-host/host-main.cjs"), "the host mount destination must not be a literal");
   assert.ok(!connector.includes("dst=/opt/sand/sand-host/host-main.cjs"), "the host mount destination must not be a literal");
   assert.ok(!connector.includes("dst=/home/box/box-exec-daemon"), "the exec-daemon mount destination must not be a literal");
+  assert.ok(!connector.includes("dst=/opt/sand/box-exec-daemon"), "the exec-daemon mount destination must not be a literal");
 });
 
 test("deps and NODE_PATH point at the image's deps dir", () => {
@@ -96,6 +100,7 @@ test("the container env carries the root so the in-box host agrees", () => {
   // The in-box host must read that env instead of pinning a path itself.
   assert.match(hostUpgrade, /resolveSandBoxHostDir\(\)/);
   assert.ok(!hostUpgrade.includes('"/home/box/sand-host/version"'), "the version-marker path must not be hardcoded in the host");
+  assert.ok(!hostUpgrade.includes('"/opt/sand/sand-host/version"'), "the version-marker path must not be hardcoded in the host");
 });
 
 test("a leftover container from the previous layout is replaced, not rejected", () => {

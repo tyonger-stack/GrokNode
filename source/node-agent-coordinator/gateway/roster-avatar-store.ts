@@ -15,7 +15,7 @@
  * not an oversight.
  *
  * Why this lives in the coordinator: the host process runs inside the local Docker box
- * (`/home/box/sand-host`), and `/home/box/sand-data` is a docker named volume, so a host
+ * (`/opt/sand/sand-host`), and `/home/box/sand-data` is a docker named volume, so a host
  * write can never reach a macOS path. The coordinator is a Node utility process on the
  * desktop and already receives every `setAgentAvatarBytes` before it is forwarded to the
  * gateway, which makes it the one place on this side of the wire that can write

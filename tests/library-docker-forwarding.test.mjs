@@ -66,7 +66,7 @@ test("unconfigured env resolves null and renders byte-identical run args", () =>
   // declared once and travels into the container, so the shell and the
   // running host cannot disagree about where the bundle lives).
   assert.equal(args.length, 59);
-  assert.equal(sha256(JSON.stringify(args)), "f8466f88108fa610e2fb504f5ed9382c2d27f2b72de0cc1f8cba7472595641b3");
+  assert.equal(sha256(JSON.stringify(args)), "66e07d6a04d961974bfafd068ddccd835197e6f3ce658617f719df79fef6a174");
   assert.ok(!JSON.stringify(args).includes("SAND_LIBRARY_"), "no library env leaks into unconfigured runs");
 });
 

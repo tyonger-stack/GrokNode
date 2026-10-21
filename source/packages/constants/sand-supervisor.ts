@@ -16,27 +16,20 @@ export const SAND_BOX_HOST_UPGRADE_MARKER_PATH = `${SAND_BOX_AGENT_DATA_ROOT}/.s
 // host keeps serving :1340.
 //
 // The root therefore moves TOGETHER WITH THE IMAGE PIN — they are one fact,
-// not two. Current pairing (2026-10-21, restored on request):
+// not two. Known upstream layouts:
 //
-//   image universal@sha256:f9dff5cd… (git-sha 12c7367, Chrome 151)
-//     → host dir /home/box/sand-host, deps /home/box/deps
-//     → root = /home/box
+//   /home/box   host dir /home/box/sand-host   deps /home/box/deps
+//               image universal@sha256:f9dff5cd… (git-sha 12c7367, Chrome 151)
 //
-//   image universal@sha256:a8813ae… (git-sha 726deab, Chrome 154)
-//     → host dir /opt/sand/sand-host, deps /opt/sand/deps
-//     → root = /opt/sand
-//
-// Upstream moved the root in the 2026-10-12 build. That move was verified
-// end-to-end on the real image (2026-10-21: the supervisor served :1340 from
-// our bytes at the new path — cmdline, sha256 match, /health 200), and the
-// migration was then reverted by request, so the app stays on the older image
-// and the newer one is only recorded here as the known alternative.
+//   /opt/sand   host dir /opt/sand/sand-host   deps /opt/sand/deps
+//               image universal@sha256:8c489b5f… (the pinned image);
+//               universal@sha256:a8813ae… shares this layout
 //
 // BEFORE CHANGING EITHER VALUE: read the target image's
 // /usr/local/bin/sand-supervisor-contract.mjs and confirm its host dir and
 // deps dir, then move the pin and this root in the same commit.
 export const SAND_BOX_HOST_BUNDLE_ROOT_ENV = "SAND_BOX_HOST_BUNDLE_ROOT";
-export const SAND_BOX_HOST_BUNDLE_ROOT = "/home/box";
+export const SAND_BOX_HOST_BUNDLE_ROOT = "/opt/sand";
 export const SAND_BOX_HOST_DIR = `${SAND_BOX_HOST_BUNDLE_ROOT}/sand-host`;
 export const SAND_BOX_HOST_ENTRY = `${SAND_BOX_HOST_DIR}/host-main.cjs`;
 export const SAND_BOX_HOST_VERSION_PATH = `${SAND_BOX_HOST_DIR}/version`;

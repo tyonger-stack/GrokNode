@@ -345,11 +345,14 @@ function conclusionFromChecks(checks) {
 }
 
 // "Who is actually serving :1340?" — a mount point existing proves nothing.
-// Read the pid the gateway itself wrote, resolve its cmdline, and compare the
-// in-container sha256 against the container label (which the app stamps from
-// the reconstructed bundle it staged). 2026-10-01: an upstream image update
-// moved the launch path to /opt/sand and our bundle sat unread for days while
-// every other check was green.
+// The host entry path is not a constant here: the upstream image decides it and
+// a new image can move it. The expected path is read back from the container's
+// own bind mounts (the one the desktop shell created for our bundle) and the
+// serving path from the gateway's cmdline, so this check follows the image
+// instead of a layout that a new build would silently invalidate. Read the pid
+// the gateway itself wrote, then compare the in-container sha256 against the
+// container label (which the app stamps from the reconstructed bundle it
+// staged).
 async function hostIdentityCheck(dockerBinary, containerRunning) {
   if (!containerRunning) return check("host-identity", "Host identity", "skipped", "container not running");
   const inspect = await runCommand(dockerBinary, ["inspect", "--format", "{{json .Config.Labels}}", CONTAINER_NAME]);
@@ -361,15 +364,34 @@ async function hostIdentityCheck(dockerBinary, containerRunning) {
   if (typeof pid !== "number") return check("host-identity", "Host identity", "degraded", "gateway.json unreadable or has no pid");
   const cmdline = await runCommand(dockerBinary, ["exec", CONTAINER_NAME, "sh", "-c", `tr '\\0' ' ' < /proc/${pid}/cmdline`]);
   const cmdlineText = (cmdline.stdout || "").trim();
-  if (!cmdlineText.includes("/home/box/sand-host/host-main.cjs")) {
-    return check("host-identity", "Host identity", "degraded", `foreign host (pid ${pid}): ${cmdlineText.slice(0, 120)} — reconstructed bundle NOT running`, { pid, cmdline: cmdlineText });
+  const servingEntryPath = cmdlineText.split(/\s+/).find((part) => part.endsWith("host-main.cjs")) ?? null;
+  if (servingEntryPath == null) {
+    return check("host-identity", "Host identity", "degraded", `could not read the host entry path from the serving process cmdline (pid ${pid}): ${cmdlineText.slice(0, 120)}`, { pid, cmdline: cmdlineText });
   }
-  const shaOut = await runCommand(dockerBinary, ["exec", CONTAINER_NAME, "sha256sum", "/home/box/sand-host/host-main.cjs"]);
+  const mounts = await runCommand(dockerBinary, ["inspect", "--format", "{{json .Mounts}}", CONTAINER_NAME]);
+  if (!mounts.ok) {
+    return check("host-identity", "Host identity", "degraded", `could not read the container bind mounts: ${(mounts.stderr || "").trim().slice(0, 120)}`, { pid, cmdline: cmdlineText, servingEntryPath });
+  }
+  let mountedEntryPath = null;
+  try {
+    const parsed = JSON.parse(mounts.stdout || "null");
+    if (Array.isArray(parsed)) {
+      const hit = parsed.find((mount) => typeof mount?.Destination === "string" && mount.Destination.endsWith("host-main.cjs"));
+      if (hit != null) mountedEntryPath = hit.Destination;
+    }
+  } catch {}
+  if (mountedEntryPath == null) {
+    return check("host-identity", "Host identity", "degraded", `foreign host (pid ${pid}): ${cmdlineText.slice(0, 120)} — the container has no host-main.cjs bind mount, so the reconstructed bundle is not mounted`, { pid, cmdline: cmdlineText, servingEntryPath });
+  }
+  if (servingEntryPath !== mountedEntryPath) {
+    return check("host-identity", "Host identity", "degraded", `foreign host (pid ${pid}): ${cmdlineText.slice(0, 120)} — reconstructed bundle NOT running`, { pid, cmdline: cmdlineText, servingEntryPath, mountedEntryPath });
+  }
+  const shaOut = await runCommand(dockerBinary, ["exec", CONTAINER_NAME, "sha256sum", servingEntryPath]);
   const runningSha = (shaOut.stdout || "").trim().split(/\s+/)[0] ?? "";
   if (expectedSha && runningSha && runningSha !== expectedSha) {
-    return check("host-identity", "Host identity", "degraded", `mounted bundle sha ${runningSha.slice(0, 12)} != staged ${expectedSha.slice(0, 12)} — bytes were swapped`, { pid, runningSha, expectedSha });
+    return check("host-identity", "Host identity", "degraded", `mounted bundle sha ${runningSha.slice(0, 12)} != staged ${expectedSha.slice(0, 12)} — bytes were swapped`, { pid, runningSha, expectedSha, servingEntryPath });
   }
-  return check("host-identity", "Host identity", "ok", `reconstructed host confirmed (pid ${pid}, sha ${runningSha.slice(0, 12)}…)`, { pid, runningSha, expectedSha });
+  return check("host-identity", "Host identity", "ok", `reconstructed host confirmed (pid ${pid}, sha ${runningSha.slice(0, 12)}…)`, { pid, runningSha, expectedSha, servingEntryPath });
 }
 
 // Contract surface scan: POST every method name the desktop side may send with

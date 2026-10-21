@@ -26,8 +26,8 @@ const constants = readFileSync(CONSTANTS_PATH, "utf8");
 //
 // The pinned image and this path are ONE fact — they move together (see
 // source/packages/constants/sand-supervisor.ts). Keep both literals here.
-const PINNED_DIGEST = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal@sha256:f9dff5cd254d9fac936f33754b8950e50443bacffdf0fdc61cf5b23d72a82856";
-const HOST_ENTRY = "/home/box/sand-host/host-main.cjs";
+const PINNED_DIGEST = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal@sha256:8c489b5f7f690b38acbf991e584a474bcc15cf81ebfe858c60235761191df1bd";
+const HOST_ENTRY = "/opt/sand/sand-host/host-main.cjs";
 
 test("connector pins the box image by digest, not by the moving tag", () => {
   assert.ok(source.includes(`LOCAL_DOCKER_BOX_IMAGE_DIGEST = "${PINNED_DIGEST}"`), "the pinned digest must match the layout below");
@@ -76,7 +76,7 @@ test("host identity is verified from pid+cmdline+sha256, warn by default, strict
 
 test("the shared host bundle root is the one the pinned image launches", () => {
   // Single source of truth for the in-box layout, and it must agree with the
-  // pinned image above: git-sha 12c7367 launches /home/box/sand-host.
+  // pinned image above: that image launches /opt/sand/sand-host.
   assert.ok(constants.includes(`export const SAND_BOX_HOST_BUNDLE_ROOT = "${HOST_ENTRY.replace("/sand-host/host-main.cjs", "")}"`), "the root must match the pinned image's layout");
   assert.match(constants, /export const SAND_BOX_HOST_DIR = `\$\{SAND_BOX_HOST_BUNDLE_ROOT\}\/sand-host`/);
   assert.match(constants, /export const SAND_BOX_HOST_ENTRY = `\$\{SAND_BOX_HOST_DIR\}\/host-main\.cjs`/);
@@ -93,7 +93,7 @@ test("decision table: verified / foreign-host / unknown", () => {
     // happy path: our pid, our path, our bytes
     { args: { gatewayPid: 351, cmdline: `/exec-daemon/node --disable-warning=ExperimentalWarning ${HOST_ENTRY}`, runningBundleSha256: "aa", expectedSha256: "aa" }, want: "verified" },
     // a different upstream layout: serving process points at the other root
-    { args: { gatewayPid: 391, cmdline: "/exec-daemon/node --disable-warning=ExperimentalWarning /opt/sand/sand-host/host-main.cjs", runningBundleSha256: "bb", expectedSha256: "aa" }, want: "foreign-host" },
+    { args: { gatewayPid: 391, cmdline: "/exec-daemon/node --disable-warning=ExperimentalWarning /home/box/sand-host/host-main.cjs", runningBundleSha256: "bb", expectedSha256: "aa" }, want: "foreign-host" },
     // our path but the mounted bytes were swapped (vendor boot-fetch)
     { args: { gatewayPid: 351, cmdline: `/exec-daemon/node ${HOST_ENTRY}`, runningBundleSha256: "cc", expectedSha256: "aa" }, want: "foreign-host" },
     // process exited between gateway.json read and /proc read
