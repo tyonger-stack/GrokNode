@@ -10,19 +10,31 @@ import { classifyOpenRouterError, openRouterOkStatus, type OpenRouterChannelStat
 import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_CONTAINER_RELAY_PORT, resolveOpenRouterTransport } from "../../shared/node/openrouter-proxy.js";
 import { GROK_NODE_DOCKER_CONTAINER, isGrokNodePackagedApp } from "../../shared/node/grok-node-identity.js";
 import type { SandSettingsStore } from "../../shared/node/settings/sand-settings-store.js";
+import {
+  SAND_BOX_DEPS_DIR,
+  SAND_BOX_EXEC_DAEMON_DIR,
+  SAND_BOX_HOST_BUNDLE_ROOT,
+  SAND_BOX_HOST_ENTRY,
+} from "../../packages/constants/sand-supervisor.js";
 import type { RecreateResult } from "./box-recreate-commands.js";
 import type { GatewayConnection } from "./gateway-descriptor-cache.js";
 import { libraryDockerForwardingArgs, resolveLibraryDockerForwarding, type LibraryDockerForwarding } from "./library-docker-config.js";
 
 // PINNED BY DIGEST — do not "upgrade" back to the moving :sand-box-latest tag.
 // 2026-10-01: the upstream image moved the host launch path from
-// /home/box/sand-host/host-main.cjs (which we bind-mount our reconstructed
-// bundle onto) to a hardcoded /opt/sand/sand-host/host-main.cjs with no env
-// override, silently disabling every host-side rebuild feature while the
-// desktop shell kept working on the stock upstream host. Digest f9dff5cd…
-// (image git-sha 12c7367, Chrome 151) is the last version that launches the
-// bind-mounted bundle. To move forward, read sand-supervisor-contract.mjs in
-// the new image first (HOST_BUNDLE_ROOT, box-scripts sync blast radius).
+// /home/box/sand-host/host-main.cjs to a hardcoded /opt/sand/sand-host/host-main.cjs
+// with no env override, silently disabling every host-side rebuild feature
+// while the desktop shell kept working on the stock upstream host. We pinned
+// back to f9dff5cd… (image git-sha 12c7367, Chrome 151) to keep our bundle
+// launchable.
+// 2026-10-21: moved forward to a8813ae… (image git-sha 726deab, Chrome 154)
+// after re-deriving the upstream layout from the image itself and proving it
+// on the real image (supervisor served :1340 from our bytes: cmdline → the
+// mounted path, sha256 match, /health 200). The layout stopped being a
+// duplicated magic value: it is derived from SAND_BOX_HOST_BUNDLE_ROOT.
+// 2026-10-21 (later): reverted to f9dff5cd… on request. The newer image stays
+// available locally, but the app runs the older one, so the root goes back to
+// /home/box in the same commit as the pin. The two always move together.
 export const LOCAL_DOCKER_BOX_IMAGE_DIGEST = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal@sha256:f9dff5cd254d9fac936f33754b8950e50443bacffdf0fdc61cf5b23d72a82856";
 // Kept for diagnostics display and backward-compatible status reporting; the
 // container is created from LOCAL_DOCKER_BOX_IMAGE_DIGEST above.
@@ -33,7 +45,13 @@ export const LOCAL_DOCKER_DATA_VOLUME = `${LOCAL_DOCKER_BOX_CONTAINER}-data`;
 export const LOCAL_DOCKER_GATEWAY_URL = "http://127.0.0.1:1340";
 export const LOCAL_DOCKER_OWNER_LABEL = "com.grok-bot.local-vm=1";
 // v7: SCREEN_WIDTH/HEIGHT 1920×1200 (P2-8 / 0.68.1). Forces recreate so Xvfb picks up geometry.
-export const LOCAL_DOCKER_SCHEMA_VERSION = "7";
+// v8: the in-box host bundle root moved to /opt/sand (upstream image
+// git-sha 726deab) and the image pin moved to a8813ae….
+// v9: reverted to the older image (git-sha 12c7367) and back to the
+// /home/box layout. The schema version tracks "which in-box layout this
+// build expects", so a container left over from a different layout is
+// replaced automatically instead of being rejected as an unexpected image.
+export const LOCAL_DOCKER_SCHEMA_VERSION = "9";
 const READY_TIMEOUT_MS = 180_000;
 
 export interface LocalDockerStatus {
@@ -59,11 +77,12 @@ export function classifyHostIdentity(args: {
   readonly cmdline: string | null;
   readonly runningBundleSha256: string | null;
   readonly expectedSha256: string;
+  readonly hostEntryPath: string;
 }): HostIdentityStatus {
-  const { gatewayPid, cmdline, runningBundleSha256, expectedSha256 } = args;
+  const { gatewayPid, cmdline, runningBundleSha256, expectedSha256, hostEntryPath } = args;
   if (gatewayPid == null) return { kind: "unknown", reason: "gateway.json has no pid" };
   if (cmdline == null) return { kind: "unknown", reason: `could not read /proc/${gatewayPid}/cmdline (process exited?)` };
-  if (!cmdline.includes("/home/box/sand-host/host-main.cjs")) {
+  if (!cmdline.includes(hostEntryPath)) {
     return { kind: "foreign-host", pid: gatewayPid, cmdline, expectedSha256: expectedSha256 };
   }
   if (runningBundleSha256 == null) return { kind: "unknown", reason: "could not sha256 the mounted bundle inside the container" };
@@ -78,6 +97,8 @@ export function classifyHostIdentity(args: {
 // require the reconstructed bundle's sha256. A mount point merely existing
 // proves nothing — the 2026-10-01 image swap served :1340 from the upstream
 // /opt/sand host while our bundle sat unread at /home/box/sand-host.
+// The expected entry path is the image's own host dir (SAND_BOX_HOST_ENTRY),
+// so this check follows the upstream layout instead of hardcoding it.
 // Default is WARN, not throw: the upstream host can still serve the desktop
 // shell, so a mismatch is an observability problem, not an availability one.
 // Set SAND_STRICT_HOST_IDENTITY=1 to turn mismatches into a connect failure.
@@ -92,9 +113,9 @@ async function verifyHostIdentity(hostBundle: LocalHostBundle): Promise<HostIden
   if (gatewayPid == null) return { kind: "unknown", reason: "gateway.json unreadable or has no pid" };
   const cmdlineResult = await runDocker(["exec", LOCAL_DOCKER_BOX_CONTAINER, "sh", "-c", `tr '\\0' ' ' < /proc/${gatewayPid}/cmdline`]);
   const cmdline = cmdlineResult.ok ? cmdlineResult.output.trim() : null;
-  const shaResult = await runDocker(["exec", LOCAL_DOCKER_BOX_CONTAINER, "sha256sum", "/home/box/sand-host/host-main.cjs"]);
+  const shaResult = await runDocker(["exec", LOCAL_DOCKER_BOX_CONTAINER, "sha256sum", SAND_BOX_HOST_ENTRY]);
   const runningBundleSha256 = shaResult.ok ? (shaResult.output.trim().split(/\s+/)[0] ?? null) : null;
-  return classifyHostIdentity({ gatewayPid, cmdline, runningBundleSha256, expectedSha256: hostBundle.sha256 });
+  return classifyHostIdentity({ gatewayPid, cmdline, runningBundleSha256, expectedSha256: hostBundle.sha256, hostEntryPath: SAND_BOX_HOST_ENTRY });
 }
 
 interface CommandResult { readonly ok: boolean; readonly code: number | null; readonly output: string }
@@ -467,12 +488,16 @@ export function buildLocalDockerBoxRunArgs(args: {
     // P2-8: official 0.68.1/0.71.2 computer display (start-desktop.sh SCREEN_WIDTH/HEIGHT).
     "--env", "SCREEN_WIDTH=1920",
     "--env", "SCREEN_HEIGHT=1200",
-    "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1", "--env", "SAND_TREE_SITTER_NODE_DEPS=/home/box/deps", "--env", "NODE_PATH=/home/box/deps", "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0", "--env", "SAND_HOST_PORT=1340", "--env", `SAND_GATEWAY_TOKEN=${token}`,
+    "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1", "--env", `SAND_TREE_SITTER_NODE_DEPS=${SAND_BOX_DEPS_DIR}`, "--env", `NODE_PATH=${SAND_BOX_DEPS_DIR}`, "--env", `SAND_BOX_HOST_BUNDLE_ROOT=${SAND_BOX_HOST_BUNDLE_ROOT}`, "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0", "--env", "SAND_HOST_PORT=1340", "--env", `SAND_GATEWAY_TOKEN=${token}`,
     "--publish", "127.0.0.1:1337:1337", "--publish", "127.0.0.1:1339:1339", "--publish", "127.0.0.1:1340:1340",
     "--publish", "127.0.0.1:6080:6080", "--publish", "127.0.0.1:6081:6081", "--publish", "127.0.0.1:8790:8790",
     "--volume", `${LOCAL_DOCKER_WORKSPACE_VOLUME}:/workspace`, "--volume", `${LOCAL_DOCKER_DATA_VOLUME}:/home/box/sand-data`,
-    "--mount", `type=bind,src=${hostBundle.path},dst=/home/box/sand-host/host-main.cjs,readonly`,
-    "--mount", `type=bind,src=${dirname(hostBundle.boxExecDaemonPath)},dst=/home/box/box-exec-daemon,readonly`,
+    // The mount target is the image's own host entry path (the supervisor
+    // spawns `node <HOST_DIR>/host-main.cjs` with HOST_DIR taken from the
+    // image's sand-supervisor-contract.mjs). Mounting anywhere else leaves our
+    // bundle as a dead file while the upstream host keeps serving :1340.
+    "--mount", `type=bind,src=${hostBundle.path},dst=${SAND_BOX_HOST_ENTRY},readonly`,
+    "--mount", `type=bind,src=${dirname(hostBundle.boxExecDaemonPath)},dst=${SAND_BOX_EXEC_DAEMON_DIR},readonly`,
     ...authMounts,
     ...(library == null ? [] : libraryDockerForwardingArgs(library)),
     LOCAL_DOCKER_BOX_IMAGE_DIGEST,
@@ -487,12 +512,20 @@ async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnec
   if (!daemon.ok) throw new Error(`Local Docker VM is selected, but Docker is unavailable: ${daemon.output || "start Docker and try again"}`);
   const inspected = await inspectContainer();
   if (inspected.exists && !inspected.owned) throw new Error(`Local Docker VM cannot use ${LOCAL_DOCKER_BOX_CONTAINER}: an unowned container already has that name.`);
-  if (inspected.exists && inspected.image !== LOCAL_DOCKER_BOX_IMAGE_DIGEST && inspected.image !== LOCAL_DOCKER_BOX_IMAGE) throw new Error(`Local Docker VM container uses unexpected image ${inspected.image}. Remove it explicitly before changing images.`);
-  if (inspected.exists && (inspected.schemaVersion !== LOCAL_DOCKER_SCHEMA_VERSION || inspected.hostSha256 !== hostBundle.sha256)) {
+  // A schema-version bump means this build expects a different in-box layout
+  // (different host bundle root, different image pin). A container left over
+  // from the previous build is then replaced automatically below instead of
+  // being rejected as an "unexpected image"; without that bump an unexpected
+  // image stays a hard error that asks for an explicit removal.
+  const layoutChanged = inspected.schemaVersion !== LOCAL_DOCKER_SCHEMA_VERSION;
+  if (inspected.exists && inspected.image !== LOCAL_DOCKER_BOX_IMAGE_DIGEST && inspected.image !== LOCAL_DOCKER_BOX_IMAGE && !layoutChanged) {
+    throw new Error(`Local Docker VM container uses unexpected image ${inspected.image}. Remove it explicitly before changing images.`);
+  }
+  if (inspected.exists && (layoutChanged || inspected.hostSha256 !== hostBundle.sha256)) {
     const removed = await runDocker(["rm", "--force", LOCAL_DOCKER_BOX_CONTAINER]);
     if (!removed.ok) throw new Error(`Could not replace the local VM with the current app runtime: ${removed.output}`);
   }
-  const shouldReplace = inspected.exists && (inspected.schemaVersion !== LOCAL_DOCKER_SCHEMA_VERSION || inspected.hostSha256 !== hostBundle.sha256);
+  const shouldReplace = inspected.exists && (layoutChanged || inspected.hostSha256 !== hostBundle.sha256);
   const current = shouldReplace ? await inspectContainer() : inspected;
   if (current.exists && !current.running) {
     const started = await runDocker(["start", LOCAL_DOCKER_BOX_CONTAINER]);
@@ -516,7 +549,7 @@ async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnec
   if (!gatewayUp) throw new Error("Local Docker VM did not expose its gateway within three minutes.");
   const identity = await verifyHostIdentity(hostBundle);
   if (identity.kind === "foreign-host") {
-    const message = `Local Docker VM gateway is served by a foreign host (pid ${identity.pid}: ${identity.cmdline}); the reconstructed bundle (sha256 ${identity.expectedSha256.slice(0, 12)}…) is NOT running. Host-side rebuild features (Router/OpenRouter/Effort) are silently disabled. Likely cause: the pinned image digest no longer launches /home/box/sand-host/host-main.cjs.`;
+    const message = `Local Docker VM gateway is served by a foreign host (pid ${identity.pid}: ${identity.cmdline}); the reconstructed bundle (sha256 ${identity.expectedSha256.slice(0, 12)}…) is NOT running. Host-side rebuild features (Router/OpenRouter/Effort) are silently disabled. Likely cause: the pinned image digest no longer launches ${SAND_BOX_HOST_ENTRY}.`;
     if (process.env.SAND_STRICT_HOST_IDENTITY === "1") throw new Error(message);
     console.warn(`[local-docker-host-connector] WARNING: ${message}`);
   } else if (identity.kind === "unknown") {

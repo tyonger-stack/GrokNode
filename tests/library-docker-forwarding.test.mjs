@@ -61,8 +61,12 @@ const BASE_FIXTURE = {
 test("unconfigured env resolves null and renders byte-identical run args", () => {
   assert.equal(config.resolveLibraryDockerForwarding({}), null);
   const args = connector.buildLocalDockerBoxRunArgs({ ...BASE_FIXTURE, library: null });
-  assert.equal(args.length, 57); // +4: SCREEN_WIDTH/SCREEN_HEIGHT env (port/0712 P2-8)
-  assert.equal(sha256(JSON.stringify(args)), "848b81fb5bef7ccf4fcf6eacd000778d8fda5efa07fcf29cb0adf38cceb8b920");
+  // +4: SCREEN_WIDTH/SCREEN_HEIGHT env (port/0712 P2-8)
+  // +2: SAND_BOX_HOST_BUNDLE_ROOT env (the in-box host bundle root is
+  // declared once and travels into the container, so the shell and the
+  // running host cannot disagree about where the bundle lives).
+  assert.equal(args.length, 59);
+  assert.equal(sha256(JSON.stringify(args)), "f8466f88108fa610e2fb504f5ed9382c2d27f2b72de0cc1f8cba7472595641b3");
   assert.ok(!JSON.stringify(args).includes("SAND_LIBRARY_"), "no library env leaks into unconfigured runs");
 });
 
@@ -89,7 +93,7 @@ test("configured fixture renders readonly mounts, internal env, and loopback pub
     const rendered = JSON.stringify(args);
     assert.ok(!rendered.includes("key-bytes-fixture") && !rendered.includes("cert-bytes-fixture"), "secret bytes never enter args");
     const runArgs = connector.buildLocalDockerBoxRunArgs({ ...BASE_FIXTURE, library: forwarding });
-    assert.equal(runArgs.length, 57 + 16);
+    assert.equal(runArgs.length, 59 + 16);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

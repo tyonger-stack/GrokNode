@@ -16,9 +16,21 @@ import { readFileSync } from "node:fs";
 
 const SOURCE_PATH = new URL("../source/electron-main/box/local-docker-host-connector.ts", import.meta.url).pathname;
 const source = readFileSync(SOURCE_PATH, "utf8");
+const CONSTANTS_PATH = new URL("../source/packages/constants/sand-supervisor.ts", import.meta.url).pathname;
+const constants = readFileSync(CONSTANTS_PATH, "utf8");
+
+// The image's supervisor launches `node <HOST_DIR>/host-main.cjs` with the
+// HOST_DIR hardcoded in the image's own sand-supervisor-contract.mjs. The
+// identity check has to look for OUR bundle at the path the *image* launches,
+// otherwise a correct deployment reads as foreign.
+//
+// The pinned image and this path are ONE fact — they move together (see
+// source/packages/constants/sand-supervisor.ts). Keep both literals here.
+const PINNED_DIGEST = "public.ecr.aws/k0i0n2g5/cursorenvironments/universal@sha256:f9dff5cd254d9fac936f33754b8950e50443bacffdf0fdc61cf5b23d72a82856";
+const HOST_ENTRY = "/home/box/sand-host/host-main.cjs";
 
 test("connector pins the box image by digest, not by the moving tag", () => {
-  assert.match(source, /LOCAL_DOCKER_BOX_IMAGE_DIGEST\s*=\s*"public\.ecr\.aws[^"]+@sha256:f9dff5cd254d9fac936f33754b8950e50443bacffdf0fdc61cf5b23d72a82856"/);
+  assert.ok(source.includes(`LOCAL_DOCKER_BOX_IMAGE_DIGEST = "${PINNED_DIGEST}"`), "the pinned digest must match the layout below");
   // The container must be created from the digest reference.
   assert.match(source, /\n\s+LOCAL_DOCKER_BOX_IMAGE_DIGEST,\n/);
   // The moving tag must NOT be the create argument anymore.
@@ -40,9 +52,11 @@ test("host identity is verified from pid+cmdline+sha256, warn by default, strict
   assert.match(source, /async function verifyHostIdentity\(/);
   assert.match(source, /gateway\.json/, "must read the pid the gateway itself wrote");
   assert.match(source, /\/proc\/\$\{gatewayPid\}\/cmdline/, "must read the serving process cmdline");
-  assert.match(source, /"sha256sum", "\/home\/box\/sand-host\/host-main\.cjs"/, "must hash the mounted bundle in-container");
-  // classifyHostIdentity must reject a cmdline that points elsewhere…
-  assert.match(source, /cmdline\.includes\("\/home\/box\/sand-host\/host-main\.cjs"\)/);
+  assert.match(source, /"sha256sum", SAND_BOX_HOST_ENTRY/, "must hash the mounted bundle in-container");
+  // The expected entry path comes from the shared constants, not a second
+  // hardcoded copy inside the connector.
+  assert.match(source, /cmdline\.includes\(hostEntryPath\)/);
+  assert.match(source, /hostEntryPath: SAND_BOX_HOST_ENTRY/);
   // …and a matching cmdline whose bytes are not ours.
   assert.match(source, /runningBundleSha256 !== expectedSha256/);
   // Slice only the foreign-host branch (up to the `} else if`), otherwise the
@@ -60,29 +74,41 @@ test("host identity is verified from pid+cmdline+sha256, warn by default, strict
   assert.ok(gateIdx !== -1 && throwIdx !== -1 && gateIdx < throwIdx, "the throw must be gated behind the strict env check");
 });
 
+test("the shared host bundle root is the one the pinned image launches", () => {
+  // Single source of truth for the in-box layout, and it must agree with the
+  // pinned image above: git-sha 12c7367 launches /home/box/sand-host.
+  assert.ok(constants.includes(`export const SAND_BOX_HOST_BUNDLE_ROOT = "${HOST_ENTRY.replace("/sand-host/host-main.cjs", "")}"`), "the root must match the pinned image's layout");
+  assert.match(constants, /export const SAND_BOX_HOST_DIR = `\$\{SAND_BOX_HOST_BUNDLE_ROOT\}\/sand-host`/);
+  assert.match(constants, /export const SAND_BOX_HOST_ENTRY = `\$\{SAND_BOX_HOST_DIR\}\/host-main\.cjs`/);
+  // The in-box host bundle resolves the same root from the environment the
+  // desktop shell passes in, so a moved root cannot desync the two sides.
+  assert.match(constants, /export function resolveSandBoxHostBundleRoot\(/);
+  assert.match(constants, /SAND_BOX_HOST_BUNDLE_ROOT_ENV\]/);
+});
+
 // Behavioural twin of classifyHostIdentity (kept in sync structurally with the
 // connector): the decision table the connector implements.
 test("decision table: verified / foreign-host / unknown", () => {
   const cases = [
     // happy path: our pid, our path, our bytes
-    { args: { gatewayPid: 351, cmdline: "/exec-daemon/node --disable-warning=ExperimentalWarning /home/box/sand-host/host-main.cjs", runningBundleSha256: "aa", expectedSha256: "aa" }, want: "verified" },
-    // upstream image: serving process points at /opt/sand instead of our mount
+    { args: { gatewayPid: 351, cmdline: `/exec-daemon/node --disable-warning=ExperimentalWarning ${HOST_ENTRY}`, runningBundleSha256: "aa", expectedSha256: "aa" }, want: "verified" },
+    // a different upstream layout: serving process points at the other root
     { args: { gatewayPid: 391, cmdline: "/exec-daemon/node --disable-warning=ExperimentalWarning /opt/sand/sand-host/host-main.cjs", runningBundleSha256: "bb", expectedSha256: "aa" }, want: "foreign-host" },
     // our path but the mounted bytes were swapped (vendor boot-fetch)
-    { args: { gatewayPid: 351, cmdline: "/exec-daemon/node /home/box/sand-host/host-main.cjs", runningBundleSha256: "cc", expectedSha256: "aa" }, want: "foreign-host" },
+    { args: { gatewayPid: 351, cmdline: `/exec-daemon/node ${HOST_ENTRY}`, runningBundleSha256: "cc", expectedSha256: "aa" }, want: "foreign-host" },
     // process exited between gateway.json read and /proc read
     { args: { gatewayPid: 351, cmdline: null, runningBundleSha256: "aa", expectedSha256: "aa" }, want: "unknown" },
     // gateway.json missing or malformed
     { args: { gatewayPid: null, cmdline: null, runningBundleSha256: null, expectedSha256: "aa" }, want: "unknown" },
     // sha could not be read inside the container
-    { args: { gatewayPid: 9, cmdline: "/exec-daemon/node /home/box/sand-host/host-main.cjs", runningBundleSha256: null, expectedSha256: "aa" }, want: "unknown" },
+    { args: { gatewayPid: 9, cmdline: `/exec-daemon/node ${HOST_ENTRY}`, runningBundleSha256: null, expectedSha256: "aa" }, want: "unknown" },
   ];
   for (const { args, want } of cases) {
     // Inline re-execution of the connector's decision table (see header note).
     let got;
     if (args.gatewayPid == null) got = "unknown";
     else if (args.cmdline == null) got = "unknown";
-    else if (!args.cmdline.includes("/home/box/sand-host/host-main.cjs")) got = "foreign-host";
+    else if (!args.cmdline.includes(HOST_ENTRY)) got = "foreign-host";
     else if (args.runningBundleSha256 == null) got = "unknown";
     else if (args.runningBundleSha256 !== args.expectedSha256) got = "foreign-host";
     else got = "verified";

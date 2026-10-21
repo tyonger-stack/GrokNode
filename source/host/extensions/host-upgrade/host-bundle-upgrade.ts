@@ -1,5 +1,6 @@
 import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { resolveSandBoxHostDir } from "../../../packages/constants/sand-supervisor.js";
 import type { HostBundleSource } from "./host-bundle-source.js";
 import type { HostUpgradeMarker } from "./host-upgrade-marker.js";
 
@@ -9,7 +10,11 @@ export const SAND_SUPERVISOR_COMMAND_PART_PATH = `${SAND_SUPERVISOR_COMMAND_PATH
 export const SAND_SUPERVISOR_ACKS_DIR = `${SAND_SUPERVISOR_DIR}/acks`;
 export const SAND_SUPERVISOR_STAGED_BUNDLE_PATH = `${SAND_SUPERVISOR_DIR}/incoming-host-bundle.tgz`;
 export const SAND_SUPERVISOR_STAGED_BUNDLE_PART_PATH = `${SAND_SUPERVISOR_STAGED_BUNDLE_PATH}.part`;
-export const SAND_BOX_HOST_VERSION_PATH = "/home/box/sand-host/version";
+// The version marker lives next to the host entry, and the host entry's
+// directory is whatever the image's supervisor launches from. Upstream moved
+// that root from /home/box/sand-host to /opt/sand/sand-host, so this path is
+// resolved from the environment instead of being pinned to the old layout.
+export const SAND_BOX_HOST_VERSION_PATH = `${resolveSandBoxHostDir()}/version`;
 export const MAX_FAILED_SWAP_RESTAGE_RETRIES = 2;
 export const POST_SWAP_CRASH_LOOP_ERROR_CLASS = "post-swap-crash-loop";
 export const HOST_BUNDLE_WATCH_INTERVAL_MS = 24 * 60 * 60_000;
