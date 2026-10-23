@@ -56,6 +56,8 @@ import { applyGrokMainAgentGatePatch } from "./lib/grok-main-agent-gate-patch.mj
 import { applyBotColorGatePatch } from "./lib/bot-color-gate-patch.mjs";
 import { apply0712GateEcosystemPatch } from "./lib/0712-gate-ecosystem-patch.mjs";
 import { applyMainAgentRendererPatch } from "./lib/main-agent-renderer-patch.mjs";
+import { applyBotCreateDialogRendererExtension } from "./lib/bot-create-dialog-renderer-extension.mjs";
+import { applySearchPaletteRendererPatch } from "./lib/search-palette-renderer-patch.mjs";
 import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
 import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-patch.mjs";
@@ -367,6 +369,11 @@ export async function buildFidelityReconstructedAsar({
   // before the i18n passes below, which append the RLocT runtime to this same chunk.
   await applyOriginalRendererComputerUpdate({ stageRoot });
   await applyMainAgentRendererPatch({ stageRoot });
+  // 0.75.3 sidebar search presentation and its Create new Bot host. Both depend on
+  // the main-agent wrapper and the sidebar top-bar injection above. They emit
+  // RLocT calls, so they must land before the i18n passes.
+  await applySearchPaletteRendererPatch({ stageRoot });
+  await applyBotCreateDialogRendererExtension({ stageRoot });
   // 强调色 = Bot 颜色 (bot color in chat): appends a self-starting IIFE to the ENTRY
   // chunk (not the sidebar chunk the pass above edits), so the two never touch the same
   // bytes and the order here is documentary, not load-bearing. The IIFE emits no RLocT

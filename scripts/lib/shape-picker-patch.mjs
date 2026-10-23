@@ -22,7 +22,10 @@ function RCompOfficialAvatarView(n){
  S.useEffect(()=>{if(n.spinSignal!==signal.current){signal.current=n.spinSignal;ref.current?.poke("spin")}},[n.spinSignal]);
  const capture=S.useCallback(value=>{ref.current=value;const handle=value==null?null:{...value,spin:(turns=1)=>{if(!n.paused)value.poke("spin",{turns})},bounce:()=>{if(!n.paused)value.poke("bounce")},burst:()=>{if(!n.paused)value.poke("bounce")}};if(typeof n.ref==="function")n.ref(handle);else if(n.ref)n.ref.current=handle},[n.ref,n.paused]);
  const paint=n.ink??(n.color==="black"?MNe("black"):PQ.find(c=>c.id===n.color)?.value??"var(--fg)");
- return p.jsx(e.Mark,{body:e.body(n.shape),appearance:e.appearance(paint),fill:e.fill,size:n.size??"100%",resolution:192,state:n.state,isPlaying:!n.paused,isEmphasized:n.emphasis,isFollowingPointer:n.isFollowingPointer,id:n.id,ref:capture});
+ // 0.75.3 can persist a pumpkin avatar after the 0.70.2 engine's body table.
+ // Keep old profiles renderable by mapping that missing body to sphere.
+ const body=e.body(n.shape==="pumpkin"||n.shape==null||n.shape===""?"sphere":n.shape);
+ return p.jsx(e.Mark,{body,appearance:e.appearance(paint),fill:e.fill,size:n.size??"100%",resolution:192,state:n.state,isPlaying:!n.paused,isEmphasized:n.emphasis,isFollowingPointer:n.isFollowingPointer,id:n.id,ref:capture});
 }
 function RCompOfficialAvatarMirror({sourceId}){
  const extent=RCompOfficialAvatarEngine().fillScale*100+"%";
