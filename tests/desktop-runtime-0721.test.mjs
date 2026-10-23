@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import Module, { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,9 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const evidence = path.resolve(process.env.DESKTOP_RUNTIME_0721_EVIDENCE_DIR ?? path.join(root, ".omo/evidence/desktop-runtime-0721"));
 const require = createRequire(import.meta.url);
 const record = (name, value) => writeFile(path.join(evidence, `${name}.json`), `${JSON.stringify(value, null, 2)}\n`);
+const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0721/asar/app.asar"))
+  && "0.72.1 snapshot is absent";
+const asarOptions = { skip: asarSkip };
 let api, upstream, catalogs;
 let electronLoads = 0;
 
@@ -29,6 +33,7 @@ before(async () => {
     return load.call(this, id, ...args);
   };
   try { api = require(outfile); } finally { Module._load = load; }
+  if (asarSkip) return;
   await generateDesktop0721Module({ outputFile: path.join(evidence, "upstream.cjs") });
   ({ createDesktop0721Upstream: upstream, desktopCatalogs: catalogs } = require(path.join(evidence, "upstream.cjs")));
 });
@@ -112,7 +117,7 @@ test("desktop rules use MainEdge host echo and rollback semantics", async () => 
   await record("rules-rollback", { calls, restoredAfterFailure: previous, persistedAfterEcho: store.getAutoReviewInstructions() });
 });
 
-test("real upstream roster consumes validated seeds, snapshots, upserts and activity", async () => {
+test("real upstream roster consumes validated seeds, snapshots, upserts and activity", asarOptions, async () => {
   const failures = [];
   const original = upstream({ electron: {}, translate: () => "", reportFailure: (...args) => failures.push(args) });
   const roster = original.createRoster();
@@ -135,7 +140,7 @@ test("real upstream roster consumes validated seeds, snapshots, upserts and acti
   await record("validated-roster", { snapshot, resetEmpty: true, malformedIgnored: true });
 });
 
-test("pinned en and zh-CN catalogs render every tray message with exact interpolation", async () => {
+test("pinned en and zh-CN catalogs render every tray message with exact interpolation", asarOptions, async () => {
   let locale = "en";
   const translate = api.createDesktop0721Translator(catalogs, () => locale);
   const output = {};
@@ -172,7 +177,7 @@ test("tray photo requests read the coordinator cache and reject invalid keys", a
   await record("roster-photo-cache", { key, bytes: bytes.length, status: response.status, invalidStatus: invalid.status, missingStatus: missing.status });
 });
 
-test("production desktop creates the original tray, switches a real coordinator leg, persists prefs and cleans up", async () => {
+test("production desktop creates the original tray, switches a real coordinator leg, persists prefs and cleans up", asarOptions, async () => {
   const staged = path.join(evidence, "production");
   const mainRoot = path.join(staged, "dist/electron-main");
   await stageDesktop0721Resources({ outputDir: staged });

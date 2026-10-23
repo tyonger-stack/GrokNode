@@ -203,8 +203,7 @@ test("a restarted process reads the saved fragment back by entry and hash", asyn
   ].join("\n");
   const childScript = path.join(root, "restart-read.mjs");
   await writeFile(childScript, childSource);
-  const nodeBin = path.join(repoRoot, "..", ".tools", "node-26", "bin", "node");
-  const out = execFileSync(nodeBin, [childScript, childBundle, JSON.stringify({ agentId: AGENT_ID, agentDir, dbPath, entryId: lastEntryId, sha256: SHA, html: HTML })], { encoding: "utf8" });
+  const out = execFileSync(process.execPath, [childScript, childBundle, JSON.stringify({ agentId: AGENT_ID, agentDir, dbPath, entryId: lastEntryId, sha256: SHA, html: HTML })], { encoding: "utf8" });
   assert.deepEqual(JSON.parse(out.trim()), { restartedRead: true, sha256: SHA, entryId: lastEntryId });
 });
 

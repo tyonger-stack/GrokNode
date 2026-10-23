@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import test from "node:test";
 import { build } from "esbuild";
 import { mkdir, readFile, writeFile, cp } from "node:fs/promises";
@@ -11,6 +12,8 @@ import { applyLocalTeamsRendererPatch, buildLocalTeamsHostBundle, localTeamsStyl
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const evidence = path.resolve(process.env.LOCAL_TEAMS_EVIDENCE_DIR ?? path.join(root, ".omo/evidence/local-teams-ui-0721"));
 await mkdir(evidence, { recursive: true });
+const pinnedSkip = !existsSync(path.join(root, "src/app/dist/renderer/assets/index-UbX-y3il.js"))
+  && "src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped.";
 const compiled = await build({ absWorkingDir: root, entryPoints: ["frontend/src/recovered/features/local-teams-0721/bridge.ts"], bundle: true, platform: "node", format: "esm", write: false });
 await writeFile(path.join(evidence, "bridge.mjs"), compiled.outputFiles[0].text);
 const { localTeamsDesktop, grantFromForm, safeSignInUrl } = await import(path.join(evidence, "bridge.mjs"));
@@ -60,7 +63,7 @@ test("unknown recipients stay visible, credential errors cannot echo secrets, gr
   await writeFile(path.join(evidence, "failure-contracts.json"), JSON.stringify({ unknownRecipientVisible: true, credentialErrorRedacted: true, expiredGrantRejected: true, emptyActionsRejected: true, unsafeSignInRejected: true }, null, 2));
 });
 
-test("real old renderer settings patch parses, composes with Router, and rejects anchor drift", async () => {
+test("real old renderer settings patch parses, composes with Router, and rejects anchor drift", { skip: pinnedSkip }, async () => {
   const renderer = path.join(evidence, "renderer"); await mkdir(path.join(renderer, "assets"), { recursive: true });
   for (const name of ["index-UbX-y3il.js", "index-BlqerJhg.js"]) await cp(path.join(root, "src/app/dist/renderer/assets", name), path.join(renderer, "assets", name));
   const result = await applyLocalTeamsRendererPatch(renderer);

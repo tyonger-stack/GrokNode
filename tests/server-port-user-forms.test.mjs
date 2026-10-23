@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { test } from 'node:test';
 import { mkdir, writeFile, mkdtemp, symlink, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,6 +8,30 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { bundleServerPort } from './server-port-bundle.mjs';
+
+function resolvePlaywrightModules() {
+  if (process.env.USER_FORM_PLAYWRIGHT_MODULES && existsSync(path.join(process.env.USER_FORM_PLAYWRIGHT_MODULES, 'playwright-core/index.mjs'))) {
+    return process.env.USER_FORM_PLAYWRIGHT_MODULES;
+  }
+  const local = path.resolve('node_modules');
+  if (existsSync(path.join(local, 'playwright-core/index.mjs'))) return local;
+  return null;
+}
+function resolveChromePath() {
+  const candidates = [
+    process.env.USER_FORM_CHROME_PATH,
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+  ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+const chromiumIntegrationSkip = (() => {
+  if (!resolvePlaywrightModules()) return 'playwright-core modules absent; set USER_FORM_PLAYWRIGHT_MODULES';
+  if (!resolveChromePath()) return 'Chrome/Chromium binary absent; set USER_FORM_CHROME_PATH';
+  return false;
+})();
 const api = await bundleServerPort(['shared/user-forms', 'host/extensions/session/user-form-service', 'host/runner/browser/user-form-fill', 'host/runner/browser/user-form-private-driver', 'host/runner/tools/user-form-tool', 'host/runner/tools/sand-browser-driver-source', 'packages/context/core']);
 const evidence = path.resolve(process.env.USER_FORM_EVIDENCE_DIR ?? '.omo/evidence/user-forms-20261019');
 await mkdir(evidence, { recursive: true });
@@ -377,8 +402,10 @@ test('targetless non-secret fields are never sent to the browser', async () => {
   assert.equal(JSON.stringify(result).includes('synthetic-private'), false);
   await record('targetless', { status: result.fields[0].status, leaked: false });
 });
-test('fills a real Chromium page through private stdin with no screenshot or value output', async t => {
-  const modules = process.env.USER_FORM_PLAYWRIGHT_MODULES ?? '/Users/Apple/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules';
+test('fills a real Chromium page through private stdin with no screenshot or value output', { skip: chromiumIntegrationSkip }, async t => {
+  const modules = resolvePlaywrightModules();
+  const chromePath = resolveChromePath();
+  assert.ok(modules && chromePath);
   const { chromium } = await import(pathToFileURL(path.join(modules, 'playwright-core/index.mjs')).href);
   const temp = await mkdtemp(path.join(tmpdir(), 'private-form-'));
   await symlink(modules, path.join(temp, 'node_modules'));
@@ -393,7 +420,7 @@ test('fills a real Chromium page through private stdin with no screenshot or val
   const port = server.address().port;
   // A cross-host frame on the same port: 127.0.0.1 is the consented domain, localhost is not.
   const evilFrameSrc = `http://localhost:${port}/evil`;
-  const browser = await chromium.launchPersistentContext(path.join(temp, 'profile'), { executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--remote-debugging-port=0'] });
+  const browser = await chromium.launchPersistentContext(path.join(temp, 'profile'), { executablePath: chromePath, headless: true, args: ['--remote-debugging-port=0'] });
   t.after(() => browser.close());
   // The driver adopts the most recently opened tab when no view is mapped;
   // keep a throwaway tab ahead of the form so adoption lands on the form.

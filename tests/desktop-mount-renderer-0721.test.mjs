@@ -1,13 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { buildDesktopMountRenderer0721 } from "../scripts/lib/desktop-mount-renderer-0721.mjs";
 
-const built = await buildDesktopMountRenderer0721();
-const context = vm.createContext({ console, URL, URLSearchParams, performance, setTimeout, clearTimeout,
-  TextEncoder, TextDecoder, AbortController, Uint8Array });
-vm.runInContext(built.code, context);
-const factory = vm.runInContext("RDesktopMountUpstream0721.createMountRenderer", context);
+const root = fileURLToPath(new URL("../", import.meta.url));
+const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0721/asar/app.asar"))
+  && "0.72.1 snapshot is absent";
+const options = { skip: asarSkip };
+
+let factory;
+if (!asarSkip) {
+  const built = await buildDesktopMountRenderer0721();
+  const context = vm.createContext({ console, URL, URLSearchParams, performance, setTimeout, clearTimeout,
+    TextEncoder, TextDecoder, AbortController, Uint8Array });
+  vm.runInContext(built.code, context);
+  factory = vm.runInContext("RDesktopMountUpstream0721.createMountRenderer", context);
+}
 const plain = value => JSON.parse(JSON.stringify(value));
 function atom(initial) {
   let value = initial;
@@ -40,7 +51,7 @@ function fixture() {
     emit: input => handlers["prompt-submitted"](input), fail: value => { failure = value; } };
 }
 
-test("original mount controller sends once through the client and offers real SVG bot choices", async () => {
+test("original mount controller sends once through the client and offers real SVG bot choices", options, async () => {
   const f = fixture();
   const target = f.parts.makeTarget(f.agent);
   assert.equal(target.agentId, f.agent.id);
@@ -57,7 +68,7 @@ test("original mount controller sends once through the client and offers real SV
   f.controller.dispose();
 });
 
-test("original send refusal recovers the prompt and staged attachment draft", async () => {
+test("original send refusal recovers the prompt and staged attachment draft", options, async () => {
   const f = fixture();
   await f.controller.mount(f.parts.makeTarget(f.agent));
   f.fail("send/attachment-commit-failed");
@@ -69,7 +80,7 @@ test("original send refusal recovers the prompt and staged attachment draft", as
   f.controller.dispose();
 });
 
-test("foreign submitted attachments are discarded and gate changes unmount the bot", async () => {
+test("foreign submitted attachments are discarded and gate changes unmount the bot", options, async () => {
   const f = fixture();
   await f.controller.mount(f.parts.makeTarget(f.agent));
   f.emit({ agentId: "another-bot", prompt: "wrong target", attachments: [{ path: "/staged/foreign", name: "foreign", size: 1 }] });

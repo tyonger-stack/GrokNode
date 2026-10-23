@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
@@ -12,6 +13,7 @@ const upstreamIndex = path.resolve(
   path.dirname(repoRoot),
   "rea-grokbot-0750/app/dist/renderer/assets/index.eager-app-wqHXQRAi.js",
 );
+const upstreamIndexSkip = !existsSync(upstreamIndex) && "0.75.0 renderer index is absent";
 
 const window = new Window({ settings: { disableCSSFileLoading: true } });
 for (const name of ["window", "document", "HTMLElement", "Element", "Node", "File", "DataTransfer", "Event"]) {
@@ -254,7 +256,7 @@ test("photo failure states render the upstream message for each backend outcome"
   );
 });
 
-test("every renderer copy string is traceable to an upstream catalog id", async () => {
+test("every renderer copy string is traceable to an upstream catalog id", { skip: upstreamIndexSkip }, async () => {
   const source = await readFile(upstreamIndex, "utf8");
   const ids = { ...ui.UPSTREAM_VAULT_CARD_EDITOR_COPY_IDS, ...ui.UPSTREAM_VAULT_CARD_DIALOG_COPY_IDS };
   const copy = { ...ui.DEFAULT_VAULT_CARD_DIALOG_COPY };

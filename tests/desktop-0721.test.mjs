@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -18,6 +18,9 @@ const evidence = path.resolve(process.env.DESKTOP_0721_EVIDENCE_DIR ?? path.join
 const require = createRequire(import.meta.url);
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const record = async (name, value) => writeFile(path.join(evidence, name), `${JSON.stringify(value, null, 2)}\n`);
+const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0721/asar/app.asar"))
+  && "0.72.1 snapshot is absent";
+const options = { skip: asarSkip };
 let createDesktop0721;
 let transplant;
 let upstream;
@@ -26,6 +29,7 @@ let resources;
 let ruleModule;
 
 before(async () => {
+  if (asarSkip) return;
   await mkdir(evidence, { recursive: true });
   let helpers = new URL("../scripts/lib/upstream-0721.mjs", import.meta.url);
   try { await readFile(helpers); }
@@ -128,7 +132,7 @@ function makePorts({ settings = [{ platform: "darwin", setting: "authorized" }],
 const agent = (id, updatedAt, extras = {}) => ({ id, name: `Bot ${id}`, updatedAt, hasUnread: true,
   isRunning: false, isComposingMessage: false, avatarShape: "blob", avatarColor: "black", ...extras });
 
-test("hash-verified generated closure and exact staged resource bytes", async () => {
+test("hash-verified generated closure and exact staged resource bytes", options, async () => {
   assert.equal(process.version, "v26.5.1");
   assert.equal(hash(await readFile(generated.outputFile)), generated.manifest.outputSha256);
   for (const source of generated.manifest.sources) {
@@ -150,7 +154,7 @@ test("hash-verified generated closure and exact staged resource bytes", async ()
   await record("resource-verification.json", { node: process.version, generatedSha256: generated.manifest.outputSha256, verified, invalidNativeRejected: true });
 });
 
-test("original tray consumes roster events, shows recent five eligible bots, unread, busy, reset and dispose", async () => {
+test("original tray consumes roster events, shows recent five eligible bots, unread, busy, reset and dispose", options, async () => {
   const p = makePorts();
   const desktop = createDesktop0721(p.options);
   const tray = p.trays[0];
@@ -193,7 +197,7 @@ test("original tray consumes roster events, shows recent five eligible bots, unr
   await record("tray-events.json", { agents, trace: p.trace, errors: p.errors, timersRemaining: p.timers.size });
 });
 
-test("original roster rejects stale generations and snapshots across reset", async () => {
+test("original roster rejects stale generations and snapshots across reset", options, async () => {
   const p = makePorts();
   const u = transplant(p.options);
   const roster = u.createRoster();
@@ -210,7 +214,7 @@ test("original roster rejects stale generations and snapshots across reset", asy
   await record("roster-generations.json", { old, next, snapshot: roster.snapshot() });
 });
 
-test("permission mappings preserve unavailable, undetermined, denied, granted and native diagnostics", async () => {
+test("permission mappings preserve unavailable, undetermined, denied, granted and native diagnostics", options, async () => {
   const cases = [
     { settings: [{ platform: "darwin", setting: "notDetermined" }], expected: "undetermined" },
     ...["authorized", "provisional", "ephemeral"].map((setting) => ({ settings: [{ platform: "darwin", setting, alertSetting: "disabled" }], expected: "granted" })),
@@ -238,7 +242,7 @@ test("permission mappings preserve unavailable, undetermined, denied, granted an
   await record("permission-readings.json", results);
 });
 
-test("staged native package loads through original CC without querying or sending notifications", async () => {
+test("staged native package loads through original CC without querying or sending notifications", options, async () => {
   const p = makePorts();
   const filename = path.join(evidence, "staged/dist/deps/sand-notification-settings/index.js");
   p.options.loadNotificationNative = () => require(filename);
@@ -253,7 +257,7 @@ test("staged native package loads through original CC without querying or sendin
     exports: Object.keys(loaded.native), invalid, permissionReadInvoked: false, notificationSent: false });
 });
 
-test("only explicit permission request probes, polling settles and OS settings uses original URLs", async () => {
+test("only explicit permission request probes, polling settles and OS settings uses original URLs", options, async () => {
   const p = makePorts({ settings: [{ platform: "darwin", setting: "notDetermined" }, { platform: "darwin", setting: "notDetermined" },
     { platform: "darwin", setting: "authorized" }], autoClock: true });
   const desktop = createDesktop0721(p.options);
@@ -286,7 +290,7 @@ test("only explicit permission request probes, polling settles and OS settings u
   await record("permission-actions.json", { granted: p.trace, denied: denied.trace, pending: pending.trace, unsupported: linux.trace });
 });
 
-test("concurrent permission calls retain each reading and permission failures propagate", async () => {
+test("concurrent permission calls retain each reading and permission failures propagate", options, async () => {
   const p = makePorts({ settings: [{ platform: "darwin", setting: "denied" }, { platform: "darwin", setting: "authorized" }] });
   const desktop = createDesktop0721(p.options);
   const values = await Promise.all([desktop.getDesktopNotificationPermission(), desktop.getDesktopNotificationPermission()]);
@@ -299,7 +303,7 @@ test("concurrent permission calls retain each reading and permission failures pr
   await record("permission-concurrency.json", { values, trace: p.trace, settingsFailurePropagated: true, disposedRequestRejected: true });
 });
 
-test("preferences persist through reconstruction, serialize writes, and propagate storage failures", async () => {
+test("preferences persist through reconstruction, serialize writes, and propagate storage failures", options, async () => {
   const filename = path.join(evidence, "preferences.json");
   const writes = [];
   let failWrite = false;
@@ -330,7 +334,7 @@ test("preferences persist through reconstruction, serialize writes, and propagat
   await record("preference-actions.json", { filename, writes, trace: p.trace, persisted: JSON.parse(await readFile(filename, "utf8")) });
 });
 
-test("personal rules delegate to existing storage and execute original edit/delete/cap operations", async () => {
+test("personal rules delegate to existing storage and execute original edit/delete/cap operations", options, async () => {
   const p = makePorts();
   const desktop = createDesktop0721(p.options);
   const original = await desktop.getAutoReviewInstructions();
@@ -363,7 +367,7 @@ test("personal rules delegate to existing storage and execute original edit/dele
   desktop.dispose();
 });
 
-test("missing tray resources return unavailable without pretending to construct a tray", async () => {
+test("missing tray resources return unavailable without pretending to construct a tray", options, async () => {
   const p = makePorts({ missingAssets: true });
   const desktop = createDesktop0721(p.options);
   assert.equal(desktop.trayAvailable, false);

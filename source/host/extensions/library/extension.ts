@@ -328,6 +328,8 @@ export function createLibraryHostService(options: LibraryExtensionOptions = {}) 
       const context = withCredential(args.credential, signal);
       const { agentId } = publicArgs(args);
       await requireAgent(context, agentId);
+      // Transcript-trusted bots must be enrolled before catalog.external.list's hard requireAgent.
+      enrollTrustedAgent(agentId);
       return { docs: catalog.external.list(context, agentId), listedAtMs: Date.now() };
     },
     async listLibraryPins(args: { agentId: string; credential: string }, signal: AbortSignal) {
@@ -431,8 +433,9 @@ export function createLibraryHostService(options: LibraryExtensionOptions = {}) 
     async runMcpExecution<T>(args: { credential: string; agentId: string; storeId: string; toolCallId: string; connectorAccount: string }, signal: AbortSignal, work: () => T): Promise<T> {
       const context = withCredential(args.credential, signal);
       await requireAgent(context, args.agentId);
-      catalog.identity.requireAgent(context, args.agentId, "use");
+      // Enroll before the hard identity check — same order as listLibraryPins / executionBase.
       enrollTrustedAgent(args.agentId);
+      catalog.identity.requireAgent(context, args.agentId, "use");
       catalog.identity.requireOwner(context, args.storeId);
       return runWithLibraryMcpExecution({ ...context, agentId: args.agentId, storeId: args.storeId, toolCallId: args.toolCallId, idempotencyKey: `mcp:${args.toolCallId}`, connectorAccount: args.connectorAccount }, work);
     },

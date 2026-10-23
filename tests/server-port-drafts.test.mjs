@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { bundleServerPort } from "./server-port-bundle.mjs";
@@ -175,31 +175,41 @@ test("email HTML escapes prose and autolinks without trailing punctuation", () =
 });
 
 // Formal oracle: executable 2e0e295 host code, used directly instead of a hand-built fixture.
-const formalSource = readFileSync("/private/tmp/grok-before0712-evidence-20261019/host-main.cjs", "utf8");
-assert.equal(formalSource.includes("create_reply_draft"), false);
-function extractFormalFunction(source, name) {
-  const start = source.indexOf("function " + name + "(");
-  assert.ok(start >= 0, name);
-  const end = source.indexOf("\n}\n", start);
-  assert.ok(end > start, name);
-  const code = source.slice(start, end + 3);
-  new vm.Script(code);
-  return code;
+// Local Mac evidence path is optional; CI must skip rather than hard-fail on a machine path.
+const formalOraclePath = [
+  process.env.DRAFT_FORMAL_HOST_MAIN,
+  "/private/tmp/grok-before0712-evidence-20261019/host-main.cjs",
+].find((candidate) => typeof candidate === "string" && candidate.length > 0 && existsSync(candidate));
+const formalSkip = !formalOraclePath && "formal host-main.cjs oracle is absent; set DRAFT_FORMAL_HOST_MAIN";
+let formalSource;
+let oracle;
+if (!formalSkip) {
+  formalSource = readFileSync(formalOraclePath, "utf8");
+  assert.equal(formalSource.includes("create_reply_draft"), false);
+  function extractFormalFunction(source, name) {
+    const start = source.indexOf("function " + name + "(");
+    assert.ok(start >= 0, name);
+    const end = source.indexOf("\n}\n", start);
+    assert.ok(end > start, name);
+    const code = source.slice(start, end + 3);
+    new vm.Script(code);
+    return code;
+  }
+  function extractFormalConst(source, name) {
+    const start = source.indexOf("var " + name + " = ");
+    assert.ok(start >= 0, name);
+    const end = source.indexOf("\n", start);
+    return source.slice(start, end === -1 ? source.length : end) + ";";
+  }
+  const oracleSource = ["inertDraftText", "escapeHtml", "proseHtml", "emailDraftHtmlBody",
+    "withoutTrailingProsePunctuation", "closesUnopenedParenthesis",
+    "parseDraftConnectorJson", "parseDraftConnectorRecord", "parseCreatedDraftId",
+    "buildEmailSendCall"].map(name => extractFormalFunction(formalSource, name)).join("\n")
+    + "\n" + ["BARE_URL", "TRAILING_PROSE_PUNCTUATION"].map(name => extractFormalConst(formalSource, name)).join("\n");
+  writeFileSync(path.join(evidence, "formal-draft-oracle.js"), oracleSource);
+  oracle = vm.runInNewContext(oracleSource + "\nbuildEmailSendCall;", {});
 }
-function extractFormalConst(source, name) {
-  const start = source.indexOf("var " + name + " = ");
-  assert.ok(start >= 0, name);
-  const end = source.indexOf("\n", start);
-  return source.slice(start, end === -1 ? source.length : end) + ";";
-}
-const oracleSource = ["inertDraftText", "escapeHtml", "proseHtml", "emailDraftHtmlBody",
-  "withoutTrailingProsePunctuation", "closesUnopenedParenthesis",
-  "parseDraftConnectorJson", "parseDraftConnectorRecord", "parseCreatedDraftId",
-  "buildEmailSendCall"].map(name => extractFormalFunction(formalSource, name)).join("\n")
-  + "\n" + ["BARE_URL", "TRAILING_PROSE_PUNCTUATION"].map(name => extractFormalConst(formalSource, name)).join("\n");
-writeFileSync(path.join(evidence, "formal-draft-oracle.js"), oracleSource);
-const oracle = vm.runInNewContext(oracleSource + "\nbuildEmailSendCall;", {});
-test("formal model schema carries no signature alias or attachment support", () => {
+test("formal model schema carries no signature alias or attachment support", { skip: formalSkip }, () => {
   const schemaStart = formalSource.indexOf("var draftExternalMessageObjectSchema = ");
   assert.ok(schemaStart >= 0);
   const schemaText = formalSource.slice(schemaStart, formalSource.indexOf("var PLATFORM_SCOPED_DRAFT_FIELDS", schemaStart));
@@ -207,7 +217,7 @@ test("formal model schema carries no signature alias or attachment support", () 
   assert.equal(m.draftExternalMessageParameters.safeParse({ platform: "email", providerIdentifier: "p", ...message.draft, signature: "Some other person" }).success, false);
   assert.equal(m.sendDraftRequestSchema.safeParse({ agentId: "a", entryId: "e", draft: { ...message, draft: { ...message.draft, signature: "User edited" } } }).success, true);
 });
-test("send call matches executable formal host for both mailboxes", () => {
+test("send call matches executable formal host for both mailboxes", { skip: formalSkip }, () => {
   const draft = { from: "me@example.com", to: ["a@example.com"], cc: ["cc@example.com"], subject: "Subject", body: "Hi https://example.com/a)." };
   for (const mailbox of ["gmail", "outlook"]) for (const replyToMessageId of [undefined, "parent"]) {
     const route = { platform: "email", providerIdentifier: "p", mailbox, ...(replyToMessageId === undefined ? {} : { replyToMessageId }) };

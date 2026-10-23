@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile, open, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -12,18 +13,24 @@ import { stageDesktopMount0721 } from "../scripts/lib/desktop-mount-0721.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const evidence = path.resolve(process.env.DESKTOP_MOUNT_EVIDENCE ?? path.join(root, ".omo/evidence/desktop-mount-0721"));
+const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0721/asar/app.asar"))
+  && "0.72.1 snapshot is absent";
+const options = { skip: asarSkip };
 await mkdir(evidence, { recursive: true });
-const staged = await stageDesktopMount0721({ distRoot: path.join(evidence, "dist") });
+let staged, generated, createDesktopMount0721, createDesktopMountStagingPort, createAttachmentEdgePort;
 const require = createRequire(import.meta.url);
-const generated = require(staged.generatedPath);
-const adapterPath = path.join(evidence, "adapter.cjs");
-await build({ entryPoints: [path.join(root, "source/electron-main/desktop-mount/index.ts")],
-  outfile: adapterPath, bundle: true, platform: "node", format: "cjs", logLevel: "error" });
-const { createDesktopMount0721, createDesktopMountStagingPort } = require(adapterPath);
-const attachmentsPath = path.join(evidence, "attachments.cjs");
-await build({ entryPoints: [path.join(root, "source/electron-main/attachments/attachments.ts")],
-  outfile: attachmentsPath, bundle: true, platform: "node", format: "cjs", logLevel: "error" });
-const { createAttachmentEdgePort } = require(attachmentsPath);
+if (!asarSkip) {
+  staged = await stageDesktopMount0721({ distRoot: path.join(evidence, "dist") });
+  generated = require(staged.generatedPath);
+  const adapterPath = path.join(evidence, "adapter.cjs");
+  await build({ entryPoints: [path.join(root, "source/electron-main/desktop-mount/index.ts")],
+    outfile: adapterPath, bundle: true, platform: "node", format: "cjs", logLevel: "error" });
+  ({ createDesktopMount0721, createDesktopMountStagingPort } = require(adapterPath));
+  const attachmentsPath = path.join(evidence, "attachments.cjs");
+  await build({ entryPoints: [path.join(root, "source/electron-main/attachments/attachments.ts")],
+    outfile: attachmentsPath, bundle: true, platform: "node", format: "cjs", logLevel: "error" });
+  ({ createAttachmentEdgePort } = require(attachmentsPath));
+}
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const target = { agentId: "agent-fixture", name: "Fixture", markSvgDataUrl: "data:image/svg+xml,<svg/>" };
 const channel = (method, edge = "desktop-mount") => `dune-rpc:${edge}:m:${method}`;
@@ -102,7 +109,7 @@ function attachmentPort(name, uploaded = []) {
   });
 }
 
-test("verified build retains raw preloads, renderer closure and native bytes", async () => {
+test("verified build retains raw preloads, renderer closure and native bytes", options, async () => {
   const provenance = JSON.parse(await readFile(staged.provenancePath, "utf8"));
   for (const output of provenance.outputs) {
     const bytes = await readFile(path.join(evidence, "dist", output.path));
@@ -121,7 +128,7 @@ test("verified build retains raw preloads, renderer closure and native bytes", a
   await record("build-and-native-load", { verifiedOutputs: provenance.outputs.length, nativeExports: names, provenancePath: staged.provenancePath });
 });
 
-test("complete wet factory enforces sender, args, ownership and sends through existing commit", async () => {
+test("complete wet factory enforces sender, args, ownership and sends through existing commit", options, async () => {
   const f = electronFixture();
   const uploaded = [], submitted = [], errors = [];
   const port = attachmentPort("staging", uploaded);
@@ -187,7 +194,7 @@ test("complete wet factory enforces sender, args, ownership and sends through ex
   await record("dispose", { remainingHandlers: f.handlers.size, remainingShortcuts: f.shortcuts.size });
 });
 
-test("stagePath validates actual file size and reuses current staging ownership", async () => {
+test("stagePath validates actual file size and reuses current staging ownership", options, async () => {
   const staging = createDesktopMountStagingPort(attachmentPort("path-staging"));
   const sourcePath = path.join(evidence, "source-file.txt");
   await writeFile(sourcePath, "real bytes");
@@ -206,7 +213,7 @@ test("stagePath validates actual file size and reuses current staging ownership"
   await record("stage-path", { good, invalid, oversized, sourceSha256: hash(await readFile(sourcePath)) });
 });
 
-test("exact picker rejects foreign frames and cancels without residual overlays", async () => {
+test("exact picker rejects foreign frames and cancels without residual overlays", options, async () => {
   const f = electronFixture();
   const upstream = factories(f);
   const picker = upstream.createPicker({ listTargets: () => [], tint: () => "#007aff" });
@@ -240,7 +247,7 @@ test("exact picker rejects foreign frames and cancels without residual overlays"
   assert.equal(f.handlers.size, 0);
 });
 
-test("native service preserves denied permission and captured bytes contracts", async () => {
+test("native service preserves denied permission and captured bytes contracts", options, async () => {
   const f = electronFixture();
   const upstream = factories(f);
   let requested = 0, opened = 0;

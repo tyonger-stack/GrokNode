@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -18,6 +18,8 @@ import {
 } from "../scripts/lib/vault-renderer-patch.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const asarSkip = !existsSync(path.resolve(repoRoot, "../rea-grokbot-0721/asar/app.asar"))
+  && "0.72.1 snapshot is absent";
 const window = new Window();
 for (const name of ["window", "document", "HTMLElement", "HTMLInputElement", "HTMLSelectElement", "Element", "Node", "MutationObserver", "getComputedStyle", "performance"]) {
   globalThis[name] = name === "window" ? window : name === "getComputedStyle" ? window.getComputedStyle.bind(window) : window[name] ?? globalThis[name];
@@ -147,7 +149,7 @@ async function render(t, ui, Host) {
   return host;
 }
 
-test("original 0721 Vault settings render list, cards, and contacts through the local bridge", async (t) => {
+test("original 0721 Vault settings render list, cards, and contacts through the local bridge", { skip: asarSkip }, async (t) => {
   const ui = { createElement: React.createElement, createRoot, act: React.act };
   const { built, host: Host } = await loadHost();
   const desktop = mockDesktop();
