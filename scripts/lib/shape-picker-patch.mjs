@@ -29,6 +29,11 @@ function RCompOfficialAvatarMirror({sourceId}){
  const extent=RCompOfficialAvatarEngine().fillScale*100+"%";
  return p.jsx("span",{"aria-hidden":true,style:{display:"inline-block",position:"relative",flexShrink:0,width:"100%",height:"100%",lineHeight:0},children:p.jsx("svg",{style:{position:"absolute",left:"50%",top:"50%",width:extent,height:extent,transform:"translate(-50%, -50%)",pointerEvents:"none"},children:p.jsx("use",{height:"100%",href:"#"+sourceId,width:"100%"})})});
 }
+const RCompPumpkinStemPath="M64.5 0.21 66.5 0 69.5 0.21 71.5 2 73.79 4.5 75.79 7.5 76.79 9.5 77.79 11.5 78.79 14.5 79.21 17.5 79.79 18.5 80.21 21.5 81.21 23.5 83.79 26.5 83.5 27.67 82.5 28 79.5 27 75.5 27 73.5 27.79 72.5 27.79 70.5 27 67.5 27 64.5 26.93 63.75 26.5 64 25.5 65.79 23.5 66 20.5 66 16.5 65.21 14.5 63.79 11.5 62.5 10 60.7 8.5 61.21 5.5 62.21 3.5 63.21 1.5Z";
+function RCompPumpkinStem({sizePx}){
+ const extent=sizePx*1.5333333333333334;
+ return p.jsx("span",{"aria-hidden":true,style:{position:"absolute",left:"50%",top:"50%",width:extent,height:extent,transform:"translate(-50%, -50%)",pointerEvents:"none"},children:p.jsx("svg",{style:{width:"100%",height:"100%"},viewBox:"0 0 192 192",children:p.jsx("g",{transform:"translate(0 8) scale(1.3333333333333333)",children:p.jsx("path",{d:RCompPumpkinStemPath,fill:"#3d3d3d"})})})});
+}
 function RCompAvatarSuffix(kind){return typeof RLocT==="function"?RLocT(" character "+kind,kind==="shape"?"角色形状":"角色颜色"):" character "+kind}
 function RCompAvatarOutline(shape){
  const e=RCompOfficialAvatarEngine(),sizePx=36,inflatePx=1,gapPx=3,body=e.body(shape);
@@ -50,7 +55,7 @@ export function officialPicker({agent,character,staged,isCharacterActive}){
  p.jsx("div",{"aria-label":"Character shape",className:"sand-78zum5 sand-dt5ytf sand-ehausa sand-uve7l6 sand-1rgtt3y",children:rows.map((row,index)=>p.jsx("div",{className:"r-avatar-shape-row sand-78zum5 sand-l56j7k",children:row.map(candidate=>{
  const selected=!!isCharacterActive&&shape===candidate,label=labels[candidate]??candidate;
  return p.jsxs("button",{"aria-label":label+RCompAvatarSuffix("shape"),"aria-pressed":selected,className:"sand-agent-character__shape sand-jyslct sand-1lugfcp sand-3nfvp2 sand-6s0dn4 sand-l56j7k sand-9f619 sand-1717udv sand-jbqb8w sand-1ypdohk sand-1n2onr6 sand-1useyqa sand-sdox4t sand-c342km sand-ng3xce sand-1t137rt",onClick:()=>character.commitCharacter({avatarShape:candidate}),title:label,type:"button",children:[
- p.jsx(sd,{color,paused:true,shape:candidate,sizePx:36}),
+ p.jsxs("span",{className:"r-avatar-shape-mark",children:[p.jsx(sd,{color,paused:true,shape:candidate,sizePx:36}),candidate==="pumpkin"&&typeof RCompPumpkinStem==="function"?p.jsx(RCompPumpkinStem,{sizePx:36}):null]}),
  p.jsx("span",{"aria-hidden":true,className:"r-avatar-shape-outline",style:RCompAvatarOutline(candidate)})
  ]},candidate);
  })},index))}),
@@ -98,6 +103,7 @@ export function patchShapePicker(source,joAdditions,engineSource){
 export const AVATAR_PICKER_CSS=`
 .sand-avatar-editor{width:min(calc(min(272px,100vw - 32px) + 2*var(--cursor-spacing-3)),100vw - 32px)!important}
 .r-avatar-shape-row{column-gap:clamp(0px,calc((100% - 240px)/4),var(--cursor-spacing-2))}
+.r-avatar-shape-mark{position:relative;display:flex;align-items:center;justify-content:center;width:36px;height:36px}
 .sand-agent-character__shape{border:1px solid transparent;box-sizing:border-box;background:transparent;--sand-border-primary-translucent:#f5f5f538;--sand-border-secondary-translucent:#f5f5f51a}
 .sand-agent-character__shape:hover{border-color:var(--sand-border-secondary-translucent,var(--sand-border-default))}
 .r-avatar-shape-outline{position:absolute;pointer-events:none;background:var(--sand-border-secondary-translucent,var(--sand-border-default));opacity:0;-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}

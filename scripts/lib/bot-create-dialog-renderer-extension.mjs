@@ -23,13 +23,14 @@ export const BOT_CREATE_STYLE = `
 .r-create-bot-header .sand-dialog__title{margin:0;font-size:14px;line-height:22px;font-weight:600}
 .r-create-bot-body{padding:0 16px 16px}
 .r-create-bot{display:flex;flex-direction:column;gap:12px;width:100%;min-width:0}
-.r-create-bot-preview{display:flex;align-items:center;justify-content:center;align-self:center;width:96px;height:96px;margin:8px 0 2px}
-.r-create-bot-name{display:block;width:100%;box-sizing:border-box;padding:8px 10px;margin:4px 0;color:var(--sand-text-primary);background:transparent;border:.5px solid var(--sand-border-weak);border-radius:8px;outline:none;font:inherit;font-size:13px;line-height:18px}
-.r-create-bot-name::placeholder{color:var(--sand-text-tertiary)}
+.r-create-bot-preview{position:relative;display:flex;align-items:center;justify-content:center;align-self:center;width:96px;height:96px;margin:8px 0 2px}
+.r-create-bot-name{display:block;width:100%;box-sizing:border-box;padding:8px 10px;margin:4px 0;color:#f5f5f5;background:transparent;border:.5px solid rgba(245,245,245,.1);border-radius:8px;outline:none;font:inherit;font-size:13px;line-height:18px}
+.r-create-bot-name::placeholder{color:rgba(245,245,245,.54)}
 .r-create-bot-name:focus{border-color:var(--sand-border-focus)}
 .r-create-bot-shapes{display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px 0}
 .r-create-bot-shape-row{display:flex;align-items:center;justify-content:center;gap:14px}
 .r-create-bot-shape{position:relative;display:flex;align-items:center;justify-content:center;width:48px;height:48px;padding:0;color:var(--sand-text-primary);background:transparent;border:0;border-radius:0;cursor:pointer;--sand-border-primary-translucent:#f5f5f538;--sand-border-secondary-translucent:#f5f5f51a}
+.r-create-bot-shape-mark{position:relative;display:flex;align-items:center;justify-content:center;width:36px;height:36px}
 .r-create-bot-shape:focus-visible{outline:2px solid var(--sand-border-focus);outline-offset:2px}
 .r-create-bot-shape-outline{position:absolute;pointer-events:none;background:var(--sand-border-secondary-translucent,var(--sand-border-default));opacity:0;-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
 .r-create-bot-shape:hover .r-create-bot-shape-outline{opacity:1}
@@ -81,14 +82,14 @@ function RCreateBotDialog({onClose,onCreate,busy,error}){
   return p.jsxs(Gt.Root,{open:true,variant:'rich',width:440,closeOnBackdropClick:!busy,closeOnEscape:!busy,onOpenChange:next=>{if(!next)onClose()},children:[
     p.jsxs(Gt.Header,{style:RCREATE_STYLES.header,children:[p.jsx(Gt.Title,{children:RCreateBotT('Create new Bot','创建新 Bot')}),p.jsx(Gt.CloseButton,{'aria-label':RCreateBotT('Close dialog','关闭对话框')})]}),
     p.jsx(Gt.Body,{style:RCREATE_STYLES.body,children:p.jsxs('div',{className:'r-create-bot',children:[
-      p.jsx('span',{className:'r-create-bot-preview',children:p.jsx(sd,{color,shape,sizePx:96})}),
+      p.jsx('span',{className:'r-create-bot-preview',children:[p.jsx(sd,{color,shape,sizePx:96}),shape==='pumpkin'&&typeof RCompPumpkinStem==='function'?p.jsx(RCompPumpkinStem,{sizePx:96}):null]}),
       p.jsx('input',{'aria-label':RCreateBotT('Bot name','Bot 名称'),autoFocus:true,className:'r-create-bot-name',disabled:busy,maxLength:255,onChange:event=>setName(event.currentTarget.value),onKeyDown:event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();submit()}},placeholder:RCreateBotT('Give your Bot a name','给你的 Bot 起个名字'),type:'text',value:name}),
       p.jsx('div',{'aria-label':RCreateBotShapeSuffix(),className:'r-create-bot-shapes',children:rows.map((row,index)=>p.jsx('div',{className:'r-create-bot-shape-row',children:row.map(candidate=>{
         const selected=shape===candidate;
         const label=RCreateBotShapeLabel(candidate);
         const outline=typeof RCompAvatarOutline==='function'?RCompAvatarOutline(candidate):null;
         return p.jsxs('button',{'aria-label':label+RCreateBotShapeSuffix(),'aria-pressed':selected,className:'r-create-bot-shape',disabled:busy,onClick:()=>setShape(candidate),title:label,type:'button',children:[
-          p.jsx(sd,{color,shape:candidate,sizePx:36,paused:true}),
+          p.jsxs('span',{className:'r-create-bot-shape-mark',children:[p.jsx(sd,{color,shape:candidate,sizePx:36,paused:true}),candidate==='pumpkin'&&typeof RCompPumpkinStem==='function'?p.jsx(RCompPumpkinStem,{sizePx:36}):null]}),
           outline==null?null:p.jsx('span',{'aria-hidden':true,className:'r-create-bot-shape-outline',style:outline})
         ]},candidate);
       })},index))}),
