@@ -52,6 +52,7 @@ import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs
 import { applySettingsUpdate0753Patch } from "./lib/settings-update-0753-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
+import { applyUpdatePillCopy0755Patch } from "./lib/update-pill-copy-0755-patch.mjs";
 import { applyTeachGateRestorePatch } from "./lib/teach-gate-restore-patch.mjs";
 import { applyGrokMainAgentGatePatch } from "./lib/grok-main-agent-gate-patch.mjs";
 import { applyBotColorGatePatch } from "./lib/bot-color-gate-patch.mjs";
@@ -435,6 +436,9 @@ export async function buildFidelityReconstructedAsar({
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
+  // The 0.18 renderer already has the footer update pill and Update-ready
+  // modal; port the official 0.75.5 copy now that RLocT exists.
+  await applyUpdatePillCopy0755Patch({ stageRoot });
   // After i18n so the injected host source is not rewritten. The general-panel
   // anchor survives the router patch, and the plugins-list anchor is untouched
   // by the view-chunk passes above.
