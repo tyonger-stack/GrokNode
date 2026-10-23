@@ -1,3 +1,5 @@
+import { officialBotColor0753 } from "./bot-color-0753-official.mjs";
+
 // 强调色 = Bot 颜色 (bot color in chat) — the renderer side of the dimension-reduced
 // port. Upstream 0.70.2 tints the 1:1 chat by redefining semantic accent-prefixed tokens on
 // three containers (transcript scroll area, composer, info pane) through React props.
@@ -7,9 +9,8 @@
 // evidence trail, and the build pass (bot-color-renderer-patch.mjs) for the container
 // anchors and the token-existence gate.
 //
-// The injected runtime is an IIFE appended to the entry chunk, where it shares module
-// scope with the baseline's own palette helpers (Cee/QCe) — it reuses them verbatim
-// instead of re-implementing the palette + deterministic fallback hash.
+// Official 0.75.3 helpers run in a private scope with Cee as DO. React reads the
+// effective preference snapshot during render; the timer only refreshes that setting.
 
 // Palette id → the 0.18 semantic family that carries that hue's values. black/gray have
 // no family ("or keep them black") and never appear here; blue IS the accent family, so
@@ -48,7 +49,7 @@ export function buildBotColorTintTable(css) {
   const table = {};
   for (const [paletteId, source] of Object.entries(BOT_COLOR_HUE_SOURCE)) {
     const vars = {};
-    const put = (target, from) => { if (present.has(from)) vars[target] = `var(${from})`; };
+    const put = (target, from) => { if (target !== from && present.has(target) && present.has(from)) vars[target] = `var(${from})`; };
     put("--sand-fill-bubble-user", `--sand-fill-${source}`);
     for (const family of ["fill", "text", "border"]) {
       for (const variant of ["", "-hover", "-disabled", "-subtle", "-subtle-hover", "-subtle-disabled"]) {
@@ -56,8 +57,7 @@ export function buildBotColorTintTable(css) {
       }
     }
     // `blue` IS accent: every accent←accent entry above is an identity mapping and only
-    // the user bubble actually changes. Keeping the identity entries would be harmless
-    // but noisy; dropping them keeps the emitted table honest about what it does.
+    // the user bubble actually changes. Identity entries create CSS variable cycles.
     const entry = source === "accent"
       ? (vars["--sand-fill-bubble-user"] === undefined ? {} : { "--sand-fill-bubble-user": vars["--sand-fill-bubble-user"] })
       : (Object.keys(vars).length > 1 ? vars : null);
@@ -70,9 +70,8 @@ export function buildBotColorTintTable(css) {
 /**
  * The classes that paint message bubbles: the user rule (background through
  * `var(--sand-fill-bubble-user)`) and the agent rule (through
- * `var(--sand-fill-bubble-agent)`). The runtime uses BOTH to find the transcript
- * scroll area among all `.ui-scroll-area` elements — an agent-only conversation has
- * no user bubbles, so scoping on the user class alone would silently drop the tint.
+ * `var(--sand-fill-bubble-agent)`). These are build-time stylesheet evidence;
+ * React supplies tint to the transcript root even before any bubbles exist.
  */
 export function findBotColorMessageClasses(css) {
   const pick = token => {
@@ -87,81 +86,52 @@ export function findBotColorMessageClasses(css) {
 
 export function botColorRuntime(tintTable, messageClasses) {
   const bubbleClass = typeof messageClasses === "string" ? messageClasses : messageClasses.user;
-  const messageSelector = typeof messageClasses === "string" ? `.${bubbleClass}` : `.${messageClasses.user}${messageClasses.agent == null ? "" : `,.${messageClasses.agent}`}`;
   if (typeof bubbleClass !== "string" || bubbleClass.length === 0) throw new Error("bot-color: bubble class is required");
   return `
-/* grok-node bot-color tint (强调色=Bot 颜色) — dimension-reduced port of 0.70.2 botTint. */
-(function(){
-  if(typeof window!=='object'||window.__rbotTint)return;window.__rbotTint=!0;
-  var TABLE=${JSON.stringify(tintTable)};
-  var BUBBLE='${messageSelector}';
-  var APPLIED=[];
-  function applyTint(els,vars){
-    for(var i=0;i<els.length;i++){var style=els[i].style;for(var j=0;j<APPLIED.length;j++)style.removeProperty(APPLIED[j]);}
-    var names=Object.keys(vars);
-    for(var i2=0;i2<els.length;i2++){var style2=els[i2].style;for(var j2=0;j2<names.length;j2++)style2.setProperty(names[j2],vars[names[j2]]);}
-    APPLIED=names;
+/* grok-node bot-color tint — official 0.75.3 derivation, native 0.18 token projection. */
+const RbcTint=(()=>{
+  ${officialBotColor0753}
+  const DO=Cee;
+  const TABLE=${JSON.stringify(tintTable)};
+  const snapshots=qn(false), service={botColorInChat:{snapshots}};
+  const Q=()=>service;
+  const Lc=s=>S.useSyncExternalStore(s.subscribe,s.get,s.get);
+  const Bb={
+    "--sand-text-on-primary":"var(--sand-text-on-primary)",
+    "--sand-bg-accent-primary":"var(--sand-fill-accent)",
+    "--sand-bg-accent-primary-hover":"var(--sand-fill-accent-hover)",
+    "--sand-bg-accent-primary-disabled":"var(--sand-fill-accent-disabled)"
+  };
+  const gRe={"fill/bubble-user":h=>TABLE[h]?.["--sand-fill-bubble-user"]};
+  function ci(_,h){
+    const {"--sand-fill-bubble-user":bubble,...accent}=TABLE[h]??{};
+    return accent;
   }
-  // Official eligibility (0.70.2 ar()): groups and custom-avatar bots stay default, and
-  // Cee/QCe are the baseline's own palette resolution (palette check + deterministic
-  // fallback hash), shared through this chunk's module scope.
-  function hueOf(agent){
-    if(agent==null||typeof agent!=='object'||agent.isGroup===true)return null;
-    if(typeof QCe==='function'&&QCe(agent)===true)return null;
-    var color=typeof Cee==='function'?Cee(agent):agent.avatarColor;
-    if(typeof color!=='string')return null;
-    if(color==='black'||color==='gray')return null;
-    return color==='violet'?'purple':color;
-  }
-  // Walks the React fiber of the SIDEBAR'S ACTIVE ROW for the current agent. Verified
-  // against the live 0.18 build: the row component (class sand-agent-item, carrying
-  // data-agent-id/data-active) holds the full agent object in props.agent a few hops up.
-  // The transcript container's own ancestry deliberately carries no agent-like prop in
-  // 0.18 (probed 80 hops, zero hits), so the sidebar is the authoritative source here —
-  // the same source the injected main-bot sidebar treats as the roster of record.
-  function agentOf(){
-    var row=document.querySelector('.sand-agent-item[data-active],[data-agent-id][data-active]');
-    if(row==null)return null;
-    var fiber=null;
-    for(var k of Object.getOwnPropertyNames(row)){if(k.indexOf('__reactFiber$')===0){fiber=row[k];break;}}
-    for(var node=fiber,hops=0;node!=null&&hops<16;node=node.return,hops++){
-      var props=node.memoizedProps;
-      if(props==null||typeof props!=='object')continue;
-      for(var prop in props){
-        var value=props[prop];
-        if(value!=null&&typeof value==='object'&&!Array.isArray(value)&&('avatarColor' in value||'avatarShape' in value))return value;
-      }
+  // Semantic tokens absent in 0.18 have no consumer. Only project supported aliases;
+  // an alias pointing back at itself must not shadow the inherited native variable.
+  function project(style){
+    if(style===undefined)return;
+    const result={};
+    for(const [key,value] of Object.entries(style)){
+      const target=key==="--sand-transcript-bubble-user-fill"?"--sand-fill-bubble-user":key;
+      if(value!=="var("+target+")"&&Object.values(TABLE).some(vars=>Object.hasOwn(vars,target)))result[target]=value;
     }
-    return null;
+    return result;
   }
-  function findContainers(){
-    var out=[],scroller=null,scrolls=document.querySelectorAll('.ui-scroll-area');
-    for(var i=0;i<scrolls.length;i++){if(scrolls[i].querySelector(BUBBLE)!=null){scroller=scrolls[i];break;}}
-    if(scroller!=null)out.push(scroller);
-    var composer=document.querySelector('.sand-prompt-form');
-    if(composer!=null)out.push(composer);
-    var pane=document.querySelector('.sand-info-pane');
-    if(pane!=null)out.push(pane);
-    return out;
+  let pending=false;
+  async function refresh(){
+    const bridge=window.desktop?.agent;
+    if(pending||typeof bridge?.getBotColorInChat!=="function")return;
+    pending=true;
+    try{snapshots.set(await bridge.getBotColorInChat()===true)}catch{}finally{pending=false}
   }
-  var lastKey=null;
-  function tick(){
-    var bridge=window.desktop&&window.desktop.agent;
-    if(bridge==null||typeof bridge.getBotColorInChat!=='function')return;
-    bridge.getBotColorInChat().then(function(enabled){
-      var els=findContainers();
-      if(els.length===0)return;
-      var hue=null,key=enabled===true?'':'off';
-      if(enabled===true){hue=hueOf(agentOf());key=hue==null?'none':hue;}
-      // Re-apply every tick: containers remount on view switches, and same-value
-      // setProperty calls are cheap. The key only gates logging noise, not application.
-      if(key!==lastKey){lastKey=key;}
-      applyTint(els,hue!=null&&TABLE[hue]!=null?TABLE[hue]:{});
-    }).catch(function(){});
-  }
-  setInterval(tick,2500);
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(tick,500);});
-  else setTimeout(tick,500);
+  if(typeof window==="object"){refresh();setInterval(refresh,2500)}
+  return {
+    theme:agent=>fQ({agent:agent??null,isAccentThemingEnabled:false,isBotTintEnabled:pf()}),
+    transcript:theme=>project(pQ(theme)),
+    composer:theme=>project(mQ(theme)),
+    info:agent=>project(ion(agent??null,pf()))
+  };
 })();
 `;
 }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +8,8 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { build } from "esbuild";
+import { parse } from "acorn";
+import { officialBotColor0753 } from "../scripts/lib/bot-color-0753-official.mjs";
 
 import {
   BOT_COLOR_HUE_SOURCE,
@@ -22,7 +25,7 @@ import { patchBotColorSettings, applyBotColorSettingsPatch } from "../scripts/li
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 async function load(out, entry) {
-  const outfile = path.join(repoRoot, "node_modules", ".cache", out);
+  const outfile = path.join(repoRoot, ".omo", "evidence", "bot-color-switch", "cache", out);
   mkdirSync(path.dirname(outfile), { recursive: true });
   await build({
     entryPoints: [path.join(repoRoot, entry)],
@@ -70,6 +73,7 @@ const FIXTURE_CSS = [
   "--sand-text-danger:#c21d2e;",
   "--sand-fill-supplementary4:#9159fe;--sand-fill-supplementary4-hover:#6e44c1;",
   "--sand-fill-accent:#1084fe;--sand-fill-accent-hover:#0c64c1;--sand-text-accent:#0c64c1;",
+  "--sand-fill-accent-subtle:#1084fe17;",
   "--sand-fill-bubble-user:#070707;--sand-text-on-primary:#fcfcfc;}",
   ".sand-12qmj0a:not(#\\#):not(#\\#){background-color:var(--sand-fill-bubble-user)}",
 ].join("\n");
@@ -106,6 +110,54 @@ test("buildBotColorTintTable covers every hue source family it declares", () => 
   }
 });
 
+test("projection never creates self cycles or overrides unsupported native targets", () => {
+  const css = ":root{--sand-fill-danger:red;--sand-fill-danger-hover:maroon;--sand-fill-accent:blue;--sand-fill-bubble-user:black}";
+  const table = buildBotColorTintTable(css);
+  assert.equal(table.red["--sand-fill-accent-hover"], undefined);
+  for (const vars of Object.values(table)) for (const [key, value] of Object.entries(vars)) {
+    assert.notEqual(value, `var(${key})`);
+    assert.ok(css.includes(key + ":"));
+    assert.ok(css.includes(value.slice(4, -1) + ":"));
+  }
+});
+
+test("official 0.75.3 functions retain exact upstream function hashes", () => {
+  const expected = {
+    pf: "b4c3e74eaf9bb313eb058eb359f38aa19478ab34f1039b61cccac68e6be1fb7c",
+    mde: "4eb28348606bbf555a711456ce44e01f9050b5fd355b24f23e85b406c0138883",
+    cw: "d36355f9e181bebf7aa8c1c3f000106da1583820506dd93c13c97a2dae04cfe3",
+    OO: "03d0c8b0ca77274e6760ebd8aeed5613cbc24a75d0a4302d17d72171ef4591b8",
+    kO: "3c4adf2ba9b874fbe8b13abd39821e9c8c4fa4ec54a2924e1fab27cbc223e6ba",
+    NO: "2db7076ccb4bd7a193db3c28108705b79fc8da46be1bf0607323be68c7c7dd70",
+    fQ: "708f4772509b7b9694bfa5a3fb5d3822a1334d68d5a56a7553a479bebdad7c65",
+    pQ: "f53254164e58db26280899914ca16f4f727d5050e797b050a1db9503ea3240c4",
+    mQ: "f22adfcb454487e0841a4e593a29c3544430c72e604cbc004f45fced9d67886b",
+    ion: "f10317b3baa0830f3c11a1e82436da11ef736ded19aa6eaf64525fd3483dff6d",
+    qn: "0d2e79818fb9a9724de335585aeeb08d9e4d9c8a4f383981a3f85becf085f426",
+  };
+  const observed = {};
+  for (const node of parse(officialBotColor0753, { ecmaVersion: "latest" }).body) {
+    if (node.type !== "FunctionDeclaration") continue;
+    observed[node.id.name] = createHash("sha256").update(officialBotColor0753.slice(node.start, node.end)).digest("hex");
+  }
+  assert.deepEqual(observed, expected);
+});
+
+test("official snapshot only notifies on effective changes and unsubscribes", () => {
+  const qn = new Function(officialBotColor0753 + ";return qn")();
+  const snapshots = qn(false);
+  const changes = [];
+  const unsubscribe = snapshots.subscribe(() => changes.push(snapshots.get()));
+  snapshots.set(false);
+  snapshots.set(true);
+  snapshots.set(true);
+  snapshots.update(value => value);
+  snapshots.set(false);
+  unsubscribe();
+  snapshots.set(true);
+  assert.deepEqual(changes, [true, false]);
+});
+
 test("findBotColorMessageClasses returns both bubble rules it scopes by", () => {
   assert.deepEqual(findBotColorMessageClasses(FIXTURE_CSS), { user: "sand-12qmj0a", agent: null });
   assert.throws(() => findBotColorMessageClasses(":root{--sand-fill-bubble-user:#070707}"), /--sand-fill-bubble-user/);
@@ -114,14 +166,14 @@ test("findBotColorMessageClasses returns both bubble rules it scopes by", () => 
 // ---------------------------------------------------------------------------
 // Runtime emission.
 // ---------------------------------------------------------------------------
-test("botColorRuntime embeds the table, the bubble scope, and the idempotence guard", () => {
+test("botColorRuntime embeds literal official helpers and reads only the effective preference", () => {
   const runtime = botColorRuntime({ red: { "--sand-fill-accent": "var(--sand-fill-danger)" } }, { user: "sand-12qmj0a", agent: "sand-1g0q52m" });
-  assert.ok(runtime.includes("window.__rbotTint"));
-  assert.ok(runtime.includes("'.sand-12qmj0a,.sand-1g0q52m'"));
+  assert.ok(runtime.includes("S.useSyncExternalStore"));
+  assert.doesNotMatch(runtime, /querySelector|reactFiber|MutationObserver|setProperty|removeProperty/);
   assert.ok(runtime.includes('"--sand-fill-accent":"var(--sand-fill-danger)"'));
   assert.ok(runtime.includes("bridge.getBotColorInChat"));
-  assert.ok(runtime.includes("agent.isGroup===true"));
-  assert.ok(runtime.includes("'violet'?'purple'"));
+  assert.ok(runtime.includes("function mde(e){return!e.isGroup}"));
+  assert.ok(runtime.includes("case`violet`:return`purple`"));
   // new Function is a cheap syntax gate on the emitted runtime before acorn runs in patch.
   new Function(runtime.replace(/^[\s\S]*?\n/, "")); // eslint-disable-line no-new-func
 });
@@ -133,11 +185,28 @@ test("botColorRuntime rejects an empty bubble class", () => {
 // ---------------------------------------------------------------------------
 // Patch pass — idempotence and the double-apply guard.
 // ---------------------------------------------------------------------------
-test("patchBotColorRenderer appends once and refuses a second application", () => {
+const NATIVE_FIXTURE = `
+function Cee(n){return n.avatarColor}function QCe(n){return false}
+var a="ui-scroll-area",b="sand-prompt-form",c="sand-info-pane";
+const c_n=S.memo(i_n);
+function hve(n){return p.jsx(S9n,{...n,isSendingPaused:i})}
+function yOn(n){return {transcript:p.jsx(c_n,{agentActivity:n.activity}),composer:p.jsx(hve,{onSubmit:n.onSubmit}),newChatComposer:p.jsx(hve,{}),heroComposer:p.jsx(hve,{})}}
+function i_n(n){const e=he.c(150);let Sr;return e[148]!==Es?(Sr=p.jsx(p.Fragment,{children:p.jsx(Ar,{ref:ge,children:Es})}),e[149]=Sr):Sr=e[149],Sr}
+function S9n(n){const e=he.c(215);let $a;return e[213]!==za?($a=p.jsx("form",{className:ts,onSubmit:ks,children:za}),e[214]=$a):$a=e[214],$a}
+function E3n(n){const e=he.c(58);let Q;return e[50]!==Y?(Q=p.jsxs("aside",{id:G,style:Y,children:[U,se,le]}),e[57]=Q):Q=e[57],Q}
+`;
+
+test("patchBotColorRenderer patches native React roots once and refuses a second application", () => {
   const runtime = botColorRuntime({ red: {} }, { user: "sand-x", agent: null });
-  const patched = patchBotColorRenderer("var x=1;\n", runtime);
+  const patched = patchBotColorRenderer(NATIVE_FIXTURE, runtime);
   assert.ok(patched.includes("/* grok-node bot-color tint"));
   assert.throws(() => patchBotColorRenderer(patched, runtime), /already applied/);
+  for (const [before, after] of [["function yOn", "function renamed"], ["he.c(150)", "he.c(151)"], ["onSubmit:ks", "onSubmit:other"], ["style:Y", "style:other"], ["p.jsx(Ar,", "p.jsx(Other,"], ["c_n=S.memo(i_n)", "c_n=S.memo(other)"], ["...n,isSendingPaused:i", "isSendingPaused:i"]]) {
+    assert.throws(() => patchBotColorRenderer(NATIVE_FIXTURE.replace(before, after), runtime), /Bot-color patch:/);
+  }
+  assert.throws(() => patchBotColorRenderer(NATIVE_FIXTURE + NATIVE_FIXTURE, runtime), SyntaxError);
+  assert.throws(() => patchBotColorRenderer(NATIVE_FIXTURE.replace("composer:p.jsx(hve,", "composer:p.jsx(hve,{}),composer:p.jsx(hve,"), runtime), /ambiguous chat property/);
+  assert.throws(() => patchBotColorRenderer("var x=1;", runtime), /memo binding drifted/);
 });
 
 test("applyBotColorRendererPatch works end-to-end on a fixture stage", async () => {
@@ -146,7 +215,7 @@ test("applyBotColorRendererPatch works end-to-end on a fixture stage", async () 
   mkdirSync(assets, { recursive: true });
   writeFileSync(path.join(stage, "dist", "renderer", "index.html"), '<script src="./assets/index-fixture.js"></script>');
   // A minimal entry chunk: container markers + the two palette helpers the runtime calls.
-  writeFileSync(path.join(assets, "index-fixture.js"), 'function Cee(n){return n}function QCe(n){return !1}var a="ui-scroll-area",b="sand-prompt-form",c="sand-info-pane";\n');
+  writeFileSync(path.join(assets, "index-fixture.js"), NATIVE_FIXTURE);
   writeFileSync(path.join(assets, "index-fixture.css"), FIXTURE_CSS);
   const provenance = await applyBotColorRendererPatch({ stageRoot: stage });
   assert.equal(provenance.entry, "assets/index-fixture.js");
@@ -194,7 +263,7 @@ test("resolveBotColorInChatEnabled follows the official preference ?? gate rule"
 });
 
 test("settings service refuses bot-color writes while the gate reader is unregistered", async () => {
-  const outfile = path.join(repoRoot, "node_modules", ".cache", "bot-color-service.test.js");
+  const outfile = path.join(repoRoot, ".omo", "evidence", "bot-color-switch", "cache", "bot-color-service.test.js");
   mkdirSync(path.dirname(outfile), { recursive: true });
   // One bundle so the service and the gate registry share module state — the pin must be
   // visible to the service, exactly like the main-agent variant it is modelled on.
