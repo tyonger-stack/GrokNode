@@ -44,13 +44,17 @@ const SNAPSHOT_VOLUME_FILES: { readonly volume: "workspace" | "data"; readonly f
 export function snapshotImageRepo(container: string): string { return `${container}-snapshot`; }
 export function newSnapshotId(now: () => number = Date.now): string { return `s${now().toString(36)}${randomBytes(3).toString("hex")}`; }
 
-export function parseSnapshotManifest(raw: unknown): SnapshotManifest | null {
+export function parseSnapshotManifest(raw: unknown, expectedImageRepo?: string): SnapshotManifest | null {
   if (typeof raw !== "object" || raw == null || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
   if (record.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) return null;
   if (typeof record.id !== "string" || !SNAPSHOT_ID_PATTERN.test(record.id)) return null;
   if (typeof record.createdAt !== "number" || !Number.isSafeInteger(record.createdAt) || record.createdAt <= 0) return null;
   if (typeof record.imageTag !== "string" || record.imageTag.length === 0) return null;
+  // Provenance: with an expected repo, the tag must be exactly `<repo>:<id>`
+  // for THIS container's snapshot store, so a tampered manifest cannot steer
+  // Reset at an arbitrary image.
+  if (expectedImageRepo != null && record.imageTag !== `${expectedImageRepo}:${record.id}`) return null;
   const volumes = record.volumes;
   if (typeof volumes !== "object" || volumes == null || Array.isArray(volumes)) return null;
   const volumeRecord = volumes as Record<string, unknown>;
@@ -75,14 +79,39 @@ export function buildVolumeArchiveArgs(args: { readonly helperImage: string; rea
   ];
 }
 
-/** Pure arg builders (unit-tested): wipe a named volume and unpack the archived tarball into it. */
-export function buildVolumeRestoreArgs(args: { readonly helperImage: string; readonly volume: string; readonly sourceFile: string }): string[] {
+/** Pure arg builder (unit-tested): preflight an archive by listing it without extracting (`tar -tzf … > /dev/null`). */
+export function buildArchivePreflightArgs(args: { readonly helperImage: string; readonly sourceFile: string }): string[] {
   return [
     "run", "--rm", "--platform", "linux/amd64", "--network", "none",
-    "--mount", `type=volume,src=${args.volume},dst=/dst`,
     "--mount", "type=bind,src=__SNAPSHOT_DIR__,dst=/src,readonly",
     "--entrypoint", "sh", args.helperImage, "-c",
-    `find /dst -mindepth 1 -delete 2>/dev/null; tar xzf /src/${args.sourceFile} -C /dst`,
+    `tar -tzf /src/${args.sourceFile} > /dev/null`,
+  ];
+}
+
+/** Pure arg builder (unit-tested): extract an archive into an EMPTY staging volume (no destructive step). */
+export function buildTempVolumeExtractArgs(args: { readonly helperImage: string; readonly stagingVolume: string; readonly sourceFile: string }): string[] {
+  return [
+    "run", "--rm", "--platform", "linux/amd64", "--network", "none",
+    "--mount", `type=volume,src=${args.stagingVolume},dst=/dst`,
+    "--mount", "type=bind,src=__SNAPSHOT_DIR__,dst=/src,readonly",
+    "--entrypoint", "tar", args.helperImage, "xzf", `/src/${args.sourceFile}`, "-C", "/dst",
+  ];
+}
+
+/**
+ * Pure arg builder (unit-tested): swap a verified staging volume into the
+ * production volume. Runs only AFTER the staged extraction of BOTH volumes
+ * succeeded, so the find-delete window is covered by an already-materialized
+ * source; cp -a then copies the staged tree over.
+ */
+export function buildVolumeSwapArgs(args: { readonly helperImage: string; readonly stagingVolume: string; readonly targetVolume: string }): string[] {
+  return [
+    "run", "--rm", "--platform", "linux/amd64", "--network", "none",
+    "--mount", `type=volume,src=${args.stagingVolume},dst=/src,readonly`,
+    "--mount", `type=volume,src=${args.targetVolume},dst=/dst`,
+    "--entrypoint", "sh", args.helperImage, "-c",
+    "find /dst -mindepth 1 -delete 2>/dev/null; cp -a /src/. /dst/",
   ];
 }
 
@@ -96,7 +125,7 @@ export interface LocalDockerSnapshotStore {
   readonly root: string;
   save(): Promise<{ readonly ok: true; readonly id: string } | { readonly ok: false; readonly error: string }>;
   latest(): Promise<SnapshotManifest | null>;
-  /** Remove the container and restore both volumes from the snapshot. Container recreation (from the snapshot image) stays with the connector. */
+  /** Restore both volumes from the snapshot: preflight + stage into temp volumes + swap; nothing production-side is touched until the swap phase. Container recreation (from the snapshot image) stays with the connector. */
   restoreVolumes(manifest: SnapshotManifest): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: string }>;
   prune(): Promise<void>;
 }
@@ -113,10 +142,11 @@ export function createLocalDockerSnapshotStore(deps: {
 }): LocalDockerSnapshotStore {
   const repo = snapshotImageRepo(deps.container);
   const volumeName = { workspace: deps.workspaceVolume, data: deps.dataVolume };
+  const stagingName = { workspace: `${deps.workspaceVolume}-restore`, data: `${deps.dataVolume}-restore` };
   const manifestPath = (id: string): string => join(deps.root, id, SNAPSHOT_MANIFEST_FILENAME);
   const readManifest = async (id: string): Promise<SnapshotManifest | null> => {
     if (!SNAPSHOT_ID_PATTERN.test(id)) return null;
-    try { return parseSnapshotManifest(JSON.parse(await readFile(manifestPath(id), "utf8"))); } catch { return null; }
+    try { return parseSnapshotManifest(JSON.parse(await readFile(manifestPath(id), "utf8")), repo); } catch { return null; }
   };
   return {
     root: deps.root,
@@ -151,15 +181,63 @@ export function createLocalDockerSnapshotStore(deps: {
         return typeof pointer.id === "string" ? await readManifest(pointer.id) : null;
       } catch { return null; }
     },
+    /**
+     * Three-phase restore, so a failure before the swap phase leaves
+     * production untouched (tests/local-docker-snapshot.test.mjs):
+     * 1. preflight — snapshot image present locally, both archives listable
+     *    (`tar -tzf`); a corrupt archive or missing image fails HERE, not
+     *    after the container is gone (the old wipe-then-unpack sequence could
+     *    destroy a volume and deadlock the retry on the same broken archive).
+     * 2. stage — extract both archives into EMPTY staging volumes; failures
+     *    touch nothing production.
+     * 3. swap — remove the container, then copy each staged volume over the
+     *    production volume. Only this phase is destructive; its sources are
+     *    fully materialized and the same byte count just wrote successfully,
+     *    so the residual risk window is the final copy alone. On swap failure
+     *    the snapshot archives are intact and a retry is safe.
+     * Staging volumes are cleaned up on every exit path.
+     */
     async restoreVolumes(manifest) {
-      const removed = await deps.runDocker(["rm", "--force", deps.container]);
-      if (!removed.ok && !/no such container/i.test(removed.output)) return { ok: false, error: `could not remove ${deps.container}: ${removed.output}` };
+      const snapshotDirectory = join(deps.root, manifest.id);
+      const stagedArgs = (args: readonly string[]): readonly string[] => args.map((argument) => argument.replaceAll("__SNAPSHOT_DIR__", snapshotDirectory));
+      const cleanupStaging = async (): Promise<void> => { await deps.runDocker(["volume", "rm", "--force", stagingName.workspace, stagingName.data]); };
+      if (manifest.imageTag !== `${repo}:${manifest.id}`) return { ok: false, error: `snapshot ${manifest.id} was not produced by this container's snapshot store (${manifest.imageTag})` };
+      // Phase 1: preflight.
+      const image = await deps.runDocker(["image", "inspect", manifest.imageTag]);
+      if (!image.ok) return { ok: false, error: `preflight: snapshot image ${manifest.imageTag} is missing locally: ${image.output}` };
       for (const { volume, file } of SNAPSHOT_VOLUME_FILES) {
-        const args = buildVolumeRestoreArgs({ helperImage: deps.helperImage, volume: volumeName[volume], sourceFile: file })
-          .map((argument) => argument.replaceAll("__SNAPSHOT_DIR__", join(deps.root, manifest.id)));
-        const restored = await deps.runDocker(args);
-        if (!restored.ok) return { ok: false, error: `volume ${volume} restore failed: ${restored.output}` };
+        const verify = await deps.runDocker(stagedArgs(buildArchivePreflightArgs({ helperImage: deps.helperImage, sourceFile: file })));
+        if (!verify.ok) return { ok: false, error: `preflight: archive for volume ${volume} is unreadable: ${verify.output}` };
       }
+      // Phase 2: stage into empty volumes.
+      await cleanupStaging();
+      try {
+        for (const { volume, file } of SNAPSHOT_VOLUME_FILES) {
+          const stagingVolume = stagingName[volume];
+          const created = await deps.runDocker(["volume", "create", stagingVolume]);
+          if (!created.ok) throw new Error(`stage: could not create staging volume for ${volume}: ${created.output}`);
+          const extract = await deps.runDocker(buildTempVolumeExtractArgs({ helperImage: deps.helperImage, stagingVolume, sourceFile: file })
+            .map((argument) => argument.replaceAll("__SNAPSHOT_DIR__", snapshotDirectory)));
+          if (!extract.ok) throw new Error(`stage: archive for volume ${volume} failed to extract: ${extract.output}`);
+        }
+      } catch (error) {
+        await cleanupStaging();
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      // Phase 3: swap. First destructive step is the container removal.
+      const removed = await deps.runDocker(["rm", "--force", deps.container]);
+      if (!removed.ok && !/no such container/i.test(removed.output)) {
+        await cleanupStaging();
+        return { ok: false, error: `swap: could not remove ${deps.container}: ${removed.output}` };
+      }
+      for (const { volume } of SNAPSHOT_VOLUME_FILES) {
+        const swapped = await deps.runDocker(buildVolumeSwapArgs({ helperImage: deps.helperImage, stagingVolume: stagingName[volume], targetVolume: volumeName[volume] }));
+        if (!swapped.ok) {
+          await cleanupStaging();
+          return { ok: false, error: `swap: volume ${volume} copy failed after staging (snapshot archives are intact; retry is safe): ${swapped.output}` };
+        }
+      }
+      await cleanupStaging();
       deps.log?.(`local-docker-snapshot: volumes restored from ${manifest.id}`);
       return { ok: true };
     },

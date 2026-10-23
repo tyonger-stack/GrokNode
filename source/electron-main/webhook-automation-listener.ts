@@ -20,8 +20,9 @@ export interface WebhookAutomationForwarder {
     readonly contentType?: string;
     readonly userAgent?: string;
   }): Promise<WebhookWakeOutcome>;
-  /** Local listener-event ingestion (Grok Node): a platform delivery (GitHub webhook, Slack Events API) mapped to the canonical listener event shape; fed to the host's trigger-matching hub. Absent on stacks without the coordinator leg. */
+  /** Local listener-event ingestion (Grok Node): a platform delivery (GitHub webhook, Slack Events API) mapped to the canonical listener event shape; fed to the host's trigger-matching hub, SCOPED to the agent whose routine key authenticated the delivery. Absent on stacks without the coordinator leg. */
   ingestListenerEvent?(args: {
+    readonly agentId: string;
     readonly event: Record<string, unknown>;
     readonly deliveryId?: string;
   }): Promise<{ readonly accepted: boolean }>;
@@ -194,11 +195,14 @@ export function handleWebhookAutomationRequest(req: IncomingMessage, res: Server
     // passed this route's key auth is additionally mapped to the canonical
     // listener event and offered to the host's trigger-matching hub, so
     // github/slack-type listener triggers work without the hosted backend
-    // relay. Ingestion is gated on the addressed routine's forward outcome:
-    // 202 (fired) and 409 (paused, but the key was verified first) prove the
-    // presented key; 401/404 never verified it, so those payloads must not
-    // reach the trigger hub. The addressed webhook routine still fires, its
-    // outcome still drives the HTTP response, unchanged.
+    // relay. Two gates, both load-bearing (tests/webhook-ingestion-gate.test.mjs):
+    // (1) the addressed routine's forward outcome must be exactly 202 (fired)
+    // or 409 (paused) — the only statuses automation-runtime.ts emits AFTER
+    // verifying the presented key; 401/404 never verified it, so those
+    // payloads must not reach the trigger hub. (2) the injection is scoped to
+    // the authenticated route's agentId — one routine's key may never wake
+    // another agent's routines. The addressed webhook routine still fires,
+    // its outcome still drives the HTTP response, unchanged.
     const listenerEvent = eventName != null
       ? githubWebhookToListenerEvent(eventName, payload)
       : isSlackEventsApiEnvelope(payload)
@@ -216,9 +220,9 @@ export function handleWebhookAutomationRequest(req: IncomingMessage, res: Server
       ...(userAgent === undefined ? {} : { userAgent }),
     }).then(
       (outcome) => {
-        if (listenerEvent != null && deps.forwarder.ingestListenerEvent != null && (outcome.ok || outcome.status === 409) && markListenerDeliverySeen(deliveryId)) {
-          deps.log?.(`webhook-automation: listener ${String(listenerEvent.source)} event ingested via ${agentId}/${automationId}`);
-          void Promise.resolve(deps.forwarder.ingestListenerEvent({ event: listenerEvent, ...(deliveryId === undefined ? {} : { deliveryId }) }))
+        if (listenerEvent != null && deps.forwarder.ingestListenerEvent != null && (outcome.status === 202 || outcome.status === 409) && markListenerDeliverySeen(deliveryId)) {
+          deps.log?.(`webhook-automation: listener ${String(listenerEvent.source)} event ingested for agent ${agentId} via ${automationId}`);
+          void Promise.resolve(deps.forwarder.ingestListenerEvent({ agentId, event: listenerEvent, ...(deliveryId === undefined ? {} : { deliveryId }) }))
             .catch((error: unknown) => deps.log?.(`webhook-automation: listener ingestion failed: ${error instanceof Error ? error.message : String(error)}`));
         }
         json(res, outcome.status, { ok: outcome.ok, ...(outcome.message == null ? {} : { message: outcome.message }) });
@@ -235,7 +239,11 @@ export function startWebhookAutomationListener(deps: WebhookAutomationListenerDe
   const server = http.createServer((req, res) => handleWebhookAutomationRequest(req, res, deps, rateLimiter));
   server.on("error", (error) => deps.onBindError(port, error));
   const ready = new Promise<void>((resolve) => { server.once("listening", () => resolve()); });
-  server.listen(port);
+  // Loopback-only bind: the listener authenticates deliveries with routine
+  // webhook keys and (until platform signature verification lands) must never
+  // be reachable off-host. An explicit 127.0.0.1 keeps `listen(port)` from
+  // binding every interface (the IPv6 wildcard included).
+  server.listen(port, "127.0.0.1");
   return {
     dispose() { rateLimiter.reset(); server.close(); },
     boundPort() { return ready.then(() => { const address = server.address(); return typeof address === "object" && address != null ? address.port : port; }); },

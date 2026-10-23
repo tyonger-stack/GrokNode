@@ -18,5 +18,12 @@ export class SandTriggerHub {
   private reconcile(): Promise<void> { this.pendingPasses += 1; const pass = this.reconcileChain.then(async () => this.reconcilePass()); this.reconcileChain = pass.catch(() => {}).finally(() => { this.pendingPasses -= 1; }); return pass; }
   private async reconcilePass(): Promise<void> { if (this.isStopped) return; this.deps.onReconcile?.(); const desired = await this.deps.isReady() ? await this.desiredListenersByKind() : new Map<string, EventTrigger[]>(); if (this.isStopped) return; for (const [kind, source] of this.sources) { const listeners = desired.get(kind) ?? []; if (listeners.length) { source.setListeners(listeners); if (!this.startedKinds.has(kind)) { this.startedKinds.add(kind); try { await source.start((event) => this.acceptEvent(event)); } catch { this.startedKinds.delete(kind); } } } else if (this.startedKinds.has(kind)) { this.startedKinds.delete(kind); try { await source.stop(); } catch {} } } }
   acceptEvent(event: Record<string, unknown>): boolean { if (this.isStopped) return false; void this.handleEvent(event); return true; }
-  async handleEvent(event: Record<string, unknown>): Promise<void> { if (this.isStopped || !await this.deps.isReady()) return; let scheduled: readonly ScheduledAutomation[]; try { scheduled = await this.deps.listAutomations(); } catch { return; } for (const { agentId, automation } of scheduled) { if (!automation.isEnabled || !triggerMatchesEvent(automation.trigger, event)) continue; try { if (!(this.deps.shouldScheduleLocally?.(agentId, automation) ?? true)) continue; await this.deps.fire(agentId, automation, event); } catch {} } }
+  /**
+   * Agent-scoped ingestion for locally injected events (Grok Node): a platform
+   * delivery authenticated by ONE routine's webhook key may only wake that
+   * agent's automations, never the global roster — otherwise a single leaked
+   * routine key would speak for every bot on the machine.
+   */
+  acceptEventForAgent(agentId: string, event: Record<string, unknown>): boolean { if (this.isStopped || agentId.length === 0) return false; void this.handleEvent(event, agentId); return true; }
+  async handleEvent(event: Record<string, unknown>, agentFilter: string | null = null): Promise<void> { if (this.isStopped || !await this.deps.isReady()) return; let scheduled: readonly ScheduledAutomation[]; try { scheduled = await this.deps.listAutomations(); } catch { return; } for (const { agentId, automation } of scheduled) { if (agentFilter != null && agentId !== agentFilter) continue; if (!automation.isEnabled || !triggerMatchesEvent(automation.trigger, event)) continue; try { if (!(this.deps.shouldScheduleLocally?.(agentId, automation) ?? true)) continue; await this.deps.fire(agentId, automation, event); } catch {} } }
 }
