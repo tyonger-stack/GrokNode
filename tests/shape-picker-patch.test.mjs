@@ -79,6 +79,7 @@ test("actual picker: 5+5+4, exact commits, staged selection and tooltips",()=>{
 test("editor keeps the official popover width and six-column color rail",()=>{
  assert.match(AVATAR_PICKER_CSS,/\.sand-avatar-editor\{width:min\(calc\(min\(272px,100vw - 32px\) \+ 2\*var\(--cursor-spacing-3\)\),100vw - 32px\)!important\}/);
  assert.match(AVATAR_PICKER_CSS,/\.r-avatar-colors\{align-self:center;max-width:calc\(6\*32px \+ 5\*var\(--cursor-spacing-2\)\);flex-wrap:wrap\}/);
+ assert.match(AVATAR_PICKER_CSS,/--sand-border-primary-translucent:#f5f5f538/);
 });
 test("staged adapter resolves assets once, preserves native reset, fails closed",{skip},async()=>{
  const stage=await mkdtemp(path.join(tmpdir(),"grok-avatar-"));

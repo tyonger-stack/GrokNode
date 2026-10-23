@@ -98,7 +98,7 @@ export function patchShapePicker(source,joAdditions,engineSource){
 export const AVATAR_PICKER_CSS=`
 .sand-avatar-editor{width:min(calc(min(272px,100vw - 32px) + 2*var(--cursor-spacing-3)),100vw - 32px)!important}
 .r-avatar-shape-row{column-gap:clamp(0px,calc((100% - 240px)/4),var(--cursor-spacing-2))}
-.sand-agent-character__shape{border:1px solid transparent;box-sizing:border-box;background:transparent}
+.sand-agent-character__shape{border:1px solid transparent;box-sizing:border-box;background:transparent;--sand-border-primary-translucent:#f5f5f538;--sand-border-secondary-translucent:#f5f5f51a}
 .sand-agent-character__shape:hover{border-color:var(--sand-border-secondary-translucent,var(--sand-border-default))}
 .r-avatar-shape-outline{position:absolute;pointer-events:none;background:var(--sand-border-secondary-translucent,var(--sand-border-default));opacity:0;-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
 .sand-agent-character__shape:hover .r-avatar-shape-outline{opacity:1}

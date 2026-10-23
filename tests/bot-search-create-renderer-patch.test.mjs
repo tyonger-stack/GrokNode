@@ -39,6 +39,8 @@ test("0.75.3 search and create surfaces compose on the pinned renderer", { skip 
   assert.match(SEARCH_PALETTE_STYLE, /402px/);
   assert.match(BOT_CREATE_STYLE, /r-create-bot-shape-row/);
   assert.match(BOT_CREATE_STYLE, /var\(--sand-border-primary-translucent/);
+  assert.match(BOT_CREATE_STYLE, /--sand-border-primary-translucent:#f5f5f538/);
+  assert.match(BOT_CREATE_STYLE, /--sand-border-secondary-translucent:#f5f5f51a/);
   assert.doesNotMatch(BOT_CREATE_STYLE, /r-create-bot-shape-outline\{position:absolute;inset:-4px/);
   assert.throws(() => patchSearchPaletteRenderer(source), /already applied/);
   assert.throws(() => patchBotCreateDialogRenderer(source), /already applied/);

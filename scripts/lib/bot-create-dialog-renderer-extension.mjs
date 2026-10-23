@@ -29,7 +29,7 @@ export const BOT_CREATE_STYLE = `
 .r-create-bot-name:focus{border-color:var(--sand-border-focus)}
 .r-create-bot-shapes{display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px 0}
 .r-create-bot-shape-row{display:flex;align-items:center;justify-content:center;gap:14px}
-.r-create-bot-shape{position:relative;display:flex;align-items:center;justify-content:center;width:48px;height:48px;padding:0;color:var(--sand-text-primary);background:transparent;border:0;border-radius:0;cursor:pointer}
+.r-create-bot-shape{position:relative;display:flex;align-items:center;justify-content:center;width:48px;height:48px;padding:0;color:var(--sand-text-primary);background:transparent;border:0;border-radius:0;cursor:pointer;--sand-border-primary-translucent:#f5f5f538;--sand-border-secondary-translucent:#f5f5f51a}
 .r-create-bot-shape:focus-visible{outline:2px solid var(--sand-border-focus);outline-offset:2px}
 .r-create-bot-shape-outline{position:absolute;pointer-events:none;background:var(--sand-border-secondary-translucent,var(--sand-border-default));opacity:0;-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
 .r-create-bot-shape:hover .r-create-bot-shape-outline{opacity:1}
