@@ -218,6 +218,8 @@ const PA_ANCHOR = "function pa(){";
 
 const RUNTIME_PRELUDE = RUNTIME_LINES.join(ENGINE_NL) + ENGINE_NL;
 
+const OPTIONAL_SETTINGS_I18N_PAIRS = new Set(["Accent", "Black", "Bot color"]);
+
 export function patchOriginalSettingsI18n(source) {
   if (source.indexOf(PA_ANCHOR) < 0) throw new Error("Original renderer Settings anchor is missing.");
   let patched = PA_ANCHOR_REPLACEMENT(source);
@@ -232,7 +234,7 @@ export function patchOriginalSettingsI18n(source) {
       // only inside a quoted span that the pair matcher deliberately ignores.
       // A missing optional translation must not abort packaging; record it and
       // keep the original English literal.
-      if (error instanceof Error && error.message.startsWith("i18n pair has no anchor outside string spans:")) {
+      if (error instanceof Error && OPTIONAL_SETTINGS_I18N_PAIRS.has(en) && error.message.startsWith("i18n pair has no anchor outside string spans:")) {
         applied.push({ en, mode, hits: 0, skipped: true });
         continue;
       }
