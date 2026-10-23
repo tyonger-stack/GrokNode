@@ -161,14 +161,26 @@ export function openRouterEffortOptionsFor(model: string | null | undefined): Ar
     .map((entry) => ({ value: entry.value, label: entry.label }));
 }
 
+/**
+ * Local TokenHub / proxy models advertise ~1M windows and a 90% compact line.
+ * A bot that has only messaged other bots still sits around 300k tokens, under
+ * that line, and every later turn resends the whole history. Compact at 120k.
+ */
+export const LOCAL_AUTO_COMPACT_TOKEN_LIMIT = 120_000;
+
 export interface OpenRouterModelContextWindow {
   /** Catalog `context_window` / `max_context_window` — hard provider limit. */
   readonly contextWindow: number;
   /**
    * Catalog `auto_compact_token_limit` when present; otherwise ~90% of
-   * `contextWindow`. Used as the early background-compaction trigger.
+   * `contextWindow`. Capped at {@link LOCAL_AUTO_COMPACT_TOKEN_LIMIT}.
+   * Used as the early background-compaction trigger.
    */
   readonly autoCompactTokenLimit: number;
+}
+
+function capAutoCompactTokenLimit(limit: number, contextWindow: number): number {
+  return Math.min(limit, LOCAL_AUTO_COMPACT_TOKEN_LIMIT, contextWindow - 1);
 }
 
 function positiveSafeInt(value: unknown): number | undefined {
@@ -258,7 +270,7 @@ export function readOpenRouterModelContextWindow(
             Math.floor(contextWindow * 0.9);
           return {
             contextWindow,
-            autoCompactTokenLimit: Math.min(autoCompactTokenLimit, contextWindow - 1),
+            autoCompactTokenLimit: capAutoCompactTokenLimit(autoCompactTokenLimit, contextWindow),
           };
         }
       }
@@ -267,7 +279,7 @@ export function readOpenRouterModelContextWindow(
     if (direct == null) return null;
     return {
       contextWindow: direct.contextWindow,
-      autoCompactTokenLimit: Math.min(direct.autoCompactTokenLimit, direct.contextWindow - 1),
+      autoCompactTokenLimit: capAutoCompactTokenLimit(direct.autoCompactTokenLimit, direct.contextWindow),
     };
   } catch {
     return null;

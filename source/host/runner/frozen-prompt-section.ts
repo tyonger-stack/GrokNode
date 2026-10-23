@@ -1,11 +1,9 @@
 import { z } from "zod";
-import { toRedactedCoreMessage } from "../../packages/redaction/core-message.js";
 import type { PromptSectionSnapshotStore } from "./sessions/related-conversations-section.js";
 
 export const FROZEN_PROMPT_SECTION_NAMES = ["timezone", "automations", "agent_directory", "mcp_instructions"] as const;
 export type FrozenPromptSectionName = (typeof FROZEN_PROMPT_SECTION_NAMES)[number];
 const snapshotSchema = z.object({ render: z.string(), compactionEpoch: z.number().finite(), announcedRender: z.string().optional() });
-const privacySchema = z.object({ _privacyMode: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4)]) });
 const labels = { timezone: "Time", automations: "Routines", agent_directory: "Teammates and groups", mcp_instructions: "Connector instructions" } as const;
 interface SectionUpdate { readonly name: FrozenPromptSectionName; readonly previous: string; readonly live: string }
 
@@ -79,9 +77,13 @@ export function createFrozenPromptSections(input: {
         save(name, { ...snapshot, announcedRender: live });
       }
       if (updates.length === 0) return messages;
-      const privacy = privacySchema.safeParse(messages[0]);
-      const note = toRedactedCoreMessage({ role: "user", content: `<instructions_update>\nThese parts of your instructions changed since the fixed copy above. A changed-lines section lists additions (+) and removals (-); otherwise the section replaces that earlier copy until the next summary.\n\n${updates.map(updateText).join("\n\n")}\n</instructions_update>`,
-        providerOptions: { cursor: { isInjectedReminder: true } } }, privacy.success ? privacy.data._privacyMode : 0);
+      // The caller unwraps history, then redacts the whole array again. A note that is already
+      // redacted fails that second pass: its content is an object, so content.map throws.
+      const note = {
+        role: "user" as const,
+        content: `<instructions_update>\nThese parts of your instructions changed since the fixed copy above. A changed-lines section lists additions (+) and removals (-); otherwise the section replaces that earlier copy until the next summary.\n\n${updates.map(updateText).join("\n\n")}\n</instructions_update>`,
+        providerOptions: { cursor: { isInjectedReminder: true } },
+      };
       return [...messages, note];
     },
   };

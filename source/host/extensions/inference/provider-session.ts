@@ -10,7 +10,7 @@ import { BasePromptBuilder, BasePromptExecutor } from "../../../packages/chat-in
 import { InputTokenLimitError } from "../../../packages/chat-inference/prompt-executor.js";
 import { estimateTokenCount } from "../../../packages/agent-summarization/token-estimate.js";
 import type { SandInferenceProvider } from "../../../shared/inference-router.js";
-import { effortSupportedByModel, isOpenRouterProxyMode, noneThinkingStrategy, normalizeOpenRouterReasoningEffort, readCodexConfigValue, readOpenRouterModelContextWindow, resolveOpenRouterTransport, withDisabledThinkingFetch } from "../../../shared/node/openrouter-proxy.js";
+import { effortSupportedByModel, isOpenRouterProxyMode, LOCAL_AUTO_COMPACT_TOKEN_LIMIT, noneThinkingStrategy, normalizeOpenRouterReasoningEffort, readCodexConfigValue, readOpenRouterModelContextWindow, resolveOpenRouterTransport, withDisabledThinkingFetch } from "../../../shared/node/openrouter-proxy.js";
 import { classifyOpenRouterError, openRouterOkStatus } from "../../../shared/openrouter-channel-status.js";
 import { DEFAULT_FIRST_TOKEN_STALL_DEADLINE_MS, resolveFirstTokenStallDeadlineMs } from "../../runner/transient-stream-error.js";
 import { getSandRootDir } from "../../host-paths.js";
@@ -504,7 +504,7 @@ const CHAT_IDLE_TIMEOUT_MS = resolveFirstTokenStallDeadlineMs() || DEFAULT_FIRST
 function openRouterExecutor(messages: readonly ProviderMessage[], invocationId: string, definitions?: readonly Loose[], executeTool?: RoutedToolExecutor, onUsage?: (usage: UsageRecord) => void, signal?: AbortSignal, modelId?: string, agentId?: string) {
   const id = modelId ?? resolveOpenRouterModel();
   const window = readOpenRouterModelContextWindow(id);
-  const inputLimit = window?.autoCompactTokenLimit ?? Math.floor(resolveInferenceContextWindowTokens(id) * 0.9);
+  const inputLimit = window?.autoCompactTokenLimit ?? Math.min(LOCAL_AUTO_COMPACT_TOKEN_LIMIT, Math.floor(resolveInferenceContextWindowTokens(id) * 0.9));
   // Restored conversations can have maxTokens=0 from older provider usage.
   // Signal the existing blocking-compaction path before dialing an oversized
   // request; waiting for an upstream rejection can otherwise stall every retry.

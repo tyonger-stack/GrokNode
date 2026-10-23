@@ -96,7 +96,7 @@ import {
 import { connectorCardEmissionToMessage } from "./runner/tools/box-help-tool.js";
 import { createAgentPromptSession } from "./extensions/inference/extension.js";
 import { resolveInferenceContextWindowTokens } from "./extensions/inference/provider-session.js";
-import { readOpenRouterModelContextWindow } from "../shared/node/openrouter-proxy.js";
+import { LOCAL_AUTO_COMPACT_TOKEN_LIMIT, readOpenRouterModelContextWindow } from "../shared/node/openrouter-proxy.js";
 import { localBackgroundSummarizationPropsForWindow } from "../packages/agent-summarization/background-summarization.js";
 import { SAND_COMPACTION_DELIVERY_TAIL } from "../packages/agent-summarization/delivery-tail.js";
 import { LIBRARY_MAIN_STORE } from "./extensions/library/extension.js";
@@ -3218,7 +3218,7 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 flavor: "xai-compact",
                 promptVariant: "generalized",
                 preserveUserDeliveryTail: SAND_COMPACTION_DELIVERY_TAIL,
-                tokenLimit: catalogContext?.autoCompactTokenLimit ?? Math.floor(inferenceContextWindow * 0.9),
+                tokenLimit: catalogContext?.autoCompactTokenLimit ?? Math.min(LOCAL_AUTO_COMPACT_TOKEN_LIMIT, Math.floor(inferenceContextWindow * 0.9)),
                 canUseSelfSummary: () => true,
               },
             },

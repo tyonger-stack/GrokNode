@@ -20,10 +20,15 @@ test("frozen sections announce live changes once and refresh only at the next su
   for (const name of Object.keys(live)) assert.equal(sections.render(name), live[name]);
   live.automations = "ROUTINE-B"; live.agent_directory = "BOT-B"; live.mcp_instructions = "MCP-B";
   assert.equal(sections.render("automations"), "ROUTINE-A");
-  const messages = [m.toRedactedCoreMessage({ role: "user", content: "QUERY" }, 3)];
+  const messages = [{ role: "user", content: "QUERY" }];
   const changed = sections.appendUpdates(messages);
   assert.equal(changed.length, 2);
-  assert.equal(changed[1]._privacyMode, 3);
+  assert.equal(typeof changed[1].content, "string");
+  assert.match(changed[1].content, /<instructions_update>/);
+  assert.equal(changed[1].providerOptions.cursor.isInjectedReminder, true);
+  const redacted = m.toRedactedCoreMessages(changed, 3);
+  assert.equal(redacted[1]._privacyMode, 3);
+  assert.throws(() => m.toRedactedCoreMessages([redacted[1]], 3), /map is not a function/);
   assert.equal(db.getPromptSectionSnapshot("automations").announcedRender, "ROUTINE-B");
   assert.equal(db.getPromptSectionSnapshot("mcp_instructions").announcedRender, undefined);
   assert.equal(sections.appendUpdates(changed), changed);

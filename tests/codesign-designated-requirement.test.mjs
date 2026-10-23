@@ -169,11 +169,12 @@ test("both packaging entry points sign with the identifier they actually install
   // The fidelity diagnostic build rewrites CFBundleIdentifier to a per-archive value. A
   // designated requirement naming the wrong identifier would never match its own bundle.
   const main = readFileSync(path.join(repoRoot, "scripts", "package-macos.mjs"), "utf8");
-  assert.match(main, /signAppBundleAdHoc\(outputApp, reconstructedBundleId\)/);
-  assert.doesNotMatch(main, /signAppBundleAdHoc\(outputApp\)/, "the bundle id must be passed, not defaulted");
+  assert.match(main, /signAppBundlePreservingComputerUseSidecar\(outputApp, reconstructedBundleId\)/);
+  assert.doesNotMatch(main, /signAppBundleAdHoc\(outputApp/, "the deep ad-hoc pass must not see the packaged helper");
 
   const diagnostic = readFileSync(path.join(repoRoot, "scripts", "package-fidelity-diagnostic.mjs"), "utf8");
-  assert.match(diagnostic, /signAppBundleAdHoc\(stagedApp, diagnosticBundleId\)/);
+  assert.match(diagnostic, /signAppBundlePreservingComputerUseSidecar\(stagedApp, diagnosticBundleId\)/);
+  assert.doesNotMatch(diagnostic, /signAppBundleAdHoc\(stagedApp/, "the deep ad-hoc pass must not see the packaged helper");
   // The same value has to reach both the plist and the signature.
   assert.match(
     diagnostic,

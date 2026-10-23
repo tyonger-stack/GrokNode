@@ -7,7 +7,7 @@ import path from "node:path";
 import { extractFile } from "@electron/asar";
 
 import { buildFidelityReconstructedAsar } from "./clean-build.mjs";
-import { signAppBundleAdHoc } from "./lib/codesign.mjs";
+import { signAppBundlePreservingComputerUseSidecar } from "./lib/computer-use-sidecar-0721.mjs";
 import { outputDir, repoRoot, sourceAppDir } from "./lib/config.mjs";
 import {
   verifyChecksumPinnedRendererPackage,
@@ -76,7 +76,7 @@ await run(SYSTEM_TOOLS.plutil, ["-remove", "CFBundleURLTypes", infoPlist]);
 await rm(path.join(stagedApp, "Contents", "_CodeSignature"), { recursive: true, force: true });
 // The designated requirement must name the identifier this bundle actually carries, not the
 // reconstructed one — a DR naming a different identifier would never match the bundle itself.
-await signAppBundleAdHoc(stagedApp, diagnosticBundleId);
+await signAppBundlePreservingComputerUseSidecar(stagedApp, diagnosticBundleId);
 await run(SYSTEM_TOOLS.codesign, ["--verify", "--deep", "--strict", stagedApp]);
 await verifyReconstructedMacPackage({
   officialApp: built.runtimeApp,

@@ -47,6 +47,7 @@ const catalogDir = path.join(temporary, "catalog");
 mkdirSync(catalogDir);
 writeFileSync(path.join(catalogDir, "opencodex-catalog.json"), JSON.stringify({ models: [
   { slug: "zai/glm-5.3-flash", context_window: 950_000, auto_compact_token_limit: 855_000 },
+  { slug: "small/window", context_window: 32_000, auto_compact_token_limit: 20_000 },
 ] }));
 const proxy = await bundle(
   "source/shared/node/openrouter-proxy.ts",
@@ -165,7 +166,7 @@ test("host wires model window, background props, and compactionEpoch from archiv
   assert.match(source, /localBackgroundSummarizationPropsForWindow/);
   assert.match(source, /agentTokenLimit: inferenceContextWindow/);
   assert.match(source, /backgroundSummarizationPropsOverride: localBackgroundSummarizationProps/);
-  assert.match(source, /tokenLimit: catalogContext\?\.autoCompactTokenLimit \?\? Math\.floor\(inferenceContextWindow \* 0\.9\)/);
+  assert.match(source, /tokenLimit: catalogContext\?\.autoCompactTokenLimit \?\? Math\.min\(LOCAL_AUTO_COMPACT_TOKEN_LIMIT, Math\.floor\(inferenceContextWindow \* 0\.9\)\)/);
   assert.equal(source.includes("compactionEpoch: () => 0"), false);
   assert.match(source, /summaryArchives\.length/);
 });
@@ -201,8 +202,12 @@ test("bare glm-5.3-flash is direct Z.AI API meta, not TokenHub zai/ catalog", ()
   assert.ok(bare, "direct coding-paas id must resolve without catalog slug");
   assert.ok(prefixed, "TokenHub slug still uses catalog");
   assert.equal(bare.contextWindow, 1_000_000);
-  assert.equal(bare.autoCompactTokenLimit, 900_000);
+  assert.equal(bare.autoCompactTokenLimit, 120_000);
   assert.equal(prefixed.contextWindow, 950_000);
+  assert.equal(prefixed.autoCompactTokenLimit, 120_000);
+  const small = proxy.readOpenRouterModelContextWindow("small/window");
+  assert.equal(small.contextWindow, 32_000);
+  assert.equal(small.autoCompactTokenLimit, 20_000);
   assert.notEqual(bare.contextWindow, prefixed.contextWindow);
   const bareEffort = proxy.readOpenRouterModelReasoning("glm-5.3-flash");
   assert.deepEqual([...bareEffort.levels], ["low", "high", "max"]);
@@ -222,7 +227,7 @@ for (const condition of ["missing", "malformed"]) {
       define: { "process.env.CODEX_HOME": JSON.stringify(isolatedDir) },
     });
     assert.deepEqual(isolated.readOpenRouterModelContextWindow("glm-5.3-flash"), {
-      contextWindow: 1_000_000, autoCompactTokenLimit: 900_000,
+      contextWindow: 1_000_000, autoCompactTokenLimit: 120_000,
     });
     assert.deepEqual(isolated.readOpenRouterModelReasoning("glm-5.3-flash"), {
       levels: ["low", "high", "max"], defaultLevel: "max",

@@ -156,6 +156,6 @@ test("host staticConfig enables xai-compact selfSummaryConfig with model window"
   assert.match(source, /agentTokenLimit: inferenceContextWindow/);
   assert.match(source, /flavor: "xai-compact"/);
   assert.match(source, /promptVariant: "generalized"/);
-  assert.match(source, /tokenLimit: catalogContext\?\.autoCompactTokenLimit \?\? Math\.floor\(inferenceContextWindow \* 0\.9\)/);
+  assert.match(source, /tokenLimit: catalogContext\?\.autoCompactTokenLimit \?\? Math\.min\(LOCAL_AUTO_COMPACT_TOKEN_LIMIT, Math\.floor\(inferenceContextWindow \* 0\.9\)\)/);
   assert.match(source, /canUseSelfSummary: \(\) => true/);
 });

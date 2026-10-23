@@ -7,7 +7,7 @@ import {
   reconstructedName
 } from "./lib/config.mjs";
 import { buildFidelityReconstructedAsar } from "./clean-build.mjs";
-import { signAppBundleAdHoc } from "./lib/codesign.mjs";
+import { signAppBundlePreservingComputerUseSidecar } from "./lib/computer-use-sidecar-0721.mjs";
 import { officialGrokBotAppInstalled, resolveGrokbotClaimMode, verifyOfficialMacReference, verifyReconstructedMacPackage } from "./lib/macos-package-verification.mjs";
 import { run } from "./lib/process.mjs";
 import { SYSTEM_TOOLS } from "./lib/system-tools.mjs";
@@ -94,13 +94,14 @@ console.log(`Registered URL schemes: ${urlSchemes.join(", ")} (claim mode: ${cla
 
 await rm(path.join(outputApp, "Contents", "_CodeSignature"), { recursive: true, force: true });
 try {
-  await signAppBundleAdHoc(outputApp, reconstructedBundleId);
+  await signAppBundlePreservingComputerUseSidecar(outputApp, reconstructedBundleId);
 } catch (error) {
   // macOS can transiently deny replacement of a nested framework signature
   // immediately after the copied runtime was in use. A second idempotent pass
-  // succeeds once the kernel releases that code object.
+  // succeeds once the kernel releases that code object. The helper is held
+  // outside the bundle for the deep pass and restored before this returns.
   console.warn(`Initial ad-hoc signing pass failed; retrying once: ${String(error)}`);
-  await signAppBundleAdHoc(outputApp, reconstructedBundleId);
+  await signAppBundlePreservingComputerUseSidecar(outputApp, reconstructedBundleId);
 }
 await run(SYSTEM_TOOLS.codesign, ["--verify", "--deep", "--strict", outputApp]);
 const verification = await verifyReconstructedMacPackage({

@@ -21,6 +21,7 @@ import { packStagedAppWithIntegrity, verifyStagedPackageIntegrity } from "./asar
 import { officialMacReleaseAsarHash } from "./macos-shell-invariant.mjs";
 import { stageNodeTreeSitterRuntime } from "../build-tree-sitter-node.mjs";
 import { run } from "./process.mjs";
+import { stageComputerUseSidecar0721 } from "./computer-use-sidecar-0721.mjs";
 
 export { packStagedAppWithIntegrity, verifyStagedPackageIntegrity } from "./asar-integrity.mjs";
 
@@ -34,6 +35,7 @@ const executableReplacements = [
   "dist/electron-preload/preload-dev-controls.cjs",
   "dist/electron-preload/preload-webview.cjs",
   "dist/electron-preload/preload-vnc.cjs",
+  "dist/deps/computer-use-sidecar",
   "dist/host/agent-isolation/agent-store-worker.cjs",
   "dist/host/agent-isolation/transcript-mirror-worker.cjs",
   "dist/host/extensions/box-store-sync/box-store-vacuum-worker.cjs",
@@ -228,6 +230,7 @@ async function buildRuntimeDistribution({ outputRoot, composition, rendererMode 
     throw new Error(`Unsupported renderer runtime mode: ${rendererMode}`);
   }
 
+  await stageComputerUseSidecar0721({ outputRoot });
   const files = await walkFiles(outputRoot);
   const outputs = [];
   for (const name of files) outputs.push({ path: name, bytes: (await stat(path.join(outputRoot, name))).size, sha256: await sha256(path.join(outputRoot, name)) });

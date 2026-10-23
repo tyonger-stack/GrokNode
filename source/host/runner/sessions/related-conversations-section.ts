@@ -1,9 +1,7 @@
 import { z } from "zod";
-import { toRedactedCoreMessage } from "../../../packages/redaction/core-message.js";
 import { resolveRelatedConversationsPromptSection, type RelatedConversationLink } from "./related-conversations-prompt.js";
 
 const snapshotSchema = z.object({ render: z.string(), compactionEpoch: z.number(), announcedRender: z.string().optional() });
-const privacySchema = z.object({ _privacyMode: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4)]) });
 
 export interface PromptSectionSnapshotStore {
   getPromptSectionSnapshot(name: string): unknown;
@@ -40,9 +38,13 @@ export function createRelatedConversationsSection(input: {
     appendUpdates(messages: readonly unknown[]): readonly unknown[] {
       const update = resolve().update;
       if (update === undefined) return messages;
-      const privacy = privacySchema.safeParse(messages[0]);
-      const note = toRedactedCoreMessage({ role: "user", content: `<instructions_update>\nThese instructions changed since the copy above was rendered and replace that section until your context is next summarized.\n\n## Related conversations\n${update.live}\n</instructions_update>`,
-        providerOptions: { cursor: { isInjectedReminder: true } } }, privacy.success ? privacy.data._privacyMode : 0);
+      // Same contract as frozen prompt updates: return a plain message. The history modifier
+      // redacts the returned array, and a pre-redacted note makes that pass throw.
+      const note = {
+        role: "user" as const,
+        content: `<instructions_update>\nThese instructions changed since the copy above was rendered and replace that section until your context is next summarized.\n\n## Related conversations\n${update.live}\n</instructions_update>`,
+        providerOptions: { cursor: { isInjectedReminder: true } },
+      };
       fallback = update.snapshotToPersist;
       input.snapshots()?.setPromptSectionSnapshot("related_conversations", update.snapshotToPersist);
       return [...messages, note];
