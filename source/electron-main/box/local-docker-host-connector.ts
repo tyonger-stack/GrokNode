@@ -414,14 +414,15 @@ async function gatewayReady(token: string): Promise<boolean> {
   } catch { return false; }
 }
 
-async function inspectContainer(): Promise<{ exists: boolean; running: boolean; owned: boolean; image: string; hostSha256: string; schemaVersion: string }> {
+async function inspectContainer(): Promise<{ exists: boolean; running: boolean; paused: boolean; owned: boolean; image: string; hostSha256: string; schemaVersion: string }> {
   const result = await runDocker(["inspect", "--format", "{{json .}}", LOCAL_DOCKER_BOX_CONTAINER]);
-  if (!result.ok) return { exists: false, running: false, owned: false, image: "", hostSha256: "", schemaVersion: "" };
+  if (!result.ok) return { exists: false, running: false, paused: false, owned: false, image: "", hostSha256: "", schemaVersion: "" };
   try {
-    const value = JSON.parse(result.output) as { State?: { Running?: unknown }; Config?: { Image?: unknown; Labels?: Record<string, unknown> } };
+    const value = JSON.parse(result.output) as { State?: { Running?: unknown; Paused?: unknown }; Config?: { Image?: unknown; Labels?: Record<string, unknown> } };
     return {
       exists: true,
       running: value.State?.Running === true,
+      paused: value.State?.Paused === true,
       owned: value.Config?.Labels?.["com.grok-bot.local-vm"] === "1",
       image: typeof value.Config?.Image === "string" ? value.Config.Image : "",
       hostSha256: typeof value.Config?.Labels?.["com.grok-bot.local-vm.host-sha256"] === "string" ? value.Config.Labels["com.grok-bot.local-vm.host-sha256"] as string : "",
@@ -436,6 +437,7 @@ export async function getLocalDockerStatus(settingsPath: string): Promise<LocalD
   const inspected = await inspectContainer();
   if (!inspected.exists) return { available: true, running: false, ready: false, containerName: LOCAL_DOCKER_BOX_CONTAINER, image: LOCAL_DOCKER_BOX_IMAGE, detail: "Ready to create the local VM." };
   if (!inspected.owned) return { available: true, running: inspected.running, ready: false, containerName: LOCAL_DOCKER_BOX_CONTAINER, image: inspected.image, detail: `Container ${LOCAL_DOCKER_BOX_CONTAINER} exists but is not owned by Grok Bot.` };
+  if (inspected.paused) return { available: true, running: true, ready: false, containerName: LOCAL_DOCKER_BOX_CONTAINER, image: inspected.image, detail: `Container ${LOCAL_DOCKER_BOX_CONTAINER} is paused; connecting again will auto-unpause it.` };
   const ready = inspected.running && await gatewayReady(await readOrCreateToken(settingsPath));
   return { available: true, running: inspected.running, ready, containerName: LOCAL_DOCKER_BOX_CONTAINER, image: inspected.image, detail: ready ? "Local Docker VM is ready." : inspected.running ? "Container is starting." : "Local Docker VM is stopped." };
 }
@@ -570,6 +572,14 @@ async function ensureLocalDockerBox(settingsPath: string, imageOverride?: string
     const authMounts = await localAuthMountArguments();
     const created = await runDocker(buildLocalDockerBoxRunArgs({ token, hostBundle, authMounts, library: libraryForwarding, ...(imageOverride == null ? {} : { imageOverride }) }));
     if (!created.ok) throw new Error(`Could not create the local Docker VM: ${created.output}`);
+  }
+  // A snapshot save interrupted mid-flight (app exit while committing) can
+  // leave the container daemon-side paused; every later `docker exec` then
+  // fails with "Container ... is paused". Heal before probing readiness.
+  if (current.running && current.paused) {
+    const unpaused = await runDocker(["unpause", LOCAL_DOCKER_BOX_CONTAINER]);
+    if (!unpaused.ok) throw new Error(`Could not unpause ${LOCAL_DOCKER_BOX_CONTAINER}: ${unpaused.output}`);
+    console.warn(`[local-docker-host-connector] healed a leaked pause on ${LOCAL_DOCKER_BOX_CONTAINER}`);
   }
   const deadline = Date.now() + READY_TIMEOUT_MS;
   let gatewayUp = false;
