@@ -55,3 +55,9 @@ test('headers can be added and the test hook reports progress', async () => {
   await render({ onSubmit: () => {}, testState: 'failed', testMessage: 'boom' });
   assert.match(host.textContent, /boom/);
 });
+
+test.after(async () => {
+  try { await ui.act(async () => root.unmount()); } catch { /* already unmounted */ }
+  host.remove();
+  await closeLibraryDom(window);
+});

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Window } from "happy-dom";
+import { closeLibraryDom } from "./library-dom-teardown.mjs";
 
 const window = new Window();
 globalThis.window = window;
@@ -8,6 +9,10 @@ globalThis.document = window.document;
 globalThis.DOMParser = window.DOMParser;
 globalThis.XMLSerializer = window.XMLSerializer;
 globalThis.Node = window.Node;
+
+test.after(async () => {
+  await closeLibraryDom(window);
+});
 
 const engine = await import("../frontend/src/recovered/features/conversation/workspace/pele-engine/chunk-lazy-D8SAdX1p.js");
 

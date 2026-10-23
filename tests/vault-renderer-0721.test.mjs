@@ -136,6 +136,7 @@ async function render(t, ui, Host) {
   t.after(async () => {
     await ui.act(async () => root.unmount());
     host.remove();
+    await closeLibraryDom(window);
   });
   await ui.act(async () => root.render(ui.createElement(Host, {})));
   for (let index = 0; index < 6; index += 1) {

@@ -35,3 +35,9 @@ test('notice renderer picks the upstream singular and plural templates', async (
   assert.match(one, /isn't available/);
   assert.match(many, /aren't available/);
 });
+
+test.after(async () => {
+  try { await ui.act(async () => root.unmount()); } catch { /* already unmounted */ }
+  host.remove();
+  await closeLibraryDom(window);
+});
