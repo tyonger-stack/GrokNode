@@ -3,6 +3,7 @@ import { build } from "esbuild";
 import { repoRoot } from "./config.mjs";
 import { parse } from "acorn";
 import { simple } from "acorn-walk";
+import { createInfoPaneAction0753, infoPaneButtons0753Css, infoPaneHeader0753Class } from "../../frontend/src/extensions/info-pane-buttons-0753.js";
 export function patchNativeInfoPaneTabs(source) {
   const ast = parse(source, { ecmaVersion: "latest", sourceType: "module" });
   const functions = ast.body.filter(node => node.type === "FunctionDeclaration" && node.id?.name === "p3n");
@@ -39,15 +40,18 @@ export function patchNativeInfoPaneTabs(source) {
   if (body.split(state).length !== 2 || body.split(gear).length !== 2) throw new Error("Info-pane tabs: native settings navigation drifted.");
   body = body.replace(original, expanded).replace(state, stateBridge).replace(gear, gearBridge);
   const patched = source.slice(0, fn.start) + body + source.slice(fn.end);
-  // 0.71.2's top bar (ax) closes the pane with the "close" glyph, not 0.18's
-  // chevrons-right; keep the tooltip-carrying icon button otherwise unchanged.
   const CLOSE_BEFORE = 'p.jsx(fr,{"aria-label":"Close details",icon:"chevrons-right",iconSize:zwe,onClick:c,title:"Close details"})';
-  const CLOSE_AFTER = 'p.jsx(fr,{"aria-label":"Close details",icon:"close",iconSize:zwe,onClick:c,shape:"circle",title:"Close details",variant:"secondary"})';
-  const GEAR_BEFORE = '"data-info-row":"settings",icon:"settings-gear",iconSize:zwe,onClick:l})';
-  const GEAR_AFTER = '"data-info-row":"settings",icon:"settings-gear",iconSize:zwe,onClick:l,shape:"circle",variant:"secondary"})';
+  const CLOSE_AFTER = 'p.jsx(RInfoPaneAction0753,{"aria-label":"Close details",icon:"close",onClick:c,title:"Close details"})';
+  const GEAR_BEFORE = 'p.jsx(fr,{"aria-label":"Agent settings","data-info-row":"settings",icon:"settings-gear",iconSize:zwe,onClick:l})';
+  const GEAR_AFTER = 'p.jsx(RInfoPaneAction0753,{"aria-label":"Agent settings","data-info-row":"settings",icon:"settings-gear",onClick:l})';
   if (patched.split(CLOSE_BEFORE).length !== 2) throw new Error("Info-pane tabs: native close button drifted.");
   if (patched.split(GEAR_BEFORE).length !== 2) throw new Error("Info-pane tabs: native settings button drifted.");
-  const repatched = patched.replace(CLOSE_BEFORE, CLOSE_AFTER).replace(GEAR_BEFORE, GEAR_AFTER);
+  const HEADER_BEFORE = "sand-1n2onr6 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-lvsv26 sand-xlogw sand-14kp3v7 sand-exx8yu sand-j9b1aj sand-18d9i69 sand-f18ygs";
+  const ACTIONS_BEFORE = 're("sand-info-pane__actions","sand-3nfvp2 sand-6s0dn4 sand-195vfkc sand-lvsv26")';
+  const ACTIONS_AFTER = 're("sand-info-pane__actions","sand-3nfvp2 sand-6s0dn4 sand-167g77z sand-lvsv26")';
+  if (patched.split(HEADER_BEFORE).length !== 2 || patched.split(ACTIONS_BEFORE).length !== 2) throw new Error("Info-pane buttons: native header layout drifted.");
+  const repatched = patched.replace(CLOSE_BEFORE, CLOSE_AFTER).replace(GEAR_BEFORE, GEAR_AFTER).replace(HEADER_BEFORE, infoPaneHeader0753Class).replace(ACTIONS_BEFORE, ACTIONS_AFTER)
+    + `\nconst RInfoPaneAction0753=(${createInfoPaneAction0753.toString()})({compiler:he,jsx:p,styles:Fe,classNames:re,Icon:Dr});\n`;
   parse(patched, { ecmaVersion: "latest", sourceType: "module" });
   parse(repatched, { ecmaVersion: "latest", sourceType: "module" });
   return repatched;
@@ -64,5 +68,5 @@ export async function buildInfoPaneTabsRendererExtension() {
   });
   const output = result.outputFiles[0];
   if (output == null) throw new Error("Info-pane tabs renderer extension was not built.");
-  return output.text;
+  return `(()=>{if(document.getElementById("sand-info-pane-buttons-0753"))return;const style=document.createElement("style");style.id="sand-info-pane-buttons-0753";style.textContent=${JSON.stringify(infoPaneButtons0753Css)};document.head.append(style)})();\n` + output.text;
 }
