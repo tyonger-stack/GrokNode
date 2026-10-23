@@ -54,6 +54,8 @@ test("identity hover retains the official tint and expandable chevron", { skip: 
   assert.ok(patched.includes('--sand-island-reveal:1'));
   assert.ok(patched.includes('max-width:calc(var(--sand-island-reveal) * 8px)'));
   assert.ok(IDENTITY_HOVER_CSS.includes('.sand-chat-header__identity[aria-expanded="true"]'));
+  assert.ok(IDENTITY_HOVER_CSS.includes('.sand-chat-header { height:60px!important; padding:10px 0!important; }'));
+  assert.ok(IDENTITY_HOVER_CSS.includes('.sand-toolbar:has(> .sand-chat-header) { height:60px!important; min-height:60px!important; }'));
   assert.ok(patched.includes('@media (prefers-reduced-motion:reduce)'));
 });
 

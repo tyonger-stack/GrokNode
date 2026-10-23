@@ -89,6 +89,10 @@ import { DISPLAY_PROPS } from "./i18n-patch-engine.mjs";
 import { parse } from "acorn";
 
 export const IDENTITY_HOVER_CSS = `
+/* 0.75.3 chat header: 60px toolbar with 10px vertical padding. 0.18 ships a 44px
+   toolbar and a 40px header with no padding, which puts the pill 8px too high. */
+.sand-chat-header { height:60px!important; padding:10px 0!important; }
+.sand-toolbar:has(> .sand-chat-header) { height:60px!important; min-height:60px!important; }
 .sand-chat-header__identity { --sand-island-reveal:0; --sand-island-tint:0; position:relative; isolation:isolate; }
 .sand-chat-header__identity:hover:not(:disabled), .sand-chat-header__identity:focus-visible { --sand-island-reveal:1; --sand-island-tint:1; }
 .sand-chat-header__identity[aria-expanded="true"], .sand-chat-header__identity[aria-expanded="true"]:hover:not(:disabled), .sand-chat-header__identity[aria-expanded="true"]:focus-visible { --sand-island-reveal:0; }
