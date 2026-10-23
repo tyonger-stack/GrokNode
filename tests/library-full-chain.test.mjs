@@ -24,7 +24,10 @@ async function loadModule(name) {
   return import(outfile);
 }
 const ORIGIN = "https://library.example.test";
-const NOW = Date.now();
+// Frozen at 08:00 local of the current day: entries stamped an hour earlier must
+// stay on the same local day for the "today" grouping assertion, which a bare
+// Date.now() broke whenever the suite ran just after midnight.
+const NOW = new Date().setHours(8, 0, 0, 0);
 const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]);
 
 test("publish, transcript reference, resolve, merge and group close the loop", async () => {

@@ -32,7 +32,11 @@ async function intersect(ui, host, visible = true) {
   await ui.act(async () => observer.callback([{ isIntersecting: visible }]));
 }
 const ORIGIN = "https://library.example.test";
-const NOW = Date.now();
+// Frozen at 08:00 local of the current day: entries stamped an hour (or five)
+// earlier must stay on the same local day for the "today"/"week" grouping
+// assertions, which a bare Date.now() broke whenever the suite ran just after
+// midnight.
+const NOW = new Date().setHours(8, 0, 0, 0);
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
 async function loadBundle() {
