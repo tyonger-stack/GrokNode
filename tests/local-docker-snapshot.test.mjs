@@ -28,8 +28,8 @@ const STAGING_DATA = `${DATA_VOLUME}-restore`;
 const BOX_SCHEMA = "10";
 const manifestOf = (id = "s00000000abc", createdAt = 1) => ({ schemaVersion: 2, id, createdAt, imageTag: `${REPO}:${id}`, boxSchemaVersion: BOX_SCHEMA });
 
-/** Recording Docker fake; fail(predicate) marks matching calls (matched against joined argv) as failed. `czf` archive calls materialize a placeholder file so the store's post-archive stat works. */
-function scriptedDocker(fail = () => false) {
+/** Recording Docker fake; fail(predicate) marks matching calls (matched against joined argv) as failed; outputFor(args) supplies success output. `czf` archive calls materialize a placeholder file so the store's post-archive stat works. */
+function scriptedDocker(fail = () => false, outputFor = () => "") {
   const calls = [];
   const run = (args) => {
     calls.push([...args]);
@@ -39,7 +39,7 @@ function scriptedDocker(fail = () => false) {
       const destination = args[args.indexOf("czf") + 1];
       if (source != null && typeof destination === "string") writeFileSync(path.join(source, path.basename(destination)), "placeholder");
     }
-    return Promise.resolve(fail(args) ? { ok: false, code: 1, output: `failed: ${args.join(" ")}` } : { ok: true, code: 0, output: "" });
+    return Promise.resolve(fail(args) ? { ok: false, code: 1, output: `failed: ${args.join(" ")}` } : { ok: true, code: 0, output: outputFor(args) });
   };
   return { calls, run };
 }
@@ -108,36 +108,53 @@ test("save preflights free space and aborts before touching the box", async () =
   await rm(directory, { recursive: true, force: true });
 });
 
-test("save quiesces with pause/unpause around commit and archives", async () => {
+test("save never pauses the live box; commit and archives run unpaused", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "snapstore-"));
   const fake = scriptedDocker();
   const store = await storeWith(fake.run, directory, { statfs: richStatfs(64 * 1024 ** 3) });
   const outcome = await store.save();
   assert.equal(outcome.ok, true);
   const flat = joinAll(fake.calls);
-  const pause = flat.indexOf(`pause ${CONTAINER}`);
+  // A daemon-side pause freezes every later `docker exec` (liveness probes,
+  // bot turns) until someone unpauses, and it leaks when the app exits
+  // mid-save — so a save must never pause or unpause the box itself.
+  assert.ok(!flat.some((line) => line.startsWith(`pause ${CONTAINER}`) || line.startsWith(`unpause ${CONTAINER}`)), "save must never pause/unpause the box");
   const commit = flat.findIndex((line) => line.startsWith(`commit ${CONTAINER}`));
-  const unpause = flat.lastIndexOf(`unpause ${CONTAINER}`);
-  assert.ok(pause >= 0 && pause < commit, "container paused before commit");
-  assert.ok(unpause > flat.findIndex((line) => line.includes("czf")), "unpause only after both archives");
+  assert.ok(commit >= 0, "container layer still committed");
+  assert.ok(flat.some((line) => line.includes("czf")), "volumes archived");
   const manifest = JSON.parse(await readFile(path.join(directory, outcome.id, "manifest.json"), "utf8"));
   assert.equal(manifest.boxSchemaVersion, BOX_SCHEMA);
   assert.equal(typeof manifest.archiveBytes.workspace, "number");
   await rm(directory, { recursive: true, force: true });
 });
 
-test("a pause failure that is not 'not running' aborts the save", async () => {
+test("save heals a leaked daemon-side pause before committing", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "snapstore-"));
-  const fake = scriptedDocker((args) => args[0] === "pause");
+  const fake = scriptedDocker(undefined, (args) => (args[0] === "inspect" && args.includes("{{.State.Paused}}") ? "true\n" : ""));
   const store = await storeWith(fake.run, directory, { statfs: richStatfs(64 * 1024 ** 3) });
   const outcome = await store.save();
-  assert.equal(outcome.ok, false);
-  assert.match(outcome.error, /could not quiesce/);
-  assert.ok(!joinAll(fake.calls).some((line) => line.startsWith("commit")), "no commit without quiesce");
+  assert.equal(outcome.ok, true);
+  const flat = joinAll(fake.calls);
+  const healInspect = flat.findIndex((line) => line.startsWith(`inspect --format {{.State.Paused}} ${CONTAINER}`));
+  const unpause = flat.indexOf(`unpause ${CONTAINER}`);
+  const commit = flat.findIndex((line) => line.startsWith(`commit ${CONTAINER}`));
+  assert.ok(healInspect === 0, "the paused-state probe is the first docker call of a save");
+  assert.ok(unpause > healInspect && unpause < commit, "a leaked pause is unpaused before commit");
   await rm(directory, { recursive: true, force: true });
 });
 
-test("an archive failure still unpauses the container and rolls the snapshot back", async () => {
+test("a failed pause-heal unpause aborts the save before commit", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "snapstore-"));
+  const fake = scriptedDocker((args) => args[0] === "unpause", (args) => (args[0] === "inspect" ? "true\n" : ""));
+  const store = await storeWith(fake.run, directory, { statfs: richStatfs(64 * 1024 ** 3) });
+  const outcome = await store.save();
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.error, /could not unpause/);
+  assert.ok(!joinAll(fake.calls).some((line) => line.startsWith("commit")), "no commit while the box stays frozen");
+  await rm(directory, { recursive: true, force: true });
+});
+
+test("an archive failure rolls the snapshot back without touching box liveness", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "snapstore-"));
   const fake = scriptedDocker((args) => args.includes("czf") && args.join(" ").includes(WORKSPACE_VOLUME));
   const store = await storeWith(fake.run, directory, { statfs: richStatfs(64 * 1024 ** 3) });
@@ -145,7 +162,7 @@ test("an archive failure still unpauses the container and rolls the snapshot bac
   assert.equal(outcome.ok, false);
   assert.match(outcome.error, /archive failed/);
   const flat = joinAll(fake.calls);
-  assert.ok(flat.includes(`unpause ${CONTAINER}`), "container unpaused on failure");
+  assert.ok(!flat.some((line) => line.startsWith(`pause ${CONTAINER}`) || line.startsWith(`unpause ${CONTAINER}`)), "failure path must not change box liveness");
   assert.ok(flat.some((line) => line.startsWith("rmi --force")), "committed image rolled back");
   await rm(directory, { recursive: true, force: true });
 });
@@ -161,8 +178,8 @@ test("saves and restores serialize — a save queued behind a restore waits for 
   await Promise.all([restore, save]);
   const flat = joinAll(fake.calls);
   const lastRestoreCommand = flat.findLastIndex((line) => line.includes("cp -a /src/. /dst/") || line.startsWith("volume rm --force"));
-  const savePause = flat.indexOf(`pause ${CONTAINER}`);
-  assert.ok(savePause > lastRestoreCommand, `the queued save must start only after the restore finished (pause at ${savePause}, restore tail at ${lastRestoreCommand})`);
+  const saveStart = flat.findIndex((line) => line.startsWith(`inspect --format {{.State.Paused}} ${CONTAINER}`));
+  assert.ok(saveStart > lastRestoreCommand, `the queued save must start only after the restore finished (save head at ${saveStart}, restore tail at ${lastRestoreCommand})`);
   await rm(directory, { recursive: true, force: true });
 });
 
@@ -259,9 +276,13 @@ test("scheduler snapshots only when the predicate admits", async () => {
     await new Promise((resolve) => setTimeout(resolve, 25));
     assert.ok(fake.calls.some((call) => call[0] === "commit"));
   } finally { scheduler.dispose(); }
+  // A save already in flight (or queued on the op-chain) when dispose() ran
+  // still finishes; let the chain drain before counting commits.
+  await new Promise((resolve) => setTimeout(resolve, 30));
   const commitsBefore = fake.calls.filter((call) => call[0] === "commit").length;
+  assert.ok(commitsBefore >= 1, "at least one save completed while admitted");
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(fake.calls.filter((call) => call[0] === "commit").length, commitsBefore);
+  assert.equal(fake.calls.filter((call) => call[0] === "commit").length, commitsBefore, "no new commits once the chain has drained and the scheduler is disposed");
   await rm(directory, { recursive: true, force: true });
 });
 
@@ -276,4 +297,15 @@ test("connector keeps the schema-guarded snapshot reset, single-flight recreate 
   assert.match(connectorSource, /await localConnect\(latest\.imageTag\)/, "snapshot recreate must go through the shared single-flight connect");
   assert.match(connectorSource, /latest\.boxSchemaVersion !== LOCAL_DOCKER_SCHEMA_VERSION/, "cross-schema snapshots fall back to the factory image");
   assert.match(connectorSource, /pre-replace snapshot/);
+});
+
+// Guard: a leaked daemon-side pause (interrupted snapshot save) must be
+// healed by the connector before any docker exec / readiness probe, and the
+// pause state must be surfaced in the status detail instead of "starting".
+test("connector heals a leaked pause and reports it in status", () => {
+  assert.match(connectorSource, /paused: value\.State\?\.Paused === true/, "inspectContainer reads State.Paused");
+  assert.match(connectorSource, /if \(current\.running && current\.paused\)/, "ensure auto-unpauses a paused running container");
+  assert.match(connectorSource, /Could not unpause \$\{LOCAL_DOCKER_BOX_CONTAINER\}/, "an unpause failure is a hard error, not a silent skip");
+  assert.match(connectorSource, /is paused; connecting again will auto-unpause it/, "status says paused instead of the misleading 'starting'");
+  assert.ok(!/runDocker\(\["pause"/.test(connectorSource), "the connector itself must never pause the box");
 });
