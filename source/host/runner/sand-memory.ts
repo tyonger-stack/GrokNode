@@ -201,6 +201,76 @@ export async function extractMemories(first: string | { executor: TextExecutor; 
 }
 
 export interface MemoryStore { removeMemoryByContent(content: string): boolean; addMemory(content: string, now: number, kind: "profile" | "log"): MemoryRecord | null }
+export interface MemoryImportSource {
+  readonly kind: "paste" | "file";
+  readonly text: string;
+  readonly fileName?: string;
+}
+
+export interface MemoryImportPlan {
+  readonly items: readonly { readonly content: string; readonly kind: "profile" | "log" }[];
+  readonly duplicates: readonly string[];
+  readonly skipped: readonly string[];
+}
+
+export function planMemoryImport(source: MemoryImportSource, existing: readonly MemoryRecord[]): MemoryImportPlan {
+  const seen = new Set(existing.map((record) => memoryDedupeKey(record.content)));
+  const items: { readonly content: string; readonly kind: "profile" | "log" }[] = [];
+  const duplicates: string[] = [];
+  const skipped: string[] = [];
+  for (const rawLine of source.text.split(/\r?\n/u)) {
+    const content = normalizeMemoryContent(rawLine.replace(/^\s*(?:[-*]\s+|\d+[.)]\s+)/u, ""));
+    if (content === "") { skipped.push(rawLine); continue; }
+    if (seen.has(memoryDedupeKey(content))) { duplicates.push(content); continue; }
+    seen.add(memoryDedupeKey(content));
+    items.push({ content, kind: "log" });
+  }
+  return { items, duplicates, skipped };
+}
+
+export const MEMORY_IMPORT_TEXT_LIMIT = 100_000;
+const MEMORY_IMPORT_AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
+
+export interface MemoryImportRequest {
+  readonly id: string;
+  readonly kind: "paste" | "file";
+  readonly text: string;
+  readonly fileName?: string;
+}
+
+export function parseMemoryImportRequest(value: unknown): MemoryImportRequest | null {
+  if (typeof value !== "object" || value === null) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.id !== "string" || !MEMORY_IMPORT_AGENT_ID.test(record.id)) return null;
+  if (typeof record.text !== "string" || record.text.length > MEMORY_IMPORT_TEXT_LIMIT) return null;
+  const kind = record.kind === undefined || record.kind === "paste" ? "paste" : record.kind === "file" ? "file" : null;
+  if (kind == null) return null;
+  if (record.fileName !== undefined) {
+    if (typeof record.fileName !== "string" || record.fileName.length === 0 || record.fileName.length > 255 || /[\\/]/u.test(record.fileName)) return null;
+  }
+  return {
+    id: record.id,
+    kind,
+    text: record.text,
+    ...(typeof record.fileName === "string" ? { fileName: record.fileName } : {}),
+  };
+}
+
+export function applyMemoryImport(store: MemoryStore, plan: MemoryImportPlan, now: number = Date.now()): { readonly added: MemoryRecord[]; readonly duplicates: string[] } {
+  const added: MemoryRecord[] = [];
+  try {
+    for (const item of plan.items) {
+      const record = store.addMemory(item.content, now, item.kind);
+      if (record != null) added.push(record);
+    }
+    return { added, duplicates: [...plan.duplicates] };
+  } catch (error) {
+    for (const record of added) {
+      try { store.removeMemoryByContent(record.content); } catch { /* the original write failure is the one to report */ }
+    }
+    throw error;
+  }
+}
 export function applyExtractedMemories(store: MemoryStore, extraction: MemoryExtraction, now: number, knownMemories: readonly string[]): { added: MemoryRecord[]; removed: string[] };
 export function applyExtractedMemories(existing: readonly MemoryRecord[], extraction: MemoryExtraction, now?: number): MemoryRecord[];
 export function applyExtractedMemories(first: MemoryStore | readonly MemoryRecord[], extraction: MemoryExtraction, now = Date.now(), knownMemories: readonly string[] = []): MemoryRecord[] | { added: MemoryRecord[]; removed: string[] } {

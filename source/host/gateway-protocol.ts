@@ -46,6 +46,7 @@ export const SAND_GATEWAY_COMMANDS = {
   getAgentMemories: (api: GatewayApi, body: string) => api.getAgentMemories(parseCommandArgs(body)),
   deleteAgentMemory: (api: GatewayApi, body: string) => api.deleteAgentMemory(parseCommandArgs(body)),
   clearAgentMemories: (api: GatewayApi, body: string) => api.clearAgentMemories(parseCommandArgs(body)),
+  importAgentMemories: (api: GatewayApi, body: string) => api.importAgentMemories(parseCommandArgs(body)),
   getAgentAutomations: (api: GatewayApi, body: string) => api.getAgentAutomations(parseCommandArgs(body)),
   listAllAutomations: (api: GatewayApi) => api.listAllAutomations(),
   isAgentNetworkEnabled: (api: GatewayApi) => api.isAgentNetworkEnabled(),

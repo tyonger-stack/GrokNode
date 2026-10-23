@@ -32,7 +32,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function validateReply(method: string, value: unknown): unknown {
   if (method === "getAgentTranscriptWindow" || method === "getAgentThread") return validateCoordinatorReply(method, value);
-  if (["listAgents", "searchAgents", "getTrays", "listAllAutomations"].includes(method)) {
+  if (["listAgents", "searchAgents", "getTrays", "listAllAutomations", "getAgentMemories"].includes(method)) {
     if (!Array.isArray(value)) throw new Error(`${method} returned a malformed array reply`);
   }
   if (["openAgentTail", "getAgentTranscriptTail"].includes(method)) {

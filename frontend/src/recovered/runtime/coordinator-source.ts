@@ -540,6 +540,7 @@ const TELEMETRY_DOMAIN_BY_METHOD: Record<CoordinatorMethod, string> = {
   getTrays: "trays", dismissTray: "trays", clearTrays: "trays",
   getAgentChannels: "channels", connectChannel: "channels", disconnectChannel: "channels", refreshChannel: "channels",
   getBoxSecretsStatus: "secrets",
+  getAgentMemories: "memory", importAgentMemories: "memory",
   getAgentAutomations: "automations", listAllAutomations: "automations",
   setAgentAutomationEnabled: "automations", createAgentAutomation: "automations",
   updateAgentAutomation: "automations", deleteAgentAutomation: "automations", runAgentAutomationNow: "automations",

@@ -295,6 +295,10 @@ export interface ProductionTurnHostToolProjections {
  * real owner is exposed by the runner composition.
  */
 export interface ProductionTurnHostDependencies {
+  readonly visualization?: import("./extensions/transcript/visualization-pages.js").VisualizationPagesLocation & {
+    readonly readBoxFile: import("./runner/tools/visualize-tool.js").VisualizeToolDependencies["readBoxFile"];
+    readonly sendBlockReason?: import("./runner/tools/visualize-tool.js").VisualizeToolDependencies["sendBlockReason"];
+  };
   readonly isMultitaskEnabled: () => boolean;
   readonly sendMessage: SendMessageDependencies<unknown>;
   readonly sendToAgent: SendToAgentDependencies<unknown>;

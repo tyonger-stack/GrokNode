@@ -16,6 +16,7 @@ import {
 } from "../adapters/coordinator-native.js";
 import { recordGatewayCommandSpan, recordSendStageSpan } from "../telemetry/desktop-send-trace.js";
 import { captureSandCoordinatorCrash } from "../telemetry/sentry.js";
+import { createDesktop0721RosterFeed, readDesktop0721 } from "../desktop-runtime-0721.js";
 
 /**
  * The root-owned coordinator inputs that are independent of account/gateway
@@ -112,6 +113,7 @@ export function createProductionCoordinatorAuxiliaryPorts(
 ): ProductionCoordinatorAuxiliaryPorts {
   const settings = context.settings.settingsStore;
   const notifications = context.requireNotifications();
+  const desktopFeed = createDesktop0721RosterFeed();
   return {
     native,
     getDataDir: () => getSandRootDir(),
@@ -138,11 +140,11 @@ export function createProductionCoordinatorAuxiliaryPorts(
       getLocalMcpServers: () => settings.getLocalMcpServers(),
       pushBoxSecrets: () => context.secretsStores.pushBoxSecrets.push("resync"),
       onHostSettingsTransportConnected: () => context.hostSettingsFields.onTransportConnected(),
-      onHostSettingsTransportDown: () => context.hostSettingsFields.setBoxStreamLive(false),
+      onHostSettingsTransportDown: () => { context.hostSettingsFields.setBoxStreamLive(false); readDesktop0721()?.reset(); },
     },
     events: {
-      onAgentsEvent: (payload) => notifications.onAgentsEvent(payload),
-      onAgentsRosterSeed: (payload) => notifications.onAgentsRosterSeed(payload),
+      onAgentsEvent: (payload) => { notifications.onAgentsEvent(payload); desktopFeed.onAgentsEvent(payload); },
+      onAgentsRosterSeed: (payload) => { notifications.onAgentsRosterSeed(payload); desktopFeed.onAgentsRosterSeed(payload); },
       onCoordinatorLaunched: () => context.onCoordinatorLaunched(),
     },
     telemetry: {

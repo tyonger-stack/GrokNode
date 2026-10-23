@@ -7,6 +7,8 @@
  * structured images; BRe reads file attachments; LRe normalizes links.
  * Null messages retain the existing hardening guard (original throws).
  */
+import type { VisualizationMessage, VisualizationRef } from "../../../shared/visualization.js";
+
 export type TranscriptMediaKind = "image" | "video" | "file" | "link";
 export interface TranscriptMediaItem {
   readonly id: string;
@@ -30,6 +32,11 @@ export interface TranscriptMediaMessage {
   readonly url?: string;
   readonly alt?: string | null;
   readonly file_name?: string | null;
+  readonly title?: VisualizationMessage["title"];
+  readonly summary?: VisualizationMessage["summary"];
+  readonly documentSha256?: VisualizationMessage["documentSha256"];
+  readonly heightPx?: VisualizationMessage["heightPx"];
+  readonly visualId?: VisualizationMessage["visualId"];
 }
 export interface TranscriptMediaEntry {
   readonly id: string;
@@ -45,6 +52,22 @@ export interface TranscriptMediaEntry {
   readonly file_path?: string;
   readonly file_name?: string | null;
   readonly images?: readonly TranscriptMediaImage[];
+}
+
+export interface TranscriptVisualization extends VisualizationRef {
+  readonly key: string;
+}
+
+// 0.72.1 index.eager-app-CG8Fw00L.js NVt/PVt. Visual identity is the entry, not an attachment path.
+export function extractTranscriptVisualizations(entries: readonly TranscriptMediaEntry[]): TranscriptVisualization[] {
+  return entries.flatMap((entry) => {
+    const message = entry.message;
+    if (entry.kind !== "send-message" || message?.type !== "visualization") return [];
+    if (typeof message.title !== "string" || typeof message.documentSha256 !== "string") return [];
+    return [{ key: `visual:${entry.id}`, entryId: entry.id, title: message.title,
+      summary: message.summary ?? "", documentSha256: message.documentSha256,
+      ...(typeof message.heightPx === "number" ? { heightPx: message.heightPx } : {}), timestampMs: entry.timestampMs ?? null }];
+  });
 }
 
 export function normalizeMediaSource(value: string): string {

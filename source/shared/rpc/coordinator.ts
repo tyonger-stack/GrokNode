@@ -164,6 +164,8 @@ export const COORDINATOR_METHOD_TABLE = {
   disconnectChannel: { args: "object", reply: "channels-view" },
   refreshChannel: { args: "object", reply: "channels-view" },
   getBoxSecretsStatus: { args: "none", reply: "box-secrets" },
+  getAgentMemories: { args: "object", reply: "array" },
+  importAgentMemories: { args: "object", reply: "record" },
   getAgentAutomations: { args: "object", reply: "array" },
   listAllAutomations: { args: "none", reply: "array" },
   isAgentNetworkEnabled: { args: "none", reply: "boolean" },

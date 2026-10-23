@@ -10,6 +10,7 @@ export interface DesktopMcpManagerFacade {
   getCatalog(getAccessToken: unknown): Promise<unknown>;
   resolvePluginLogo(url: string): Promise<unknown>;
   installEntry(request: unknown, getAccessToken: unknown): Promise<unknown>;
+  addServer(request: unknown): Promise<unknown>;
   updatePluginInstall(request: unknown, getAccessToken: unknown): Promise<unknown>;
   removeServer(serverId: string): Promise<unknown>;
   uninstallPlugin(pluginId: string): Promise<unknown>;
@@ -90,6 +91,7 @@ export async function createSandDesktopMcpManager(options: DesktopMcpManagerOpti
       return await options.displaySizedLogo(url, fetchLogo);
     },
     installEntry: (request, getAccessToken) => manager.installEntry(request, getAccessToken),
+    addServer: (request) => manager.addServer(request),
     updatePluginInstall: (request, getAccessToken) => manager.updatePluginInstall(request, getAccessToken),
     removeServer: (serverId) => manager.removeServer(serverId),
     uninstallPlugin: (pluginId) => manager.uninstallPlugin(pluginId),

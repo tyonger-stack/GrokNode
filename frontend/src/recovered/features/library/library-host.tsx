@@ -5,7 +5,7 @@ import type {
 } from "../../../../../source/shared/library-contracts";
 import { decodeLibraryJson } from "../../../../../source/shared/library/json-bytes";
 import { normalizeLibraryOrigin, extractLibraryRefs, type LibraryLinkConfig } from "../../../../../source/shared/library/links";
-import { extractConversationMedia, type TranscriptMediaEntry, type TranscriptMediaRow } from "../../../../../source/host/extensions/library/transcript-media";
+import { extractConversationMedia, extractTranscriptVisualizations, type TranscriptMediaEntry, type TranscriptMediaRow } from "../../../../../source/host/extensions/library/transcript-media";
 import {
   createHistoryLoader, GROUP_REVEAL, groupLibraryRows, mergeLibrarySources, visibleGroupItems,
   type HistoryState, type LibraryGroup, type LibraryRow,
@@ -16,7 +16,8 @@ import { DocumentStage } from "./document-stage";
 import { OverlayDialog } from "../../ui/overlay-primitives";
 import { LibraryFileViewer, classifyLibraryFileKind } from "./file-viewer";
 import { MediaViewer, type MediaResolver, type MediaViewerAttachment } from "../conversation/workspace/media-viewer";
-import { LibraryExternalRow, LibraryMediaRow, LibraryPageRow } from "./library-row";
+import { LibraryExternalRow, LibraryMediaRow, LibraryPageRow, LibraryVisualRow } from "./library-row";
+import { VisualizationStage } from "./visualization-stage";
 import "./library-list.css";
 import type { LibraryPageProvider } from "./canvas-provider";
 import { copyTextToClipboard, type LibraryLinkActions } from "./page-share";
@@ -51,6 +52,8 @@ export interface LibraryHostDesktop {
   resolveLibraryPages(args: { refs: LibraryPageRef[]; includeDocuments: boolean }): Promise<readonly { status: "found" | "absent" | "failed"; ref: LibraryPageRef; page?: LibraryPage }[]>;
   listLibraryDocs(args: { agentId: string }): Promise<{ docs: LibraryExternalDoc[] }>;
   checkGate(name: string): Promise<boolean>;
+  readVisualizationFragment(args: { agentId: string; entryId: string; documentSha256: string }): Promise<{ html: string }>;
+  stageVisualizationDocument(args: { html: string }): Promise<{ frameUrl: string }>;
   getLibraryOrigin(): Promise<string>;
   resolveAttachmentMedia(source: string): Promise<AttachmentMedia | null>;
   readAttachmentBytes(path: string, maxBytes: number): Promise<{ kind: "bytes"; bytes: Uint8Array } | { kind: "too-large"; size: number } | null>;
@@ -70,7 +73,7 @@ export interface LibraryHostProps {
   readonly desktop: LibraryHostDesktop;
   readonly now?: () => number;
 }
-const GATES = ["grok_bot_library_v2", "grok_bot_library_pages", "grok_bot_documents_ui", "grok_bot_library_external_docs"] as const;
+const GATES = ["grok_bot_library_v2", "grok_bot_library_pages", "grok_bot_documents_ui", "grok_bot_library_external_docs", "grok_bot_library_hover_cards"] as const;
 function entrySeq(entry: TranscriptMediaEntry): number | null {
   const seq = (entry as { seq?: unknown }).seq;
   return typeof seq === "number" && Number.isSafeInteger(seq) ? seq : null;
@@ -205,10 +208,10 @@ export function LibraryHost(props: LibraryHostProps) {
     if (handle) { install(); desktop.transcript?.load(agentId); }
     void (async () => {
       try {
-        const [v2, pagesGate, documentsUi, externalDocs] = await Promise.all(GATES.map((gate) => desktop.checkGate(gate).catch(() => false)));
+        const [v2, pagesGate, documentsUi, externalDocs, hoverCards] = await Promise.all(GATES.map((gate) => desktop.checkGate(gate).catch(() => false)));
         const snapshot = handle === undefined ? await desktop.getLibraryTranscript({ agentId, limit: 100 }) : null;
         if (runId.current !== at) return;
-        setGates({ grok_bot_library_v2: v2, grok_bot_library_pages: pagesGate, grok_bot_documents_ui: documentsUi, grok_bot_library_external_docs: externalDocs });
+        setGates({ grok_bot_library_v2: v2, grok_bot_library_pages: pagesGate, grok_bot_documents_ui: documentsUi, grok_bot_library_external_docs: externalDocs, grok_bot_library_hover_cards: hoverCards });
         if (snapshot !== null) {
           const rows = (decodeLibraryJson(snapshot.entries) as TranscriptMediaEntry[]).slice().reverse();
           setEntries(rows);
@@ -228,6 +231,7 @@ export function LibraryHost(props: LibraryHostProps) {
     return () => { runId.current += 1; stopSnapshot?.(); stopEntries?.(); };
   }, [agentId, desktop, reload]);
   const media = useMemo(() => (entries === null ? null : extractConversationMedia(entries)), [entries]);
+  const visuals = useMemo(() => (entries === null ? null : extractTranscriptVisualizations(entries)), [entries]);
   const refs = useMemo(() => (entries === null || origin === null ? null : pageRefsOf(entries, { nodeOrigin: origin })), [entries, origin]);
   useEffect(() => {
     if (refs === null || gates === null) return;
@@ -262,12 +266,12 @@ export function LibraryHost(props: LibraryHostProps) {
     return () => { active = false; };
   }, [gates, sourceRetry, desktop, agentId]);
   const rows = useMemo(() => {
-    if (media === null || gates === null) return null;
+    if (media === null || visuals === null || gates === null) return null;
     if (!gates.grok_bot_library_v2) {
       return media.map((item): LibraryRow => ({ kind: "media", key: `media:${item.id}`, timestampMs: item.timestampMs, item }));
     }
-    return mergeLibrarySources({ pages: pages?.pages ?? [], docs: docs?.docs ?? [], media });
-  }, [media, pages, docs, gates]);
+    return mergeLibrarySources({ pages: pages?.pages ?? [], docs: docs?.docs ?? [], media, visuals });
+  }, [media, visuals, pages, docs, gates]);
   const groups = useMemo<LibraryGroup[]>(() => (rows === null ? [] : groupLibraryRows(rows, now())), [rows, now]);
   const galleryVisuals = useMemo<readonly MediaViewerAttachment[]>(() => {
     if (rows === null) return [];
@@ -367,6 +371,7 @@ export function LibraryHost(props: LibraryHostProps) {
     openExternal: (href: string) => { void desktop.openExternal(href); },
   }), [desktop, origin]);
   const renderedRun = runId.current;
+  const hoverCards = gates?.grok_bot_library_hover_cards === true;
   if (entriesFailed) {
     return <section aria-label="资料库" className="sand-agent-library">
       <p role="alert">资料加载失败。</p>
@@ -385,6 +390,7 @@ export function LibraryHost(props: LibraryHostProps) {
       return;
     }
     focusReturn.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (row.kind === "visual" && row.visual !== undefined) { setOpened(row); return; }
     if (replayNativeViewerChip(row)) return;
     if (row.kind === "media" && row.item !== undefined && (row.item.kind === "image" || row.item.kind === "video")) {
       const source = row.item.source;
@@ -405,7 +411,7 @@ export function LibraryHost(props: LibraryHostProps) {
     </p> : null}
     {!gates?.grok_bot_library_v2 && gates?.grok_bot_library_pages && pages !== null && pages.pages.length > 0 ? <div className="sand-library-group" data-library-pages="v1">
       <h3>页面</h3><ul className="sand-library-card">{mergeLibrarySources({ pages: pages.pages, docs: [], media: [] }).slice(0, revealed.pages ?? GROUP_REVEAL).map((row) => row.page ? <li key={row.key}>
-        <LibraryPageRow links={links} nowMs={now()} onOpen={() => openRow(row)} onVisibilityChange={() => {}} origin={origin} page={row.page} provider={provider} />
+        <LibraryPageRow hoverCards={hoverCards} links={links} nowMs={now()} onOpen={() => openRow(row)} onVisibilityChange={() => {}} origin={origin} page={row.page} provider={provider} />
       </li> : null)}
       {(revealed.pages ?? GROUP_REVEAL) < pages.pages.length ? <li><button className="sand-library-expand" type="button" onClick={() => setRevealed((current) => ({ ...current, pages: (current.pages ?? GROUP_REVEAL) + GROUP_REVEAL }))}>展开</button></li> : null}
       </ul>
@@ -418,13 +424,15 @@ export function LibraryHost(props: LibraryHostProps) {
         <ul className="sand-library-card">
           {visible.map((row) => <li key={row.key}>
             {row.kind === "page" && row.page !== undefined ? <LibraryPageRow
-              links={links} nowMs={now()} onOpen={() => openRow(row)} onVisibilityChange={() => {}}
+              hoverCards={hoverCards} links={links} nowMs={now()} onOpen={() => openRow(row)} onVisibilityChange={() => {}}
               origin={origin} page={row.page} provider={provider} /> : null}
             {row.kind === "external-doc" && row.doc !== undefined ? <LibraryExternalRow
-              doc={row.doc} nowMs={now()} onOpen={() => openRow(row)} /> : null}
+              doc={row.doc} hoverCards={hoverCards} nowMs={now()} onOpen={() => openRow(row)} /> : null}
             {row.kind === "media" && row.item !== undefined ? <LibraryMediaRow
-              nowMs={now()} onOpen={() => openRow(row)} resolveThumb={resolveThumb}
+              hoverCards={hoverCards} nowMs={now()} onOpen={() => openRow(row)} resolveThumb={resolveThumb}
               row={row.item} /> : null}
+            {row.kind === "visual" && row.visual !== undefined ? <LibraryVisualRow
+              hoverCards={hoverCards} nowMs={now()} onOpen={() => openRow(row)} visual={row.visual} /> : null}
           </li>)}
         {visible.length < group.items.length ? <li><button className="sand-library-expand" onClick={() => setRevealed((current) => ({ ...current, [group.key]: (current[group.key] ?? 5) + 5 }))} type="button">展开</button></li> : null}
         </ul>
@@ -432,7 +440,7 @@ export function LibraryHost(props: LibraryHostProps) {
     })}
     <div ref={sentinel} aria-hidden="true" data-library-history={history} style={{ height: 1 }} />
     {history === "failed" ? <button onClick={() => { void runHistory(); }} type="button">加载失败，重试</button> : null}
-    {opened !== null ? <LibraryStage row={opened} desktop={desktop} origin={origin} theme={theme} provider={provider} links={links} resolveMedia={resolveMedia}
+    {opened !== null ? <LibraryStage row={opened} agentId={agentId} desktop={desktop} origin={origin} theme={theme} provider={provider} links={links} resolveMedia={resolveMedia}
       onShareChange={() => setSourceRetry((n) => n + 1)}
       onTitleChange={(title) => {
         if (opened.page === undefined || runId.current !== renderedRun) return;
@@ -448,7 +456,7 @@ export function LibraryHost(props: LibraryHostProps) {
       restoreFocus={() => { focusReturn.current?.focus(); }} /> : null}
   </section>;
 };
-function LibraryStage({ row, desktop, origin, theme, provider, links, resolveMedia, onShareChange, onTitleChange, onClose }: { row: LibraryRow; desktop: LibraryHostDesktop; origin: string | null; theme: "light" | "dark"; provider: LibraryPageProvider; links: LibraryLinkActions; resolveMedia: MediaResolver; onShareChange: () => void; onTitleChange: (title: string) => void; onClose: () => void }) {
+function LibraryStage({ row, agentId, desktop, origin, theme, provider, links, resolveMedia, onShareChange, onTitleChange, onClose }: { row: LibraryRow; agentId: string; desktop: LibraryHostDesktop; origin: string | null; theme: "light" | "dark"; provider: LibraryPageProvider; links: LibraryLinkActions; resolveMedia: MediaResolver; onShareChange: () => void; onTitleChange: (title: string) => void; onClose: () => void }) {
   const documentProvider = useMemo(() => ({
     getDocument: (args: Parameters<LibraryHostDesktop["getDocument"]>[0]) => desktop.getDocument(args) as never,
     getDocumentEditRight: (args: Parameters<LibraryHostDesktop["getDocumentEditRight"]>[0]) => desktop.getDocumentEditRight(args),
@@ -467,6 +475,10 @@ function LibraryStage({ row, desktop, origin, theme, provider, links, resolveMed
           provider={documentProvider} onClose={onClose} onShareChange={onShareChange} />
       </div>
     </OverlayDialog>;
+  }
+  if (row.kind === "visual" && row.visual !== undefined) {
+    return <VisualizationStage agentId={agentId} desktop={desktop} onClose={onClose}
+      theme={theme} visual={row.visual} />;
   }
   if (row.kind === "media" && row.item !== undefined) {
     const file = mediaSource(row.item);

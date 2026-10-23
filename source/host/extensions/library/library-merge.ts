@@ -1,5 +1,5 @@
 import type { LibraryExternalDoc, LibraryPage } from "../../../shared/library-contracts.js";
-import type { TranscriptMediaRow } from "./transcript-media.js";
+import type { TranscriptMediaRow, TranscriptVisualization } from "./transcript-media.js";
 
 /**
  * Task 9: port of the original v1/v2 merge, sort, grouping and history
@@ -11,7 +11,7 @@ import type { TranscriptMediaRow } from "./transcript-media.js";
  * gate owned here so the view stays a pure renderer of this state.
  */
 export type LibraryGroupKey = "today" | "week" | "older";
-export type LibraryRowKind = "page" | "external-doc" | "media";
+export type LibraryRowKind = "page" | "external-doc" | "media" | "visual";
 export interface LibraryRow {
   readonly kind: LibraryRowKind;
   readonly key: string;
@@ -19,12 +19,13 @@ export interface LibraryRow {
   readonly page?: LibraryPage;
   readonly doc?: LibraryExternalDoc;
   readonly item?: TranscriptMediaRow;
+  readonly visual?: TranscriptVisualization;
 }
 export interface LibraryGroup {
   readonly key: LibraryGroupKey;
   readonly items: readonly LibraryRow[];
 }
-const ROW_ORDER: Record<LibraryRowKind, number> = { page: 0, "external-doc": 1, media: 2 };
+const ROW_ORDER: Record<LibraryRowKind, number> = { page: 0, "external-doc": 1, media: 2, visual: 3 };
 export const GROUP_REVEAL = 5;
 export const HISTORY_MAX_CALLS = 10;
 export type HistoryState = "loadable" | "loading" | "failed" | "exhausted";
@@ -53,7 +54,7 @@ export function pageRowKey(page: LibraryPage): string {
   if (page.kind === "document") return `document:${page.storeId}:${page.documentId}`;
   return `canvas:${page.storeId}:${page.canvasId}`;
 }
-export function mergeLibrarySources(args: { pages: readonly LibraryPage[]; docs: readonly LibraryExternalDoc[]; media: readonly TranscriptMediaRow[] }): LibraryRow[] {
+export function mergeLibrarySources(args: { pages: readonly LibraryPage[]; docs: readonly LibraryExternalDoc[]; media: readonly TranscriptMediaRow[]; visuals?: readonly TranscriptVisualization[] }): LibraryRow[] {
   const rows: LibraryRow[] = [
     ...args.pages.map((page): LibraryRow => ({
       kind: "page", key: pageRowKey(page),
@@ -66,6 +67,9 @@ export function mergeLibrarySources(args: { pages: readonly LibraryPage[]; docs:
     ...args.media.map((item): LibraryRow => ({
       kind: "media", key: `media:${item.id}`,
       timestampMs: item.timestampMs, item,
+    })),
+    ...(args.visuals ?? []).map((visual): LibraryRow => ({
+      kind: "visual", key: visual.key, timestampMs: visual.timestampMs, visual,
     })),
   ];
   return rows.toSorted(compareLibraryRows);

@@ -19,6 +19,7 @@ import {
   type LibraryHttpRoute,
 } from "./http-routes.js";
 import { LibraryHttpSessions } from "./http-session.js";
+import { createLibraryHttpDispatcher } from "./http.js";
 import { renderDocumentPageHtml } from "./http-markdown.js";
 import { extractDocumentAssetNames } from "../../../shared/library/document-assets.js";
 import { renderLibraryHttpCanvasFrame, type LibraryHttpCanvasTheme } from "./http-canvas-frame.js";
@@ -27,6 +28,7 @@ export const LIBRARY_HTTPS_LOOPBACK_HOSTS = ["127.0.0.1", "::1", "localhost"] as
 export const LIBRARY_HTTPS_UNREACHABLE_ORIGIN = "https://groknode.local";
 
 const SESSION_BODY_LIMIT = 4096;
+const RPC_BODY_LIMIT = 16 * 1024 * 1024;
 const SESSION_MAX_AGE_SECONDS = 12 * 3600;
 const REQUEST_TIMEOUT_MS = 30000;
 
@@ -204,6 +206,7 @@ export async function startLibraryHttpServer(options: StartLibraryHttpServerOpti
       renderLibraryHttpCanvasFrame(content, theme, title));
   const originHostHeader = new URL(providerOrigin).host;
   const service = options.service;
+  const dispatch = createLibraryHttpDispatcher(service);
 
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const target = request.url ?? "";
@@ -328,6 +331,33 @@ export async function startLibraryHttpServer(options: StartLibraryHttpServerOpti
       return;
     }
     switch (route.kind) {
+      case "rpc": {
+        if (request.headers.origin !== undefined && request.headers.origin !== providerOrigin) {
+          sendJson(response, 403, { error: "foreign-origin" });
+          return;
+        }
+        if (request.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !== "application/json") {
+          sendJson(response, 415, { error: "json-required" });
+          return;
+        }
+        let body: Buffer;
+        try {
+          body = await readBody(request, RPC_BODY_LIMIT, signal);
+        } catch {
+          sendJson(response, 413, { error: "body-too-large" });
+          return;
+        }
+        let envelope: unknown;
+        try {
+          envelope = JSON.parse(body.toString("utf8"));
+        } catch {
+          sendJson(response, 400, { error: "invalid-argument" });
+          return;
+        }
+        const result = await dispatch(envelope, credential, signal);
+        sendJson(response, result.status, result.body);
+        return;
+      }
       case "session":
         send(response, 500, baseHeaders({ "content-type": "text/plain; charset=utf-8" }), "Internal error");
         return;

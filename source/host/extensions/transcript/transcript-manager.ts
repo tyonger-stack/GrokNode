@@ -1,5 +1,8 @@
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseMemoryImportRequest } from "../../runner/sand-memory.js";
+import { createVisualizationPages } from "./visualization-pages.js";
+import { visualizationReadArgsSchema, visualizationEntryReferenceSchema, type VisualizationReadArgs } from "../../../shared/visualization.js";
 
 import {
   createExpiryPolicy,
@@ -125,6 +128,7 @@ export const NO_MEMORY = {
   list: async () => [],
   remove: async () => [],
   clear: async () => [],
+  importMemories: async () => { throw new Error("memory store is unavailable"); },
   setActiveAgent: (_id: string | null) => {},
 };
 
@@ -388,6 +392,16 @@ export class TranscriptManager {
     await this.clearMemoryPromptSnapshot(agentId);
     return result;
   }
+  async importAgentMemories(agentId: string, source: unknown) {
+    const request = parseMemoryImportRequest({
+      ...(typeof source === "object" && source !== null ? source as Record<string, unknown> : {}),
+      id: agentId,
+    });
+    if (request == null) throw new Error("memory import request is invalid");
+    const result = await this.memory.importMemories(request);
+    if (result != null && Array.isArray(result.added) && result.added.length > 0) await this.clearMemoryPromptSnapshot(agentId);
+    return result;
+  }
   async clearMemoryPromptSnapshot(agentId: string): Promise<void> {
     const active = this.sessions.activeSession;
     if (active?.id === agentId) active.db.clearMemoryPromptSnapshot();
@@ -502,6 +516,16 @@ export class TranscriptManager {
   }
   getAgentTranscriptPage(...args: any[]) {
     return invoke(this.sessions, "getAgentTranscriptPage", args);
+  }
+  async readVisualizationFragment(input: VisualizationReadArgs) {
+    const args = visualizationReadArgsSchema.parse(input);
+    const entries: unknown = await this.getAgentTranscript(args.agentId);
+    if (!Array.isArray(entries) || !entries.some((entry: unknown) => {
+      const parsed = visualizationEntryReferenceSchema.safeParse(entry);
+      return parsed.success && parsed.data.id === args.entryId && parsed.data.message.documentSha256 === args.documentSha256;
+    })) throw new Error("The visual does not belong to this conversation");
+    return createVisualizationPages({ agentId: args.agentId,
+      agentDir: this.sessionStore.getAgentDir(args.agentId) }).read(args);
   }
 
   getRunQueueDiagnostics(...args: any[]) {

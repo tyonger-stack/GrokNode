@@ -1,5 +1,5 @@
 import { resolveLibraryHttpConfigFromEnv, startLibraryHttpServer, type LibraryHttpHandle } from "./http-server.js";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { assertNoSymlinkInPath } from "../../../packages/agent-store-sync/paths.js";
 import { runWithLibraryMcpExecution } from "../../../shared/library/mcp-result-hook.js";
 import { createHash } from "node:crypto";
@@ -11,11 +11,15 @@ import type {
   LibraryRequestContext,
 } from "../../../shared/library-contracts.js";
 import { libraryStoreIdSchema } from "../../../shared/library/schemas.js";
+import { visualizationReadArgsSchema, type VisualizationReadArgs } from "../../../shared/visualization.js";
 import { LibraryContractError } from "../../../shared/library/errors.js";
 import { defineHostExtension } from "../../../internal/host-extensions.js";
 import { getSandRootDir } from "../../host-paths.js";
 import { HostExtensions } from "../extension-ids.generated.js";
 import { LibraryCatalog } from "./catalog.js";
+import { createLibraryFilesService, type LibraryFileBinding, type LibraryFileScope } from "./library-files.js";
+import { SAND_BOX_WORKSPACE_ROOT } from "../../cloud-agents/cloud-agent-images.js";
+import { DEFAULT_MAX_LOCAL_EXEC_FILE_BYTES } from "../../../shared/local-exec-gateway.js";
 import { LibraryCatalogError } from "./migrations.js";
 import { verifyContent } from "./catalog/secure.js";
 import { createDocumentsService, type DocumentsService } from "./documents-service.js";
@@ -42,10 +46,12 @@ const MAIN_ACCOUNT = "node-local-account";
 export const LIBRARY_MAIN_STORE = "node-local-store";
 const MAIN_STORE = LIBRARY_MAIN_STORE;
 export interface LibraryExtensionOptions {
+  readonly libraryFiles?: { readonly sourceRoot: string; readonly maxFileBytes: number };
   readonly dataRoot?: string;
   readonly providerOrigin?: string;
   readonly randomUUID?: () => string;
-  readonly transcript?: { getAgentTranscriptPage(agentId: string, query: unknown): unknown; listAgentIds?(): readonly string[] | Promise<readonly string[]> };
+  readonly transcript?: { getAgentTranscriptPage(agentId: string, query: unknown): unknown; listAgentIds?(): readonly string[] | Promise<readonly string[]>;
+    readVisualizationFragment?(args: VisualizationReadArgs): Promise<unknown> };
 }
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -94,6 +100,11 @@ export function createLibraryHostService(options: LibraryExtensionOptions = {}) 
   const dataRoot = resolve(options.dataRoot ?? join(getSandRootDir(), "library"));
   const nodeOrigin = options.providerOrigin ?? process.env.SAND_LIBRARY_ORIGIN ?? GROK_NODE_LIBRARY_ORIGIN;
   const catalog = new LibraryCatalog({ dataRoot, providerOrigin: nodeOrigin });
+  const libraryFiles = createLibraryFilesService({
+    dataRoot, providerOrigin: nodeOrigin, catalog,
+    sourceRoot: options.libraryFiles?.sourceRoot ?? SAND_BOX_WORKSPACE_ROOT,
+    maxFileBytes: options.libraryFiles?.maxFileBytes ?? DEFAULT_MAX_LOCAL_EXEC_FILE_BYTES,
+  });
   const documents: DocumentsService = createDocumentsService({ dataRoot, catalog });
   const content = createLibraryContentStore({ dataRoot });
   const assets = createDocumentAssetService({
@@ -220,6 +231,7 @@ export function createLibraryHostService(options: LibraryExtensionOptions = {}) 
     const ids = options.transcript?.listAgentIds?.();
     if (!Array.isArray(ids) || !ids.includes(agentId)) return false;
     catalog.identity.assignAgent({ ...mainPrincipal, agentId }, true);
+    catalog.access.registerOwner({ kind: "agent", id: agentId }, mainPrincipal);
     return true;
   };
   const enrollTrustedAgents = async (signal: AbortSignal): Promise<readonly string[]> => {
@@ -228,6 +240,7 @@ export function createLibraryHostService(options: LibraryExtensionOptions = {}) 
     for (const agentId of ids) {
       catalog.identity.authenticate(context);
       catalog.identity.assignAgent({ ...context.principal, agentId }, true);
+      catalog.access.registerOwner({ kind: "agent", id: agentId }, context.principal);
     }
     return ids;
   };
@@ -249,10 +262,47 @@ export function createLibraryHostService(options: LibraryExtensionOptions = {}) 
   };
   const service = {
     catalog,
+    libraryFiles,
     nodeOrigin,
     dataRoot,
     mainCredential(): string { return ensureProvisioned(); },
     getLibraryOrigin(): string { return nodeOrigin; },
+    async listLibraryFiles(args: LibraryFileBinding & { scope: LibraryFileScope }, signal: AbortSignal) {
+      await requireAgent(withCredential(args.credential, signal), args.agentId);
+      return libraryFiles.list(args, args.scope, signal);
+    },
+    async readLibraryFile(args: LibraryFileBinding & { scope: LibraryFileScope; name: string }, signal: AbortSignal) {
+      await requireAgent(withCredential(args.credential, signal), args.agentId);
+      return libraryFiles.read(args, args.scope, args.name, signal);
+    },
+    async removeLibraryFile(args: LibraryFileBinding & { scope: LibraryFileScope; name: string }, signal: AbortSignal) {
+      await requireAgent(withCredential(args.credential, signal), args.agentId);
+      return libraryFiles.remove(args, args.scope, args.name, signal);
+    },
+    listLocalTeams(args: { credential: string }, signal: AbortSignal) {
+      return catalog.access.listTeams(withCredential(args.credential, signal));
+    },
+    checkLocalTeamAccess(args: { teamId: string; action: "view" | "manage"; credential: string }, signal: AbortSignal) {
+      const action = z.enum(["view", "manage"]).parse(args.action);
+      catalog.access.requireTeam(withCredential(args.credential, signal), args.teamId, action);
+      return { authorized: true };
+    },
+    createLocalTeam(args: { name: string; credential: string }, signal: AbortSignal) {
+      return catalog.access.createTeam(withCredential(args.credential, signal), args.name);
+    },
+    listLocalTeamMembers(args: { teamId: string; credential: string }, signal: AbortSignal) {
+      return catalog.access.listMembers(withCredential(args.credential, signal), args.teamId);
+    },
+    setLocalTeamMember(args: { teamId: string; accountId: string; principalId: string; role: "admin" | "member" | null; credential: string }, signal: AbortSignal) {
+      return catalog.access.setMember(withCredential(args.credential, signal), publicArgs(args));
+    },
+    getLocalAgentAccess(args: { agentId: string; credential: string }, signal: AbortSignal) {
+      enrollTrustedAgent(args.agentId);
+      return catalog.access.listGrants(withCredential(args.credential, signal), { kind: "agent", id: args.agentId });
+    },
+    setLocalAccessGrant(args: { grant: unknown; enabled: boolean; credential: string }, signal: AbortSignal) {
+      return catalog.access.setGrant(withCredential(args.credential, signal), args.grant, z.boolean().parse(args.enabled));
+    },
     executionBase(args: { readonly agentId: string }, signal: AbortSignal) {
       const credential = ensureProvisioned();
       const context = withCredential(credential, signal);
@@ -279,6 +329,38 @@ export function createLibraryHostService(options: LibraryExtensionOptions = {}) 
       const { agentId } = publicArgs(args);
       await requireAgent(context, agentId);
       return { docs: catalog.external.list(context, agentId), listedAtMs: Date.now() };
+    },
+    async listLibraryPins(args: { agentId: string; credential: string }, signal: AbortSignal) {
+      const context = withCredential(args.credential, signal);
+      const agentId = z.string().min(1).max(512).parse(args.agentId);
+      await requireAgent(context, agentId);
+      enrollTrustedAgent(agentId);
+      return catalog.pins.list(context, agentId);
+    },
+    async readVisualizationFragment(args: VisualizationReadArgs & { credential: string }, signal: AbortSignal) {
+      const parsed = visualizationReadArgsSchema.parse(publicArgs(args));
+      const context = withCredential(args.credential, signal);
+      await requireAgent(context, parsed.agentId);
+      if (!options.transcript?.readVisualizationFragment) throw new Error("Visualization storage is unavailable");
+      const fragment = await options.transcript.readVisualizationFragment(parsed);
+      await requireAgent(context, parsed.agentId);
+      if (fragment === null) throw new Error("This visual's saved page is no longer available");
+      return fragment;
+    },
+    async setLibraryPin(args: { agentId: string; pin: unknown; isPinned: boolean; credential: string }, signal: AbortSignal) {
+      const context = withCredential(args.credential, signal);
+      const agentId = z.string().min(1).max(512).parse(args.agentId);
+      const isPinned = z.boolean().parse(args.isPinned);
+      await requireAgent(context, agentId);
+      enrollTrustedAgent(agentId);
+      return catalog.pins.set(context, agentId, args.pin, isPinned);
+    },
+    async mergeLibraryPins(args: { agentId: string; pins: unknown; credential: string }, signal: AbortSignal) {
+      const context = withCredential(args.credential, signal);
+      const agentId = z.string().min(1).max(512).parse(args.agentId);
+      await requireAgent(context, agentId);
+      enrollTrustedAgent(agentId);
+      return catalog.pins.merge(context, agentId, args.pins);
     },
     async getDocument(args: LibraryArgs<"getDocument"> & { credential: string }, signal: AbortSignal) {
       return documents.getDocument(publicArgs(args), withCredential(args.credential, signal));
@@ -317,7 +399,7 @@ export function createLibraryHostService(options: LibraryExtensionOptions = {}) 
       const { credential, agentId, storeId, toolCallId, idempotencyKey } = args.execution;
       const { context, execution } = executionFor(credential, agentId, storeId, toolCallId, idempotencyKey, signal);
       await requireAgent(context, agentId);
-      catalog.identity.assignAgent({ ...context.principal, agentId }, true);
+      enrollTrustedAgent(agentId);
       const published = await producer.publishNativeArtifact(args.input, execution);
       invalidate();
       return published;
@@ -349,12 +431,13 @@ export function createLibraryHostService(options: LibraryExtensionOptions = {}) 
     async runMcpExecution<T>(args: { credential: string; agentId: string; storeId: string; toolCallId: string; connectorAccount: string }, signal: AbortSignal, work: () => T): Promise<T> {
       const context = withCredential(args.credential, signal);
       await requireAgent(context, args.agentId);
-      catalog.identity.assignAgent({ ...context.principal, agentId: args.agentId }, true);
+      catalog.identity.requireAgent(context, args.agentId, "use");
+      enrollTrustedAgent(args.agentId);
       catalog.identity.requireOwner(context, args.storeId);
       return runWithLibraryMcpExecution({ ...context, agentId: args.agentId, storeId: args.storeId, toolCallId: args.toolCallId, idempotencyKey: `mcp:${args.toolCallId}`, connectorAccount: args.connectorAccount }, work);
     },
     enrollTrustedAgents,
-    dispose(): void { unregisterHook(); unsubscribeIdentity(); invalidate(); catalog.close(); },
+    dispose(): void { unregisterHook(); unsubscribeIdentity(); invalidate(); libraryFiles?.close(); catalog.close(); },
     async readTranscriptEntries(args: { agentId: unknown; cursor?: unknown; limit?: unknown; credential: string }, signal: AbortSignal): Promise<unknown> {
       const agentId = typeof args.agentId === "string" && args.agentId.length > 0 ? args.agentId : null;
       if (agentId === null) throw new LibraryContractError("invalid-argument", "Library transcript requires an agent id.");
@@ -408,7 +491,7 @@ export const libraryExtension = defineHostExtension({
   id: HostExtensions.Library,
   dependencies: [HostExtensions.Transcript],
   start: async (context) => {
-    const deps = context.deps as { transcript: { getAgentTranscriptPage(agentId: string, query: unknown): unknown; listAgentIds?(): readonly string[] | Promise<readonly string[]> } };
+    const deps = context.deps as { transcript: NonNullable<LibraryExtensionOptions["transcript"]> };
     const transcript = deps.transcript;
     const service = createLibraryHostService({ transcript });
     let receiver: LibraryHttpHandle | undefined;

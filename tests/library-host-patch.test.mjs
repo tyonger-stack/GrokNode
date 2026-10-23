@@ -23,6 +23,8 @@ const syntheticSource = `const _a = {${LIBRARY_HOST_ANCHOR}};\nconsole.log("over
 test("host bundle renders inside the overview tree", async () => {
   const bundle = await buildLibraryHostBundle();
   assert.ok(bundle.includes("RLibraryHost"));
+  assert.ok(bundle.includes("sand-library-hover-card"));
+  assert.ok(bundle.includes("grok_bot_library_hover_cards"));
   assert.ok(bundle.includes("DOMObserver"), "the real editor remains in the host bundle");
   assert.ok(!bundle.includes("createRoot("));
   assert.ok(bundle.includes(LIBRARY_HOST_CALL.slice(0, 20)) || bundle.includes("RLibraryHost"));

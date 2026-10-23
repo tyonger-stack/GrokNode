@@ -6,8 +6,10 @@ import path from "node:path";
 const out = mkdtempSync(path.resolve("node_modules/.cache/library-gates-"));
 test.after(() => rmSync(out, { recursive: true, force: true }));
 await build({entryPoints:[path.resolve("source/shared/library/feature-gates.ts")],bundle:true,platform:"node",format:"esm",outfile:path.join(out,"gates.mjs"),logLevel:"silent"});
+await build({entryPoints:[path.resolve("source/shared/node/port-0721-features.ts")],bundle:true,platform:"node",format:"esm",outfile:path.join(out,"local-0721-features.mjs"),logLevel:"silent"});
 await build({entryPoints:[path.resolve("source/electron-main/adapters/production-experiments-binding.ts")],bundle:true,platform:"node",format:"esm",external:["electron"],outfile:path.join(out,"binding.mjs"),logLevel:"silent"});
 const gates = await import(path.join(out,"gates.mjs"));
+const localFeatures = await import(path.join(out,"local-0721-features.mjs"));
 const binding = await import(path.join(out,"binding.mjs"));
 test("all four modern Library branches default available through the production gate API", async () => {
   const service = await binding.createElectronProductionExperimentsBinding().create();
@@ -39,10 +41,11 @@ test("generic override parsing matches established malformed comma semantics", (
   assert.equal(gates.resolveLibraryFeatureGate("grok_bot_library_pages", { SAND_FEATURE_GATE_OVERRIDES: "grok_bot_library_pages" }), false);
   assert.equal(gates.resolveLibraryFeatureGate("grok_bot_documents_ui", { SAND_FEATURE_GATE_OVERRIDES: "other=1" }), true);
 });
-test("the local snapshot remains empty while direct gate queries expose Node branches", async () => {
+test("the local snapshot carries the local feature gates while direct gate queries expose Node branches", async () => {
   const service = await binding.createElectronProductionExperimentsBinding().create();
   try {
-    assert.deepEqual(service.getSnapshot(), {});
+    assert.deepEqual(service.getSnapshot(), { featureGates: localFeatures.local0721FeatureSnapshot() });
+    assert.equal(service.getSnapshot().featureGates.sand_enable_local_cua, true);
     assert.equal(service.checkFeatureGate("grok_bot_library_v2"), true);
     assert.equal(service.checkFeatureGate("not_a_registered_original_gate"), false);
   } finally { await service.dispose(); }

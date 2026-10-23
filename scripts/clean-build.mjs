@@ -71,6 +71,8 @@ import { applyOriginalRendererDownloadAll } from "./lib/download-all-renderer-pa
 import { applyOriginalRendererUndeliveredSend } from "./lib/undelivered-send-renderer-patch.mjs";
 import { applyOriginalRendererReadFailureRetry } from "./lib/read-failure-retry-renderer-patch.mjs";
 import { applyOriginalRendererSidebarRenameMenu } from "./lib/sidebar-rename-menu-renderer-patch.mjs";
+import { applyDesktopMountRenderer0721 } from "./lib/desktop-mount-renderer-0721.mjs";
+import { applyPort0750RendererPatch } from "./lib/port-0750-renderer-patch.mjs";
 import { applyOriginalRendererSidebarHiddenSection } from "./lib/sidebar-hidden-section-renderer-patch.mjs";
 import { applyOriginalRendererFailureCopy } from "./lib/failure-copy-renderer-patch.mjs";
 import { applyOriginalRendererCouldntReachComfort } from "./lib/couldnt-reach-comfort-renderer-patch.mjs";
@@ -404,6 +406,7 @@ export async function buildFidelityReconstructedAsar({
   // 0.71.2 "Rename chat / Rename Bot" sidebar context-menu entry. Emits RLocT calls, so it
   // must land before main-i18n appends the RLocT runtime.
   await applyOriginalRendererSidebarRenameMenu({ stageRoot });
+  await applyDesktopMountRenderer0721({ stageRoot });
   // 0.71.2 inline Hidden Bots section + "Show in sidebar". Depends on the rename pass's
   // post-patch fcn/udn memo sizes; emits RLocT, so it must precede main-i18n.
   await applyOriginalRendererSidebarHiddenSection({ stageRoot });
@@ -424,6 +427,10 @@ export async function buildFidelityReconstructedAsar({
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
+  // After i18n so the injected host source is not rewritten. The general-panel
+  // anchor survives the router patch, and the plugins-list anchor is untouched
+  // by the view-chunk passes above.
+  await applyPort0750RendererPatch({ stageRoot });
   await applyOriginalRendererLanguagePatch({ stageRoot });
   // Hardware acceleration toggle: lands in Sa()'s `r` slot after Language (Fragment).
   // Depends on the Language Sa slot rewrite above; independent of i18n (bilingual inline).

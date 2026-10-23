@@ -1,4 +1,6 @@
 import { dirname } from "node:path";
+import { resolveLocal0721Feature } from "../shared/node/port-0721-features.js";
+import { BoxFileTooLargeError } from "./runner/tools/visualize-tool.js";
 import { createContext } from "../packages/context/core.js";
 import { TranscriptManager } from "./extensions/transcript/transcript-manager.js";
 import { createReviewInteractions } from "./review-interactions-service.js";
@@ -100,6 +102,7 @@ import { LOCAL_AUTO_COMPACT_TOKEN_LIMIT, readOpenRouterModelContextWindow } from
 import { localBackgroundSummarizationPropsForWindow } from "../packages/agent-summarization/background-summarization.js";
 import { SAND_COMPACTION_DELIVERY_TAIL } from "../packages/agent-summarization/delivery-tail.js";
 import { LIBRARY_MAIN_STORE } from "./extensions/library/extension.js";
+import type { LibraryFilesService } from "./extensions/library/library-files.js";
 import { captureLibraryMcpExecution } from "../shared/library/mcp-result-hook.js";
 import { CONNECTOR_MANIFESTS } from "../shared/channels.js";
 import { parseStoredTrigger } from "./automations/automation-trigger.js";
@@ -2146,6 +2149,17 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                   }),
             };
       return {
+        ...(resolveLocal0721Feature("sand_enable_visualizations") !== true ? {} : { visualization: {
+          agentId: session.id,
+          agentDir: dirname(session.dbPath),
+          readBoxFile: async (ctx: import("../packages/context/core.js").Context, file: string, maxBytes: number) => {
+            if (downloadFile === undefined) throw new Error("The computer file reader is unavailable");
+            const bytes: unknown = await downloadFile(ctx, session.id, file);
+            if (!(bytes instanceof Uint8Array)) throw new Error("The visual fragment file could not be read");
+            if (bytes.byteLength > maxBytes) throw new BoxFileTooLargeError();
+            return bytes;
+          },
+        } }),
         isMultitaskEnabled: () =>
           method(experiments, "isMultitaskEnabled")?.() ?? false,
         sendMessage,
@@ -2212,6 +2226,17 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
           : { userAutoRunInstructions: scopedUserAutoRunInstructions }),
       };
       const provider: TurnToolsetHostFactoryProvider = {
+      createLibraryFilesPort: () => {
+        const library = extensions.api("library") as { libraryFiles?: LibraryFilesService } | undefined;
+        const credentialOf = method(library, "mainCredential");
+        if (library?.libraryFiles === undefined || credentialOf === undefined) return undefined;
+        return library.libraryFiles.forExecution(
+          { credential: credentialOf(), agentId, storeId: LIBRARY_MAIN_STORE },
+          isSharedRoomTurn
+            ? { defaultScope: "bot", privateScopeOffered: false }
+            : { defaultScope: "private", privateScopeOffered: false },
+        );
+      },
       createReviewInteractionTools: turn => {
         const requestId = reviewTurnIds.get(agentId);
         if (reviewInteractions === undefined || requestId === undefined || isSharedRoomTurn || turn.endThisRunAwaitingUser === undefined) return [];

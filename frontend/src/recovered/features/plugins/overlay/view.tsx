@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { PluginsOverlayParams } from "./entrypoint";
 import { PluginsBrowser, type PluginsBrowserProps } from "./browser";
 
@@ -33,14 +33,16 @@ export function createPluginsOverlayView(
 export interface PluginsDialogShellProps extends PluginsBrowserProps {
   isOpen: boolean;
   onClose(): void;
+  extras?: ReactNode;
 }
 
-export function PluginsDialogShell({ isOpen, onClose, ...browserProps }: PluginsDialogShellProps) {
+export function PluginsDialogShell({ isOpen, onClose, extras = null, ...browserProps }: PluginsDialogShellProps) {
   if (!isOpen) return null;
   return (
     <div aria-label="Plugins" aria-modal="true" className="sand-plugins-dialog" role="dialog">
       <button aria-label="Close" className="sand-plugins-dialog__close" onClick={onClose} type="button">×</button>
       <PluginsBrowser {...browserProps} />
+      {extras}
     </div>
   );
 }

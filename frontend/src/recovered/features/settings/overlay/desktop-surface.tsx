@@ -28,6 +28,7 @@ import {
   type SettingsDesktopSnapshot
 } from "./desktop";
 import { GeneralSettingsPanel, RouterSettingsPanel, UpdatesSettingsPanel, UsageSettingsPanel } from "./panels";
+import { Port0750SettingsExtras } from "./port-0750-extras";
 import { SettingsModalShell, type SettingsSectionId } from "./view";
 import { DEFAULT_ROUTER_PROVIDER, loadBackendRouterProvider, loadRouterProvider, saveBackendRouterProvider, saveRouterProvider, type RouterProviderId } from "./router";
 import type { AutoReviewSettings } from "./auto-review";
@@ -203,31 +204,34 @@ export function SettingsDesktopSurface({ bridge, coordinatorClient = null, initi
           </div>
         );
         if (section === "general") return (
-          <GeneralSettingsPanel
-            autoReview={{
-              settings: snapshot.autoReview,
-              onChange: (settings) => mutate(() => saveAutoReviewSettings(bridge, settings), "settings-auto-review", updateAutoReview)
-            }}
-            onThemeChange={(theme) => mutate(() => setThemePreference(bridge, theme), "settings-theme", (state) => updateTheme(state.preference))}
-            language={{
-              preference: snapshot.language,
-              onChange: (preference) => mutate(() => setLanguagePreference(bridge, preference), "settings-language", (state) => updateLanguage(state.preference))
-            }}
-            localToolPermission={{
-              state: snapshot.localToolPermission,
-              onChange: (permission) => mutate(() => setLocalToolPermission(bridge, permission), "settings-local-tool-permission", updateLocalToolPermission)
-            }}
-            securityKey={{
-              enabled: snapshot.securityKeyEnabled,
-              onChange: (enabled) => mutate(() => setSecurityKeyEnabled(bridge, enabled), "settings-security-key", updateSecurityKey),
-              platform: bridge.platform
-            }}
-            timeZone={{
-              state: snapshot.timeZone,
-              onChange: (timeZone) => mutate(() => setTimeZoneOverride(bridge, timeZone), "settings-time-zone", updateTimeZone)
-            }}
-            theme={snapshot.theme}
-          />
+          <>
+            <GeneralSettingsPanel
+              autoReview={{
+                settings: snapshot.autoReview,
+                onChange: (settings) => mutate(() => saveAutoReviewSettings(bridge, settings), "settings-auto-review", updateAutoReview)
+              }}
+              onThemeChange={(theme) => mutate(() => setThemePreference(bridge, theme), "settings-theme", (state) => updateTheme(state.preference))}
+              language={{
+                preference: snapshot.language,
+                onChange: (preference) => mutate(() => setLanguagePreference(bridge, preference), "settings-language", (state) => updateLanguage(state.preference))
+              }}
+              localToolPermission={{
+                state: snapshot.localToolPermission,
+                onChange: (permission) => mutate(() => setLocalToolPermission(bridge, permission), "settings-local-tool-permission", updateLocalToolPermission)
+              }}
+              securityKey={{
+                enabled: snapshot.securityKeyEnabled,
+                onChange: (enabled) => mutate(() => setSecurityKeyEnabled(bridge, enabled), "settings-security-key", updateSecurityKey),
+                platform: bridge.platform
+              }}
+              timeZone={{
+                state: snapshot.timeZone,
+                onChange: (timeZone) => mutate(() => setTimeZoneOverride(bridge, timeZone), "settings-time-zone", updateTimeZone)
+              }}
+              theme={snapshot.theme}
+            />
+            <Port0750SettingsExtras bridge={bridge} coordinator={coordinatorClient} />
+          </>
         );
         if (section === "usage") return (
           <UsageSettingsPanel

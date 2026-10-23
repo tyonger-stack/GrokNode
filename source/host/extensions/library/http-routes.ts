@@ -23,6 +23,7 @@ const SESSION_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 export type LibraryHttpRoute =
   | { readonly kind: "session" }
+  | { readonly kind: "rpc" }
   | { readonly kind: "document"; readonly storeId: string; readonly documentId: string; readonly variant: "page" | "raw" }
   | { readonly kind: "document-asset"; readonly storeId: string; readonly documentId: string; readonly name: string }
   | { readonly kind: "canvas"; readonly storeId: string; readonly canvasId: string; readonly variant: "page" | "payload"; readonly theme: "light" | "dark" };
@@ -30,6 +31,7 @@ export type LibraryHttpRoute =
 export function libraryHttpRouteMethod(route: LibraryHttpRoute): readonly string[] {
   switch (route.kind) {
     case "session": return ["POST", "DELETE"];
+    case "rpc": return ["POST"];
     case "document":
     case "document-asset":
     case "canvas": return ["GET"];
@@ -88,6 +90,7 @@ export function parseLibraryHttpRoute(method: string, target: string): LibraryHt
   if (segments.length === 2 && segments[1] === "session") {
     return rawQuery === "" ? { kind: "session" } : null;
   }
+  if (rawPath === "/rpc" && rawQuery === "") return { kind: "rpc" };
   if (segments.length >= 4 && segments[1] === "documents") {
     const storeId = decodeSegment(segments[2], libraryStoreIdSchema);
     const documentId = decodeSegment(segments[3], documentIdSchema);
