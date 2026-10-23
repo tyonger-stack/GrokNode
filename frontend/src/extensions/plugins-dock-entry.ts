@@ -20,6 +20,10 @@
 export {};
 
 import { createMarketplaceController } from "./marketplace/index.js";
+import { footerAdapterCss, installFooterAdapter } from "./account-footer-0753/adapter.js";
+import { connectedLayout } from "./account-footer-0753/connected-apps.js";
+
+let footerAdapter: ReturnType<typeof installFooterAdapter> | null = null;
 
 const STYLE_ELEMENT_ID = "sand-plugins-dock-style";
 const ENTRY_SELECTOR = ".sand-agents-sidebar__plugins-entry";
@@ -417,10 +421,12 @@ function ensureStyles(): void {
       `.${RAIL_BUTTON_CLASS} ${selector}{${declarations}}`,
     ]),
   ].join("");
+  style.textContent = `@scope (:root) to (.sand-footer-0753){${style.textContent}}${footerAdapterCss}`;
   document.head.append(style);
 }
 
 type DockCatalogEntry = {
+  readonly isPublicListed?: unknown;
   readonly id?: unknown;
   readonly name?: unknown;
   readonly pluginName?: unknown;
@@ -431,6 +437,8 @@ type DockServer = { readonly name?: unknown; readonly pluginId?: unknown };
 type DockMcpBridge = {
   catalog(): Promise<readonly DockCatalogEntry[]>;
   list(): Promise<{ servers?: readonly DockServer[] }>;
+  effectivePlugins?(): Promise<readonly unknown[]>;
+  onAuthCompleted?(listener: (payload: unknown) => void): () => void;
 };
 
 function getDockMcp(): DockMcpBridge | null {
@@ -483,6 +491,7 @@ function pickSuggestedLogos(
   const suggestions: DockCatalogEntry[] = [];
   for (const entry of catalog) {
     if (entry.id == null || configured.has(String(entry.id))) continue;
+    if (entry.isPublicListed === false) continue;
     const iconUrl = typeof entry.iconUrl === "string" ? entry.iconUrl : "";
     if (iconUrl.length === 0) continue;
     suggestions.push(entry);
@@ -572,6 +581,7 @@ function ensureButtonSurface(): HTMLButtonElement | null {
     button.append(logos);
   }
   applyClasses(logos, OFFICIAL_LOGOS_WRAPPER_CLASSES);
+  footerAdapter?.sync();
   return button;
 }
 
@@ -693,7 +703,8 @@ function ensureRailButton(): HTMLButtonElement | null {
   }
 
   // Upstream order: `__rail-new`, then the market row, then `__footer`.
-  if (wrapper.nextElementSibling !== footer) sidebar.insertBefore(wrapper, footer);
+  const footerRow = footer.closest(".sand-footer-0753") ?? footer;
+  if (wrapper.nextElementSibling !== footerRow) sidebar.insertBefore(wrapper, footerRow);
   return wrapper.querySelector<HTMLButtonElement>("button");
 }
 
@@ -749,32 +760,58 @@ function hideSignOutRow(): void {
   }
 }
 
-async function refreshSuggestedLogos(): Promise<void> {
+let refreshRevision = 0;
+let refreshTask: Promise<void> | null = null;
+let disposed = false;
+const renderedLogos = new WeakMap<HTMLElement, string>();
+
+async function refreshSuggestedLogos(revision: number): Promise<void> {
   const button = ensureButtonSurface();
   const logos = button?.querySelector<HTMLElement>(`.${LOGOS_CLASS}`);
   const mcp = getDockMcp();
   if (logos == null || mcp == null) return;
   try {
-    const [{ servers = [] }, catalog] = await Promise.all([mcp.list(), mcp.catalog()]);
+    const [{ servers = [] }, catalog, effectivePlugins] = await Promise.all([
+      mcp.list(), mcp.catalog(), mcp.effectivePlugins?.().catch(() => undefined),
+    ]);
+    if (disposed || revision !== refreshRevision || !logos.isConnected) return;
+    footerAdapter?.setLayout(connectedLayout({servers, catalog, effectivePlugins}));
     const configured = configuredCatalogIds(servers, catalog);
     const suggestions = pickSuggestedLogos(catalog, configured);
+    const signature = JSON.stringify(suggestions.map(entry => [entry.id,entry.displayName,entry.iconUrl]));
+    if (renderedLogos.get(logos) === signature) return;
     const stack = document.createElement("span");
     applyClasses(stack, OFFICIAL_LOGO_STACK_CLASSES);
     suggestions.forEach((entry, index) => {
       stack.append(buildLogo(entry, index, suggestions.length));
     });
     logos.replaceChildren(stack);
+    renderedLogos.set(logos,signature);
   } catch {
+    if (disposed || revision !== refreshRevision || !logos.isConnected) return;
+    footerAdapter?.setLayout(connectedLayout(undefined));
     logos.replaceChildren();
+    renderedLogos.delete(logos);
   }
 }
 
 let refreshTimer: number | null = null;
 function scheduleRefresh(): void {
+  if (disposed) return;
+  refreshRevision++;
   if (refreshTimer != null) return;
   refreshTimer = window.setTimeout(() => {
     refreshTimer = null;
-    void refreshSuggestedLogos();
+    if (refreshTask != null || disposed) return;
+    const drain = async (): Promise<void> => {
+      let revision: number;
+      do {
+        revision = refreshRevision;
+        await refreshSuggestedLogos(revision);
+      } while (!disposed && revision !== refreshRevision);
+    };
+    refreshTask = drain().finally(() => {refreshTask = null;});
+    void refreshTask.catch(() => undefined);
   }, 80);
 }
 
@@ -784,6 +821,7 @@ function install(): void {
   interceptPillClick();
   syncRailButton();
   scheduleRefresh();
+  footerAdapter = installFooterAdapter(document);
   // Only react to the upstream row being (re)inserted. A blanket `subtree` callback re-enters this
   // extension's own DOM writes, which is what turns a refresh into an endless mutation loop.
   const observer = new MutationObserver((records) => {
@@ -795,7 +833,7 @@ function install(): void {
         record.type === "attributes"
         && record.attributeName === "data-sidebar-collapsed"
         && record.target instanceof HTMLElement
-        && record.target.matches(COLLAPSED_SELECTOR)
+        && record.target.matches(".sand-shell")
       ) {
         syncRailButton();
         return;
@@ -840,7 +878,22 @@ function install(): void {
     attributeFilter: ["data-sidebar-collapsed"],
   });
   window.addEventListener("sand-marketplace-changed", () => scheduleRefresh());
-  window.addEventListener("beforeunload", () => observer.disconnect());
+  const unsubscribeAuth = getDockMcp()?.onAuthCompleted?.(() => scheduleRefresh());
+  const refreshVisible = (): void => {if (!document.hidden) scheduleRefresh();};
+  const refreshInterval = window.setInterval(refreshVisible, 5000);
+  window.addEventListener("focus", refreshVisible);
+  document.addEventListener("visibilitychange", refreshVisible);
+  window.addEventListener("beforeunload", () => {
+    disposed = true;
+    refreshRevision++;
+    if (refreshTimer != null) window.clearTimeout(refreshTimer);
+    window.clearInterval(refreshInterval);
+    window.removeEventListener("focus", refreshVisible);
+    document.removeEventListener("visibilitychange", refreshVisible);
+    unsubscribeAuth?.();
+    observer.disconnect();
+    footerAdapter?.dispose();
+  });
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install, { once: true });

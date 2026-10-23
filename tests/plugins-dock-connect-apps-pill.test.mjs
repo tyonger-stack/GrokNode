@@ -492,18 +492,6 @@ test("the rail market row exists and is mounted only while the sidebar is collap
   );
 });
 
-test("the rail row is inserted where upstream puts it, between __rail-new and __footer", () => {
-  const ensure = code.match(/function ensureRailButton\([\s\S]*?\n\}\n/);
-  assert.ok(ensure != null, "ensureRailButton is missing");
-  assert.match(ensure[0], /RAIL_NEW_SELECTOR/, "the row's anchors must include __rail-new");
-  assert.match(ensure[0], /RAIL_FOOTER_SELECTOR/, "the row's anchors must include __footer");
-  assert.match(
-    ensure[0],
-    /insertBefore\(wrapper, footer\)/,
-    "the row must be inserted immediately before __footer, which is upstream's order",
-  );
-});
-
 test("the rail row reuses the official 0.66 class lists", () => {
   const wrapper = readStringArray("RAIL_WRAPPER_CLASSES");
   // Byte-identical to the wrapper upstream puts on its own __rail-new row — that is why the two

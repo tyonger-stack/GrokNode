@@ -1,0 +1,26 @@
+{
+  "version": "0.75.3",
+  "sourceRoot": "/Users/Apple/Documents/grokbot/rea-grokbot-0753/account-switch",
+  "sha256": {
+    "footer-original-0753.js": "bbf2002dde2229e33f9dcf2bb4f4ae3c7ecc940593431ca38de079da0b0ee5a1",
+    "footer-imports-0753.js": "a4b1cb45a7c3f0d582e7ffc47d61330c547326ef6fdc20f18e633eaf6f63d01c",
+    "renderer-original-0753.css": "f427579fa76c117aaea459e52ef2340b2bb674b8ed3e02d292bad87cdd671a43",
+    "source-identity.json": "53e9bf4c14e2a54b024759d4a8d09a88047e651ebeafb4b9ced485c338c52407"
+  },
+  "fixtureSha256": {
+    "footer-original-0753.js": "2151488613fb723100579bf267cca78108ec08fd85e6658393e49df6cb3769dd",
+    "footer-imports-0753.js": "b5a46a5147d97ce71e531ca738ead5ea1c1372da73b7c542481f9235111e35c4",
+    "source-identity.json": "53e9bf4c14e2a54b024759d4a8d09a88047e651ebeafb4b9ced485c338c52407"
+  },
+  "fixtureNormalization": "apply_patch adds a terminal newline; all other source text is unchanged",
+  "rawMainSha256": "952696656fa99b6631d0d0d4acdb7372fbb62b3a28f0e20c89f2baa340a250bb",
+  "originalRulesSha256": "478ee138b3fe3a24c2a0fabcc86ec3b91a8794892ae2bc3ca1d761865c0cce07",
+  "counterThresholdSource": "function Wae(e){let t=e?.min_connected_apps;return typeof t==`number`&&Number.isSafeInteger(t)&&t>0?t:4}",
+  "counterBridge": "Literal b/y/h/v and pure dependencies consume local mcp.list/catalog/effectivePlugins snapshots; unavailable or malformed snapshots use labeled. No experiments bridge: literal Wae(undefined) defaults to 4.",
+  "counterSourcesSha256": {
+    "chunk-plugins-effective-De7yeIfR.js": "3b3f1d6236adaaf5fef6344ae33b3b3df84895a09732118d2b84c92b54d65f02",
+    "chunk-plugins-model-D6HHUISe.js": "b2766c1210be6b59631775ed1a474898432f6278811e07c736d36b8dd5e38533",
+    "chunk-finance-BZiqa0s3.js": "c0c1421570a3e220b334c852dcac7c574a937c65ea298d338d7a6140e851e12c"
+  },
+  "cssAdaptation": "Select class rules used by Ak, Nk, eGe and GWe. Unwrap layers; prepend .sand-footer-0753 to selectors; preserve declarations and conditional at-rules."
+}

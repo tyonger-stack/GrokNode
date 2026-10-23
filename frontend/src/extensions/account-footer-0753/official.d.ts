@@ -1,0 +1,21 @@
+export type Target = "account" | "connect" | "update" | null;
+export type Layout = "labeled" | "iconsOnly";
+type Recipe = Readonly<Record<string, string | boolean>>;
+export const Ak: Record<string, Recipe>;
+export const Nk: Record<string, Recipe>;
+export const Jb: {body1: Recipe};
+export const Yb: {medium: Recipe};
+export const sS: {controlRing: Recipe};
+export function compose(...recipes: (Recipe | false)[]): string;
+export function jGe(previous: Target, target: Target, engaged: boolean): Target;
+export function nWe(count: number | undefined, threshold: number): Layout;
+export function deriveEngagement(input: {pointer: Target; focus: Target; menuOpen: boolean; accountAvailable: boolean; updateAvailable: boolean; layout: Layout}): {pointer: Target; focus: Target; engaged: Target; nameAtRest: boolean};
+type Slot = {className: string; "data-icon-shown"?: boolean};
+export function surface(input: {isCrowded?: boolean; isYielding?: boolean; isEngaged?: boolean; layout?: Layout; logoCount?: number; label?: string}): {
+  className: string;
+  "data-expanded"?: boolean;
+  "data-folded"?: "logos" | "icon";
+  "data-icons-only"?: boolean;
+  "data-yielding"?: boolean;
+  children: [Slot, Slot, Slot];
+};

@@ -1,6 +1,7 @@
 import { buildBotTemplateRendererExtension } from "./bot-template-renderer-extension.mjs";
 import { buildChannelStatusRendererExtension } from "./channel-status-renderer-extension.mjs";
 import { buildPluginsDockRendererExtension } from "./plugins-dock-renderer-extension.mjs";
+import { patchAccountFooter0753 } from "./account-footer-0753-patch.mjs";
 import { buildWebhookCredentialRendererExtension } from "./webhook-credential-renderer-extension.mjs";
 import { buildInfoPaneTabsRendererExtension, patchNativeInfoPaneTabs } from "./info-pane-tabs-renderer-extension.mjs";
 import { buildLibraryHostBundle, patchOriginalLibraryHost } from "./library-host-renderer-patch.mjs";
@@ -297,6 +298,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     let aboutVersionDialectUsed = null;
     for (const transform of transforms) patched = transform(patched);
     if (isRegistry) {
+      patched = patchAccountFooter0753(patched);
       patched = patchNativeInfoPaneTabs(patched);
       // Fail closed: the registry chunk MUST carry one of the two known About dialects.
       // Silent pass-through previously shipped an un-pinned version line.
@@ -327,6 +329,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const record = {
     schemaVersion: 1,
     mode: "original-renderer-settings-extension",
+    accountFooter: { version: "0.75.3", fixture: "frontend/src/extensions/account-footer-0753/upstream/provenance.json", adapter: "original React account/plugins nodes in a shared footer row; official engagement and style recipes" },
     chunks: changes,
     features: ["settings-router-provider", "settings-local-docker-vm", "settings-router-effort", "usage-current-provider", "local-account-menu", "bot-template-preview-confirmation", "auto-review-always-allow", "channel-status-light", "plugins-footer-dock", "about-title-pinned", "about-version-pinned", "webhook-credential-copy", "routine-row-toggle", "routine-detail-panel", "agent-library-documents", "info-pane-tabs", "auto-review-edit-rule", "auto-review-rule-notice"],
     transformations: ["settings-registry", "router-panel", "router-effort-card", "usage-panel", "remove-account-help-feedback", "remove-general-account", "append-local-bot-template-preview", "append-channel-status-light", "append-plugins-footer-dock", "pin-about-title", "pin-about-version-line", "append-webhook-credential-copy", "guard-webhook-trigger-form", "routine-list-row-switch", "routine-detail-surface", "fail-closed-always-allow", "append-agent-library-documents", "append-info-pane-tabs", "auto-review-edit-rule", "auto-review-rule-notice", "auto-review-settings-opener"],
