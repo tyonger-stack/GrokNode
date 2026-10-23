@@ -13,8 +13,8 @@ import { packStagedAppWithIntegrity } from "./asar-integrity.mjs";
 import { resolveRuntimeApp } from "./runtime.mjs";
 
 export const reconstructedUpdaterGuard = [
-  "// Reconstructed-build guard: do not consume official update or telemetry services.",
-  "process.env.SAND_DISABLE_UPDATES ??= \"1\";",
+  "// Reconstructed-build guard: updates come from this repo's GitHub Releases,",
+  "// never from the official Cursor update endpoint; Sentry/telemetry stay off.",
   "process.env.SAND_DISABLE_SENTRY ??= \"1\";",
   "process.env.SAND_DISABLE_TELEMETRY ??= \"1\";",
   ""

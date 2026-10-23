@@ -52,6 +52,12 @@ export type DesktopUpdateState =
   | { type: "staging"; version: string }
   | { type: "ready"; version: string; lastCheck?: { at: number; result: "up-to-date" | "error"; errorMessage?: string } };
 
+export interface DesktopGitHubReleaseInfo {
+  version: string;
+  releaseUrl: string;
+  downloadUrl: string;
+}
+
 export interface DesktopUpdateStatus {
   state: DesktopUpdateState;
   currentVersion: string;
@@ -63,6 +69,9 @@ export interface DesktopUpdateStatus {
   isBelowMinimumVersion: boolean;
   autoUpdateWhenIdleOptIn: boolean;
   autoUpdateWhenIdleGateEnabled: boolean;
+  /** Reconstructed GitHub Releases feed metadata (absent until a check resolves an offer). */
+  releasesUrl?: string;
+  githubRelease?: DesktopGitHubReleaseInfo | null;
 }
 
 export interface DesktopAutoReviewInstructions {
