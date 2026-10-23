@@ -1,9 +1,10 @@
 {
   "version": "0.70.2",
+  "patchedFor": "Grok Bot 0.75.3 pumpkin shape",
   "asarSha256": "8dd7b6c4a58439d626a9a7b3766982b7c725db2bc1f6ff68a29fc1ec62ca4cf7",
   "sourceFile": "index.eager-platform-DUN5VkaE.js",
   "sourceSha256": "560912e771f4989101d04ad06dca024cd1c0513cbdcad122222d9a6bd1df1183",
-  "engineSha256": "c095282ae4febc23113382fd123380ddbc2d7a2d17ca22985ed51fe906ababa9",
+  "engineSha256": "3f751fe1dcf5a4d4056b911642110d41a897c50f97d4c5af0c088f11c2564ba4",
   "shapes": [
     "blob",
     "cloud",
@@ -17,7 +18,8 @@
     "wedge",
     "house",
     "star",
-    "hex"
+    "hex",
+    "pumpkin"
   ],
   "fillScale": 1.5333333333333334,
   "declarations": [

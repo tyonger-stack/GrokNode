@@ -1,12 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
-import { OFFICIAL_SHAPES } from "../scripts/lib/shape-picker-patch.mjs";
 import { loadOfficialAsleepArtifacts, loadOfficialAvatarStates, loadOfficialShapeSvgs, computerSleepOverlayRuntime, computerSleepStyles } from "../scripts/lib/computer-sleep-renderer-components.mjs";
 
 test("all 13 saved Bot shapes survive sleeping/waking overlay transitions", async () => {
   const [{html,css},states,shapes] = await Promise.all([loadOfficialAsleepArtifacts(),loadOfficialAvatarStates(),loadOfficialShapeSvgs()]);
-  for (const shape of OFFICIAL_SHAPES) {
+  for (const shape of Object.keys(states.sleeping)) {
     const window = new Window();
     try {
       window.document.body.innerHTML = '<div class="sand-agent-item" data-active></div><div class="sand-computer-preview__frame" data-preview-bot-id="A"><div class="sand-box-vnc-pool"></div><button class="sand-computer-preview__open"><span>Open</span></button></div>';

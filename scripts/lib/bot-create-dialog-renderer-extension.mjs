@@ -31,9 +31,9 @@ export const BOT_CREATE_STYLE = `
 .r-create-bot-shape-row{display:flex;align-items:center;justify-content:center;gap:14px}
 .r-create-bot-shape{position:relative;display:flex;align-items:center;justify-content:center;width:48px;height:48px;padding:0;color:var(--sand-text-primary);background:transparent;border:0;border-radius:0;cursor:pointer}
 .r-create-bot-shape:focus-visible{outline:2px solid var(--sand-border-focus);outline-offset:2px}
-.r-create-bot-shape-outline{position:absolute;inset:-4px;pointer-events:none;background:var(--sand-text-secondary);opacity:0;-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
-.r-create-bot-shape:hover .r-create-bot-shape-outline{opacity:.55}
-.r-create-bot-shape[aria-pressed=true] .r-create-bot-shape-outline{opacity:1}
+.r-create-bot-shape-outline{position:absolute;pointer-events:none;background:var(--sand-border-secondary-translucent,var(--sand-border-default));opacity:0;-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
+.r-create-bot-shape:hover .r-create-bot-shape-outline{opacity:1}
+.r-create-bot-shape[aria-pressed=true] .r-create-bot-shape-outline{background:var(--sand-border-primary-translucent,var(--sand-text-secondary));opacity:1}
 .r-create-bot-colors{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;align-self:center;gap:10px 12px;padding:8px 0;max-width:260px}
 .r-create-bot-color{display:flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;background:transparent;border:1px solid transparent;border-radius:9999px;cursor:pointer}
 .r-create-bot-color:focus-visible{outline:2px solid var(--sand-border-focus);outline-offset:2px}
@@ -81,7 +81,7 @@ function RCreateBotDialog({onClose,onCreate,busy,error}){
   return p.jsxs(Gt.Root,{open:true,variant:'rich',width:440,closeOnBackdropClick:!busy,closeOnEscape:!busy,onOpenChange:next=>{if(!next)onClose()},children:[
     p.jsxs(Gt.Header,{style:RCREATE_STYLES.header,children:[p.jsx(Gt.Title,{children:RCreateBotT('Create new Bot','创建新 Bot')}),p.jsx(Gt.CloseButton,{'aria-label':RCreateBotT('Close dialog','关闭对话框')})]}),
     p.jsx(Gt.Body,{style:RCREATE_STYLES.body,children:p.jsxs('div',{className:'r-create-bot',children:[
-      p.jsx('span',{className:'r-create-bot-preview',children:p.jsx(sd,{color,shape,sizePx:96,paused:true})}),
+      p.jsx('span',{className:'r-create-bot-preview',children:p.jsx(sd,{color,shape,sizePx:96})}),
       p.jsx('input',{'aria-label':RCreateBotT('Bot name','Bot 名称'),autoFocus:true,className:'r-create-bot-name',disabled:busy,maxLength:255,onChange:event=>setName(event.currentTarget.value),onKeyDown:event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();submit()}},placeholder:RCreateBotT('Give your Bot a name','给你的 Bot 起个名字'),type:'text',value:name}),
       p.jsx('div',{'aria-label':RCreateBotShapeSuffix(),className:'r-create-bot-shapes',children:rows.map((row,index)=>p.jsx('div',{className:'r-create-bot-shape-row',children:row.map(candidate=>{
         const selected=shape===candidate;
@@ -89,7 +89,7 @@ function RCreateBotDialog({onClose,onCreate,busy,error}){
         const outline=typeof RCompAvatarOutline==='function'?RCompAvatarOutline(candidate):null;
         return p.jsxs('button',{'aria-label':label+RCreateBotShapeSuffix(),'aria-pressed':selected,className:'r-create-bot-shape',disabled:busy,onClick:()=>setShape(candidate),title:label,type:'button',children:[
           p.jsx(sd,{color,shape:candidate,sizePx:36,paused:true}),
-          outline==null?null:p.jsx('span',{'aria-hidden':true,className:'r-create-bot-shape-outline',style:{maskImage:outline,WebkitMaskImage:outline}})
+          outline==null?null:p.jsx('span',{'aria-hidden':true,className:'r-create-bot-shape-outline',style:outline})
         ]},candidate);
       })},index))}),
       p.jsx('div',{'aria-label':RCreateBotColorSuffix(),className:'r-create-bot-colors',children:PQ.map(candidate=>p.jsx('button',{'aria-label':RCreateBotColorLabel(candidate)+RCreateBotColorSuffix(),'aria-pressed':color===candidate.id,className:'r-create-bot-color',disabled:busy,onClick:()=>setColor(candidate.id),title:RCreateBotColorLabel(candidate),type:'button',children:p.jsx('span',{'aria-hidden':true,className:'r-create-bot-color-swatch',style:{backgroundColor:RCreateBotColorValue(candidate)}})},candidate.id))}),

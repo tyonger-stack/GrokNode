@@ -32,8 +32,14 @@ test("0.75.3 search and create surfaces compose on the pinned renderer", { skip 
   assert.match(source, /selection\.select\(result\.agentId\)/);
   assert.match(source, /RCreateBotShapeRows/);
   assert.match(source, /PQ\.map\(candidate=>/);
+  assert.match(source, /p\.jsx\(sd,\{color,shape,sizePx:96\}\)/);
+  assert.match(source, /p\.jsx\(sd,\{color,shape:candidate,sizePx:36,paused:true\}\)/);
+  assert.match(source, /const outline=typeof RCompAvatarOutline==='function'\?RCompAvatarOutline\(candidate\):null/);
+  assert.match(source, /className:'r-create-bot-shape-outline',style:outline/);
   assert.match(SEARCH_PALETTE_STYLE, /402px/);
   assert.match(BOT_CREATE_STYLE, /r-create-bot-shape-row/);
+  assert.match(BOT_CREATE_STYLE, /var\(--sand-border-primary-translucent/);
+  assert.doesNotMatch(BOT_CREATE_STYLE, /r-create-bot-shape-outline\{position:absolute;inset:-4px/);
   assert.throws(() => patchSearchPaletteRenderer(source), /already applied/);
   assert.throws(() => patchBotCreateDialogRenderer(source), /already applied/);
 });
