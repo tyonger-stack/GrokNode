@@ -521,6 +521,11 @@ export function createHostGatewayApi(
       }),
     getAutomationWebhookCredential: (args: any) =>
       method(manager, "getAutomationWebhookCredential")(args.id, args.automationId),
+    // Local listener-event ingestion: platform deliveries mapped by the
+    // desktop webhook listener enter the same SandTriggerHub matching path
+    // the hosted backend relay feeds. Rejected shapes never reach the hub.
+    ingestListenerEvent: (args: any) =>
+      method(automations, "ingestListenerEvent")(args),
     broadcastToAgents: async (args: any) => {
       markActive("user_action");
       const result = await method(manager, "broadcastToAgents")(

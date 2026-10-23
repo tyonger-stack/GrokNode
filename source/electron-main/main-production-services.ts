@@ -56,6 +56,9 @@ import { recordLocalToolApproval as persistLocalToolApproval, clearLocalToolAppr
 import { publishLocalComputerUseGate } from "./computer-use/local-computer-use-gate.js";
 import type { SandSettingsStore } from "../shared/node/settings/sand-settings-store.js";
 import { startWebhookAutomationListener, type WebhookWakeOutcome } from "./webhook-automation-listener.js";
+import { isLocalDockerBoxSnapshotCandidate, localDockerSnapshotStoreFor } from "./box/local-docker-host-connector.js";
+import { startLocalDockerSnapshotScheduler } from "./box/local-docker-snapshot.js";
+import { getSandRootDir } from "../host/host-paths.js";
 import type {
   ElectronMainDependencies,
   ElectronMainApp,
@@ -513,11 +516,22 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
   const webhookAutomationListener = track(startWebhookAutomationListener({
     forwarder: {
       runAgentWebhookAutomation: (args) => coordinatorLegs.legs.runAgentWebhookAutomation!(args) as Promise<WebhookWakeOutcome>,
+      ingestListenerEvent: (args) => coordinatorLegs.legs.ingestListenerEvent!(args) as Promise<{ accepted: boolean }>,
     },
     onBindError: (port, error) => bindings.reportFailure("webhook-automation", "listener", error instanceof Error ? error : new Error(String(error))),
     log: (message) => console.log(`[sand] ${message}`),
   }));
   void webhookAutomationListener;
+  // Periodic local-VM snapshot (Grok Node): keeps a recent "last saved
+  // snapshot" so Reset Bot's Computer can restore real state instead of
+  // rebuilding from the factory image. Best-effort; skips when the container
+  // is not running.
+  const localDockerSnapshotScheduler = track(startLocalDockerSnapshotScheduler({
+    store: localDockerSnapshotStoreFor(`${getSandRootDir()}/settings.json`),
+    shouldSnapshot: isLocalDockerBoxSnapshotCandidate,
+    log: (message) => console.log(`[sand] ${message}`),
+  }));
+  void localDockerSnapshotScheduler;
   const requireDisposable = <T extends ProductionDisposable>(value: T, name: string): T => { if (value == null || typeof value.dispose !== "function") throw new Error(`Electron production service ${name} did not provide dispose().`); return value; };
   const disposeOnce = async (value: ProductionDisposable | undefined): Promise<void> => {
     if (value == null || disposedValues.has(value)) return;

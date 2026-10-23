@@ -69,6 +69,7 @@ export const SAND_GATEWAY_COMMANDS = {
   runAgentAutomationNow: (api: GatewayApi, body: string) => api.runAgentAutomationNow(parseCommandArgs(body)),
   runAgentWebhookAutomation: (api: GatewayApi, body: string) => api.runAgentWebhookAutomation(parseCommandArgs(body)),
   getAutomationWebhookCredential: (api: GatewayApi, body: string) => api.getAutomationWebhookCredential(parseCommandArgs(body)),
+  ingestListenerEvent: (api: GatewayApi, body: string) => api.ingestListenerEvent(parseCommandArgs(body)),
   broadcastToAgents: (api: GatewayApi, body: string) => api.broadcastToAgents(parseCommandArgs(body)),
   getAgentWorkflows: (api: GatewayApi, body: string) => api.getAgentWorkflows(parseCommandArgs(body)),
   createAgentWorkflow: (api: GatewayApi, body: string) => api.createAgentWorkflow(parseCommandArgs(body)),

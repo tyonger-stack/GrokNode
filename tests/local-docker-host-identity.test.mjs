@@ -31,8 +31,11 @@ const HOST_ENTRY = "/opt/sand/sand-host/host-main.cjs";
 
 test("connector pins the box image by digest, not by the moving tag", () => {
   assert.ok(source.includes(`LOCAL_DOCKER_BOX_IMAGE_DIGEST = "${PINNED_DIGEST}"`), "the pinned digest must match the layout below");
-  // The container must be created from the digest reference.
-  assert.match(source, /\n\s+LOCAL_DOCKER_BOX_IMAGE_DIGEST,\n/);
+  // The container must be created from the digest reference. The snapshot
+  // restore path (Grok Node) may override it with a committed snapshot image;
+  // the default must remain the pinned digest (guarded separately in
+  // tests/local-docker-snapshot.test.mjs).
+  assert.match(source, /\n\s+args\.imageOverride \?\? LOCAL_DOCKER_BOX_IMAGE_DIGEST,\n/);
   // The moving tag must NOT be the create argument anymore.
   const createBlock = source.slice(source.indexOf('"run", "--detach"'), source.indexOf("if (!created.ok)"));
   assert.ok(!createBlock.includes(":sand-box-latest"), "docker run must not reference the moving tag");

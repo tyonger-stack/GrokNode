@@ -25,6 +25,7 @@ export const COORDINATOR_MAIN_METHOD_TABLE = {
   setGatewayPaused: { args: "object" },
   runAgentWebhookAutomation: { args: "object" },
   getAutomationWebhookCredential: { args: "object" },
+  ingestListenerEvent: { args: "object" },
   libraryMainCredential: { args: "none" },
   resolveLibraryPages: { args: "object" },
   listLibraryPages: { args: "object" },

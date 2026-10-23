@@ -17,6 +17,7 @@ import {
   SAND_BOX_HOST_ENTRY,
 } from "../../packages/constants/sand-supervisor.js";
 import type { RecreateResult } from "./box-recreate-commands.js";
+import { createLocalDockerSnapshotStore, snapshotImageRepo, type LocalDockerSnapshotStore } from "./local-docker-snapshot.js";
 import type { GatewayConnection } from "./gateway-descriptor-cache.js";
 import { libraryDockerForwardingArgs, resolveLibraryDockerForwarding, type LibraryDockerForwarding } from "./library-docker-config.js";
 
@@ -364,6 +365,25 @@ function credentialPath(settingsPath: string): string {
   return join(dirname(settingsPath), "local-docker-vm.json");
 }
 
+/** Snapshot store for the app's local VM; the helper image is the pinned digest the container already runs, so snapshotting never pulls anything. */
+export function localDockerSnapshotStoreFor(settingsPath: string): LocalDockerSnapshotStore {
+  return createLocalDockerSnapshotStore({
+    runDocker,
+    container: LOCAL_DOCKER_BOX_CONTAINER,
+    workspaceVolume: LOCAL_DOCKER_WORKSPACE_VOLUME,
+    dataVolume: LOCAL_DOCKER_DATA_VOLUME,
+    helperImage: LOCAL_DOCKER_BOX_IMAGE_DIGEST,
+    root: join(dirname(settingsPath), "local-docker-snapshots"),
+    log: (message) => console.log(`[sand] ${message}`),
+  });
+}
+
+/** Scheduler predicate: snapshot only an owned, running container (a stopped one has no newer state than the last snapshot). */
+export async function isLocalDockerBoxSnapshotCandidate(): Promise<boolean> {
+  const inspected = await inspectContainer();
+  return inspected.exists && inspected.running && inspected.owned;
+}
+
 async function readOrCreateToken(settingsPath: string): Promise<string> {
   const target = credentialPath(settingsPath);
   try {
@@ -469,6 +489,8 @@ export function buildLocalDockerBoxRunArgs(args: {
   readonly hostBundle: LocalHostBundle;
   readonly authMounts: readonly string[];
   readonly library: LibraryDockerForwarding | null;
+  /** Snapshot restore path: create the container from a committed snapshot image instead of the pinned digest. */
+  readonly imageOverride?: string;
 }): string[] {
   const { token, hostBundle, authMounts, library } = args;
   return [
@@ -500,11 +522,11 @@ export function buildLocalDockerBoxRunArgs(args: {
     "--mount", `type=bind,src=${dirname(hostBundle.boxExecDaemonPath)},dst=${SAND_BOX_EXEC_DAEMON_DIR},readonly`,
     ...authMounts,
     ...(library == null ? [] : libraryDockerForwardingArgs(library)),
-    LOCAL_DOCKER_BOX_IMAGE_DIGEST,
+    args.imageOverride ?? LOCAL_DOCKER_BOX_IMAGE_DIGEST,
   ];
 }
 
-async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnection> {
+async function ensureLocalDockerBox(settingsPath: string, imageOverride?: string): Promise<GatewayConnection> {
   const libraryForwarding = resolveLibraryDockerForwarding(process.env);
   const token = await readOrCreateToken(settingsPath);
   const hostBundle = await stageCurrentHostBundle(settingsPath);
@@ -512,16 +534,23 @@ async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnec
   if (!daemon.ok) throw new Error(`Local Docker VM is selected, but Docker is unavailable: ${daemon.output || "start Docker and try again"}`);
   const inspected = await inspectContainer();
   if (inspected.exists && !inspected.owned) throw new Error(`Local Docker VM cannot use ${LOCAL_DOCKER_BOX_CONTAINER}: an unowned container already has that name.`);
+  // A snapshot-restored container runs from a committed image (docker commit
+  // preserves the ownership/host-sha/schema labels), so it stays acceptable
+  // here; the host bundle itself is bind-mounted at run time regardless.
+  const isSnapshotImage = inspected.image.startsWith(`${snapshotImageRepo(LOCAL_DOCKER_BOX_CONTAINER)}:`);
   // A schema-version bump means this build expects a different in-box layout
   // (different host bundle root, different image pin). A container left over
   // from the previous build is then replaced automatically below instead of
   // being rejected as an "unexpected image"; without that bump an unexpected
   // image stays a hard error that asks for an explicit removal.
   const layoutChanged = inspected.schemaVersion !== LOCAL_DOCKER_SCHEMA_VERSION;
-  if (inspected.exists && inspected.image !== LOCAL_DOCKER_BOX_IMAGE_DIGEST && inspected.image !== LOCAL_DOCKER_BOX_IMAGE && !layoutChanged) {
+  if (inspected.exists && !isSnapshotImage && inspected.image !== LOCAL_DOCKER_BOX_IMAGE_DIGEST && inspected.image !== LOCAL_DOCKER_BOX_IMAGE && !layoutChanged) {
     throw new Error(`Local Docker VM container uses unexpected image ${inspected.image}. Remove it explicitly before changing images.`);
   }
   if (inspected.exists && (layoutChanged || inspected.hostSha256 !== hostBundle.sha256)) {
+    // Best-effort snapshot before the destructive auto-replace so the
+    // in-container state of the superseded runtime survives in a Reset target.
+    if (inspected.owned) await localDockerSnapshotStoreFor(settingsPath).save().then((outcome) => { if (!outcome.ok) console.warn(`[local-docker-host-connector] pre-replace snapshot skipped: ${outcome.error}`); }, () => undefined);
     const removed = await runDocker(["rm", "--force", LOCAL_DOCKER_BOX_CONTAINER]);
     if (!removed.ok) throw new Error(`Could not replace the local VM with the current app runtime: ${removed.output}`);
   }
@@ -532,7 +561,7 @@ async function ensureLocalDockerBox(settingsPath: string): Promise<GatewayConnec
     if (!started.ok) throw new Error(`Could not start the local Docker VM: ${started.output}`);
   } else if (!current.exists) {
     const authMounts = await localAuthMountArguments();
-    const created = await runDocker(buildLocalDockerBoxRunArgs({ token, hostBundle, authMounts, library: libraryForwarding }));
+    const created = await runDocker(buildLocalDockerBoxRunArgs({ token, hostBundle, authMounts, library: libraryForwarding, ...(imageOverride == null ? {} : { imageOverride }) }));
     if (!created.ok) throw new Error(`Could not create the local Docker VM: ${created.output}`);
   }
   const deadline = Date.now() + READY_TIMEOUT_MS;
@@ -584,6 +613,20 @@ export function createSettingsRoutedHostConnector(settings: SandSettingsStore): 
       return { status: "started-untrackable" };
     },
     forceRecreate: async (): Promise<RecreateResult> => {
+      // Reset Bot's Computer: with a saved snapshot, rebuild from it (the
+      // hosted product's semantics — recent unsaved changes are discarded);
+      // without one, fall back to the factory image. The volumes are restored
+      // by the store; the container itself is recreated by ensureLocalDockerBox
+      // from the snapshot's committed image, which carries the ownership and
+      // host-sha labels forward.
+      const snapshotStore = localDockerSnapshotStoreFor(settings.settingsPath);
+      const latest = await snapshotStore.latest().catch(() => null);
+      if (latest != null) {
+        const restored = await snapshotStore.restoreVolumes(latest);
+        if (!restored.ok) return { status: "rejected", reason: restored.error };
+        await ensureLocalDockerBox(settings.settingsPath, latest.imageTag);
+        return { status: "started-untrackable" };
+      }
       const removed = await runDocker(["rm", "--force", LOCAL_DOCKER_BOX_CONTAINER]);
       if (!removed.ok && !/no such container/i.test(removed.output)) return { status: "rejected", reason: removed.output };
       await localConnect();

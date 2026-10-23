@@ -8,6 +8,7 @@ import { inspectAgentAutomationDefinitions } from "../../automations/automation-
 import { getSandAgentsRootDir } from "../../storage/agent-paths.js";
 import { HostExtensions } from "../extension-ids.generated.js";
 import { createBackendRelaySources } from "./backend-relay-source.js";
+import { isValidListenerEvent } from "../../../shared/listener-events.js";
 import { ListenerConnectWatcher } from "./listener-connect-watcher.js";
 import { createListenerIntegrationReads } from "./listener-integrations.js";
 import { LocalCronScheduler, SandAutomationCloudSync, type CloudSyncClient, type ScheduledCloudAutomation } from "./sand-automation-cloud-sync.js";
@@ -87,6 +88,6 @@ export const automationsExtension = defineHostExtension({
     hub.start();
     const stopAuth = reconcileWhenAuthenticated({ auth: deps.auth, reconcile: () => void hub.reconcileNow() });
     context.onStop(async () => { stopAuth(); offConfigChanged(); offConnectCard(); watcher.dispose(); fireConsumer.stop(); await hub.stop(); });
-    return { sourceStatuses: () => hub.getSourceStatuses(), suspendWakes: async () => { watcher.suspend(); fireConsumer.stop(); await hub.stop(); }, resumeWakes: () => { watcher.resume(); hub.start(); fireConsumer.start(); }, deleteAgentSchedules: (agentId: string) => cloudSync.deleteAgent(agentId), reconcileNow: () => hub.reconcileNow(), getListenerIntegrations: () => listenerReads.getIntegrations(), getListenerConnectUrl: (platform: "slack" | "github") => listenerReads.getConnectUrl(platform), isListenerPlatformConnected: (platform: "slack" | "github") => listenerReads.isPlatformConnected(platform), getAgentChannels: (agentId: string) => listenerReads.getAgentChannels(agentId) };
+    return { sourceStatuses: () => hub.getSourceStatuses(), ingestListenerEvent: (args: { readonly event?: unknown }) => { const event = isValidListenerEvent(args?.event) ? args.event : null; return Promise.resolve(event == null ? { accepted: false, reason: "unsupported-event" } : { accepted: hub.acceptEvent(event) }); }, suspendWakes: async () => { watcher.suspend(); fireConsumer.stop(); await hub.stop(); }, resumeWakes: () => { watcher.resume(); hub.start(); fireConsumer.start(); }, deleteAgentSchedules: (agentId: string) => cloudSync.deleteAgent(agentId), reconcileNow: () => hub.reconcileNow(), getListenerIntegrations: () => listenerReads.getIntegrations(), getListenerConnectUrl: (platform: "slack" | "github") => listenerReads.getConnectUrl(platform), isListenerPlatformConnected: (platform: "slack" | "github") => listenerReads.isPlatformConnected(platform), getAgentChannels: (agentId: string) => listenerReads.getAgentChannels(agentId) };
   }
 });

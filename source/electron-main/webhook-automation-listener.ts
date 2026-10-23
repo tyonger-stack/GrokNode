@@ -1,6 +1,7 @@
 import http, { type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 import { getSandRootDir } from "../host/host-paths.js";
+import { githubWebhookToListenerEvent, isSlackEventsApiEnvelope, slackEventToListenerEvent, slackUrlVerificationChallenge } from "../shared/listener-events.js";
 import { DEFAULT_WEBHOOK_LISTENER_PORT, SandSettingsStore } from "../shared/node/settings/sand-settings-store.js";
 
 export interface WebhookWakeOutcome {
@@ -19,6 +20,11 @@ export interface WebhookAutomationForwarder {
     readonly contentType?: string;
     readonly userAgent?: string;
   }): Promise<WebhookWakeOutcome>;
+  /** Local listener-event ingestion (Grok Node): a platform delivery (GitHub webhook, Slack Events API) mapped to the canonical listener event shape; fed to the host's trigger-matching hub. Absent on stacks without the coordinator leg. */
+  ingestListenerEvent?(args: {
+    readonly event: Record<string, unknown>;
+    readonly deliveryId?: string;
+  }): Promise<{ readonly accepted: boolean }>;
 }
 export interface WebhookAutomationListenerDependencies {
   readonly forwarder: WebhookAutomationForwarder;
@@ -50,9 +56,35 @@ export function createWebhookRateLimiter(now: () => number = Date.now): WebhookR
       window.push(at);
       return { allowed: true, retryAfterSeconds: 0 };
     },
-    reset() { windows.clear(); },
+    reset(): void { windows.clear(); },
   };
 }
+
+/**
+ * Best-effort delivery dedupe for listener-event ingestion. Platforms retry a
+ * delivery until 2xx, and the webhook-fire path has its own durable receipts
+ * host-side; the ingestion fan-out (SandTriggerHub) has none, so the same
+ * delivery id must not wake matching routines twice. Mirrors the host's
+ * WEBHOOK_IDEMPOTENCY_TTL_MS window. Absent ids always admit (nothing to
+ * dedupe on).
+ */
+const LISTENER_DELIVERY_TTL_MS = 7 * 24 * 60 * 60_000;
+const LISTENER_DELIVERY_CAP = 2_048;
+const listenerDeliveries = new Map<string, number>();
+export function markListenerDeliverySeen(deliveryId: string | undefined, now: () => number = Date.now): boolean {
+  if (deliveryId == null || deliveryId.length === 0) return true;
+  const at = now();
+  if (listenerDeliveries.has(deliveryId)) return false;
+  if (listenerDeliveries.size >= LISTENER_DELIVERY_CAP) {
+    for (const [id, stamp] of listenerDeliveries) {
+      if (at - stamp >= LISTENER_DELIVERY_TTL_MS || listenerDeliveries.size < LISTENER_DELIVERY_CAP) listenerDeliveries.delete(id);
+      if (listenerDeliveries.size < LISTENER_DELIVERY_CAP) break;
+    }
+  }
+  listenerDeliveries.set(deliveryId, at);
+  return true;
+}
+export function resetListenerDeliveryDedupe(): void { listenerDeliveries.clear(); }
 
 function json(res: ServerResponse, status: number, value: unknown, extraHeaders: Record<string, string> = {}): void {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff", ...extraHeaders }).end(JSON.stringify(value));
@@ -153,6 +185,25 @@ export function handleWebhookAutomationRequest(req: IncomingMessage, res: Server
       return;
     }
     const deliveryId = webhookDeliveryId(req), eventName = webhookEventName(req), userAgent = headerToken(req, "user-agent", WEBHOOK_USER_AGENT_LIMIT);
+    // Slack Events API URL verification handshake: answer the challenge and
+    // stop — nothing to wake and nothing to ingest.
+    const challenge = slackUrlVerificationChallenge(payload);
+    if (challenge != null) { json(res, 200, { ok: true, challenge }); return; }
+    // Local listener-event ingestion (Grok Node): a GitHub webhook delivery
+    // (x-github-event header) or a Slack Events API envelope that already
+    // passed this route's key auth is additionally mapped to the canonical
+    // listener event and offered to the host's trigger-matching hub, so
+    // github/slack-type listener triggers work without the hosted backend
+    // relay. Ingestion is gated on the addressed routine's forward outcome:
+    // 202 (fired) and 409 (paused, but the key was verified first) prove the
+    // presented key; 401/404 never verified it, so those payloads must not
+    // reach the trigger hub. The addressed webhook routine still fires, its
+    // outcome still drives the HTTP response, unchanged.
+    const listenerEvent = eventName != null
+      ? githubWebhookToListenerEvent(eventName, payload)
+      : isSlackEventsApiEnvelope(payload)
+        ? slackEventToListenerEvent(payload)
+        : null;
     deps.log?.(`webhook-automation: wake ${agentId}/${automationId}`);
     void deps.forwarder.runAgentWebhookAutomation({
       agentId,
@@ -164,7 +215,14 @@ export function handleWebhookAutomationRequest(req: IncomingMessage, res: Server
       ...(contentType === "" ? {} : { contentType }),
       ...(userAgent === undefined ? {} : { userAgent }),
     }).then(
-      (outcome) => json(res, outcome.status, { ok: outcome.ok, ...(outcome.message == null ? {} : { message: outcome.message }) }),
+      (outcome) => {
+        if (listenerEvent != null && deps.forwarder.ingestListenerEvent != null && (outcome.ok || outcome.status === 409) && markListenerDeliverySeen(deliveryId)) {
+          deps.log?.(`webhook-automation: listener ${String(listenerEvent.source)} event ingested via ${agentId}/${automationId}`);
+          void Promise.resolve(deps.forwarder.ingestListenerEvent({ event: listenerEvent, ...(deliveryId === undefined ? {} : { deliveryId }) }))
+            .catch((error: unknown) => deps.log?.(`webhook-automation: listener ingestion failed: ${error instanceof Error ? error.message : String(error)}`));
+        }
+        json(res, outcome.status, { ok: outcome.ok, ...(outcome.message == null ? {} : { message: outcome.message }) });
+      },
       (error: unknown) => json(res, 502, { ok: false, error: error instanceof Error ? error.message : String(error) }),
     );
   });
