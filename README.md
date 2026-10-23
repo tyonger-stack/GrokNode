@@ -6,7 +6,8 @@
 
 <p align="center">
   把公开发布的 Grok Bot 0.18.0 macOS 应用重建成可读 TypeScript，并把推理、沙箱、设置和用量统计都搬回你自己的 Mac。<br>
-  另附一个本机 HTTP 服务 <strong>Node Agent API</strong>，让网页、CLI 或你自己的客户端调用这些 bot 和 Linux 桌面。
+  另附一个本机 HTTP 服务 <strong>Node Agent API</strong>，让网页、CLI 或你自己的客户端调用这些 bot 和 Linux 桌面。<br>
+  本地 Docker 沙箱镜像按 digest 固定：<code>public.ecr.aws/k0i0n2g5/cursorenvironments/universal@sha256:8c489b5f7f690b38acbf991e584a474bcc15cf81ebfe858c60235761191df1bd</code>
 </p>
 
 <p align="center">
