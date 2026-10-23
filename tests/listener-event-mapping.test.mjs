@@ -115,3 +115,36 @@ test("host admission check accepts canonical shapes and rejects junk", () => {
   assert.equal(shared.isValidListenerEvent("hello"), false);
   assert.equal(shared.isValidListenerEvent({ source: "slack", sender: "@U1" }), false);
 });
+
+test("host admission check enforces the mapper's guarantees on the raw gateway path", () => {
+  // Oversized text/title must be rejected here too — the gateway command path
+  // bypasses the mappers, so this check is the only clamp on the model-facing
+  // trigger context.
+  assert.equal(shared.isValidListenerEvent({ source: "slack", channel: "C1", sender: "@U1", text: "x".repeat(8001) }), false);
+  assert.equal(shared.isValidListenerEvent({ source: "slack", channel: "C1", sender: "@U1", text: "x".repeat(8000) }), true);
+  assert.equal(shared.isValidListenerEvent({ source: "github", repo: "a/b", kind: "pr-opened", actor: "x", title: "y".repeat(8001) }), false);
+  assert.equal(shared.isValidListenerEvent({ source: "slack", channel: "C1", sender: "@U1", reactionEmoji: ":not valid:" }), false);
+  assert.equal(shared.isValidListenerEvent({ source: "slack", channel: "C1", sender: "@U1", reactionEmoji: ":thumbsup:" }), true);
+  assert.equal(shared.isValidListenerEvent({ source: "slack", channel: "C1", sender: "@U1", isMention: "yes" }), false);
+  assert.equal(shared.isValidListenerEvent({ source: "slack", channel: "C1", sender: "@U1", isSelf: 1 }), false);
+  assert.equal(shared.isValidListenerEvent({ source: "github", repo: "a/b", kind: "pr-opened", actor: "x", url: `https://${"a".repeat(2100)}.com` }), false);
+});
+
+test("reaction_added derives isSelf from the installing user in authorizations", () => {
+  const envelope = (user, installers) => ({ team_id: "T1", authorizations: installers.map((user_id) => ({ user_id })), event: { type: "reaction_added", channel: "C1", user, reaction: "thumbsup", item: { channel: "C42" } } });
+  const self = shared.slackEventToListenerEvent(envelope("U9", ["U9"]));
+  assert.equal(self.isSelf, true);
+  const other = shared.slackEventToListenerEvent(envelope("U1", ["U9"]));
+  assert.equal("isSelf" in other, false, "a non-installer reaction carries no isSelf (undefined is false to the matcher)");
+  // End-to-end against the official matcher: bySelf triggers hit only installer reactions.
+  const bySelf = triggers.parseStoredTrigger({ type: "slack", channel: "*", match: { kind: "reaction", bySelf: true } });
+  assert.equal(triggers.triggerMatchesEvent(bySelf, self), true);
+  assert.equal(triggers.triggerMatchesEvent(bySelf, other), false);
+});
+
+test("slack envelope event_id is the delivery identity when no header carries one", () => {
+  assert.equal(shared.slackEventDeliveryId({ team_id: "T1", event_id: "Ev123", event: { type: "message" } }), "Ev123");
+  assert.equal(shared.slackEventDeliveryId({ payload: JSON.stringify({ team_id: "T1", event_id: "EvWrapped", event: { type: "message", event_id: "EvInner" } }) }), "EvWrapped");
+  assert.equal(shared.slackEventDeliveryId({ payload: JSON.stringify({ team_id: "T1", event: { type: "message", event_id: "EvInner" } }) }), "EvInner");
+  assert.equal(shared.slackEventDeliveryId({ team_id: "T1", event: { type: "message" } }), undefined);
+});

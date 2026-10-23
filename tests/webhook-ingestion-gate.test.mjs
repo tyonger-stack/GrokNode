@@ -102,6 +102,22 @@ test("a retried delivery id ingests once even when the platform re-sends it", as
   assert.equal(forwarder.calls.ingest.length, 1);
 });
 
+test("Slack envelopes without delivery headers dedupe on their event_id", async () => {
+  listener.resetListenerDeliveryDedupe();
+  listener.resetListenerDeliveryHints();
+  const forwarder = makeForwarder({ ok: true, status: 202 });
+  const slackDelivery = () => ({
+    url: "/webhook/agent-a/routine-r/key123",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ team_id: "T1", event_id: "EvDup", event: { type: "message", channel: "C1", user: "U9", text: "hi" } }),
+  });
+  await drive(slackDelivery(), { forwarder });
+  await drive(slackDelivery(), { forwarder });
+  assert.equal(forwarder.calls.ingest.length, 1, "the retried Events API delivery wakes the routine twice but ingests once");
+  assert.equal(forwarder.calls.ingest[0].deliveryId, "EvDup", "the envelope event_id is the delivery identity passed host-side");
+  assert.equal(forwarder.calls.ingest[0].event.source, "slack");
+});
+
 test("Slack url_verification answers the challenge without waking or ingesting", async () => {
   listener.resetListenerDeliveryDedupe();
   const forwarder = makeForwarder({ ok: true, status: 202 });

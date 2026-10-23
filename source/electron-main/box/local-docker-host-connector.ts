@@ -365,17 +365,24 @@ function credentialPath(settingsPath: string): string {
   return join(dirname(settingsPath), "local-docker-vm.json");
 }
 
+/** One snapshot store per settings path: a shared instance is what serializes saves against restores (review life-4). */
+const snapshotStores = new Map<string, LocalDockerSnapshotStore>();
 /** Snapshot store for the app's local VM; the helper image is the pinned digest the container already runs, so snapshotting never pulls anything. */
 export function localDockerSnapshotStoreFor(settingsPath: string): LocalDockerSnapshotStore {
-  return createLocalDockerSnapshotStore({
+  const existing = snapshotStores.get(settingsPath);
+  if (existing != null) return existing;
+  const store = createLocalDockerSnapshotStore({
     runDocker,
     container: LOCAL_DOCKER_BOX_CONTAINER,
     workspaceVolume: LOCAL_DOCKER_WORKSPACE_VOLUME,
     dataVolume: LOCAL_DOCKER_DATA_VOLUME,
     helperImage: LOCAL_DOCKER_BOX_IMAGE_DIGEST,
     root: join(dirname(settingsPath), "local-docker-snapshots"),
+    boxSchemaVersion: LOCAL_DOCKER_SCHEMA_VERSION,
     log: (message) => console.log(`[sand] ${message}`),
   });
+  snapshotStores.set(settingsPath, store);
+  return store;
 }
 
 /** Scheduler predicate: snapshot only an owned, running container (a stopped one has no newer state than the last snapshot). */
@@ -600,8 +607,11 @@ export async function stopLocalDockerBox(): Promise<void> {
 }
 
 export function createSettingsRoutedHostConnector(settings: SandSettingsStore): LocalDockerHostConnector {
-  const localConnect = (): Promise<GatewayConnection> => {
-    if (ensureInFlight == null) ensureInFlight = ensureLocalDockerBox(settings.settingsPath).finally(() => { ensureInFlight = undefined; });
+  // The single-flight promise is shared by every caller, so a snapshot-restore
+  // recreate and a concurrent connect can never race two `docker run --name`
+  // creations against each other (review life-4).
+  const localConnect = (imageOverride?: string): Promise<GatewayConnection> => {
+    if (ensureInFlight == null) ensureInFlight = ensureLocalDockerBox(settings.settingsPath, imageOverride).finally(() => { ensureInFlight = undefined; });
     return ensureInFlight;
   };
   return {
@@ -615,16 +625,23 @@ export function createSettingsRoutedHostConnector(settings: SandSettingsStore): 
     forceRecreate: async (): Promise<RecreateResult> => {
       // Reset Bot's Computer: with a saved snapshot, rebuild from it (the
       // hosted product's semantics — recent unsaved changes are discarded);
-      // without one, fall back to the factory image. The volumes are restored
-      // by the store; the container itself is recreated by ensureLocalDockerBox
-      // from the snapshot's committed image, which carries the ownership and
-      // host-sha labels forward.
+      // without one, fall back to the factory image. A snapshot taken under a
+      // different box layout (schema version) is refused here: restoring it
+      // would recreate the recorded dead-mount incident, so Reset falls back
+      // to the factory image instead. The volumes are restored by the store;
+      // the container itself is recreated by ensureLocalDockerBox from the
+      // snapshot's committed image, which carries the ownership and host-sha
+      // labels forward.
       const snapshotStore = localDockerSnapshotStoreFor(settings.settingsPath);
-      const latest = await snapshotStore.latest().catch(() => null);
+      let latest = await snapshotStore.latest().catch(() => null);
+      if (latest != null && latest.boxSchemaVersion !== LOCAL_DOCKER_SCHEMA_VERSION) {
+        console.warn(`[local-docker-host-connector] snapshot ${latest.id} was taken under box schema ${latest.boxSchemaVersion}, not the current ${LOCAL_DOCKER_SCHEMA_VERSION}; resetting from the factory image instead`);
+        latest = null;
+      }
       if (latest != null) {
         const restored = await snapshotStore.restoreVolumes(latest);
         if (!restored.ok) return { status: "rejected", reason: restored.error };
-        await ensureLocalDockerBox(settings.settingsPath, latest.imageTag);
+        await localConnect(latest.imageTag);
         return { status: "started-untrackable" };
       }
       const removed = await runDocker(["rm", "--force", LOCAL_DOCKER_BOX_CONTAINER]);

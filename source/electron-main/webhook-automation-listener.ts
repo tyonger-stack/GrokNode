@@ -1,7 +1,7 @@
 import http, { type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 import { getSandRootDir } from "../host/host-paths.js";
-import { githubWebhookToListenerEvent, isSlackEventsApiEnvelope, slackEventToListenerEvent, slackUrlVerificationChallenge } from "../shared/listener-events.js";
+import { githubWebhookToListenerEvent, INGESTION_VERIFIED_FORWARD_STATUSES, isSlackEventsApiEnvelope, slackEventDeliveryId, slackEventToListenerEvent, slackUrlVerificationChallenge } from "../shared/listener-events.js";
 import { DEFAULT_WEBHOOK_LISTENER_PORT, SandSettingsStore } from "../shared/node/settings/sand-settings-store.js";
 
 export interface WebhookWakeOutcome {
@@ -66,8 +66,9 @@ export function createWebhookRateLimiter(now: () => number = Date.now): WebhookR
  * delivery until 2xx, and the webhook-fire path has its own durable receipts
  * host-side; the ingestion fan-out (SandTriggerHub) has none, so the same
  * delivery id must not wake matching routines twice. Mirrors the host's
- * WEBHOOK_IDEMPOTENCY_TTL_MS window. Absent ids always admit (nothing to
- * dedupe on).
+ * WEBHOOK_IDEMPOTENCY_TTL_MS window. Entries are checked for expiry on read
+ * and evicted oldest-inserted-first at the cap (Map iteration order), so the
+ * table is bounded regardless of the id mix.
  */
 const LISTENER_DELIVERY_TTL_MS = 7 * 24 * 60 * 60_000;
 const LISTENER_DELIVERY_CAP = 2_048;
@@ -75,10 +76,14 @@ const listenerDeliveries = new Map<string, number>();
 export function markListenerDeliverySeen(deliveryId: string | undefined, now: () => number = Date.now): boolean {
   if (deliveryId == null || deliveryId.length === 0) return true;
   const at = now();
-  if (listenerDeliveries.has(deliveryId)) return false;
+  const seen = listenerDeliveries.get(deliveryId);
+  if (seen != null) {
+    if (at - seen < LISTENER_DELIVERY_TTL_MS) return false;
+    listenerDeliveries.delete(deliveryId);
+  }
   if (listenerDeliveries.size >= LISTENER_DELIVERY_CAP) {
-    for (const [id, stamp] of listenerDeliveries) {
-      if (at - stamp >= LISTENER_DELIVERY_TTL_MS || listenerDeliveries.size < LISTENER_DELIVERY_CAP) listenerDeliveries.delete(id);
+    for (const id of listenerDeliveries.keys()) {
+      listenerDeliveries.delete(id);
       if (listenerDeliveries.size < LISTENER_DELIVERY_CAP) break;
     }
   }
@@ -86,6 +91,9 @@ export function markListenerDeliverySeen(deliveryId: string | undefined, now: ()
   return true;
 }
 export function resetListenerDeliveryDedupe(): void { listenerDeliveries.clear(); }
+/** One-time hint: locally injected Slack events carry raw channel ids, so listeners scoped by channel name (#name) never match them. */
+let slackChannelScopeHintLogged = false;
+export function resetListenerDeliveryHints(): void { slackChannelScopeHintLogged = false; }
 
 function json(res: ServerResponse, status: number, value: unknown, extraHeaders: Record<string, string> = {}): void {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff", ...extraHeaders }).end(JSON.stringify(value));
@@ -185,7 +193,9 @@ export function handleWebhookAutomationRequest(req: IncomingMessage, res: Server
       res.destroy();
       return;
     }
-    const deliveryId = webhookDeliveryId(req), eventName = webhookEventName(req), userAgent = headerToken(req, "user-agent", WEBHOOK_USER_AGENT_LIMIT);
+    const eventName = webhookEventName(req), userAgent = headerToken(req, "user-agent", WEBHOOK_USER_AGENT_LIMIT);
+    // Delivery headers first (GitHub sends x-github-delivery); Slack Events API sends none, so its envelope event_id is the fallback retry identity.
+    const deliveryId = webhookDeliveryId(req) ?? slackEventDeliveryId(payload);
     // Slack Events API URL verification handshake: answer the challenge and
     // stop — nothing to wake and nothing to ingest.
     const challenge = slackUrlVerificationChallenge(payload);
@@ -220,10 +230,22 @@ export function handleWebhookAutomationRequest(req: IncomingMessage, res: Server
       ...(userAgent === undefined ? {} : { userAgent }),
     }).then(
       (outcome) => {
-        if (listenerEvent != null && deps.forwarder.ingestListenerEvent != null && (outcome.status === 202 || outcome.status === 409) && markListenerDeliverySeen(deliveryId)) {
-          deps.log?.(`webhook-automation: listener ${String(listenerEvent.source)} event ingested for agent ${agentId} via ${automationId}`);
-          void Promise.resolve(deps.forwarder.ingestListenerEvent({ agentId, event: listenerEvent, ...(deliveryId === undefined ? {} : { deliveryId }) }))
-            .catch((error: unknown) => deps.log?.(`webhook-automation: listener ingestion failed: ${error instanceof Error ? error.message : String(error)}`));
+        if (listenerEvent != null && deps.forwarder.ingestListenerEvent != null && INGESTION_VERIFIED_FORWARD_STATUSES.includes(outcome.status) && markListenerDeliverySeen(deliveryId)) {
+          void Promise.resolve(deps.forwarder.ingestListenerEvent({ agentId, event: listenerEvent, ...(deliveryId === undefined ? {} : { deliveryId }) })).then(
+            (ingested) => {
+              // The hub accepts fire-and-forget; only its own reply says whether the event was admitted.
+              if (ingested?.accepted === true) {
+                deps.log?.(`webhook-automation: listener ${String(listenerEvent.source)} event accepted for agent ${agentId} via ${automationId}`);
+                if (!slackChannelScopeHintLogged && listenerEvent.source === "slack") {
+                  slackChannelScopeHintLogged = true;
+                  deps.log?.("webhook-automation: note — locally injected Slack events carry raw channel ids; listeners scoped by channel name (#name) will not match, use * or the channel id");
+                }
+              } else {
+                deps.log?.(`webhook-automation: hub declined listener event for agent ${agentId} via ${automationId}`);
+              }
+            },
+            (error: unknown) => deps.log?.(`webhook-automation: listener ingestion failed: ${error instanceof Error ? error.message : String(error)}`),
+          );
         }
         json(res, outcome.status, { ok: outcome.ok, ...(outcome.message == null ? {} : { message: outcome.message }) });
       },

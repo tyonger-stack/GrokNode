@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 /**
@@ -24,18 +24,26 @@ export interface DockerRunOutcome { readonly ok: boolean; readonly code: number 
 export type DockerRunner = (args: readonly string[]) => Promise<DockerRunOutcome>;
 
 export interface SnapshotManifest {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly id: string;
   readonly createdAt: number;
   readonly imageTag: string;
-  readonly volumes: { readonly workspace: string; readonly data: string };
+  /** Box schema the snapshot was taken under (LOCAL_DOCKER_SCHEMA_VERSION at save time): a restore across layouts would recreate the recorded dead-mount incident, so mismatched snapshots are refused. */
+  readonly boxSchemaVersion: string;
+  /** Archive sizes in bytes at save time (diagnostics; prune re-stats the files). */
+  readonly archiveBytes?: { readonly workspace: number; readonly data: number };
 }
 
-export const SNAPSHOT_SCHEMA_VERSION = 1;
+export const SNAPSHOT_SCHEMA_VERSION = 2;
 export const SNAPSHOT_KEEP_COUNT = 3;
+/** Byte budget for the sum of ALL retained snapshot archives; prune drops oldest-first beyond it, always keeping the newest one. */
+export const SNAPSHOT_MAX_TOTAL_BYTES = 16 * 1024 * 1024 * 1024;
+/** A save needs at least this much free space on the snapshots root (or 1.5× the previous snapshot's size, whichever is larger). */
+export const SNAPSHOT_MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 export const SNAPSHOT_MANIFEST_FILENAME = "manifest.json";
 export const SNAPSHOT_LATEST_FILENAME = "latest.json";
 const SNAPSHOT_ID_PATTERN = /^s[0-9a-z]{8,32}$/;
+const SNAPSHOT_SCHEMA_PATTERN = /^[\w.-]{1,32}$/;
 const SNAPSHOT_VOLUME_FILES: { readonly volume: "workspace" | "data"; readonly file: string }[] = [
   { volume: "workspace", file: "workspace.tgz" },
   { volume: "data", file: "data.tgz" },
@@ -55,18 +63,34 @@ export function parseSnapshotManifest(raw: unknown, expectedImageRepo?: string):
   // for THIS container's snapshot store, so a tampered manifest cannot steer
   // Reset at an arbitrary image.
   if (expectedImageRepo != null && record.imageTag !== `${expectedImageRepo}:${record.id}`) return null;
-  const volumes = record.volumes;
-  if (typeof volumes !== "object" || volumes == null || Array.isArray(volumes)) return null;
-  const volumeRecord = volumes as Record<string, unknown>;
-  if (typeof volumeRecord.workspace !== "string" || typeof volumeRecord.data !== "string") return null;
-  if ([volumeRecord.workspace, volumeRecord.data].some((name) => !/^[\w.-]+\.tgz$/.test(name))) return null;
-  return { schemaVersion: SNAPSHOT_SCHEMA_VERSION, id: record.id, createdAt: record.createdAt, imageTag: record.imageTag, volumes: { workspace: volumeRecord.workspace, data: volumeRecord.data } };
+  if (typeof record.boxSchemaVersion !== "string" || !SNAPSHOT_SCHEMA_PATTERN.test(record.boxSchemaVersion)) return null;
+  const archiveBytes = record.archiveBytes;
+  if (archiveBytes !== undefined) {
+    if (typeof archiveBytes !== "object" || archiveBytes == null || Array.isArray(archiveBytes)) return null;
+    const sizes = archiveBytes as Record<string, unknown>;
+    if (typeof sizes.workspace !== "number" || typeof sizes.data !== "number" || !Number.isSafeInteger(sizes.workspace) || !Number.isSafeInteger(sizes.data) || sizes.workspace < 0 || sizes.data < 0) return null;
+  }
+  return { schemaVersion: SNAPSHOT_SCHEMA_VERSION, id: record.id, createdAt: record.createdAt, imageTag: record.imageTag, boxSchemaVersion: record.boxSchemaVersion, ...(archiveBytes === undefined ? {} : { archiveBytes: archiveBytes as { workspace: number; data: number } }) };
 }
 
-/** Newest-first prune selection: keep the newest `keep` by createdAt, return the ids safe to delete. */
-export function selectSnapshotsToPrune(manifests: readonly SnapshotManifest[], keep: number = SNAPSHOT_KEEP_COUNT): string[] {
-  const sorted = [...manifests].sort((a, b) => b.createdAt - a.createdAt);
-  return sorted.slice(Math.max(0, keep)).map((manifest) => manifest.id);
+/**
+ * Budget-aware prune selection: keep the newest snapshots, newest-first, while
+ * (a) at most `keepCount` are kept and (b) their total size stays within
+ * `budgetBytes`. Overshoot drops oldest-first. The newest snapshot is always
+ * kept — a broken old archive never deletes the only Reset baseline.
+ */
+export function selectSnapshotsToPruneByBudget(entries: readonly { manifest: SnapshotManifest; bytes: number }[], keepCount: number = SNAPSHOT_KEEP_COUNT, budgetBytes: number = SNAPSHOT_MAX_TOTAL_BYTES): string[] {
+  const sorted = [...entries].sort((a, b) => b.manifest.createdAt - a.manifest.createdAt);
+  const prune: string[] = [];
+  let total = 0;
+  for (let index = 0; index < sorted.length; index++) {
+    const entry = sorted[index]!;
+    const withinCount = index < keepCount;
+    const withinBudget = total + entry.bytes <= budgetBytes;
+    if (index === 0 || (withinCount && withinBudget)) { total += entry.bytes; continue; }
+    prune.push(entry.manifest.id);
+  }
+  return prune;
 }
 
 /** Pure arg builders (unit-tested): archive a named volume into the bind-mounted snapshot directory. */
@@ -137,6 +161,10 @@ export function createLocalDockerSnapshotStore(deps: {
   readonly dataVolume: string;
   readonly helperImage: string;
   readonly root: string;
+  /** Box schema this build expects (LOCAL_DOCKER_SCHEMA_VERSION); stamped into new manifests and used by the connector to refuse cross-layout restores. */
+  readonly boxSchemaVersion: string;
+  /** Space preflight probe; injectable for tests. Defaults to node:fs/promises statfs. */
+  readonly statfs?: (path: string) => Promise<{ bavail: bigint; bsize: bigint }>;
   readonly now?: () => number;
   readonly log?: (message: string) => void;
 }): LocalDockerSnapshotStore {
@@ -148,11 +176,52 @@ export function createLocalDockerSnapshotStore(deps: {
     if (!SNAPSHOT_ID_PATTERN.test(id)) return null;
     try { return parseSnapshotManifest(JSON.parse(await readFile(manifestPath(id), "utf8")), repo); } catch { return null; }
   };
-  return {
-    root: deps.root,
-    async save() {
+  const archiveBytes = async (id: string): Promise<number> => {
+    let total = 0;
+    for (const { file } of SNAPSHOT_VOLUME_FILES) {
+      try { total += (await stat(join(deps.root, id, file))).size; } catch { /* missing archive counts as zero; prune may then drop it */ }
+    }
+    return total;
+  };
+  // Saves and restores serialize through one chain: a scheduled save mid-restore
+  // would otherwise tar half-restored volumes and publish them as the latest
+  // baseline (review life-4).
+  let opChain: Promise<unknown> = Promise.resolve();
+  const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
+    const next = opChain.then(operation, operation);
+    opChain = next.then(() => undefined, () => undefined);
+    return next;
+  };
+  const previousSnapshotBytes = async (): Promise<number> => {
+    try {
+      const pointer = JSON.parse(await readFile(join(deps.root, SNAPSHOT_LATEST_FILENAME), "utf8")) as Record<string, unknown>;
+      if (typeof pointer.id !== "string") return 0;
+      const manifest = await readManifest(pointer.id);
+      return manifest == null ? 0 : await archiveBytes(manifest.id);
+    } catch { return 0; }
+  };
+  const saveInner = async (): Promise<{ readonly ok: true; readonly id: string } | { readonly ok: false; readonly error: string }> => {
+    // Space preflight BEFORE anything touches the box: need the larger of the
+    // floor and 1.5× the previous snapshot's size free on the snapshots root.
+    const probe = deps.statfs ?? statfs;
+    try {
+      const freeBytes = Number((await probe(deps.root)).bavail) * Number((await probe(deps.root)).bsize);
+      const requiredBytes = Math.max(SNAPSHOT_MIN_FREE_BYTES, Math.round((await previousSnapshotBytes()) * 1.5));
+      if (freeBytes < requiredBytes) return { ok: false, error: `insufficient space on ${deps.root}: ${freeBytes} bytes free, snapshot needs ~${requiredBytes}` };
+    } catch (error) {
+      deps.log?.(`local-docker-snapshot: space preflight unavailable, proceeding: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    // Quiesce: pause the container so the committed layer and both volume
+    // tars capture ONE instant instead of three torn ones (review life-3).
+    // A container that is not running is already quiescent; any other pause
+    // failure aborts the save.
+    const paused = await deps.runDocker(["pause", deps.container]);
+    const wasPaused = paused.ok;
+    if (!wasPaused && !/is not running|is already paused/i.test(paused.output)) return { ok: false, error: `could not quiesce ${deps.container} for snapshot: ${paused.output}` };
+    try {
       const id = newSnapshotId(deps.now);
       const directory = join(deps.root, id);
+      let archivedBytes = { workspace: 0, data: 0 };
       const committed = await deps.runDocker(["commit", deps.container, `${repo}:${id}`]);
       if (!committed.ok) return { ok: false, error: `docker commit failed: ${committed.output}` };
       try {
@@ -163,7 +232,8 @@ export function createLocalDockerSnapshotStore(deps: {
           const archived = await deps.runDocker(args);
           if (!archived.ok) throw new Error(`volume ${volume} archive failed: ${archived.output}`);
         }
-        const manifest: SnapshotManifest = { schemaVersion: SNAPSHOT_SCHEMA_VERSION, id, createdAt: (deps.now ?? Date.now)(), imageTag: `${repo}:${id}`, volumes: { workspace: "workspace.tgz", data: "data.tgz" } };
+        archivedBytes = { workspace: (await stat(join(directory, "workspace.tgz"))).size, data: (await stat(join(directory, "data.tgz"))).size };
+        const manifest: SnapshotManifest = { schemaVersion: SNAPSHOT_SCHEMA_VERSION, id, createdAt: (deps.now ?? Date.now)(), imageTag: `${repo}:${id}`, boxSchemaVersion: deps.boxSchemaVersion, archiveBytes: archivedBytes };
         await writeAtomicJson(manifestPath(id), manifest);
         await writeAtomicJson(join(deps.root, SNAPSHOT_LATEST_FILENAME), { schemaVersion: SNAPSHOT_SCHEMA_VERSION, id });
       } catch (error) {
@@ -171,33 +241,43 @@ export function createLocalDockerSnapshotStore(deps: {
         await deps.runDocker(["rmi", "--force", `${repo}:${id}`]).catch(() => undefined);
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
-      deps.log?.(`local-docker-snapshot: saved ${id}`);
-      await this.prune();
+      deps.log?.(`local-docker-snapshot: saved ${id} (${archivedBytes.workspace + archivedBytes.data} bytes archived)`);
+      await pruneInner();
       return { ok: true, id };
-    },
+    } finally {
+      if (wasPaused) {
+        const unpaused = await deps.runDocker(["unpause", deps.container]);
+        if (!unpaused.ok) deps.log?.(`local-docker-snapshot: WARNING unpause failed for ${deps.container}: ${unpaused.output}`);
+      }
+    }
+  };
+  const pruneInner = async (): Promise<void> => {
+    let entries: readonly string[];
+    try { entries = await readdir(deps.root); } catch { return; }
+    const sized: { manifest: SnapshotManifest; bytes: number }[] = [];
+    for (const entry of entries) {
+      const manifest = await readManifest(entry);
+      if (manifest != null) sized.push({ manifest, bytes: await archiveBytes(manifest.id) });
+    }
+    for (const id of selectSnapshotsToPruneByBudget(sized)) {
+      await rm(join(deps.root, id), { recursive: true, force: true });
+      await deps.runDocker(["rmi", "--force", `${repo}:${id}`]).catch(() => undefined);
+      deps.log?.(`local-docker-snapshot: pruned ${id}`);
+    }
+  };
+  const store: LocalDockerSnapshotStore = {
+    root: deps.root,
+    save: () => serialize(saveInner),
     async latest() {
       try {
         const pointer = JSON.parse(await readFile(join(deps.root, SNAPSHOT_LATEST_FILENAME), "utf8")) as Record<string, unknown>;
         return typeof pointer.id === "string" ? await readManifest(pointer.id) : null;
       } catch { return null; }
     },
-    /**
-     * Three-phase restore, so a failure before the swap phase leaves
-     * production untouched (tests/local-docker-snapshot.test.mjs):
-     * 1. preflight — snapshot image present locally, both archives listable
-     *    (`tar -tzf`); a corrupt archive or missing image fails HERE, not
-     *    after the container is gone (the old wipe-then-unpack sequence could
-     *    destroy a volume and deadlock the retry on the same broken archive).
-     * 2. stage — extract both archives into EMPTY staging volumes; failures
-     *    touch nothing production.
-     * 3. swap — remove the container, then copy each staged volume over the
-     *    production volume. Only this phase is destructive; its sources are
-     *    fully materialized and the same byte count just wrote successfully,
-     *    so the residual risk window is the final copy alone. On swap failure
-     *    the snapshot archives are intact and a retry is safe.
-     * Staging volumes are cleaned up on every exit path.
-     */
-    async restoreVolumes(manifest) {
+    restoreVolumes: (manifest) => serialize(() => restoreInner(manifest)),
+    prune: () => serialize(pruneInner),
+  };
+  async function restoreInner(manifest: SnapshotManifest): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: string }> {
       const snapshotDirectory = join(deps.root, manifest.id);
       const stagedArgs = (args: readonly string[]): readonly string[] => args.map((argument) => argument.replaceAll("__SNAPSHOT_DIR__", snapshotDirectory));
       const cleanupStaging = async (): Promise<void> => { await deps.runDocker(["volume", "rm", "--force", stagingName.workspace, stagingName.data]); };
@@ -240,22 +320,8 @@ export function createLocalDockerSnapshotStore(deps: {
       await cleanupStaging();
       deps.log?.(`local-docker-snapshot: volumes restored from ${manifest.id}`);
       return { ok: true };
-    },
-    async prune() {
-      let entries: readonly string[];
-      try { entries = await readdir(deps.root); } catch { return; }
-      const manifests: SnapshotManifest[] = [];
-      for (const entry of entries) {
-        const manifest = await readManifest(entry);
-        if (manifest != null) manifests.push(manifest);
-      }
-      for (const id of selectSnapshotsToPrune(manifests)) {
-        await rm(join(deps.root, id), { recursive: true, force: true });
-        await deps.runDocker(["rmi", "--force", `${repo}:${id}`]).catch(() => undefined);
-        deps.log?.(`local-docker-snapshot: pruned ${id}`);
-      }
-    },
-  };
+  }
+  return store;
 }
 
 /** Periodic best-effort snapshot, mirroring the hosted product's server-side "last saved snapshot". */

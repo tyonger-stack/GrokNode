@@ -20,6 +20,16 @@ import { GITHUB_EVENT_KINDS, isValidGithubRepo, REACTION_EMOJI_PATTERN, normaliz
 export type CanonicalListenerEvent = Record<string, unknown> & { readonly source: "slack" | "github" };
 
 const MAX_EVENT_TEXT_CHARS = 8_000;
+const MAX_EVENT_FIELD_CHARS = 220;
+
+/**
+ * The only webhook-forward outcomes that prove the presented routine key was
+ * verified host-side (automation-runtime.ts emits 404/401 before any key
+ * check, 202 after a verified key fired the routine, 409 after a verified
+ * key found the routine paused). The ingestion gate and its tests share this
+ * table so the cross-file contract lives in one place.
+ */
+export const INGESTION_VERIFIED_FORWARD_STATUSES: readonly number[] = [202, 409];
 
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value != null && !Array.isArray(value); }
 function str(value: unknown): string { return typeof value === "string" ? value : ""; }
@@ -53,6 +63,17 @@ export function slackUrlVerificationChallenge(payload: Record<string, unknown>):
   return typeof inner.challenge === "string" && inner.challenge.length > 0 ? inner.challenge : null;
 }
 
+/** Slack Events API envelopes carry no delivery header; the envelope's own event_id is the platform's retry identity. */
+export function slackEventDeliveryId(payload: Record<string, unknown>): string | undefined {
+  const inner = unwrapSlackEventsApiPayload(payload);
+  if (inner == null) return undefined;
+  for (const candidate of [inner.event_id, record(inner.event) ? inner.event.event_id : undefined]) {
+    if (typeof candidate === "string" && candidate.length > 0 && candidate.length <= MAX_EVENT_FIELD_CHARS) return candidate;
+    if (typeof candidate === "number" && Number.isSafeInteger(candidate)) return String(candidate);
+  }
+  return undefined;
+}
+
 /**
  * Map a Slack Events API envelope to the canonical slack event. Channel is
  * kept as the raw channel id: the hosted relay resolves channel names
@@ -75,7 +96,14 @@ export function slackEventToListenerEvent(payload: Record<string, unknown>, now:
     if (!REACTION_EMOJI_PATTERN.test(reaction)) return null;
     const item = record(event.item) ? event.item : null;
     const reactionChannel = str(item?.channel) || channel;
-    return { source: "slack", channel: reactionChannel, sender, text: "", isMention: false, reactionEmoji: `:${reaction}:`, timestampMs: now() };
+    // bySelf triggers mean "the installing user reacted". The Events API
+    // envelope's authorizations[] list the installing user ids, so a reaction
+    // by one of them carries isSelf, mirroring the hosted relay's field.
+    const installers = Array.isArray(inner.authorizations)
+      ? inner.authorizations.map((entry) => str(fieldOf(entry, "user_id"))).filter((id) => id.length > 0)
+      : [];
+    const isSelf = installers.includes(user);
+    return { source: "slack", channel: reactionChannel, sender, text: "", isMention: false, reactionEmoji: `:${reaction}:`, ...(isSelf ? { isSelf: true } : {}), timestampMs: now() };
   }
   if (event.type === "message") {
     // Skip noisy/derived subtypes (edits, joins, bot echo); plain user messages
@@ -147,10 +175,32 @@ export function githubWebhookToListenerEvent(eventName: string | undefined, rawP
   };
 }
 
-/** Host-side admission check for locally injected events (the gateway command input is not trusted by shape alone). */
+/**
+ * Host-side admission check for locally injected events (the gateway command input is not trusted by shape alone).
+ * Enforces at least what the mappers guarantee, so the raw gateway-command path
+ * (which bypasses the mappers) cannot push oversized or malformed fields into
+ * the model-facing trigger context.
+ */
 export function isValidListenerEvent(event: unknown): event is CanonicalListenerEvent {
   if (!record(event)) return false;
-  if (event.source === "slack") return typeof event.channel === "string" && event.channel.length > 0 && typeof event.sender === "string" && event.sender.length > 0;
-  if (event.source === "github") return typeof event.repo === "string" && isValidGithubRepo(event.repo) && typeof event.kind === "string" && (GITHUB_EVENT_KINDS as readonly string[]).includes(event.kind) && typeof event.actor === "string" && event.actor.length > 0;
+  if (event.source === "slack") {
+    if (typeof event.channel !== "string" || event.channel.length === 0 || event.channel.length > MAX_EVENT_FIELD_CHARS) return false;
+    if (typeof event.sender !== "string" || event.sender.length === 0 || event.sender.length > MAX_EVENT_FIELD_CHARS) return false;
+    if (typeof event.text !== "undefined" && !(typeof event.text === "string" && event.text.length <= MAX_EVENT_TEXT_CHARS)) return false;
+    if (event.reactionEmoji !== undefined && !(typeof event.reactionEmoji === "string" && /^:[a-z0-9_+-]+:$/.test(event.reactionEmoji))) return false;
+    if (event.isMention !== undefined && typeof event.isMention !== "boolean") return false;
+    if (event.isSelf !== undefined && typeof event.isSelf !== "boolean") return false;
+    return true;
+  }
+  if (event.source === "github") {
+    if (typeof event.repo !== "string" || !isValidGithubRepo(event.repo)) return false;
+    if (typeof event.kind !== "string" || !(GITHUB_EVENT_KINDS as readonly string[]).includes(event.kind)) return false;
+    if (typeof event.actor !== "string" || event.actor.length === 0 || event.actor.length > MAX_EVENT_FIELD_CHARS) return false;
+    if (event.title !== undefined && !(typeof event.title === "string" && event.title.length <= MAX_EVENT_TEXT_CHARS)) return false;
+    if (event.prOwner !== undefined && !(typeof event.prOwner === "string" && event.prOwner.length <= MAX_EVENT_FIELD_CHARS)) return false;
+    if (event.branch !== undefined && !(typeof event.branch === "string" && event.branch.length <= MAX_EVENT_FIELD_CHARS)) return false;
+    if (event.url !== undefined && !(typeof event.url === "string" && event.url.length <= 2_048)) return false;
+    return true;
+  }
   return false;
 }
