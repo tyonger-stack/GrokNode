@@ -47,6 +47,11 @@ const infoPlist = path.join(outputApp, "Contents", "Info.plist");
 await run(SYSTEM_TOOLS.plutil, ["-remove", "ElectronAsarIntegrity", infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleIdentifier", "-string", reconstructedBundleId, infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleDisplayName", "-string", reconstructedName, infoPlist]);
+// Release reconstructed.1 (0.75.3 line): ship Info.plist as 0.75.3 to match official Grok Bot display/internal version.
+// Upstream fidelity runtime remains the checksum-pinned 0.18.0 DMG base; only Info.plist versions change.
+const releaseBundleVersion = process.env.GROK_NODE_BUNDLE_VERSION?.trim() || "0.75.3";
+await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleShortVersionString", "-string", releaseBundleVersion, infoPlist]);
+await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleVersion", "-string", releaseBundleVersion, infoPlist]);
 // Hint macOS that this app's resources are localized primarily for Simplified
 // Chinese so it auto-translates built-in menu roles (`editMenu`, `windowMenu`,
 // `help`, `services`, `hide`, …) when the user is on a Chinese-locale Mac.

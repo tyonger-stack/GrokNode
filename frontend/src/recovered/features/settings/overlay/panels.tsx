@@ -3,10 +3,8 @@ import { useIntl } from "react-intl";
 import type { CursorUsageSummary, CursorUsageUpgradeAction, DesktopTimeZoneState, LanguagePreference } from "../../../contracts/desktop-bridge";
 import { egressTunnelStatusDescription, type EgressTunnelStatus, type UpdateStatus, type UpdateTrack } from "./updates";
 // @evidence src/app/dist/renderer/assets/index-BlqerJhg.js#L1
-import { INTERNAL_RELEASE_TRACK_CONFIG_URL, UPDATE_TRACK_LABELS, updateStatusMessage } from "./updates";
+import { GITHUB_RELEASES_URL, INTERNAL_RELEASE_TRACK_CONFIG_URL, UPDATE_TRACK_LABELS, updateStatusMessage } from "./updates";
 import { AutoReviewRulesPanel, type AutoReviewSettings } from "./auto-review";
-import { SettingsComputerPanel } from "./computer-view";
-import type { SettingsComputerMount } from "./computer";
 import { useAsyncAction } from "../../../runtime/async-action";
 import { SandButton } from "../../../ui/sand-kit-primitives";
 import { SandSelect } from "../../../ui/sand-floating-primitives";
@@ -523,7 +521,6 @@ export interface UpdatesSettingsPanelProps {
   onInstall?(): void | Promise<unknown>;
   onSetTrack(track: UpdateTrack): void | Promise<unknown>;
   onSetAutoUpdateWhenIdle(enabled: boolean): void | Promise<unknown>;
-  computer?: SettingsComputerMount;
   egressTunnel?: {
     available: boolean;
     enabled: boolean;
@@ -541,7 +538,6 @@ export function UpdatesSettingsPanel({
   onInstall,
   onSetTrack,
   onSetAutoUpdateWhenIdle,
-  computer,
   egressTunnel
 }: UpdatesSettingsPanelProps) {
   const [checkPending, setCheckPending] = useState(false);
@@ -572,7 +568,6 @@ export function UpdatesSettingsPanel({
           enabled={egressTunnel.enabled}
           onChange={egressTunnel.onChange}
         /> : null}
-        {computer ? <SettingsComputerPanel {...computer} /> : null}
       </div>
     );
   }
@@ -619,9 +614,18 @@ export function UpdatesSettingsPanel({
           )}
         </div>
         <output aria-live="polite" className="sand-settings-beta__status" data-tone={message.tone}>{message.text}</output>
+        {/* Reconstructed GitHub Releases fallback: Squirrel.Mac auto-apply needs a Developer ID
+            signature, so ad-hoc builds may stage yet fail to install. The Releases link is the
+            reliable manual path and stays visible in every state. */}
+        <div className="sand-settings-beta__releases">
+          {status.githubRelease?.version != null && (status.state.type === "available" || status.state.type === "downloading" || status.state.type === "staging" || status.state.type === "ready") ? (
+            <span className="sand-settings-copy"><small>Grok Bot {status.githubRelease.version} is available on <a href={status.githubRelease.releaseUrl} rel="noopener noreferrer" target="_blank">GitHub Releases</a> (<a href={status.githubRelease.downloadUrl} rel="noopener noreferrer" target="_blank">download this version</a>). If auto-install fails, download the zip manually.</small></span>
+          ) : (
+            <span className="sand-settings-copy"><small>Prefer manual updates? <a href={status.releasesUrl ?? GITHUB_RELEASES_URL} rel="noopener noreferrer" target="_blank">View/download on GitHub Releases</a></small></span>
+          )}
+        </div>
       </SettingsGroup>
       {egressVisible ? <EgressTunnelSettingsGroup available={egressAvailable} description={egressDescription} enabled={egressTunnel.enabled} onChange={egressTunnel.onChange} /> : null}
-      {computer ? <SettingsComputerPanel {...computer} /> : null}
     </div>
   );
 }

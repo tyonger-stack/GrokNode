@@ -224,7 +224,20 @@ export function patchOriginalSettingsI18n(source) {
   const applied = [];
   for (const [en, zh] of SETTINGS_I18N_PAIRS) {
     const mode = SETTINGS_I18N_PANEL.has(en) ? "PANEL" : "FULL";
-    const result = applyEnginePair(patched, en, zh, mode);
+    let result;
+    try {
+      result = applyEnginePair(patched, en, zh, mode);
+    } catch (error) {
+      // Optional rows added by later renderer extensions can leave a label
+      // only inside a quoted span that the pair matcher deliberately ignores.
+      // A missing optional translation must not abort packaging; record it and
+      // keep the original English literal.
+      if (error instanceof Error && error.message.startsWith("i18n pair has no anchor outside string spans:")) {
+        applied.push({ en, mode, hits: 0, skipped: true });
+        continue;
+      }
+      throw error;
+    }
     patched = result.patched;
     applied.push({ en, mode, hits: result.hits });
   }
