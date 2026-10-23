@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import type { DesktopNotificationPreferences } from "../../desktop-0721.js";
 
 import { DEFAULT_SAND_THEME_PREFERENCE, isSandThemePreference, type SandThemePreference } from "../../desktop.js";
 import { SAND_DISABLED_NOTIFICATION_CONFIG } from "../../host-settings.js";
@@ -18,6 +19,15 @@ import { normalizeOpenRouterChannelStatus, type OpenRouterChannelStatus } from "
 import { normalizeOpenRouterReasoningEffort, type OpenRouterReasoningEffort } from "../openrouter-proxy.js";
 
 export const SETTINGS_VERSION = 1;
+const DESKTOP_NOTIFICATION_SOUNDS = [
+  "ping-1-open-blip", "ping-2-tick", "ping-3-double-tick", "ping-4-chime-a", "ping-5-chime-b",
+] as const;
+function isDesktopNotificationPreferences(value: unknown): value is DesktopNotificationPreferences {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.playSound === "boolean" && typeof record.sound === "string" &&
+    (DESKTOP_NOTIFICATION_SOUNDS as readonly string[]).includes(record.sound);
+}
 export const SAND_DOWNGRADE_MAX_FAST_MIGRATION_ID = "downgrade-persisted-max-fast";
 export const SAND_LOCAL_ONLY_ROUTING_MIGRATION_ID = "local-only-routing-v1";
 export const SAND_SETTINGS_MIGRATION_IDS = [SAND_DOWNGRADE_MAX_FAST_MIGRATION_ID, SAND_LOCAL_ONLY_ROUTING_MIGRATION_ID] as const;
@@ -31,6 +41,7 @@ function parseWebhookListenerPort(value: unknown): number | undefined {
 type StringMap = Record<string, string>;
 type StringListMap = Record<string, string[]>;
 export interface SandStoredSettings {
+  desktopNotificationPreferences?: DesktopNotificationPreferences;
   version: 1; mcpBoxServers: string[]; autoUpdateWhenIdleOptIn: boolean; egressTunnelEnabled: boolean; webauthnProxyEnabled: boolean;
   mcpCustomInstructions: StringMap; mcpCustomInstructionsByServerId: StringMap; mcpDisabledToolsByServerId: StringListMap;
   conciergeConsent: "unset" | "allowed" | "denied"; settingsMigrations: string[];
@@ -134,6 +145,11 @@ function parseSettings(value: unknown): SandStoredSettings | null {
   if (isSandUpdateTrack(raw.updateTrackOverride)) result.updateTrackOverride = raw.updateTrackOverride;
   if (isSandThemePreference(raw.themePreference)) result.themePreference = raw.themePreference;
   if (isLanguagePreference(raw.languagePreference)) result.languagePreference = raw.languagePreference;
+  if (isDesktopNotificationPreferences(raw.desktopNotificationPreferences)) {
+    result.desktopNotificationPreferences = {
+      playSound: raw.desktopNotificationPreferences.playSound, sound: raw.desktopNotificationPreferences.sound,
+    };
+  }
   if (isSandAgentModelSelection(raw.agentDefaultModel)) result.agentDefaultModel = raw.agentDefaultModel;
   if (isSandAgentModelSelection(raw.computerUseModel)) result.computerUseModel = raw.computerUseModel;
   if (typeof raw.notifications === "object" && raw.notifications != null && !Array.isArray(raw.notifications)) result.notifications = raw.notifications as Record<string, unknown>;
@@ -214,6 +230,13 @@ export class SandSettingsStore {
   getThemePreference(): SandThemePreference { return this.load().themePreference ?? DEFAULT_SAND_THEME_PREFERENCE; }
   setThemePreference(value: SandThemePreference): void { this.update((s) => ({ ...s, themePreference: value })); }
   getLanguagePreference(): LanguagePreference { const stored = this.load().languagePreference; return stored ?? DEFAULT_LANGUAGE_PREFERENCE; }
+  getDesktopNotificationPreferences(): DesktopNotificationPreferences | undefined { return this.load().desktopNotificationPreferences; }
+  setDesktopNotificationPreferences(value: DesktopNotificationPreferences): void {
+    if (!isDesktopNotificationPreferences(value)) throw new TypeError("Invalid desktop notification preferences");
+    this.update((settings) => ({
+      ...settings, desktopNotificationPreferences: { playSound: value.playSound, sound: value.sound },
+    }));
+  }
   setLanguagePreference(value: LanguagePreference): void { this.update((s) => ({ ...s, languagePreference: value })); }
   getBoxRuntime(): SandBoxRuntime { return this.load().boxRuntime ?? DEFAULT_SAND_BOX_RUNTIME; }
   setBoxRuntime(value: SandBoxRuntime): void { this.update((s) => ({ ...s, boxRuntime: value })); }

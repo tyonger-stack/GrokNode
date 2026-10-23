@@ -6,6 +6,8 @@ import "./transcript-utility-parity.css";
 import { AssistantMath } from "./math";
 import { TranscriptAttachmentGallery } from "./media-viewer";
 import { MermaidDiagram } from "./mermaid";
+import { DiagramBlock, PELE_GATE_NAME } from "./pele";
+import { loadShippedPeleRuntime } from "./pele-runtime";
 import { createPromptEditorExtensions } from "./rich-text-editor";
 import type { AttachmentBytesResult, AttachmentMedia } from "../../../contracts/desktop-bridge";
 import type { ConversationTranscriptEntry, TranscriptComputerHandoff, TranscriptMessage, TranscriptThinking, TranscriptToolCall } from "./model";
@@ -450,9 +452,29 @@ function AssistantCodeCopyButton({ code }: { code: string }) {
   }} type="button"><span aria-hidden="true" data-icon-name={iconName} data-size="base" style={{ fontFamily: "cursor-icons" }}>{String.fromCodePoint(iconCodePoint)}</span></button>;
 }
 
+function usePeleDiagramEnabled(): boolean {
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    const experiments = (window as Window & { desktop?: { experiments?: { getSnapshot?: () => Promise<unknown>; initialSnapshot?: unknown } } }).desktop?.experiments;
+    if (experiments == null) return undefined;
+    let live = true;
+    void (async () => {
+      let snapshot: unknown = experiments.initialSnapshot;
+      try { snapshot = await experiments.getSnapshot?.(); } catch { /* keep the initial snapshot */ }
+      if (!live || typeof snapshot !== "object" || snapshot === null) return;
+      const gates = (snapshot as { featureGates?: Record<string, unknown> }).featureGates;
+      setEnabled(gates?.[PELE_GATE_NAME] === true);
+    })();
+    return () => { live = false; };
+  }, []);
+  return enabled;
+}
+
 function AssistantCodeBlock({ code, language }: { code: string; language: string }) {
+  const peleEnabled = usePeleDiagramEnabled();
   const fallback = <div className="sand-code-figure"><div className="sand-code-scroll"><pre className="sand-code-block"><code className={language.length > 0 ? `language-${language}` : "sand-code-fallback"}>{code}</code></pre></div><AssistantCodeCopyButton code={code} /></div>;
-  return language === "mermaid" ? <MermaidDiagram code={code} fallback={fallback} /> : fallback;
+  if (language !== "mermaid" && language !== "pele") return fallback;
+  return <DiagramBlock code={code} fallback={fallback} language={language} loadPeleRuntime={loadShippedPeleRuntime} peleEnabled={peleEnabled} />;
 }
 
 function SendMessageTextImages({ images }: { images: readonly SendMessageTextImage[] }) {

@@ -51,6 +51,8 @@ export function libraryDesktopFromWindow(): LibraryHostDesktop {
     getDocumentEditRight: (args) => call("getDocumentEditRight")(args) as never,
     saveDocument: (args) => call("saveDocument")(args) as never,
     getDocumentAssets: (args) => call("getDocumentAssets")(args) as never,
+    readVisualizationFragment: (args) => call("readVisualizationFragment")(args) as Promise<{ html: string }>,
+    stageVisualizationDocument: (args) => call("stageVisualizationDocument")(args) as Promise<{ frameUrl: string }>,
     setDocumentVisibility: (args) => call("setDocumentVisibility")(args) as never,
     getCanvasShare: (args) => call("getCanvasShare")(args) as never,
     setCanvasVisibility: (args) => call("setCanvasVisibility")(args) as never,

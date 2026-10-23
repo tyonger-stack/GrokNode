@@ -1,3 +1,4 @@
+import { createSaveToLibraryTool, type LibraryFilesPort } from "../../extensions/library/library-files.js";
 import {
   SAND_HIDDEN_PROMPT_MARKER,
   SAND_TRUSTED_AUTOMATION_PROMPT_MARKER,
@@ -14,6 +15,8 @@ import { resolveSandExternalMachine } from "../../../shared/agents/agent-tool-na
 import { SAND_REACT_TO_MESSAGE_TOOL_NAME } from "./sand-reaction-tool.js";
 import { SAND_UPDATE_STATE_TOOL_NAME } from "./sand-state-tool.js";
 import { SAND_SEND_MESSAGE_TOOL_NAME } from "./send-message-tool.js";
+import { createVisualizeTool } from "./visualize-tool.js";
+import { createVisualizationPages } from "../../extensions/transcript/visualization-pages.js";
 import { createTaskTool } from "../../../packages/agent/tools/task.js";
 import type { ToolSetHandle } from "../../../packages/agent/tools/core.js";
 import { sandLocalToolScopeKey, sandTurnDirectionEpochKey } from "../../../shared/local-tool-permission-machinery.js";
@@ -529,10 +532,12 @@ export interface ToolFactoryContext {
 }
 
 export interface TurnToolFactories {
+  visualize?(): TurnTool;
   task?(): TurnTool;
   multitask?(): TurnTool;
   sendMessage?(): TurnTool;
   nativeArtifacts?(): TurnTool;
+  saveToLibrary?(): TurnTool;
   sendToAgent?(): TurnTool;
   reaction?(): TurnTool;
   createAgent?(): TurnTool;
@@ -689,6 +694,7 @@ export interface TurnToolsetFactoryInputs {
   readonly screenshot?: TurnComputerToolFactoryInput;
   readonly fileTransfer?: TurnFileTransferToolFactoryInput;
   readonly nativeArtifacts?: TurnNativeArtifactToolFactoryInput;
+  readonly libraryFiles?: LibraryFilesPort;
   readonly requestBoxHelp?: TurnBoxHelpToolFactoryInput;
   readonly generateImage?: TurnGenerateImageToolFactoryInput;
   readonly webSearch?: TurnWebSearchToolFactoryInput;
@@ -711,6 +717,7 @@ export interface TurnToolsetFactoryInputs {
 
 /** Host-facing per-turn projection; resource/session identities stay fresh. */
 export interface TurnToolsetHostFactoryProvider {
+  readonly createLibraryFilesPort?: (turn: TurnToolsetTurnInput, props: TurnToolsetBuildProps) => LibraryFilesPort | undefined;
   readonly createReviewInteractionTools?: (turn: TurnToolsetTurnInput, props: TurnToolsetBuildProps) => readonly unknown[];
   readonly createTaskToolInputs?: (
     turn: TurnToolsetTurnInput,
@@ -1094,10 +1101,11 @@ export function createTurnToolsetFactories(
   "task" | "mcpMeta" | "computer" | "browser" | "screenshot"
   | "fileTransfer" | "requestBoxHelp" | "generateImage" | "webSearch" | "webFetch" | "externalAwait"
   | "boxAwait" | "externalShell" | "externalRead" | "boxShell" | "boxRead"
-  | "sendMessage" | "nativeArtifacts" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState" | "contextTools" | "splitStateTools"
+  | "sendMessage" | "nativeArtifacts" | "saveToLibrary" | "sendToAgent" | "reaction" | "createAgent" | "updateAgent" | "updateState" | "contextTools" | "splitStateTools"
   | "subagentManagement"
   | "mcpManagement" | "cloudAgent"
 > {
+  const libraryFiles = input.libraryFiles;
   return {
     ...(input.task === undefined
       ? {}
@@ -1153,6 +1161,7 @@ export function createTurnToolsetFactories(
     ...(input.sendMessage === undefined
       ? {}
       : { sendMessage: createTurnSendMessageToolFactory(input.sendMessage) }),
+    ...(libraryFiles === undefined ? {} : { saveToLibrary: () => asTurnTool(createSaveToLibraryTool(libraryFiles)) }),
     ...(input.nativeArtifacts === undefined
       ? {}
       : { nativeArtifacts: createTurnNativeArtifactToolFactory(input.nativeArtifacts) }),
@@ -1196,13 +1205,17 @@ export function createTurnToolsetFactoriesForTurn(
   provider: TurnToolsetHostFactoryProvider,
   turn: TurnToolsetTurnInput,
   props: TurnToolsetBuildProps,
-): ReturnType<typeof createTurnToolsetFactories> & Pick<TurnToolFactories, "reviewInteractions"> {
+): ReturnType<typeof createTurnToolsetFactories> & Pick<TurnToolFactories, "reviewInteractions" | "visualize"> {
   const externalShell = provider.createExternalShellToolInputs?.(turn, props);
   const externalRead = provider.createExternalReadToolInputs?.(turn, props);
   const boxShell = provider.createBoxShellToolInputs?.(turn, props);
   const boxRead = provider.createBoxReadToolInputs?.(turn, props);
   const reviewInteractions = provider.createReviewInteractionTools;
+  const libraryFiles = provider.createLibraryFilesPort?.(turn, props);
+  const visualization = props.hostDependencies?.visualization;
+  const emitUpdate = turn.emitUpdate;
   return { ...createTurnToolsetFactories({
+    ...(libraryFiles === undefined ? {} : { libraryFiles }),
     ...(provider.createTaskToolInputs === undefined
       ? {}
       : { task: provider.createTaskToolInputs(turn, props) }),
@@ -1290,10 +1303,30 @@ export function createTurnToolsetFactoriesForTurn(
       : {
         cloudAgent: provider.createCloudAgentToolInputs(turn, props),
       }),
+  }), ...(visualization === undefined || emitUpdate === undefined ? {} : {
+    visualize: createTurnVisualizeToolFactory(visualization, emitUpdate, turn.ackToken),
   }), ...(reviewInteractions === undefined ? {} : { reviewInteractions: () => reviewInteractions(turn, props).map(value => {
     if (typeof value !== "object" || value === null) throw new TypeError("Review tool is unavailable");
     return asTurnTool(value);
   }) }) };
+}
+
+export function createTurnVisualizeToolFactory(
+  input: NonNullable<NonNullable<ProductionTurnToolInputs["hostDependencies"]>["visualization"]>,
+  emitUpdate: NonNullable<TurnToolsetTurnInput["emitUpdate"]>,
+  ackToken?: string,
+): () => TurnTool {
+  const pages = createVisualizationPages(input);
+  return () => asTurnTool(createVisualizeTool({
+    pages: () => pages,
+    readBoxFile: input.readBoxFile,
+    sendBlockReason: message => input.sendBlockReason?.(message),
+    emit: (message, timestampMs) => {
+      emitUpdate({ type: "send-message", message: { ...message }, timestampMs,
+        ...(ackToken === undefined ? {} : { ackToken }) });
+      return undefined;
+    },
+  }));
 }
 
 export interface TurnToolsetHost {
@@ -1420,8 +1453,14 @@ export function buildTurnTools(
     if (tool !== undefined) tools.push(tool);
   }
   if (!host.isSubagentRunner) {
+    if (!host.isSystemPromptOverridden) {
+      const visualize = factories.visualize?.();
+      if (visualize !== undefined) tools.push(visualize);
+    }
     const sendMessage = factories.sendMessage?.();
     if (sendMessage !== undefined) tools.push(sendMessage);
+    const saveToLibrary = factories.saveToLibrary?.();
+    if (saveToLibrary !== undefined) tools.push(saveToLibrary);
     const nativeArtifacts = factories.nativeArtifacts?.();
     if (nativeArtifacts !== undefined) tools.push(nativeArtifacts);
     const sendToAgent = factories.sendToAgent?.();

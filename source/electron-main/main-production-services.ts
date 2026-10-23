@@ -4,6 +4,7 @@ import type { ApplicationMenuElectronPort, ApplicationMenuItem } from "./applica
 import { createCoordinatorMainLegs } from "./coordinator/coordinator-main-legs.js";
 import { createEgressConnectionObserver } from "./box/remote-connector-egress.js";
 import { createSettingsRoutedHostConnector } from "./box/local-docker-host-connector.js";
+import { EnvDescriptorHostConnector, GATEWAY_URL_ENV, type SandRemoteHostConnector } from "./box/box-host-connector.js";
 import { createSandClientPauseControl } from "./box/box-client-pause.js";
 import type { RecreateResult } from "./box/box-recreate-commands.js";
 import { createProductionBoxRecovery, type BoxRecovery } from "./box/box-recovery.js";
@@ -52,6 +53,7 @@ import {
 import { registerProductionTelemetryIpc } from "./telemetry/production-telemetry-ipc.js";
 import type { SecureStorageCodec } from "./secrets/secret-store.js";
 import { recordLocalToolApproval as persistLocalToolApproval, clearLocalToolApprovals as clearPersistedLocalToolApprovals } from "../host/local-exec/local-tool-approvals.js";
+import { publishLocalComputerUseGate } from "./computer-use/local-computer-use-gate.js";
 import type { SandSettingsStore } from "../shared/node/settings/sand-settings-store.js";
 import { startWebhookAutomationListener, type WebhookWakeOutcome } from "./webhook-automation-listener.js";
 import type {
@@ -655,7 +657,9 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
           },
         },
       );
-      const localConnector = createSettingsRoutedHostConnector(requireValue(settings, "settings").settingsStore);
+      const localConnector: SandRemoteHostConnector = env[GATEWAY_URL_ENV]?.trim()
+        ? new EnvDescriptorHostConnector(env)
+        : createSettingsRoutedHostConnector(requireValue(settings, "settings").settingsStore);
       const pauseControl = createSandClientPauseControl<BoxConnectionInfo, { readonly preserveData: boolean; readonly force?: boolean }, RecreateResult, unknown>(
         { checkFeatureGate: (name) => requireValue(experiments, "experiments").checkFeatureGate(name) },
         {
@@ -784,6 +788,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
         },
       }, env);
       experiments = track(requireDisposable(await bindings.services.createExperiments(context), "experiments"));
+      track(publishLocalComputerUseGate(experiments, bindings.reportFailure));
       update.attachExperiments(experiments);
       void requireValue(productAnalytics, "product-analytics").activate({
         checkGate: async (name) => requireValue(experiments, "experiments").checkFeatureGate(name),

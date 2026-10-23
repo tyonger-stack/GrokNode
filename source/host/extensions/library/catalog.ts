@@ -7,6 +7,8 @@ import { openCatalog } from "./catalog/secure.js";
 import { CatalogObjects, type CatalogObject, type CatalogObjectKey } from "./catalog/objects.js";
 import { CatalogOutbox } from "./catalog/outbox.js";
 import { CatalogExternalTouches } from "./catalog/external-touches.js";
+import { CatalogPins } from "./catalog/pins.js";
+import { CatalogAccess } from "./catalog/access.js";
 export type { CatalogObject, CatalogObjectKey } from "./catalog/objects.js";
 export { LibraryCatalogError } from "./migrations.js";
 
@@ -14,15 +16,19 @@ export class LibraryCatalog {
   readonly identity: CatalogIdentity;
   readonly outbox: CatalogOutbox;
   readonly external: CatalogExternalTouches;
+  readonly pins: CatalogPins;
+  readonly access: CatalogAccess;
   private readonly db: DatabaseSync;
   private readonly objects: CatalogObjects;
   constructor(options: { readonly dataRoot: string; readonly providerOrigin: string }) {
     const root = resolve(options.dataRoot);
     this.db = openCatalog(root, options.providerOrigin);
     this.identity = new CatalogIdentity(this.db, options.providerOrigin);
-    this.objects = new CatalogObjects(this.db, this.identity, root);
+    this.access = new CatalogAccess(this.db, this.identity);
+    this.objects = new CatalogObjects(this.db, this.identity, root, this.access);
     this.outbox = new CatalogOutbox(this.db, this.identity);
     this.external = new CatalogExternalTouches(this.db, this.identity);
+    this.pins = new CatalogPins(this.db, this.identity);
   }
   close(): void { this.db.close(); }
   readObject(context: LibraryRequestContext, key: CatalogObjectKey): CatalogObject | null { return this.objects.read(context, key); }

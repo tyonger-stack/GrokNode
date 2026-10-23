@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { DebouncePolicy } from "../../../internal/scheduling.js";
-import { MEMORY_PROFILE_PROMPT_LIMIT, formatMemoryDate, memoryDedupeKey, normalizeMemoryContent } from "../../runner/sand-memory.js";
+import { MEMORY_PROFILE_PROMPT_LIMIT, applyMemoryImport, formatMemoryDate, memoryDedupeKey, normalizeMemoryContent, planMemoryImport, type MemoryImportRequest } from "../../runner/sand-memory.js";
 import { WatchedDirectory } from "../../watched-directory.js";
 import type { AgentProjectMembership } from "./project-membership.js";
 
@@ -169,6 +169,19 @@ export class MemoryService {
   list({ agentId }: { agentId: string }): MemoryRecord[] { return this.storeForAgent(agentId).listMemories(); }
   remove({ agentId, id }: { agentId: string; id: string }): boolean { const removed = this.storeForAgent(agentId).removeMemory(id); if (removed) this.emit(); return removed; }
   clear({ agentId }: { agentId: string }): void { this.storeForAgent(agentId).clearMemories(); this.emit(); }
+  importMemories(request: MemoryImportRequest, now = Date.now()): { readonly added: MemoryRecord[]; readonly duplicates: readonly string[]; readonly skipped: readonly string[] } {
+    const store = this.storeForAgent(request.id);
+    const plan = planMemoryImport({ kind: request.kind, text: request.text, ...(request.fileName === undefined ? {} : { fileName: request.fileName }) }, store.listMemories(Number.MAX_SAFE_INTEGER));
+    const applied = applyMemoryImport(store, plan, now);
+    const added: MemoryRecord[] = applied.added.map((record) => ({
+      id: record.id ?? memoryIdFor(record.content),
+      content: record.content,
+      createdAt: record.createdAt,
+      kind: record.kind ?? "log",
+    }));
+    if (added.length > 0) this.emit();
+    return { added, duplicates: applied.duplicates, skipped: plan.skipped };
+  }
   setActiveAgent(agentId: string | null): void { if (this.activeAgentId === agentId) return; this.activeAgentId = agentId; this.emit(); }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   dispose(): void { this.synthesis?.dispose(); this.synthesis = null; this.listeners.clear(); }

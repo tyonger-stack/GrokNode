@@ -438,6 +438,8 @@ export function createHostGatewayApi(
       method(manager, "deleteAgentMemory")(args.id, args.memoryId),
     clearAgentMemories: (args: any) =>
       method(manager, "clearAgentMemories")(args.id),
+    importAgentMemories: (args: any) =>
+      method(manager, "importAgentMemories")(args.id, args),
     getAgentAutomations: (args: any) =>
       method(manager, "getAgentAutomations")(args.id),
     listAllAutomations: () => method(manager, "listAllAutomations")(),
@@ -717,6 +719,19 @@ export function createHostGatewayApi(
     resolveLibraryPages: (args: any) => libraryCall("resolveLibraryPages")(args),
     listLibraryPages: (args: any) => libraryCall("listLibraryPages")(args),
     listLibraryDocs: (args: any) => libraryCall("listLibraryDocs")(args),
+    listLibraryPins: (args: unknown) => libraryCall("listLibraryPins")(args),
+    setLibraryPin: (args: unknown) => libraryCall("setLibraryPin")(args),
+    mergeLibraryPins: (args: unknown) => libraryCall("mergeLibraryPins")(args),
+    readVisualizationFragment: (args: unknown) => libraryCall("readVisualizationFragment")(args),
+    listLibraryFiles: (args: unknown) => libraryCall("listLibraryFiles")(args),
+    removeLibraryFile: (args: unknown) => libraryCall("removeLibraryFile")(args),
+    listLocalTeams: (args: unknown) => libraryCall("listLocalTeams")(args),
+    checkLocalTeamAccess: (args: unknown) => libraryCall("checkLocalTeamAccess")(args),
+    createLocalTeam: (args: unknown) => libraryCall("createLocalTeam")(args),
+    listLocalTeamMembers: (args: unknown) => libraryCall("listLocalTeamMembers")(args),
+    setLocalTeamMember: (args: unknown) => libraryCall("setLocalTeamMember")(args),
+    getLocalAgentAccess: (args: unknown) => libraryCall("getLocalAgentAccess")(args),
+    setLocalAccessGrant: (args: unknown) => libraryCall("setLocalAccessGrant")(args),
     getDocument: (args: any) => libraryCall("getDocument")(args),
     getDocumentEditRight: (args: any) => libraryCall("getDocumentEditRight")(args),
     saveDocument: (args: any) => libraryCall("saveDocument")(args),

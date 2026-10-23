@@ -4,6 +4,7 @@ import { z } from "zod";
 import { CatalogIdentity, identifier } from "../identity.js";
 import { LibraryCatalogError } from "../migrations.js";
 import { verifyContent } from "./secure.js";
+import type { CatalogAccess } from "./access.js";
 
 export const objectKeySchema = z.object({ storeId: identifier, kind: z.enum(["document", "canvas"]), objectId: z.string().uuid() });
 export type CatalogObjectKey = z.infer<typeof objectKeySchema>;
@@ -14,7 +15,7 @@ export type CatalogObject = Readonly<z.infer<typeof objectSchema>>;
 const selection = "store AS storeId,kind,id AS objectId,title,created AS createdAtMs,updated AS updatedAtMs,visibility,content_path AS contentPath,content_hash AS contentHash,revision";
 
 export class CatalogObjects {
-  constructor(private readonly db: DatabaseSync, private readonly identity: CatalogIdentity, private readonly root: string) {}
+  constructor(private readonly db: DatabaseSync, private readonly identity: CatalogIdentity, private readonly root: string, private readonly access?: CatalogAccess) {}
   lookup(key: CatalogObjectKey): CatalogObject | null {
     const row = this.db.prepare(`SELECT ${selection} FROM objects WHERE store=? AND kind=? AND id=?`).get(key.storeId, key.kind, key.objectId);
     return row ? objectSchema.parse(row) : null;
@@ -27,7 +28,7 @@ export class CatalogObjects {
     const sameAccount = owner.accountId === context.principal.accountId;
     if (sameAccount && (owner.principalId === context.principal.principalId ||
       (object.visibility === "team-view" && owner.teamId && this.identity.member(context.principal, owner.teamId) && this.identity.member(owner, owner.teamId)))) return object;
-    return null;
+    return this.access?.allows(context, { kind: "store", id: key.storeId }, "view") === true ? object : null;
   }
   upsert(context: LibraryRequestContext, input: CatalogObject): CatalogObject {
     const value = objectSchema.parse(input);

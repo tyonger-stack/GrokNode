@@ -1,6 +1,7 @@
 // @evidence src/app/dist/renderer/assets/index-UbX-y3il.js
 // @evidence src/app/dist/renderer/assets/katex-DHMw6HUq.js
 import { useEffect, useState } from "react";
+import { decodeNamedHtml } from "./named-entities";
 
 export const KATEX_ASSET = "/upstream/assets/katex-DHMw6HUq.js";
 
@@ -27,7 +28,7 @@ function escapeHtml(value: string): string {
 }
 
 function decodeHtml(value: string): string {
-  return value.replace(/&quot;|&#39;|&amp;|&lt;|&gt;/gu, (entity) => ({ "&quot;": '"', "&#39;": "'", "&amp;": "&", "&lt;": "<", "&gt;": ">" })[entity] ?? entity);
+  return decodeNamedHtml(value);
 }
 
 export function renderKatexMarkup(runtime: KatexRuntime, expression: string, displayMode: boolean): string {
@@ -91,7 +92,7 @@ export function AssistantMath({ expression, displayMode, loadRuntime = loadShipp
     let active = true;
     setMarkup(null);
     void loadRuntime().then((runtime) => {
-      const next = renderKatexMarkup(runtime, expression, displayMode);
+      const next = renderKatexMarkup(runtime, decodeNamedHtml(expression), displayMode);
       if (active) setMarkup(next);
     }).catch(() => {
       if (active) setMarkup(null);

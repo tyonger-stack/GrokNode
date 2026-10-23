@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { visualizationReadArgsSchema } from "../visualization.js";
 
 export const canvasIdSchema = z.string().trim().toLowerCase().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-57][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 export const documentIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{2,63}$/);
@@ -17,10 +18,53 @@ export const libraryPageRefSchema = z.discriminatedUnion("kind", [
 ]);
 export const libraryWriteVisibilitySchema = z.enum(["private", "team-view"]);
 export const libraryShareSchema = z.object({ visibility: libraryWriteVisibilitySchema, canShareToTeam: z.boolean() }).strict();
+const timestampMs = z.number().int().nonnegative().safe().nullable();
+const source = z.string().min(1).max(8192);
+const media = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("link"), url: source, timestampMs }).strict(),
+  ...(["image", "video", "file"] as const).map((kind) =>
+    z.object({ kind: z.literal(kind), source, name: z.string().min(1).max(1024), timestampMs }).strict()),
+]);
+const page = z.discriminatedUnion("kind", [
+  documentLocatorSchema.extend({ kind: z.literal("document") }),
+  z.object({ kind: z.literal("canvas"), storeId: libraryStoreIdSchema, canvasId: canvasIdSchema }).strict(),
+]);
+export const libraryPinSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("page"), page }).strict(),
+  z.object({ kind: z.literal("media"), media }).strict(),
+  z.object({ kind: z.literal("external-doc"), key: z.string().min(1).max(8192) }).strict(),
+  z.object({ kind: z.literal("app"), key: z.string().min(1).max(8192) }).strict(),
+]);
+const localIdentifier = z.string().min(1).max(512).refine(value => !/[\x00-\x1f]/.test(value));
+const localTeamRoleSchema = z.enum(["owner", "admin", "member"]);
+export const localTeamSchema = z.object({ teamId: localIdentifier, name: z.string(), role: localTeamRoleSchema }).strict();
+export const localTeamMemberSchema = z.object({ accountId: localIdentifier, principalId: localIdentifier, role: localTeamRoleSchema }).strict();
+export const localAccessGrantSchema = z.object({
+  kind: z.enum(["agent", "store"]), id: localIdentifier,
+  recipient: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("person"), accountId: localIdentifier, principalId: localIdentifier }).strict(),
+    z.object({ kind: z.literal("team"), teamId: localIdentifier }).strict(),
+  ]),
+  expiresAtMs: z.number().int().positive().safe().nullable(),
+  actions: z.array(z.enum(["view", "use", "create-automation"])).min(1).max(3),
+}).strict();
+const pinArgs = z.object({ agentId: localIdentifier }).strict();
 const documentArgs = z.object({ locator: documentLocatorSchema }).strict();
 const readArgs = documentArgs.extend({ groupChatId: z.string().min(1).optional() });
 const canvasArgs = z.object({ locator: canvasLocatorSchema }).strict();
 export const libraryArgsSchemas = {
+  listLibraryPins: pinArgs,
+  setLibraryPin: pinArgs.extend({ pin: libraryPinSchema, isPinned: z.boolean() }),
+  mergeLibraryPins: pinArgs.extend({ pins: z.array(libraryPinSchema).max(1000) }),
+  readVisualizationFragment: visualizationReadArgsSchema,
+  listLocalTeams: z.object({}).strict(),
+  checkLocalTeamAccess: z.object({ teamId: localIdentifier, action: z.enum(["view", "manage"]) }).strict(),
+  createLocalTeam: z.object({ name: z.string().trim().min(1).max(120) }).strict(),
+  listLocalTeamMembers: z.object({ teamId: localIdentifier }).strict(),
+  setLocalTeamMember: z.object({ teamId: localIdentifier, accountId: localIdentifier, principalId: localIdentifier,
+    role: z.enum(["admin", "member"]).nullable() }).strict(),
+  getLocalAgentAccess: z.object({ agentId: localIdentifier }).strict(),
+  setLocalAccessGrant: z.object({ grant: localAccessGrantSchema, enabled: z.boolean() }).strict(),
   resolveLibraryPages: z.object({ refs: z.array(libraryPageRefSchema), includeDocuments: z.boolean() }).strict(),
   listLibraryPages: z.object({ includeDocuments: z.boolean() }).strict(),
   listLibraryDocs: z.object({ agentId: z.string().min(1) }).strict(),
@@ -66,6 +110,17 @@ export const libraryExternalDocSchema = z.object({
   firstTouchedAtMs: z.number().int().positive().safe(), lastTouchedAtMs: z.number().int().positive().safe(),
 }).strict();
 export const libraryResultSchemas = {
+  listLibraryPins: z.array(libraryPinSchema),
+  setLibraryPin: z.array(libraryPinSchema),
+  mergeLibraryPins: z.array(libraryPinSchema),
+  readVisualizationFragment: z.object({ html: z.string() }).strict(),
+  listLocalTeams: z.array(localTeamSchema),
+  checkLocalTeamAccess: z.object({ authorized: z.literal(true) }).strict(),
+  createLocalTeam: localTeamSchema.extend({ role: z.literal("owner") }),
+  listLocalTeamMembers: z.array(localTeamMemberSchema),
+  setLocalTeamMember: z.void(),
+  getLocalAgentAccess: z.array(localAccessGrantSchema),
+  setLocalAccessGrant: z.array(localAccessGrantSchema),
   resolveLibraryPages: z.array(libraryResolutionSchema),
   listLibraryPages: z.object({ pages: z.array(libraryPageSchema), storeId: libraryStoreIdSchema.nullable(), isComplete: z.boolean(), isDegraded: z.boolean(), listedAtMs: z.number().finite() }).strict(),
   listLibraryDocs: z.object({ docs: z.array(libraryExternalDocSchema), listedAtMs: z.number().finite() }).strict(),
@@ -77,3 +132,8 @@ export const libraryResultSchemas = {
   getCanvasShare: z.object({ storeId: libraryStoreIdSchema, canvasId: canvasIdSchema, share: libraryShareSchema.nullable() }).strict(),
   setCanvasVisibility: libraryWriteVisibilitySchema,
 } as const;
+
+export const libraryHttpEnvelopeSchema = z.object({
+  method: z.object(libraryArgsSchemas).keyof(),
+  args: z.unknown(),
+}).strict();

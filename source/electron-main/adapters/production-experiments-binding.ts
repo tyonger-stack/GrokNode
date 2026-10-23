@@ -1,4 +1,5 @@
 import { resolveLibraryFeatureGate } from "../../shared/library/feature-gates.js";
+import { local0721FeatureSnapshot, resolveLocal0721Feature } from "../../shared/node/port-0721-features.js";
 import type { ElectronProductionAdapterBindings } from "../production-adapters.js";
 import type { ProductionExperimentsService } from "../main-production-services.js";
 import { startSandRpcTraceWindow } from "../../shared/node/cursor-backend/rpc-tracing.js";
@@ -8,7 +9,7 @@ export function createElectronProductionExperimentsBinding(): ElectronProduction
     async create(): Promise<ProductionExperimentsService> {
       const listeners = new Set<() => void>();
       let disposed = false;
-      const snapshot = Object.freeze({});
+      const snapshot = Object.freeze({ featureGates: local0721FeatureSnapshot() });
       return {
         async ensureService() {
           if (disposed) throw new Error("Local experiments service is disposed.");
@@ -24,7 +25,7 @@ export function createElectronProductionExperimentsBinding(): ElectronProduction
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         getSnapshot: () => snapshot,
         getFeatureFlagOverridesRecord: () => ({}),
-        checkFeatureGate: (name: string) => resolveLibraryFeatureGate(name) ?? false,
+        checkFeatureGate: (name: string) => resolveLocal0721Feature(name) ?? resolveLibraryFeatureGate(name) ?? false,
         getDynamicConfig: (_name: string) => ({}),
         hasLiveStatsigBootstrap: () => false,
         getFlagsAgeMs: () => undefined,

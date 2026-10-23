@@ -17,6 +17,10 @@ import { decodeLibraryJson } from "../shared/library/json-bytes.js";
 import { getLocalDockerStatus, probeLocalDockerRelay, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
 import { setApplicationMenuUnreadFilterChecked } from "./application-menu.js";
 import { createComputerPreviewController } from "./computer-sleep.js";
+import { createLocalBackendHandlers0721 } from "./local-backend-handlers-0721.js";
+import type { Local0721Backends } from "./local-backends-0721.js";
+import type { Desktop0721 } from "../shared/desktop-0721.js";
+import { z } from "zod";
 import type { ComputerPreviewController } from "./computer-sleep.js";
 import {
   currentHardwareAccelerationSetting,
@@ -91,6 +95,9 @@ export interface MainEdgeDeps {
   readonly getGpuFeatureStatus?: () => HardwareAccelerationGpuFeatureStatus;
   /** 0.71.2 relaunchDesktop: app.relaunch() + app.quit() (or restartExitCode path). */
   readonly relaunchDesktop?: () => void;
+  readonly stageVisualizationDocument?: (input: { readonly html: string }) => { readonly frameUrl: string };
+  readonly local0721?: () => Local0721Backends;
+  readonly desktop0721?: () => Desktop0721 | undefined;
 }
 
 async function mainAgentRequest(deps: MainEdgeDeps, method: "getMainAgent" | "setMainAgent" | "ensureDefaultMainAgent", args: UnknownRecord): Promise<UnknownRecord> {
@@ -99,6 +106,11 @@ async function mainAgentRequest(deps: MainEdgeDeps, method: "getMainAgent" | "se
 }
 
 function invariant(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
+function desktop0721(deps: MainEdgeDeps): Desktop0721 {
+  const service = deps.desktop0721?.();
+  if (!service) throw new Error("Desktop 0.72.1 services are unavailable");
+  return service;
+}
 function invoke(target: UnknownRecord, method: string, ...args: unknown[]): unknown { const fn = target[method]; invariant(typeof fn === "function", `Missing main-edge dependency method ${method}.`); return Reflect.apply(fn, target, args); }
 function persistedOpenRouterBaseUrl(settingsStore: UnknownRecord): string | null {
   const value = invoke(settingsStore, "getOpenRouterBaseUrl");
@@ -168,6 +180,13 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     getTimeZone: () => ({ detectedTimeZone: (deps.detectTimeZone ?? detectTimeZone)() ?? null, overrideTimeZone: invoke(deps.settingsStore, "getUserTimeZoneOverride") ?? null }),
     setTimeZoneOverride: (raw) => { const { timeZone } = req(raw); if (timeZone === null) invoke(deps.settingsStore, "setUserTimeZoneOverride", undefined); else if (typeof timeZone === "string" && isValidIanaTimeZone(timeZone)) invoke(deps.settingsStore, "setUserTimeZoneOverride", timeZone); const detected = (deps.detectTimeZone ?? detectTimeZone)(); void deps.syncHostSettingsToBox({ ...(detected == null ? {} : { userTimeZone: detected }), userTimeZoneOverride: invoke(deps.settingsStore, "getUserTimeZoneOverride") ?? "" }); return { detectedTimeZone: (deps.detectTimeZone ?? detectTimeZone)() ?? null, overrideTimeZone: invoke(deps.settingsStore, "getUserTimeZoneOverride") ?? null }; },
     getAutoReviewInstructions: () => invoke(deps.settingsStore, "getAutoReviewInstructions"),
+    getDesktopNotificationPreferences: () => desktop0721(deps).getDesktopNotificationPreferences(),
+    setDesktopNotificationPreferences: (raw) => desktop0721(deps).setDesktopNotificationPreferences(z.object({ preferences: z.object({
+      playSound: z.boolean(), sound: z.enum(["ping-1-open-blip", "ping-2-tick", "ping-3-double-tick", "ping-4-chime-a", "ping-5-chime-b"]),
+    }).strict() }).strict().parse(raw)),
+    getDesktopNotificationPermission: () => desktop0721(deps).getDesktopNotificationPermission(),
+    requestDesktopNotificationPermission: () => desktop0721(deps).requestDesktopNotificationPermission(),
+    openDesktopNotificationSettings: () => desktop0721(deps).openDesktopNotificationSettings(),
     setAutoReviewInstructions: async (raw) => {
       const value = req(raw).instructions;
       const normalized = normalizeSandAutoReviewInstructions(req(value));
@@ -429,6 +448,28 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     resolveLibraryPages: (raw) => libraryEdge(deps, "resolveLibraryPages", raw),
     listLibraryPages: (raw) => libraryEdge(deps, "listLibraryPages", raw),
     listLibraryDocs: (raw) => libraryEdge(deps, "listLibraryDocs", raw),
+    listLibraryPins: (raw) => libraryEdge(deps, "listLibraryPins", raw),
+    setLibraryPin: (raw) => libraryEdge(deps, "setLibraryPin", raw),
+    mergeLibraryPins: (raw) => libraryEdge(deps, "mergeLibraryPins", raw),
+    readVisualizationFragment: (raw) => libraryEdge(deps, "readVisualizationFragment", raw),
+    listLibraryFiles: (raw) => libraryEdge(deps, "listLibraryFiles", raw),
+    removeLibraryFile: (raw) => libraryEdge(deps, "removeLibraryFile", raw),
+    listLocalTeams: (raw) => libraryEdge(deps, "listLocalTeams", raw),
+    ...createLocalBackendHandlers0721(() => {
+      if (!deps.local0721) throw new Error("Local 0.72.1 services are unavailable");
+      return deps.local0721();
+    }),
+    createLocalTeam: (raw) => libraryEdge(deps, "createLocalTeam", raw),
+    listLocalTeamMembers: (raw) => libraryEdge(deps, "listLocalTeamMembers", raw),
+    setLocalTeamMember: (raw) => libraryEdge(deps, "setLocalTeamMember", raw),
+    getLocalAgentAccess: (raw) => libraryEdge(deps, "getLocalAgentAccess", raw),
+    setLocalAccessGrant: (raw) => libraryEdge(deps, "setLocalAccessGrant", raw),
+    stageVisualizationDocument: (raw) => {
+      const html = req(raw).html;
+      invariant(typeof html === "string" && Buffer.byteLength(html, "utf8") <= 3 * 1024 * 1024, "Invalid visualization document");
+      if (!deps.stageVisualizationDocument) throw new Error("Visualization protocol is not connected.");
+      return deps.stageVisualizationDocument({ html });
+    },
     getDocument: (raw) => libraryEdge(deps, "getDocument", raw),
     getDocumentEditRight: (raw) => libraryEdge(deps, "getDocumentEditRight", raw),
     saveDocument: (raw) => libraryEdge(deps, "saveDocument", raw),

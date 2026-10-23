@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "version": "0.72.1",
+  "source": "rea-grokbot-0721/asar/app.asar.unpacked",
+  "integritySource": "captured-unpacked-bytes",
+  "files": [
+    {
+      "path": "dist/deps/sand-notification-settings/build/Release/sand_notification_settings.node",
+      "sha256": "3e58c2e52be30df6f4e3a357331e44cac4529c6aa02b2e81338432d49c6615ac",
+      "asarDeclaredSha256": "c002fd02246453816c69ac309ea5f24f6913d7f153ac197efebc31eb3d9a2047"
+    },
+    {
+      "path": "dist/deps/sand-window-capture/build/Release/sand_window_capture.node",
+      "sha256": "0213beb859164bbec332cdb50f0388b6c12b876833c726ee6a6949dd1e9ba319",
+      "asarDeclaredSha256": "0be63d984aa2aaddf8e7fbb32893f11e0c14f6a618bc33e91bbee99a1f7d0b63"
+    },
+    {
+      "path": "dist/deps/sand-card-text-recognition/build/Release/sand_card_text_recognition.node",
+      "sha256": "2fe3bb073f021c3602202ddc5bfd53aa643f67756bae2f8c6f7c75d564c6231d",
+      "asarDeclaredSha256": "312034238abb004e52dd30d6373dda835a5c59c2fe58f44c62b36fffbee995dc"
+    },
+    {
+      "path": "dist/deps/sand-devicecheck/build/Release/sand_devicecheck.node",
+      "sha256": "8a6852ee337e90ad67713cea6cc1c9b949c44f9405efc4d17f062364a9563ce2",
+      "asarDeclaredSha256": "b51c3b91493b5d906ae94b94adf6df30da440ae4a3e35fcae62827a339517a10"
+    }
+  ]
+}

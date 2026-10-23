@@ -10,6 +10,12 @@ const ownerSchema = z.object({ accountId: identifier, principalId: identifier, s
 
 /** Host authority provisioning only. Never expose these methods through renderer RPC. */
 export class CatalogIdentity {
+  private agentAccessAuthorizer: ((context: LibraryRequestContext, agentId: string, action: "view" | "use" | "create-automation") => boolean) | undefined;
+  installAgentAccessAuthorizer(authorize: (context: LibraryRequestContext, agentId: string, action: "view" | "use" | "create-automation") => boolean): void {
+    if (this.agentAccessAuthorizer) throw new Error("Agent access authorizer is already installed");
+    this.agentAccessAuthorizer = authorize;
+  }
+  notifyAuthorizationChanged(): void { this.changed(); }
   private readonly listeners = new Set<() => void>();
   onChange(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   private changed(): void { for (const listener of this.listeners) listener(); }
@@ -73,9 +79,10 @@ export class CatalogIdentity {
     context.signal.throwIfAborted();
     if (context.providerOrigin !== this.origin || !this.db.prepare("SELECT 1 FROM principals WHERE account=? AND principal=?").get(context.principal.accountId, context.principal.principalId)) throw new LibraryCatalogError("denied", "Unknown principal or provider");
   }
-  requireAgent(context: LibraryRequestContext, agentId: string): void {
+  requireAgent(context: LibraryRequestContext, agentId: string, action: "view" | "use" | "create-automation" = "view"): void {
     this.authenticate(context);
-    if (!this.db.prepare("SELECT 1 FROM agents WHERE account=? AND principal=? AND agent=?").get(context.principal.accountId, context.principal.principalId, agentId)) throw new LibraryCatalogError("denied", "Agent membership required");
+    if (!this.db.prepare("SELECT 1 FROM agents WHERE account=? AND principal=? AND agent=?").get(context.principal.accountId, context.principal.principalId, agentId)
+      && this.agentAccessAuthorizer?.(context, agentId, action) !== true) throw new LibraryCatalogError("denied", "Agent membership required");
   }
   owner(storeId: string): LibraryOwner {
     const row = this.db.prepare("SELECT account AS accountId,principal AS principalId,store AS storeId,team AS teamId FROM stores WHERE store=?").get(storeId);
@@ -89,7 +96,7 @@ export class CatalogIdentity {
     return owner;
   }
   requireExecution(context: LibraryExecutionContext): LibraryOwner {
-    this.requireAgent(context, context.agentId);
+    this.requireAgent(context, context.agentId, "use");
     identifier.parse(context.idempotencyKey); identifier.parse(context.toolCallId);
     return this.requireOwner(context, context.storeId);
   }

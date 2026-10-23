@@ -27,6 +27,7 @@ import {
   type PluginPrivateSkillSyncController,
   type PluginPrivateSkillSyncSource
 } from "./desktop";
+import { PluginsPort0750Extras } from "./port-0750-extras";
 import { PluginsDialogShell } from "./view";
 import { publishSurfaceNotice, type PluginsNoticeEvent } from "../../../contracts/surface-notice";
 
@@ -324,6 +325,21 @@ export function PluginsDesktopSurface({ bridge, githubAuth, activeAgentId = null
       onRemove={(item: PluginBrowserItem) => void run(`${item.kind}:${item.id}`, "plugins-remove", () => removeBrowserItem(item))}
       onLoadServerTools={(serverId) => listPluginServerTools(bridge, serverId)}
       onToggleServerTool={(serverId, toolName) => togglePluginServerTool(bridge, serverId, toolName)}
+      extras={
+        <PluginsPort0750Extras
+          mcp={{
+            list: () => bridge.mcp.list(),
+            add: (request) => bridge.mcp.add(request),
+            remove: (serverId) => bridge.mcp.remove(serverId),
+          }}
+          onChanged={() => { void controller.load(); }}
+          onRemovePlugin={async (pluginId) => {
+            await bridge.mcp.uninstallPlugin(pluginId);
+            await controller.load();
+          }}
+          plugins={snapshot.effectivePlugins}
+        />
+      }
     />
   );
 }

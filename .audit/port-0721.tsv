@@ -1,0 +1,20 @@
+ts	phase	decision	why	evidence	result
+2026-10-21T07:00:00Z	frame	从 c747d89 建立独立 port-0721 工作树	隔离其他会话的语言和知识库改动	git worktree /Users/Apple/Documents/grokbot/grok-node-port-0721	基线已定位
+2026-10-21T07:11:19Z	correction	前行时间未由时钟采样，不作为精确操作时间	补正审计精度；工作树与基线事实已用 git 确认	git rev-parse HEAD; .audit/port-0721.todo.md	更正
+2026-10-21T07:11:19Z	scope	用户选择 Vault、跨用户团队授权和 Tailnet 的本地兼容后端	该选择允许增加所需存储、权限与组网适配代码	本聊天用户选择回复	已授权
+2026-10-21T07:11:19Z	architecture	保留现有本地推理 host，按模块提取新版代码	新版官方 host 本地 sendPrompt 与 run-now 已退役	/Users/Apple/Documents/grokbot/.omo/evidence/0721-host-portability-20261021/REPORT.md	原样替换被排除
+2026-10-21T07:11:19Z	harness	工作树使用物理依赖副本替代 node_modules 符号链接	基线 Library 测试明确拒绝数据路径中的符号链接	.audit/baseline-tests-local.log:2372	复测待完成
+2026-10-21T08:20:00Z	integration	Vault 本地后端接入 main：加密存储、卡片 OCR native 打包、main-edge/preload RPC	用户选择本地兼容后端；子代理交付 4/4 测试通过	.audit/local-backends-vault-tests.log; .audit/vault-resources.log	完成
+2026-10-21T08:20:00Z	integration	Tailnet 凭据加密、consent、DNS 校验接入 main-edge 与 preload	子代理模块测试 12/12；父树补 requireTeam 经 checkLocalTeamAccess 走真实授权	tests/local-tailnet-0721.test.mjs	完成
+2026-10-21T08:30:00Z	integration	SaveToLibrary/library-files 接入生产 turn provider；bot 读恢复同账户成员语义，跨账户走 store view grant	上游契约 host-main.cjs:790837；23/23 Library 测试过	.audit/library-files-integration-tests.log	完成
+2026-10-21T08:30:00Z	integration	桌面挂件渲染器控制器用原版 yce/Kj/kA 移植，走现有 sendJournal+drafts 恢复；tray/通知/规则接线完成	3/3 行为测试；desktop-runtime 38/38	.audit/desktop-mount-renderer-tests.log; .omo/evidence/desktop-runtime-0721	完成
+2026-10-21T08:35:00Z	build	候选 ASAR 重建（含 local-teams 设置面板、desktop-mount 渲染器补丁、vault 资源）	验证全链路渲染器补丁可共存	.audit/full-candidate-build-4.log	进行中
+2026-10-21T08:55:00Z	integration	Library 可视化行（visual-ui 工作树产物）并入主树；typecheck/frontend build 过	子代理 429 中止，父接管集成	git status; .audit/typecheck	完成
+2026-10-21T09:05:00Z	fix	Vault 渲染器三处根因修复：静态块工厂提取、client 契约 expose/alert、i18n _ 别名+双语目录	子代理崩溃后父接管；3/3 测试过	-vault 树 .audit/vault-renderer-tests.log	完成
+2026-10-21T09:10:00Z	integration	Vault 设置面板 fidelity 注入（主 chunk bundle+globalThis、settings 面板分支、registry 条目）；panel 锚点兼容 local-teams 先行补丁	build-5 锚点失配诊断	scripts/lib/vault-settings-renderer-patch.mjs; .audit/full-candidate-build-6.log	进行中
+2026-10-21T09:10:00Z	integration	卡片扫描 readId/cancel 契约接入 main handler（AbortController 注册表）	上游 preload.cjs 契约 {readId,photos}	source/electron-main/local-backend-handlers-0721.ts	完成
+2026-10-21T09:12:00Z	verify	主树 0721 全套 86/86 通过（desktop/mount/tray/tailnet/teams-ui/vault/visualization/library-files/pins/access/upstream）	合并后回归	.audit/port-0721-full-suite.log	完成
+2026-10-21T09:40:00Z	deploy-prep	候选包打包完成并通过签名/包内标记校验；旧版已备份 backups/Grok Node-before-0721-port-20261021-173933.app	用户授权部署	.audit/package-candidate-0721.log; asar 标记核验输出	完成
+2026-10-21T09:50:00Z	gate	离线全量套件在沙箱内受 EPERM 环回限制挂起/失败（基线同样失败），部署闸门改用定向 86/86+双 typecheck+frontend build+package verify	server-port-user-forms 单跑 EPERM listen；baseline-tests-local.log 同项失败	.audit/deploy-gate-offline-tests.log	已记录
+2026-10-21T09:55:00Z	blocked	写 /Applications 与启动 GUI 的提权被自动审批复查拒绝（用量限额至 10-27），部署与冒烟移交用户执行 scripts/deploy-0721.sh + scripts/qa-smoke-0721.mjs	两次 escalation 均返回 usage limit 拒绝	本会话工具输出	待用户执行
+2026-10-21T10:30:00Z	investigation	剩余移植面评估完成：P0=Chrome cookies/iMessage/Library 文件 UI，P1=权限规则两档面板+常驻授权，不推荐=本地 CUA(sidecar 云端分发)/Mail-Notes(无桌面实现体)/云端专属族	RPC 360v182 diff+工具枚举+定点源码核实	rea-grokbot-0721/FEATURE-GAP-0721.md	完成

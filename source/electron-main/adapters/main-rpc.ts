@@ -11,6 +11,8 @@ import { probeEndpointFromBox } from "../box/local-docker-host-connector.js";
 import { getHardwareAccelerationEnabledAtLaunch } from "../../shared/node/hardware-acceleration.js";
 import { createElectronProductionIpcMainBinding, type ElectronProductionIpcMainSource } from "./ipc.js";
 import { requireFunction, requireObject } from "./provider-guards.js";
+import { prepareDesktop0721, readDesktop0721 } from "../desktop-runtime-0721.js";
+import { getLocal0721Backends } from "../local-backends-0721.js";
 
 type ExistingMainRpcCoreDeps = Pick<MainEdgeWiringDeps,
   "settingsStore"
@@ -49,6 +51,7 @@ type MainRpcResolverDeps = Omit<MainEdgeWiringDeps,
 >>;
 
 export interface ProductionMainRpcPorts {
+  readonly beforeServe?: (context: ProductionServiceContext, deps: MainEdgeWiringDeps) => void;
   readonly resolveDeps: (
     context: ProductionServiceContext,
   ) => MainRpcResolverDeps;
@@ -63,10 +66,19 @@ export function createElectronProductionMainRpcBinding(
   electron?: ElectronProductionIpcMainSource,
 ): ElectronProductionAdapterBindings["mainRpc"] {
   const ipcMain = createElectronProductionIpcMainBinding(electron);
-  return createProductionMainRpcAdapter({
+  const preparedDesktop = electron === undefined ? prepareDesktop0721() : undefined;
+  let desktop: ReturnType<ReturnType<typeof prepareDesktop0721>["create"]> | undefined;
+  const adapter = createProductionMainRpcAdapter({
+    beforeServe(context, deps) { desktop = preparedDesktop?.create(context, deps); },
     resolveDeps(context) {
       return {
         ipcMain,
+        local0721: () => getLocal0721Backends(context),
+        ...{ desktop0721: () => readDesktop0721() },
+        stageVisualizationDocument: (input) => {
+          if (!desktop) throw new Error("Visualization protocol is not connected");
+          return desktop.stageVisualizationDocument(input);
+        },
         readLiveUpdateService: () => {
           try {
             return context.requireUpdate().updateService as unknown as ReturnType<MainEdgeWiringDeps["readLiveUpdateService"]>;
@@ -137,6 +149,17 @@ export function createElectronProductionMainRpcBinding(
       };
     },
   });
+  return {
+    create(context) {
+      try {
+        const edge = adapter.create(context);
+        return { ...edge, dispose() { desktop?.dispose(); return edge.dispose?.(); } };
+      } catch (error) {
+        desktop?.dispose();
+        throw error;
+      }
+    },
+  };
 }
 
 function createExistingMainRpcCoreDeps(
@@ -314,7 +337,9 @@ export function createProductionMainRpcAdapter(
     create(context): MainEdge & Partial<ProductionDisposable> {
       const supplied = requireObject(ports.resolveDeps(context), "mainRpc.resolveDeps.result");
       const resolved = { ...createExistingMainRpcCoreDeps(context, supplied), ...supplied };
-      const edge = serveMainEdge(validateMainRpcDeps(withGeneratedMainRpc(resolved)));
+      const deps = validateMainRpcDeps(withGeneratedMainRpc(resolved));
+      ports.beforeServe?.(context, deps);
+      const edge = serveMainEdge(deps);
       requireObject(edge as object | null, "mainRpc.edge");
       requireFunction((edge as { emit?: (...args: never[]) => unknown }).emit, "mainRpc.edge.emit");
       return edge as MainEdge & Partial<ProductionDisposable>;

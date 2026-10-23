@@ -1,0 +1,1 @@
+Copied from official Grok Bot 0.75.0 app.asar renderer assets. Entry chunk-lazy-D8SAdX1p.js. Vendor preload shim replaces index.eager-vendor Kr, which only wraps dynamic import().

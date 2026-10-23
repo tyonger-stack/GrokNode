@@ -362,3 +362,8 @@
 .sand-library-fk-stripe--green { background-color: var(--sand-bg-green-primary, #2ecc71); }
 .sand-library-fk-stripe--orange { background-color: var(--sand-bg-orange-primary, #ff8a3d); }
 .sand-library-fk-stripe--neutral { background-color: var(--sand-icon-secondary, rgba(252, 252, 252, .45)); }
+.sand-library-hover-wrap { position: relative; display: block; min-width: 0; }
+.sand-library-hover-card { position: absolute; z-index: 5; inset-inline-start: 0; top: calc(100% + 4px); display: flex; flex-direction: column; gap: 2px; max-width: min(320px, 100%); padding: 8px 10px; border: 0; border-radius: 8px; background-color: var(--sand-bg-elevated, var(--sand-bg-secondary)); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); color: inherit; font-size: var(--cursor-font-size-base); line-height: var(--sand-line-height-sm, 18px); pointer-events: none; }
+.sand-library-hover-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--sand-font-weight-medium, 600); }
+.sand-library-hover-type { color: var(--sand-text-secondary); }
+.sand-library-hover-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sand-text-secondary); }

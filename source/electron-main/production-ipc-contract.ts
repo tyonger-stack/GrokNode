@@ -28,6 +28,7 @@ export const ELECTRON_MAIN_INVOKE_IPC_CHANNELS = [
   "sand:mcp-team-popularity",
   "sand:mcp-plugin-logo",
   "sand:mcp-install",
+  "sand:mcp-add-server",
   "sand:mcp-update-plugin-install",
   "sand:mcp-remove",
   "sand:mcp-uninstall-plugin",

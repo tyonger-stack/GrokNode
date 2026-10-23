@@ -21,7 +21,11 @@ import { packStagedAppWithIntegrity, verifyStagedPackageIntegrity } from "./asar
 import { officialMacReleaseAsarHash } from "./macos-shell-invariant.mjs";
 import { stageNodeTreeSitterRuntime } from "../build-tree-sitter-node.mjs";
 import { run } from "./process.mjs";
+import { stageVisualization0721 } from "./visualization-0721.mjs";
+import { stageVaultResources0721 } from "./vault-resources-0721.mjs";
 import { stageComputerUseSidecar0721 } from "./computer-use-sidecar-0721.mjs";
+import { stageDesktopMount0721 } from "./desktop-mount-0721.mjs";
+import { generateDesktop0721Module, stageDesktop0721Resources } from "./desktop-0721.mjs";
 
 export { packStagedAppWithIntegrity, verifyStagedPackageIntegrity } from "./asar-integrity.mjs";
 
@@ -35,7 +39,16 @@ const executableReplacements = [
   "dist/electron-preload/preload-dev-controls.cjs",
   "dist/electron-preload/preload-webview.cjs",
   "dist/electron-preload/preload-vnc.cjs",
+  "dist/electron-preload/preload-desktop-mount-panel.cjs",
+  "dist/electron-preload/preload-desktop-mount-capture-overlay.cjs",
+  "dist/electron-main/desktop-mount",
+  "dist/upstream-0721",
+  "dist/deps/sand-window-capture",
+  "dist/deps/sand-notification-settings",
+  "dist/electron-main/desktop-0721",
+  "dist/deps/sand-card-text-recognition",
   "dist/deps/computer-use-sidecar",
+  "dist/electron-main/menubar-tray",
   "dist/host/agent-isolation/agent-store-worker.cjs",
   "dist/host/agent-isolation/transcript-mirror-worker.cjs",
   "dist/host/extensions/box-store-sync/box-store-vacuum-worker.cjs",
@@ -230,7 +243,12 @@ async function buildRuntimeDistribution({ outputRoot, composition, rendererMode 
     throw new Error(`Unsupported renderer runtime mode: ${rendererMode}`);
   }
 
+  await stageVisualization0721({ stageRoot: outputRoot });
+  await stageVaultResources0721({ outputRoot });
   await stageComputerUseSidecar0721({ outputRoot });
+  await stageDesktopMount0721({ distRoot: path.resolve(outputRoot, "dist") });
+  await generateDesktop0721Module({ outputFile: path.resolve(outputRoot, "dist/electron-main/desktop-0721/upstream.cjs") });
+  await stageDesktop0721Resources({ outputDir: outputRoot });
   const files = await walkFiles(outputRoot);
   const outputs = [];
   for (const name of files) outputs.push({ path: name, bytes: (await stat(path.join(outputRoot, name))).size, sha256: await sha256(path.join(outputRoot, name)) });
@@ -283,6 +301,12 @@ export async function overlayCleanDistribution(outputRoot, { stageRoot = stagedA
     await rm(destination, { recursive: true, force: true });
     await mkdir(path.dirname(destination), { recursive: true });
     await cp(path.join(outputRoot, rendererArtifactProvenance), destination, { preserveTimestamps: true });
+  }
+  for (const relative of ["dist/renderer/upstream-0721", "dist/renderer/assets/grok-node-0721-visualization.mjs",
+    "dist/renderer/assets/grok-node-0721-d3.mjs", "dist/renderer/assets/grok-node-0721-three.mjs",
+    "dist/renderer-0721-visualization.json"]) {
+    await mkdir(path.dirname(path.join(stageRoot, relative)), { recursive: true });
+    await cp(path.join(outputRoot, relative), path.join(stageRoot, relative), { recursive: true });
   }
 }
 

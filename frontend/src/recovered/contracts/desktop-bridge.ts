@@ -283,6 +283,7 @@ export interface McpDesktopBridge {
   teamPopularity(): Promise<Record<string, number>>;
   pluginLogo(url: string): Promise<string | null>;
   install(request: { entryId: string; values?: Record<string, string>; hasTeamConfiguredVariables?: boolean }): Promise<McpServerState>;
+  add(request: { name: string; configJson: string }): Promise<McpServerState>;
   updatePluginInstall(request: { pluginId: string; values: Record<string, string> }): Promise<McpServerState>;
   remove(serverId: string): Promise<{ state: McpServerState; removed: boolean; reason?: "team-server" | "still-present" }>;
   uninstallPlugin(pluginId: string): Promise<{ state: McpServerState; removed: boolean; reason?: "team-server" | "still-present" }>;
