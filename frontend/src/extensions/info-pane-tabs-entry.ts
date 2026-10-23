@@ -132,18 +132,22 @@ function sync(): void {
   setTab(pane, activeTab, false);
   activeTab = currentTab(pane);
 }
-let scheduled = false;
-function scheduleSync(): void {
-  if (scheduled) return;
-  scheduled = true;
-  setTimeout(() => {
-    scheduled = false;
-    try {
-      sync();
-    } catch {
-      return;
-    }
-  }, 300);
+function mutationTouchesPane(records: MutationRecord[], pane: Element): boolean {
+  return records.some((record) =>
+    pane.contains(record.target) ||
+    Array.from(record.addedNodes).some((node) => node.nodeType === 1 && (node as Element).contains(pane)),
+  );
+}
+function scheduleSync(records?: MutationRecord[]): void {
+  if (records != null) {
+    const pane = paneRoot(document);
+    if (pane == null || !mutationTouchesPane(records, pane)) return;
+  }
+  try {
+    sync();
+  } catch {
+    return;
+  }
 }
 const observer = new MutationObserver(scheduleSync);
 observer.observe(document.body, { childList: true, subtree: true });

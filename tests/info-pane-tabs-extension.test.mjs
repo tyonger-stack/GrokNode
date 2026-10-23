@@ -217,6 +217,35 @@ test("应用卡片在右栏挂载前请求电脑页，挂载后保留目标标�
   }
 });
 
+test("切 Bot 的 DOM 提交在下一帧前完成分区，不暴露旧右栏", async () => {
+  const bundle = await buildInfoPaneTabsRendererExtension();
+  const { window, document } = fixtureDocument();
+  const pane = paneOf(document);
+  try {
+    window.eval(bundle);
+    await Promise.resolve();
+    document.querySelector('#sand-info-pane-tabs [data-r-tab="other"]').click();
+
+    const replacement = pane.cloneNode(true);
+    replacement.querySelector('#sand-info-pane-tabs').remove();
+    replacement.querySelectorAll('[hidden]').forEach((element) => {
+      element.hidden = false;
+      element.removeAttribute('data-r-tabs-hidden');
+    });
+    replacement.querySelector('[aria-label="Agent name"]').value = '另一个 Bot';
+    pane.replaceWith(replacement);
+
+    await Promise.resolve();
+    assert.ok(replacement.querySelector('#sand-info-pane-tabs'));
+    assert.equal(replacement.getAttribute('data-r-tabs-tab'), 'other');
+    assert.equal(vis(document, '.description-heading'), true);
+    assert.equal(vis(document, '.routine-wrap'), false);
+  } finally {
+    window.__sandInfoPaneTabsStop?.();
+    window.close();
+  }
+});
+
 test("构建产物包含标签标识", async () => {
   const text = await buildInfoPaneTabsRendererExtension();
   assert.ok(text.includes("sand-info-pane-tabs"));
