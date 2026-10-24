@@ -475,6 +475,11 @@ export function createDesktopPreloadBridge(options: {
       setAgentOpenRouterModel: (agentId: string, model: string | null) => edge("setAgentOpenRouterModel", { agentId, model }),
       getAgentOpenRouterEffort: (agentId: string) => edge("getAgentOpenRouterEffort", { agentId }),
       setAgentOpenRouterEffort: (agentId: string, effort: string | null) => edge("setAgentOpenRouterEffort", { agentId, effort }),
+      // Read-only viewer for the bot's box-side data files (soul/memory/user profile/audit/workflows).
+      getAgentDataOverview: (agentId: string) => edge("getAgentDataOverview", { agentId }),
+      getAgentMemoryLog: (agentId: string, month: string) => edge("getAgentMemoryLog", { agentId, month }),
+      getAgentWorkflowContent: (slug: string) => edge("getAgentWorkflowContent", { slug }),
+      importAgentMemory: (agentId: string, text: string) => edge("importAgentMemory", { agentId, text }),
       getOpenRouterBaseUrl: () => edge("getOpenRouterBaseUrl"),
       setOpenRouterBaseUrl: (baseUrl: string | null) => edge("setOpenRouterBaseUrl", { baseUrl }),
       getOpenRouterEffort: () => edge("getOpenRouterEffort"),
