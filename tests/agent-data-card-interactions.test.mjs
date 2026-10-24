@@ -6,7 +6,7 @@ import { jsx, jsxs } from 'react/jsx-runtime';
 import { Window } from 'happy-dom';
 import { COMPONENT_SOURCE, NONE_SENTINEL } from '../scripts/lib/agent-data-cards-renderer-patch.mjs';
 
-const data = id => ({ soul: `人格 ${id}`, userProfile: `画像 ${id}`, soulTruncated: false, userProfileTruncated: false, memoryLogMonths: ['2026-10'], audit: { entries: [{ ts: null, type: 'shell_command', summary: 'echo first' }, { ts: null, type: 'browser_navigation', summary: 'https://example.test' }], truncated: false }, workflows: ['weekly-report'] });
+const data = id => ({ soul: `人格 ${id}\n第二行职责`, userProfile: null, soulTruncated: false, userProfileTruncated: false, botProfile: { name: `Bot ${id}`, description: `职责 ${id}`, avatarColor: 'violet', avatarShape: 'blob' }, memoryLogMonths: ['2026-10'], audit: { entries: [{ ts: null, type: 'shell_command', summary: 'echo first' }, { ts: null, type: 'browser_navigation', summary: 'https://example.test' }], truncated: false }, workflows: ['weekly-report'] });
 async function fixture(api, run) {
   const window = new Window(), saved = new Map();
   for (const name of ['window', 'document', 'HTMLElement', 'Element', 'Node', 'IS_REACT_ACT_ENVIRONMENT']) {
@@ -34,11 +34,17 @@ test('five cards open the right content, choose journals and skills, and preserv
     getAgentMemoryLog: async (id, month) => { calls.push([id, month]); return { ok: true, data: { content: '当月记忆正文' } }; },
     getAgentWorkflowContent: async slug => { calls.push([slug]); return { ok: true, data: { content: '# 周报技能' } }; },
   }, async ({ mount, window }) => {
-    assert.deepEqual([...mount.querySelectorAll('.sand-agent-settings__card')].map(card => card.querySelector('.sand-agent-settings__text').textContent), ['人格 (Soul)memory/profile.md', '记忆memory/log/YYYY-MM.md', '用户画像user-memory 画像', '行为审计audit.jsonl（最近）', '技能workflows/*/SKILL.md']);
-    for (const [key, content] of [['soul', '人格 one'], ['user', '画像 one']]) {
+    assert.deepEqual([...mount.querySelectorAll('.sand-agent-settings__card')].map(card => card.querySelector('.sand-agent-settings__text').textContent), ['人格 (Soul)memory/profile.md', '记忆memory/log/YYYY-MM.md', 'Bot 画像agents profile.json + 记忆/技能/审计', '行为审计audit.jsonl（最近）', '技能workflows/*/SKILL.md']);
+    for (const [key, content] of [['soul', '人格 one']]) {
       await React.act(async () => mount.querySelector(`[data-r-agent-${key}] button`).click());
       assert(mount.querySelector(`[data-r-agent-${key}]`).textContent.includes(content));
     }
+    await React.act(async () => mount.querySelector('[data-r-agent-bot] button').click());
+    const botText = mount.querySelector('[data-r-agent-bot] [data-r-agent-data-pre]').textContent;
+    assert(botText.includes('名称：Bot one') && botText.includes('职责：职责 one') && botText.includes('violet / blob'));
+    assert(botText.includes('1 个月记忆（最近 2026-10）') && botText.includes('1 个技能') && botText.includes('2 条审计'));
+    assert(botText.includes('自我定位：人格 one 第二行职责'));
+    assert(!botText.includes('user-memory'));
     await React.act(async () => mount.querySelector('[data-r-agent-audit] button').click());
     const audit = mount.querySelector('[data-r-agent-audit] [data-r-agent-data-pre]').textContent;
     assert(audit.includes('\n'));

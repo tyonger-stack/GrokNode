@@ -69,7 +69,7 @@ test("the injected source carries no backticks and no template syntax", () => {
 });
 
 test("every user-visible label is a direct RLocT literal pair (main-i18n scans literals, not helpers)", () => {
-  const labels = ["Soul", "Memory", "User profile", "Audit", "Workflows", "View", "Hide", "Retry", "Loading…", "Bot data"];
+  const labels = ["Soul", "Memory", "Bot profile", "Audit", "Workflows", "View", "Hide", "Retry", "Loading…", "Bot data"];
   for (const label of labels) {
     assert.ok(COMPONENT_SOURCE.includes(`RLocT("${label}"`), `missing RLocT pair for ${label}`);
   }
