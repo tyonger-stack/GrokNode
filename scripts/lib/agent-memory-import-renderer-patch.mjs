@@ -26,7 +26,7 @@ import path from "node:path";
 export const REGISTRY_BEFORE =
   ',{id:"router",label:(typeof RLocT==="function"?RLocT("Router","路由"):"Router"),icon:"git-branch"},{id:"usage"';
 export const REGISTRY_AFTER =
-  ',{id:"router",label:(typeof RLocT==="function"?RLocT("Router","路由"):"Router"),icon:"git-branch"},{id:"memory",label:(typeof RLocT==="function"?RLocT("Memory","记忆"):"Memory"),icon:"bookmark"},{id:"usage"';
+  ',{id:"router",label:(typeof RLocT==="function"?RLocT("Router","路由"):"Router"),icon:"git-branch"},{id:"memory",label:(typeof RLocT==="function"?RLocT("Import","导入"):"Import"),icon:"bookmark"},{id:"usage"';
 
 export const PANEL_SWITCH_BEFORE =
   ':x==="router"?a.jsx(RRouterPanel,{}):null';
@@ -59,18 +59,21 @@ export const MEMORY_MAX_CHARS = 64 * 1024;
 export const COMPONENT_SOURCE = String.raw`function RMemLoc(en,zh){try{return RLocT(en,zh)}catch(_e){return en}}
 const RMemoryTemplate=${JSON.stringify(MEMORY_TEMPLATE)};
 function RMemoryPanel(){
-  const[s,e]=de.useState(""),[t,n]=de.useState(!1),[r,i]=de.useState(""),[o,l]=de.useState(null),[c,u]=de.useState(!1);
+  const[s,e]=de.useState(""),[t,n]=de.useState(!1),[r,i]=de.useState(null),[o,l]=de.useState(void 0),[c,u]=de.useState(!1);
+  const sending=de.useRef(!1),fail=message=>i({kind:"error",message});
   de.useEffect(()=>{let d=!0;const g=window.desktop&&window.desktop.agent;Promise.resolve(g&&typeof g.getMainAgent==="function"?g.getMainAgent():null).then(m=>{if(d)l(typeof m==="string"&&m.length>0?m:null)}).catch(()=>{if(d)l(null)});return()=>{d=!1}},[]);
-  const p=()=>{if(s.trim().length===0){i(RMemLoc("Paste the memory snapshot first.","请先粘贴记忆快照。"));return}
-    const g=window.desktop&&window.desktop.agent;if(!g||typeof g.importAgentMemory!=="function"){i(RMemLoc("Unavailable in this build.","当前构建未开放此功能。"));return}
-    if(o==null){i(RMemLoc("No main Bot is set. Pick one in the sidebar first.","未设置主 Bot，请先在侧栏选择主 Bot。"));return}
-    n(!0);i("");
-    g.importAgentMemory(o,s.trim()).then(m=>{if(m!=null&&m.ok===false)i(RMemLoc("Failed: ","发送失败：")+String(m.reason??""));else{i(RMemLoc("Sent. The main Bot is distilling this into its memory — see the chat for its report.","已发送。主 Bot 正在提炼入库，可在聊天中查看汇报。"));e("")}}).catch(m=>{i(RMemLoc("Failed: ","发送失败：")+String(m&&m.message||m))}).finally(()=>n(!1))};
-  const y=()=>{const g=navigator.clipboard;Promise.resolve(g&&typeof g.writeText==="function"?g.writeText(RMemoryTemplate):Promise.reject()).then(()=>{u(!0);setTimeout(()=>u(!1),2500)},()=>{i(RMemLoc("Copy failed — select the text manually.","复制失败，请手动选择文本复制。"));setTimeout(()=>i(""),2500)})};
+  const p=async()=>{if(sending.current)return;const snapshot=s.trim();if(snapshot.length===0){fail(RMemLoc("Paste the memory snapshot first.","请先粘贴记忆快照。"));return}
+    if(snapshot.length>${MEMORY_MAX_CHARS}){fail(RMemLoc("The memory snapshot is too large.","记忆快照过长，请缩短后再试。"));return}
+    const g=window.desktop&&window.desktop.agent;if(!g||typeof g.importAgentMemory!=="function"||typeof g.getMainAgent!=="function"){fail(RMemLoc("Unavailable in this build.","当前构建未开放此功能。"));return}
+    if(o==null){fail(RMemLoc("No main Bot is set. Pick one in the sidebar first.","未设置主 Bot，请先在侧栏选择主 Bot。"));return}
+    sending.current=!0;n(!0);i(null);
+    try{const mainId=await g.getMainAgent();l(typeof mainId==="string"&&mainId.length>0?mainId:null);if(typeof mainId!=="string"||mainId.length===0){fail(RMemLoc("No main Bot is set. Pick one in the sidebar first.","未设置主 Bot，请先在侧栏选择主 Bot。"));return}
+      const result=await g.importAgentMemory(mainId,snapshot);if(result&&result.ok===!0){i({kind:"sent",message:RMemLoc("Sent to the main Bot. Distillation is pending; check its chat for the result.","已发送给主 Bot，等待提炼。请在主 Bot 对话中确认写入结果。")});e("")}else fail(RMemLoc("Failed: ","发送失败：")+String(result&&result.reason||RMemLoc("No acknowledgement. Check the chat before retrying.","未收到确认，请先检查主 Bot 对话再重试。")))}catch(error){fail(RMemLoc("Failed: ","发送失败：")+String(error&&error.message||error))}finally{sending.current=!1;n(!1)}};
+  const y=()=>{const g=navigator.clipboard;Promise.resolve(g&&typeof g.writeText==="function"?g.writeText(RMemoryTemplate):Promise.reject()).then(()=>{u(!0);setTimeout(()=>u(!1),2500)},()=>{fail(RMemLoc("Copy failed; select the text manually.","复制失败，请手动选择文本复制。"))})};
   return a.jsx(Te,{children:a.jsxs("div",{className:k("sand-settings-general","sand-9f619 sand-78zum5 sand-dt5ytf sand-3qzy4x"),"data-r-memory-import":"",children:[
     a.jsx(re,{title:RMemLoc("Import memory","导入记忆"),children:a.jsx(ie,{description:RMemLoc("Import a memory snapshot from another assistant so the main Bot understands who you are. The Bot distils durable facts into its own memory — this is not a verbatim copy.","从其他 AI 助手导入记忆快照，帮助主 Bot 理解你是谁。Bot 会把持久事实提炼进自己的记忆——这不是逐字副本。"),label:RMemLoc("How it works","工作方式"),variant:"card",children:a.jsxs("div",{className:"sand-9f619 sand-78zum5 sand-dt5ytf",style:{gap:8,width:360},children:[a.jsx("div",{"aria-label":RMemLoc("Memory snapshot prompt","记忆快照提示词"),style:{maxHeight:220,overflowY:"auto",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,padding:"8px 10px",borderRadius:8,background:"rgba(128,128,128,0.14)",fontSize:12,lineHeight:1.55,userSelect:"text"},children:RMemoryTemplate}),a.jsx(oe,{onClick:y,shape:"rectangular",size:"sm",variant:"secondary",children:c?RMemLoc("Copied","已复制"):RMemLoc("Copy","复制")})]})})}),
-    a.jsx(re,{title:RMemLoc("Paste the snapshot","粘贴快照"),children:a.jsx(ie,{description:o==null?RMemLoc("Sends to the main Bot. No main Bot is set yet.","将发送给主 Bot。尚未设置主 Bot。"):RMemLoc("Sends to the main Bot.","将发送给主 Bot。"),label:RMemLoc("Snapshot","记忆快照"),variant:"card",children:a.jsxs("div",{className:"sand-9f619 sand-78zum5 sand-dt5ytf",style:{gap:8,width:360},children:[a.jsx("textarea",{"aria-label":RMemLoc("Memory snapshot","记忆快照"),disabled:t,maxLength:${MEMORY_MAX_CHARS},onChange:m=>{e(m.currentTarget.value);i("")},placeholder:RMemLoc("Paste the snapshot from the other assistant here…","把其他助手生成的记忆快照粘贴到这里…"),style:{boxSizing:"border-box",width:"100%",minWidth:0,minHeight:140,resize:"vertical",padding:"8px 10px",borderRadius:8,border:"1px solid var(--sand-border,#7777772b)",background:"transparent",color:"inherit",fontFamily:"inherit",fontSize:13,lineHeight:1.55},value:s}),a.jsx(oe,{disabled:t||s.trim().length===0,onClick:p,shape:"rectangular",size:"sm",variant:"secondary",children:t?RMemLoc("Sending…","发送中…"):RMemLoc("Add memory","添加记忆")})]})})}),
-    r?a.jsx(se,{as:"p",color:"red",size:"sm",children:r}):null
+    a.jsx(re,{title:RMemLoc("Paste the snapshot","粘贴快照"),children:a.jsx(ie,{description:o===void 0?RMemLoc("Loading the main Bot…","正在读取主 Bot…"):o==null?RMemLoc("Sends to the main Bot. No main Bot is set yet.","将发送给主 Bot。尚未设置主 Bot。"):RMemLoc("Sends to the main Bot.","将发送给主 Bot。"),label:RMemLoc("Snapshot","记忆快照"),variant:"card",children:a.jsxs("div",{className:"sand-9f619 sand-78zum5 sand-dt5ytf",style:{gap:8,width:360},children:[a.jsx("textarea",{"aria-label":RMemLoc("Memory snapshot","记忆快照"),disabled:t,maxLength:${MEMORY_MAX_CHARS},onChange:m=>{e(m.currentTarget.value);i(null)},placeholder:RMemLoc("Paste the snapshot from the other assistant here…","把其他助手生成的记忆快照粘贴到这里…"),style:{boxSizing:"border-box",width:"100%",minWidth:0,minHeight:140,resize:"vertical",padding:"8px 10px",borderRadius:8,border:"1px solid var(--sand-border,#7777772b)",background:"transparent",color:"inherit",fontFamily:"inherit",fontSize:13,lineHeight:1.55},value:s}),a.jsx(oe,{disabled:t||o==null||s.trim().length===0,onClick:p,shape:"rectangular",size:"sm",variant:"secondary",children:t?RMemLoc("Sending…","发送中…"):RMemLoc("Add memory","添加记忆")})]})})}),
+    r?a.jsx(se,{as:"p",role:"status","aria-live":"polite",color:r.kind==="error"?"red":"secondary",size:"sm",children:r.message}):null
   ]})})}
 `;
 

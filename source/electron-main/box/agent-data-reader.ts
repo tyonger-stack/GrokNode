@@ -17,7 +17,9 @@ const PROFILE_FILE = "memory/profile.md";
 const LOG_DIR = "memory/log";
 const AUDIT_FILE = "audit.jsonl";
 const USER_PROFILE_FILE = "profile.md";
+const BOT_PROFILE_FILE = "profile.json";
 const SKILL_FILE = "SKILL.md";
+const OWN_SKILLS_DIR = "skills";
 
 export const AGENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MEMORY_MONTH_PATTERN = /^\d{4}-(?:0[1-9]|1[0-2])$/;
@@ -29,11 +31,19 @@ export const AUDIT_TAIL_BYTES = 96 * 1024;
 export const AUDIT_MAX_ENTRIES = 60;
 
 export interface AgentDataAuditEntry { readonly ts: string | null; readonly type: string; readonly summary: string }
+export interface AgentDataBotProfile {
+  readonly name: string | null;
+  readonly description: string | null;
+  readonly avatarColor: string | null;
+  readonly avatarShape: string | null;
+}
 export interface AgentDataOverview {
   readonly soul: string | null;
   readonly soulTruncated: boolean;
   readonly userProfile: string | null;
   readonly userProfileTruncated: boolean;
+  readonly ownWorkflows: readonly string[];
+  readonly botProfile: AgentDataBotProfile | null;
   readonly memoryLogMonths: readonly string[];
   readonly audit: { readonly entries: readonly AgentDataAuditEntry[]; readonly truncated: boolean };
   readonly workflows: readonly string[];
@@ -58,6 +68,15 @@ export function normalizeWorkflowSlug(value: unknown): string | null {
   const trimmed = value.trim();
   return WORKFLOW_SLUG_PATTERN.test(trimmed) ? trimmed : null;
 }
+export function parseBotProfile(raw: string | null): AgentDataBotProfile | null {
+  if (raw == null) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const text = (value: unknown) => typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+    const profile = { name: text(parsed.name), description: text(parsed.description), avatarColor: text(parsed.avatarColor), avatarShape: text(parsed.avatarShape) };
+    return profile.name == null && profile.description == null ? null : profile;
+  } catch { return null; }
+}
 
 /**
  * Pure parser for a `tail -c` slice of audit.jsonl. `tail -c` keeps the END of the
@@ -65,7 +84,7 @@ export function normalizeWorkflowSlug(value: unknown): string | null {
  * dropped rather than guessed at. Newest entries come out first for display.
  */
 export function parseAuditTail(raw: string, byteCap: number): { entries: AgentDataAuditEntry[]; truncated: boolean } {
-  const truncated = raw.length >= byteCap;
+  const truncated = Buffer.byteLength(raw, "utf8") >= byteCap;
   let lines = raw.split("\n");
   const first = lines[0];
   if (first != null && !first.trimStart().startsWith("{")) lines = lines.slice(1);
@@ -82,7 +101,7 @@ export function parseAuditTail(raw: string, byteCap: number): { entries: AgentDa
       });
     } catch {}
   }
-  return { entries: entries.slice(-AUDIT_MAX_ENTRIES).reverse(), truncated };
+  return { entries: entries.slice(-AUDIT_MAX_ENTRIES).reverse(), truncated: truncated || entries.length > AUDIT_MAX_ENTRIES };
 }
 
 function auditSummary(parsed: Record<string, unknown>): string {
@@ -132,19 +151,23 @@ export async function readAgentDataOverview(rawAgentId: unknown): Promise<AgentD
   const agentId = normalizeAgentId(rawAgentId);
   if (agentId == null) return { ok: false, reason: "invalid-agent-id" };
   const agentDir = `${AGENT_DATA_ROOT}/${agentId}`;
-  const [soul, user, months, audit, workflows] = await Promise.all([
+  const [soul, user, bot, months, audit, workflows, ownWorkflows] = await Promise.all([
     capRead(`head -c ${TEXT_READ_CAP_BYTES + 1} ${agentDir}/${PROFILE_FILE} 2>/dev/null; true`),
     capRead(`head -c ${TEXT_READ_CAP_BYTES + 1} ${USER_MEMORY_ROOT}/${agentId}/${USER_PROFILE_FILE} 2>/dev/null; true`),
+    capRead(`head -c 8192 ${agentDir}/${BOT_PROFILE_FILE} 2>/dev/null; true`),
     execInBox(`ls -1 ${agentDir}/${LOG_DIR} 2>/dev/null; true`),
     execInBox(`tail -c ${AUDIT_TAIL_BYTES + 1} ${agentDir}/${AUDIT_FILE} 2>/dev/null; true`),
     execInBox(`ls -1 ${WORKFLOW_ROOT} 2>/dev/null; true`),
+    execInBox(`ls -1 ${agentDir}/${OWN_SKILLS_DIR} 2>/dev/null; true`),
   ]);
   if (!soul.ok) return soul;
   if (!user.ok) return user;
+  if (!bot.ok) return bot;
   if (!months.ok) return months;
   if (!audit.ok) return audit;
   if (!workflows.ok) return workflows;
-  const monthList = months.output.split("\n").map((name) => name.trim()).filter((name) => MEMORY_MONTH_PATTERN.test(name)).sort().reverse();
+  if (!ownWorkflows.ok) return ownWorkflows;
+  const monthList = months.output.split("\n").map((name) => name.trim()).filter((name) => name.endsWith(".md")).map((name) => name.slice(0, -3)).filter((name) => MEMORY_MONTH_PATTERN.test(name)).sort().reverse();
   return {
     ok: true,
     data: {
@@ -152,9 +175,11 @@ export async function readAgentDataOverview(rawAgentId: unknown): Promise<AgentD
       soulTruncated: soul.truncated,
       userProfile: user.content,
       userProfileTruncated: user.truncated,
+      botProfile: parseBotProfile(bot.content),
       memoryLogMonths: monthList,
       audit: parseAuditTail(audit.output, AUDIT_TAIL_BYTES),
       workflows: workflows.output.split("\n").map((name) => name.trim()).filter((name) => WORKFLOW_SLUG_PATTERN.test(name)).sort(),
+      ownWorkflows: ownWorkflows.output.split("\n").map((name) => name.trim()).filter((name) => WORKFLOW_SLUG_PATTERN.test(name)).sort(),
     },
   };
 }
@@ -170,9 +195,13 @@ export async function readAgentMemoryLog(rawAgentId: unknown, rawMonth: unknown)
 }
 
 export async function readAgentWorkflowContent(rawSlug: unknown): Promise<AgentDataRead<{ content: string | null; truncated: boolean }>> {
-  const slug = normalizeWorkflowSlug(rawSlug);
-  if (slug == null) return { ok: false, reason: "invalid-slug" };
-  const outcome = await capRead(`head -c ${TEXT_READ_CAP_BYTES + 1} ${WORKFLOW_ROOT}/${slug}/${SKILL_FILE} 2>/dev/null; true`);
+  if (typeof rawSlug !== "string") return { ok: false, reason: "invalid-slug" };
+  const own = /^own:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(.+)$/i.exec(rawSlug.trim());
+  const ownerId = own == null ? null : normalizeAgentId(own[1]);
+  const slug = normalizeWorkflowSlug(own == null ? rawSlug : own[2]);
+  if (slug == null || (own != null && ownerId == null)) return { ok: false, reason: "invalid-slug" };
+  const base = ownerId == null ? `${WORKFLOW_ROOT}/${slug}` : `${AGENT_DATA_ROOT}/${ownerId}/${OWN_SKILLS_DIR}/${slug}`;
+  const outcome = await capRead(`head -c ${TEXT_READ_CAP_BYTES + 1} ${base}/${SKILL_FILE} 2>/dev/null; true`);
   if (!outcome.ok) return outcome;
   return { ok: true, data: { content: outcome.content, truncated: outcome.truncated } };
 }

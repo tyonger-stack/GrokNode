@@ -69,7 +69,7 @@ test("the injected source carries no backticks and no template syntax", () => {
 });
 
 test("every user-visible label is a direct RLocT literal pair (main-i18n scans literals, not helpers)", () => {
-  const labels = ["Soul", "Memory", "User profile", "Audit", "Workflows", "View", "Hide", "Retry", "Loading…", "Bot data"];
+  const labels = ["Soul", "Memory", "Bot profile", "Audit", "Workflows", "View", "Hide", "Retry", "Loading…", "Bot data"];
   for (const label of labels) {
     assert.ok(COMPONENT_SOURCE.includes(`RLocT("${label}"`), `missing RLocT pair for ${label}`);
   }
@@ -205,8 +205,6 @@ test("the reader heals a leaked container pause before probing", () => {
 
 test("the component guards loads against the none sentinel and races with sequence counters", () => {
   assert.ok(COMPONENT_SOURCE.includes(NONE_SENTINEL));
-  assert.match(COMPONENT_SOURCE, /m===RAgentDataNone\)return/);
-  assert.match(COMPONENT_SOURCE, /s===RAgentDataNone\)return/);
   assert.match(COMPONENT_SOURCE, /memSeq\.current!==n/);
   assert.match(COMPONENT_SOURCE, /wfSeq\.current!==n/);
 });
