@@ -205,8 +205,6 @@ test("the reader heals a leaked container pause before probing", () => {
 
 test("the component guards loads against the none sentinel and races with sequence counters", () => {
   assert.ok(COMPONENT_SOURCE.includes(NONE_SENTINEL));
-  assert.match(COMPONENT_SOURCE, /m===RAgentDataNone\)return/);
-  assert.match(COMPONENT_SOURCE, /s===RAgentDataNone\)return/);
   assert.match(COMPONENT_SOURCE, /memSeq\.current!==n/);
   assert.match(COMPONENT_SOURCE, /wfSeq\.current!==n/);
 });

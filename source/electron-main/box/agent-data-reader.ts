@@ -65,7 +65,7 @@ export function normalizeWorkflowSlug(value: unknown): string | null {
  * dropped rather than guessed at. Newest entries come out first for display.
  */
 export function parseAuditTail(raw: string, byteCap: number): { entries: AgentDataAuditEntry[]; truncated: boolean } {
-  const truncated = raw.length >= byteCap;
+  const truncated = Buffer.byteLength(raw, "utf8") >= byteCap;
   let lines = raw.split("\n");
   const first = lines[0];
   if (first != null && !first.trimStart().startsWith("{")) lines = lines.slice(1);
@@ -82,7 +82,7 @@ export function parseAuditTail(raw: string, byteCap: number): { entries: AgentDa
       });
     } catch {}
   }
-  return { entries: entries.slice(-AUDIT_MAX_ENTRIES).reverse(), truncated };
+  return { entries: entries.slice(-AUDIT_MAX_ENTRIES).reverse(), truncated: truncated || entries.length > AUDIT_MAX_ENTRIES };
 }
 
 function auditSummary(parsed: Record<string, unknown>): string {
@@ -144,7 +144,7 @@ export async function readAgentDataOverview(rawAgentId: unknown): Promise<AgentD
   if (!months.ok) return months;
   if (!audit.ok) return audit;
   if (!workflows.ok) return workflows;
-  const monthList = months.output.split("\n").map((name) => name.trim()).filter((name) => MEMORY_MONTH_PATTERN.test(name)).sort().reverse();
+  const monthList = months.output.split("\n").map((name) => name.trim()).filter((name) => name.endsWith(".md")).map((name) => name.slice(0, -3)).filter((name) => MEMORY_MONTH_PATTERN.test(name)).sort().reverse();
   return {
     ok: true,
     data: {
