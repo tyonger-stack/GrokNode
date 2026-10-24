@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -67,12 +67,12 @@ test("注入源无反引号/模板语法，且可独立解析（chunk 运行时�
 
 test("面板状态映射：文本/状态/主Bot 各归其位（r 不再承担文本职责）", () => {
   assert.match(COMPONENT_SOURCE, /const\[s,e\]=de\.useState\(""\)/);          // text
-  assert.match(COMPONENT_SOURCE, /,\[r,i\]=de\.useState\(""\)/);          // status
-  assert.match(COMPONENT_SOURCE, /,\[o,l\]=de\.useState\(null\)/);        // main agent
-  assert.match(COMPONENT_SOURCE, /if\(s\.trim\(\)\.length===0\)/, "empty check reads the TEXT state");
-  assert.match(COMPONENT_SOURCE, /importAgentMemory\(o,s\.trim\(\)\)/, "send reads the TEXT state with the MAIN agent");
+  assert.match(COMPONENT_SOURCE, /,\[r,i\]=de\.useState\(null\)/);
+  assert.match(COMPONENT_SOURCE, /,\[o,l\]=de\.useState\(void 0\)/);
+  assert.match(COMPONENT_SOURCE, /if\(snapshot\.length===0\)/, "empty check reads the trimmed snapshot");
+  assert.match(COMPONENT_SOURCE, /importAgentMemory\(mainId,snapshot\)/, "send uses the freshly resolved main agent");
   assert.match(COMPONENT_SOURCE, /value:s}/, "textarea is controlled by the TEXT state");
-  assert.match(COMPONENT_SOURCE, /r\?a\.jsx\(se,\{as:"p",color:"red"/, "status line renders the STATUS state");
+  assert.match(COMPONENT_SOURCE, /children:r\.message/, "status line renders the STATUS message");
   assert.match(COMPONENT_SOURCE, /maxLength:\d+/, "textarea carries the paste cap");
 });
 
@@ -81,7 +81,7 @@ test("设置注册与面板开关：记忆插在 Router 与 Usage 之间，锚�
   assert.ok(PANEL_SWITCH_AFTER.includes('x==="memory"?a.jsx(RMemoryPanel,{})'));
   const registryFixture = 'const wDn=[{id:"general",label:"General",icon:"settings-gear"},{id:"router",label:(typeof RLocT==="function"?RLocT("Router","路由"):"Router"),icon:"git-branch"},{id:"usage",label:"Usage & Billing",icon:"chart-bars"}]';
   const patchedRegistry = patchOriginalSettingsRegistry(registryFixture);
-  assert.ok(patchedRegistry.includes('{id:"memory",label:(typeof RLocT==="function"?RLocT("Memory","记忆"):"Memory"),icon:"bookmark"}'));
+  assert.ok(patchedRegistry.includes('{id:"memory",label:(typeof RLocT==="function"?RLocT("Import","导入"):"Import"),icon:"bookmark"}'));
   assert.throws(() => patchOriginalSettingsRegistry(patchedRegistry), /already registered/);
   const bareFixture = 'function Sa(s){return null}';
   assert.throws(() => patchOriginalSettingsPanel(bareFixture), /router patch/, "must fail closed without the router panel present");
@@ -116,8 +116,23 @@ test("流水线顺序：router 之后、i18n pass 之前", () => {
   assert.ok(cleanBuild.indexOf("await applyOriginalRendererSettingsI18n(") > memory, "memory patch must run before settings-i18n appends the RLocT runtime");
 });
 
-test("产物语法与绑定（真实 chunk 模式）：套上 router 输出后整块 node --check", { skip: true }, () => {
-  // bundle-dependent; placeholder kept green via skip until src/app/dist is present
+test("产物语法与绑定：真实 settings chunk 与导入入口", async t => {
+  const archive = '/Applications/Grok Node.app/Contents/Resources/app.asar';
+  if (await stat(archive).catch(error => { if (error.code === 'ENOENT') return null; throw error; }) == null) return t.skip('installed settings artifact unavailable');
+  const { extractFile } = await import('@electron/asar');
+  const registry = extractFile(archive, 'dist/renderer/assets/index-UbX-y3il.js').toString();
+  const panel = extractFile(archive, 'dist/renderer/assets/index-BlqerJhg.js').toString();
+  const registered = registry.includes('{id:"memory",label:');
+  const patchedRegistry = registered ? registry : patchOriginalSettingsRegistry(registry);
+  const patchedPanel = panel.includes('function RMemoryPanel(') ? panel : patchOriginalSettingsPanel(panel);
+  assert(patchedRegistry.includes('{id:"memory",label:'));
+  const order = [patchedRegistry.indexOf('{id:"router"'), patchedRegistry.indexOf('{id:"memory"'), patchedRegistry.indexOf('{id:"usage"')];
+  assert(order.every(index => index >= 0) && order[0] < order[1] && order[1] < order[2], 'memory must sit between router and usage');
+  assert(patchedPanel.includes(PANEL_SWITCH_AFTER));
+  const ast = parse(patchedPanel, { ecmaVersion: 'latest', sourceType: 'module' });
+  const names = new Set(ast.body.flatMap(node => node.type === 'ImportDeclaration' ? node.specifiers.map(specifier => specifier.local.name) : node.type === 'VariableDeclaration' ? node.declarations.map(declaration => declaration.id.name) : node.type === 'FunctionDeclaration' ? [node.id.name] : []));
+  for (const name of REQUIRED_CHUNK_BINDINGS) assert(names.has(name), 'missing settings binding: ' + name);
+  parse(patchedRegistry, { ecmaVersion: 'latest', sourceType: 'module' });
 });
 
 test("chunk 依赖声明与组件引用一致", () => {
