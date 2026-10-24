@@ -212,7 +212,10 @@ export async function buildLibraryHostBundle() {
     }
     assertLibraryCssScope(entry.text);
   }
-  const cssText = css.map((entry) => entry.text).join("\n");
+  const cssText = [...css].sort((left, right) => {
+    const rank = (entry) => path.basename(entry.filePath) === "stage-icon-button.css" ? 1 : 0;
+    return rank(left) - rank(right);
+  }).map((entry) => entry.text).join("\n");
   const style = css.length === 0 ? "" : `
 ;(()=>{if(typeof document==="undefined"||document.getElementById("sand-library-host-style"))return;const style=document.createElement("style");style.id="sand-library-host-style";style.textContent=${JSON.stringify(cssText)};document.head.append(style);})();
 `;

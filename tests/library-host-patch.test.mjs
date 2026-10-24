@@ -30,6 +30,17 @@ test("host bundle renders inside the overview tree", async () => {
   assert.ok(bundle.includes(LIBRARY_HOST_CALL.slice(0, 20)) || bundle.includes("RLibraryHost"));
 });
 
+test("library stage button CSS stays last to preserve the shipped renderer order", async () => {
+  const bundle = await buildLibraryHostBundle();
+  const encoded = bundle.match(/style\.textContent=("(?:\\.|[^"])*")/)?.[1];
+  assert.ok(encoded, "library host style text is missing");
+  const css = JSON.parse(encoded);
+  assert.ok(
+    css.lastIndexOf(".sand-library-stage-icon-button") > css.lastIndexOf(".sand-media-viewer__thumb[aria-current"),
+    "the shared stage button rules must follow the viewer rules",
+  );
+});
+
 test("emitted host bundle initializes with the existing React runtime", async () => {
   const bundle = await buildLibraryHostBundle();
   const context = { S: React, p: jsxRuntime, Wr: ReactDOM, console, setTimeout, clearTimeout, TextEncoder, TextDecoder, URL };
