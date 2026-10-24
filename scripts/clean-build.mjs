@@ -59,6 +59,7 @@ import { applyEmojiLocale0753Patch } from "./lib/emoji-i18n-0753-patch.mjs";
 import { applyPromptCta0753Patch } from "./lib/prompt-cta-0753-patch.mjs";
 import { applyVaultSettingsRenderer0721 } from "./lib/vault-settings-renderer-patch.mjs";
 import { applyRecipientPicker0755Patch } from "./lib/recipient-picker-0755-patch.mjs";
+import { applyGroupAuthor0755Patch } from "./lib/group-author-0755-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
 import { applyUpdatePillCopy0755Patch } from "./lib/update-pill-copy-0755-patch.mjs";
@@ -490,6 +491,7 @@ export async function buildFidelityReconstructedAsar({
   await applyEmojiLocale0753Patch({ stageRoot });
   await applyPromptCta0753Patch({ stageRoot });
   await applyRecipientPicker0755Patch({ stageRoot });
+  await applyGroupAuthor0755Patch({ stageRoot });
   await applyVaultSettingsRenderer0721({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
