@@ -78,8 +78,7 @@ test("settings and plugins bundles mount the recovered hosts on the chunk React"
     buildPort0750HostBundle("settings"),
     buildPort0750HostBundle("plugins"),
   ]);
-  assert.match(settingsBundle, /Choose file/);
-  assert.match(settingsBundle, /New card/);
+  assert.doesNotMatch(settingsBundle, /Choose file|New card/);
   assert.match(settingsBundle, /\(de,a\);$/);
   assert.match(pluginsBundle, /Plugins in effect/);
   assert.match(pluginsBundle, /Custom MCP servers/);
@@ -88,9 +87,7 @@ test("settings and plugins bundles mount the recovered hosts on the chunk React"
   assert.doesNotMatch(pluginsBundle, /createRoot\(/);
 
   const settings = await renderPack(settingsBundle, "RPort0750Settings", { de: React, a: jsxRuntime });
-  assert.ok(settings.host.querySelector("[aria-label='Choose file']"));
-  assert.equal(settings.host.querySelector("[aria-label='Choose file']").type, "file");
-  assert.ok(settings.host.querySelector("[aria-label='New card']"));
+  assert.equal(settings.host.querySelectorAll("button, input, textarea").length, 0);
   await React.act(async () => { settings.root.unmount(); });
 
   const plugins = await renderPack(pluginsBundle, "RPort0750Plugins", { C: React, t: jsxRuntime });
