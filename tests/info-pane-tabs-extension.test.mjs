@@ -53,6 +53,18 @@ function fixtureDocument() {
   ].join("");
   return { window, document };
 }
+function detailLayoutDocument() {
+  const window = new Window();
+  window.document.documentElement.setAttribute("data-theme", "cursor-dark");
+  window.document.body.innerHTML = [
+    '<div class="sand-info-pane"><div class="sand-info-pane__inner">',
+    '<div class="ui-scroll-area__content"><div class="detail-content">',
+    '<div data-r-info-pane-hero=""><div data-r-hero-text=""><input aria-label="Agent name" value="Bot 名"><input aria-label="Agent title" value="添加标签"></div></div>',
+    '<ul class="sand-routine__list"><li>每日速览</li></ul>',
+    '</div></div></div></div>',
+  ].join("");
+  return { window, document: window.document };
+}
 function paneOf(document) {
   return document.querySelector('[class*="sand-info-pane__inner"]');
 }
@@ -259,6 +271,41 @@ test("身份区标签：空 title 仍渲染 Add a label / 添加标签（对齐�
   assert.equal(source.includes("t.title&&t.title.trim().length>0?p.jsx(Uwe,{ariaLabel:\"Agent title\""), false, "must not hide empty titles");
   const entry = await readFile(path.join(REPO, ENTRY), "utf8");
   assert.ok(entry.includes("[aria-label=\"Agent title\"]::placeholder"), "empty-label tertiary placeholder style");
+  assert.ok(source.includes('className:"sand-78zum5 sand-dt5ytf sand-6s0dn4 sand-h8yej3",style:{gap:"16px",padding:"0 0 12px"'),
+    "hero must retain the shipped single-layer vertical rhythm");
+  assert.ok(entry.includes('margin:0 -16px;padding:4px 16px 10px'),
+    "tab strip must use the shipped zero-gap parent directly");
+  assert.ok(entry.includes('--cursor-bg-editor:#121212'),
+    "details pane must resolve its recovered background token to the shipped chrome color");
+});
+test("详情栏顶部：宽度控件与 0.75.5 正式版计算样式一致", async () => {
+  const bundle = await buildInfoPaneTabsRendererExtension();
+  const { window, document } = detailLayoutDocument();
+  try {
+    window.eval(bundle);
+    await window.happyDOM.waitUntilComplete();
+    const pane = paneOf(document);
+    const content = document.querySelector(".detail-content");
+    const hero = document.querySelector("[data-r-info-pane-hero]");
+    const name = document.querySelector('[aria-label="Agent name"]');
+    const title = document.querySelector('[aria-label="Agent title"]');
+    const styleOf = (element) => window.getComputedStyle(element);
+    assert.equal(styleOf(content).paddingTop, "0px");
+    assert.equal(styleOf(content).gap, "0");
+    assert.equal(styleOf(hero).marginTop, "0px");
+    assert.equal(styleOf(hero).paddingTop, "8px");
+    assert.equal(styleOf(name).height, "29px");
+    assert.equal(styleOf(name).fontSize, "17px");
+    assert.equal(styleOf(name).lineHeight, "24px");
+    assert.equal(styleOf(title).height, "18px");
+    assert.equal(styleOf(title).fontSize, "11px");
+    assert.equal(styleOf(title).lineHeight, "16px");
+    assert.equal(styleOf(title).padding, "0px 4px");
+    assert.equal(styleOf(pane).getPropertyValue("--cursor-bg-editor"), "#121212");
+  } finally {
+    window.__sandInfoPaneTabsStop?.();
+    window.close();
+  }
 });
 test("构建接线：router 补丁装配资料库同款扩展位", async () => {
   const source = await readFile(path.join(REPO, "scripts/lib/router-renderer-patch.mjs"), "utf8");
