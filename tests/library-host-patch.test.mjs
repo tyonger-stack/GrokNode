@@ -30,11 +30,19 @@ test("host bundle renders inside the overview tree", async () => {
   assert.ok(bundle.includes(LIBRARY_HOST_CALL.slice(0, 20)) || bundle.includes("RLibraryHost"));
 });
 
-test("library stage button CSS stays last to preserve the shipped renderer order", async () => {
+test("library CSS order matches the shipped renderer", async () => {
   const bundle = await buildLibraryHostBundle();
   const encoded = bundle.match(/style\.textContent=("(?:\\.|[^"])*")/)?.[1];
   assert.ok(encoded, "library host style text is missing");
   const css = JSON.parse(encoded);
+  assert.ok(
+    css.indexOf(".sand-file-viewer") < css.indexOf(".library-document-stage"),
+    "document-stage rules must follow the shared file stage",
+  );
+  assert.ok(
+    css.indexOf(".library-document-stage") < css.indexOf(".sand-media-viewer__thumb[aria-current"),
+    "document-stage rules must precede the media viewer rules",
+  );
   assert.ok(
     css.lastIndexOf(".sand-library-stage-icon-button") > css.lastIndexOf(".sand-media-viewer__thumb[aria-current"),
     "the shared stage button rules must follow the viewer rules",

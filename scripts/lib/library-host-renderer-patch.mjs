@@ -213,6 +213,10 @@ export async function buildLibraryHostBundle() {
     assertLibraryCssScope(entry.text);
   }
   const cssText = [...css].sort((left, right) => {
+    const leftName = path.basename(left.filePath);
+    const rightName = path.basename(right.filePath);
+    if (leftName === "file-stage.css" && rightName === "document-stage.css") return -1;
+    if (leftName === "document-stage.css" && rightName === "file-stage.css") return 1;
     const rank = (entry) => path.basename(entry.filePath) === "stage-icon-button.css" ? 1 : 0;
     return rank(left) - rank(right);
   }).map((entry) => entry.text).join("\n");
