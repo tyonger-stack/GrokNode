@@ -421,7 +421,7 @@ export class LocalVaultBackend {
 
   async put(input: VaultLoginInput): Promise<VaultCredential> {
     return this.withAccount(async (account, nowMs) => {
-      const id = this.validId(input.id);
+      const id = this.upsertId(input.id);
       const existing = [...account.values()].filter((record): record is StoredLoginRecord =>
         record.kind === "login" && record.id !== id);
       const planned = this.planVaultLogin(input, existing, nowMs);
@@ -493,7 +493,7 @@ export class LocalVaultBackend {
 
   putContact(input: VaultContactInput): Promise<VaultCredential> {
     return this.withAccount(async (account, nowMs) => {
-      const id = this.validId(input.id);
+      const id = this.upsertId(input.id);
       const prior = account.get(id);
       if (prior !== undefined && prior.kind !== "contact") throw new VaultInvalidArgumentError("Vault item kind cannot change");
       const contact = input.contact;
@@ -641,6 +641,10 @@ export class LocalVaultBackend {
       throw new VaultInvalidArgumentError("Vault id must be a non-empty string");
     }
     return id;
+  }
+
+  private upsertId(id: string): string {
+    return typeof id === "string" && id.length === 0 ? randomUUID() : this.validId(id);
   }
 
   private validText(value: string, maxLength: number): string {

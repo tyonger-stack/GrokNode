@@ -228,6 +228,8 @@ test("original 0.75.5 Vault settings render list, cards, and contacts through th
   assert.match(built.generated.style, /body:has\(\.sand-settings-dialog\) \.sand-settings-dialog:not.*background-color:var\(--sand-bg-subtle\)/u, "Every settings section must use the Vault settings background");
   assert.match(built.generated.style, /body:has\(\.sand-settings-dialog\) \.sand-settings-dialog \.sand-settings-nav:not.*background-color:transparent/u, "Every settings section must use the Vault sidebar surface");
   assert.match(built.generated.style, /\.sand-settings-dialog:not.*--cursor-bg-secondary:var\(--sand-fill-secondary\).*--cursor-border-secondary:var\(--sand-border-default\).*--cursor-text-primary:var\(--sand-text-primary\)/u, "Settings cards must reuse the Vault color tokens");
+  assert.match(built.generated.style, /body:has\(#sand-vault-0721-root\).*\.sand-dialog.*\.sand-cjjqqt/u, "Official Vault dialogs must receive the component stylesheet outside the Vault root portal");
+  assert.match(built.generated.style, /\[data-theme=cursor-dark\] \.sand-dialog:not.*--sand-bg-elevated:#1f1f1f/u, "Vault dialogs must retain the shipped dark elevated surface");
   assert.equal(/createRoot\s*\(/u.test(built.bundle), false);
   assert.equal(/new\s+MutationObserver[\s\S]{0,320}\.observe\(\s*(?:document\.(?:body|documentElement)|window)\b/u.test(built.bundle), false);
   record("vault-render-host", host.outerHTML);

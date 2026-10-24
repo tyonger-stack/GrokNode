@@ -52,7 +52,10 @@ async function loadModules() {
   await mkdir(path.dirname(output), { recursive: true });
   await build({
     stdin: {
-      contents: 'export {createLocalVaultBackend, VaultEncryptionUnavailableError, VaultInvalidArgumentError, VaultNotFoundError} from "./source/electron-main/vault/local-vault-backend.ts";',
+      contents: [
+        'export {createLocalVaultBackend, VaultEncryptionUnavailableError, VaultInvalidArgumentError, VaultNotFoundError} from "./source/electron-main/vault/local-vault-backend.ts";',
+        'export {createLocalBackendHandlers0721} from "./source/electron-main/local-backend-handlers-0721.ts";',
+      ].join("\n"),
       resolveDir: root,
       loader: "ts",
     },
@@ -176,6 +179,35 @@ test("local Vault persists encrypted account data with metadata-only listings an
     mode: mode.toString(8),
     storeSha256: createHash("sha256").update(raw).digest("hex"),
   });
+});
+
+test("Vault creates upstream login and contact drafts with empty ids", async (t) => {
+  const modules = await loadModules();
+  const temporary = await import("node:fs/promises").then((fs) => fs.mkdtemp(path.join(os.tmpdir(), "vault-upstream-create-")));
+  t.after(async () => import("node:fs/promises").then((fs) => fs.rm(temporary, { recursive: true, force: true })));
+  const storePath = path.join(temporary, "grok-bot-vault.json");
+  const vault = backendFor(modules, storePath);
+  const handlers = modules.createLocalBackendHandlers0721(() => ({ vault }));
+
+  const contact = await handlers.putGrokBotVaultContact({
+    id: "",
+    title: "Office",
+    contact: {
+      name: "Synthetic User", line1: "1 Example Way", line2: "", city: "Example City",
+      region: "CA", postalCode: "00000", country: "US", phone: "555-0100", email: "user@example.test",
+    },
+  });
+  assert.equal(contact.id.length > 0, true, "empty upstream contact ids must create a persisted id");
+  assert.equal(contact.contact?.defaultShipping, false, "missing optional shipping flags default to false");
+
+  const login = await handlers.putGrokBotVaultCredential({
+    id: "", title: "Example", username: "user@example.test", notes: "",
+    sites: ["https://example.com"], password: "synthetic-password",
+  });
+  assert.equal(login.id.length > 0, true, "empty upstream login ids must create a persisted id");
+  assert.notEqual(login.id, contact.id);
+  assert.deepEqual((await backendFor(modules, storePath).listGrokBotVaultCredentials()).map((item) => item.id).sort(),
+    [contact.id, login.id].sort());
 });
 
 test("batch imports retain input order and persist only settled valid rows", async (t) => {
