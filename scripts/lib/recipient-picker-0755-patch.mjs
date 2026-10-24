@@ -17,7 +17,7 @@ const walk = (node, visit) => {
   for (const value of Object.values(node)) if (Array.isArray(value)) value.forEach(child => walk(child, visit)); else if (value && typeof value === "object") walk(value, visit);
 };
 const replaceNodes = (source, edits) => edits.sort((a, b) => b.start - a.start).reduce((result, edit) => result.slice(0, edit.start) + edit.text + result.slice(edit.end), source);
-function portCode(source, bindings) {
+export function portCode(source, bindings, namespace = "rrp0755") {
   const edits = [];
   const visit = (node, parent, field) => {
     if (!node || typeof node !== "object") return;
@@ -32,7 +32,7 @@ function portCode(source, bindings) {
     for (const [key, value] of Object.entries(node)) if (Array.isArray(value)) value.forEach(child => visit(child, node, key)); else if (value && typeof value === "object") visit(value, node, key);
   };
   visit(parseModule(source), null, null);
-  return prefix(replaceNodes(source, edits));
+  return replaceNodes(source, edits).replace(/\bsand-([a-z0-9]+)(?![\w-])/g, namespace + "-sand-$1");
 }
 function botResultsOnly(source) {
   const edits = [];
@@ -123,7 +123,8 @@ export function patchRecipientPicker0755(source) {
   });
   assert.equal(conditionalEdits.length, 1, "Recipient picker close-button condition");
   code = replaceNodes(code, conditionalEdits);
-  const result = source.slice(0, owner.start) + code + source.slice(owner.end) + RECIPIENT_PICKER_0755_COMPONENTS;
+  let result = source.slice(0, owner.start) + code + source.slice(owner.end) + RECIPIENT_PICKER_0755_COMPONENTS;
+  result = once(result, "de=y&&U4n(v,n.currentAgentId)", "de=y&&!RSMGroupActive&&U4n(v,n.currentAgentId)");
   parseModule(result);
   return result;
 }
@@ -136,6 +137,7 @@ export async function applyRecipientPicker0755Patch({ stageRoot }) {
   await writeFile(path.join(stageRoot, file), patched);
   await writeFile(path.join(stageRoot, stylesheet), patchedCss);
   const record = { mode: "official-recipient-picker-0755", reference: official.reference, officialSourceSha256: official.sourceSha256, officialChipSha256: official.chipSha256, features: ["official-recipient-rows", "official-member-chips", "official-placeholder", "group-row-hint", "no-legacy-keyboard-footer"], adaptations: ["legacy Bot/new-Bot result union", "existing Bot controller and launch contract", "plain name branch for private Bots"], files: [{ path: file, originalSha256: hash(source), patchedSha256: hash(patched) }, { path: stylesheet, originalSha256: hash(css), patchedSha256: hash(patchedCss) }] };
+  record.features.push("no-single-chat-preview-in-group-compose");
   await writeFile(path.join(stageRoot, "dist/renderer-recipient-picker-0755-extension.json"), JSON.stringify(record, null, 2) + "\n");
   return record;
 }

@@ -121,11 +121,30 @@ test("the port preserves the controller and fails closed on repeated application
   assert.match(renderToStaticMarkup(picker([], "en").render()), /Start a chat with…/);
 });
 
+test("group drafts never expose a selected Bot's one-to-one transcript preview", available, () => {
+  const owner = syntax.body.find(node => node.type === "FunctionDeclaration" && node.id.name === "HDn");
+  let expression;
+  const walk = node => {
+    if (!node || typeof node !== "object") return;
+    if (node.type === "VariableDeclarator" && node.id.name === "de") expression = patched.slice(node.init.start, node.init.end);
+    for (const value of Object.values(node)) if (Array.isArray(value)) value.forEach(walk); else if (value && typeof value === "object") walk(value);
+  };
+  walk(owner);
+  assert(expression);
+  const context = vm.createContext({ y: true, RSMGroupActive: false, v: [{ kind: "agent", id: "one" }], n: { currentAgentId: "one" } });
+  vm.runInContext(named("U4n"), context);
+  assert.equal(vm.runInContext(expression, context), true);
+  context.RSMGroupActive = true;
+  assert.equal(vm.runInContext(expression, context), false);
+});
+
 test("the retained source and CSS identify the actual official 0.75.5 artifact", async t => {
   const { extractFile } = await import("@electron/asar");
   const archive = "/Applications/Grok Bot.app/Contents/Resources/app.asar";
   const present = await stat(archive).catch(error => { if (error.code === "ENOENT") return null; throw error; });
   if (present == null) return t.skip("official comparison artifact unavailable");
+  const version = await readFile("/Applications/Grok Bot.app/Contents/Info.plist", "utf8").then(text => text.match(/<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)/)?.[1] ?? null).catch(() => null);
+  if (version !== "0.75.5") return t.skip(`official app is ${version ?? "unknown"}; the captured fingerprint is pinned to 0.75.5`);
   const source = extractFile(archive, official.file).toString();
   assert.equal(createHash("sha256").update(source).digest("hex"), official.sourceSha256);
   for (const code of Object.values(official.functions)) assert(source.includes(code));
