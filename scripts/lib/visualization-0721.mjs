@@ -2,11 +2,11 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { transform } from "esbuild";
-import { openUpstream0721 } from "./upstream-0721.mjs";
+import { openUpstream0755 } from "./upstream-0755.mjs";
 import { bundleUpstreamModule } from "./upstream-module.mjs";
 import { extractUpstreamDeclarations } from "./upstream-declarations.mjs";
 
-export const VISUALIZATION_0721_ENTRY = "dist/renderer/assets/chunk-visualization-document-B7ED4-0Y.js";
+export const VISUALIZATION_0721_ENTRY = "dist/renderer/assets/chunk-visualization-document-BO2hVAw0.js";
 export const VISUALIZATION_0721_EXPORTS = Object.freeze([
   "buildVisualizationDocument", "parseVisualizationFragment", "parseVisualizationFrameMessage",
   "VISUALIZATION_DOCUMENTED_TOKENS", "VISUALIZATION_FRAGMENT_MAX_BYTES",
@@ -16,7 +16,7 @@ export const VISUALIZATION_0721_EXPORTS = Object.freeze([
 
 export async function stageVisualization0721({ stageRoot, archive } = {}) {
   if (!stageRoot) throw new TypeError("stageVisualization0721 requires stageRoot");
-  archive ??= await openUpstream0721();
+  archive ??= await openUpstream0755();
   const runtime = await bundleUpstreamModule({ archive, entry: VISUALIZATION_0721_ENTRY,
     exports: VISUALIZATION_0721_EXPORTS });
   const assets = path.join(stageRoot, "dist/renderer/assets");
@@ -38,7 +38,7 @@ export async function stageVisualization0721({ stageRoot, archive } = {}) {
   }
   const protocolSource = "dist/electron-main/main-core.cjs";
   const protocol = extractUpstreamDeclarations({ code: archive.read(protocolSource).toString("utf8"),
-    exports: { createVisualizationDocumentStore: "vV" }, bindings: { Response: "globalThis.Response" }, strict: true });
+    exports: { createVisualizationDocumentStore: "UV" }, bindings: { Response: "globalThis.Response" }, strict: true });
   const protocolBundle = await transform(protocol.code, { format: "cjs", target: "node22", legalComments: "none" });
   const protocolPath = "dist/upstream-0721/visualization-protocol.cjs";
   await mkdir(path.join(stageRoot, "dist/upstream-0721"), { recursive: true });

@@ -12,8 +12,8 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const evidence = path.resolve(process.env.DESKTOP_RUNTIME_0721_EVIDENCE_DIR ?? path.join(root, ".omo/evidence/desktop-runtime-0721"));
 const require = createRequire(import.meta.url);
 const record = (name, value) => writeFile(path.join(evidence, `${name}.json`), `${JSON.stringify(value, null, 2)}\n`);
-const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0721/asar/app.asar"))
-  && "0.72.1 snapshot is absent";
+const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0755/asar/app.asar"))
+  && "0.75.5 snapshot is absent";
 const asarOptions = { skip: asarSkip };
 let api, upstream, catalogs;
 let electronLoads = 0;
@@ -119,7 +119,7 @@ test("desktop rules use MainEdge host echo and rollback semantics", async () => 
 
 test("real upstream roster consumes validated seeds, snapshots, upserts and activity", asarOptions, async () => {
   const failures = [];
-  const original = upstream({ electron: {}, translate: () => "", reportFailure: (...args) => failures.push(args) });
+  const original = upstream({ electron: { app: { getAppPath: () => root } }, translate: () => "", reportFailure: (...args) => failures.push(args) });
   const roster = original.createRoster();
   const feed = api.createDesktop0721RosterFeed(() => roster);
   const agent = { id: "bot-a", name: "Bot A", updatedAt: 1, hasUnread: true, isRunning: false, isComposingMessage: false };
@@ -206,14 +206,16 @@ test("production desktop creates the original tray, switches a real coordinator 
     constructor() { trays.push(this); }
     setIgnoreDoubleClickEvents() {}
     setToolTip() {}
-    setContextMenu(menu) { this.menu = menu; }
+    setContextMenu(menu) { this.menu = menu; this.menuUpdates = (this.menuUpdates ?? 0) + 1; }
     setImage() {}
     setTitle() {}
     destroy() { this.destroyed = true; trace.push("tray-disposed"); }
   }
   const electron = { trace, failMount: false, Tray, BrowserWindow: class {}, Notification: class { static isSupported() { return false; } },
     Menu: { buildFromTemplate: (value) => value }, shell: { async openExternal() {} },
-    app: { name: "Grok Node", quit() {}, getPreferredSystemLanguages: () => ["en"] },
+    app: { name: "Grok Node", quit() {}, getAppPath: () => root, getPreferredSystemLanguages: () => ["en"] },
+    nativeImage: { createFromPath: () => new Image(), createFromDataURL: () => new Image(),
+      createFromBuffer: () => new Image(), createEmpty: () => new Image() },
     nativeImage: { createFromPath(file) { assert.ok(file.startsWith(path.join(mainRoot, "menubar-tray/assets"))); return new Image(); },
       createFromDataURL: () => new Image(), createFromBuffer: () => new Image(), createEmpty: () => new Image() },
     protocol: { registerSchemesAsPrivileged() { trace.push("scheme"); }, handle() { trace.push("protocol"); }, unhandle() { trace.push("protocol-disposed"); } },
@@ -225,6 +227,7 @@ test("production desktop creates the original tray, switches a real coordinator 
     resources: { preloadPath: path.join(staged, "dist/electron-preload/primary.cjs") },
     attachments: { stageBytes() {}, commitStaged() { promptSideEffects.push("commit"); }, discardStaged() { promptSideEffects.push("discard"); } },
     settings: { settingsStore: store },
+    accountLifecycle: { getAccountScope: () => null },
     getMainWindow: () => ({ isMinimized: () => false, show() { trace.push("show"); }, focus() { trace.push("focus"); } }),
     coordinatorLegs: { legs: { async openAgent(args) { calls.push(args); }, async sendPrompt() { promptSideEffects.push("send"); } } },
     requireMainEdge: () => ({ emit: (...args) => events.push(args) }),
@@ -245,14 +248,34 @@ test("production desktop creates the original tray, switches a real coordinator 
   assert.deepEqual(events, []);
   const auxiliary = runtime.createProductionCoordinatorAuxiliaryPorts(context, {});
   const feed = auxiliary.events;
-  feed.onAgentsRosterSeed({ agents: [{ id: "selected-bot", name: "Selected Bot", updatedAt: 1, hasUnread: true, isRunning: false, isComposingMessage: false }] });
-  trays[0].menu.find((item) => item.accelerator === "CommandOrControl+Shift+1").click();
+  const rosterChanges = [];
+  desktop.roster.onChange(() => rosterChanges.push(desktop.roster.snapshot().length));
+  const selectedAgent = { id: "selected-bot", name: "Selected Bot", updatedAt: 1, hasUnread: true, isRunning: false, isComposingMessage: false };
+  feed.onAgentsRosterSeed({ agents: [selectedAgent] });
+  feed.onAgentsEvent({ kind: "agent-upserted", event: { agent: { ...selectedAgent, name: "Selected Bot Updated" } } });
+  desktop.roster.handleAgentUpsertedEvent({ agent: { ...selectedAgent, name: "Selected Bot Menu" } });
+  assert.equal(desktop.roster.snapshot().length, 1, JSON.stringify(desktop.roster.snapshot()));
+  assert.ok(rosterChanges.length > 0, JSON.stringify(rosterChanges));
+  function findMenuItem(items, label) {
+    for (const item of items) {
+      if (item.label === label) return item;
+      const nested = Array.isArray(item.submenu) ? findMenuItem(item.submenu, label) : undefined;
+      if (nested !== undefined) return nested;
+    }
+    return undefined;
+  }
+  const selectedBot = findMenuItem(trays[0].menu, "● Selected Bot Menu");
+  const failureText = failures.map(([area, leg, error]) => [area, leg, error instanceof Error ? error.message : String(error)]);
+  assert.ok(selectedBot, `${JSON.stringify(trays[0].menu)}\n${JSON.stringify(failureText)}\nmenuUpdates=${trays[0].menuUpdates}`);
+  selectedBot.click();
   await new Promise(setImmediate);
   assert.deepEqual(calls, [{ id: "selected-bot" }]);
   assert.deepEqual(events[0], ["focus-agent", { id: "selected-bot" }]);
-  trays[0].menu.find((item) => item.label === "Settings…").click();
+  const settingsItem = findMenuItem(trays[0].menu, "Settings…");
+  assert.ok(settingsItem, JSON.stringify(trays[0].menu));
+  settingsItem.click();
   assert.deepEqual(events[1], ["open-settings", {}]);
-  assert.equal(notificationFeeds.length, 1);
+  assert.equal(notificationFeeds.length, 2);
   auxiliary.resync.onHostSettingsTransportDown();
   assert.deepEqual(desktop.roster.snapshot(), []);
   const preferences = { playSound: false, sound: "ping-4-chime-a" };
@@ -263,6 +286,7 @@ test("production desktop creates the original tray, switches a real coordinator 
   assert.equal(runtime.readDesktop0721(), undefined);
   assert.equal(trays[0].destroyed, true);
   electron.failMount = true;
+  assert.equal(typeof require(path.join(mainRoot, "desktop-0721/upstream.cjs")).createDesktop0721Upstream, "function");
   assert.throws(() => prepared.create(context, { settingsStore: store }), /mount failure/);
   assert.equal(runtime.readDesktop0721(), undefined);
   assert.equal(trays[1].destroyed, true);

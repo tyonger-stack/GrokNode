@@ -5,7 +5,7 @@ import { parse } from "acorn";
 import { build } from "esbuild";
 import { extractUpstreamDeclarations } from "./upstream-declarations.mjs";
 
-export async function bundleUpstreamModule({ archive, entry, exports: requested, platform = "browser" }) {
+export async function bundleUpstreamModule({ archive, entry, exports: requested, platform = "browser", bindings = {} }) {
   const sources = new Map();
   const demands = new Map([[entry, new Set(requested)]]);
   const output = new Map();
@@ -27,7 +27,7 @@ export async function bundleUpstreamModule({ archive, entry, exports: requested,
       if (!local) throw new Error(`Missing upstream export ${name} in ${relative}`);
       exports[name] = local;
     }
-    const extracted = extractUpstreamDeclarations({ code: source, exports, strict: true });
+    const extracted = extractUpstreamDeclarations({ code: source, exports, bindings, strict: true });
     output.set(relative, extracted);
     const selected = parse(extracted.code, { ecmaVersion: "latest", sourceType: "module" });
     for (const node of selected.body) {

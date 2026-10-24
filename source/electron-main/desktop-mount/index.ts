@@ -35,6 +35,7 @@ interface Factories {
   createMount(options: {
     getMainWindow: DesktopMount0721Options["getMainWindow"];
     focusMainWindow(): void;
+    readAccountSlot(): string | null;
     isGateOn(): boolean;
     attachments: Attachments & { stagePath(request: { filename: string; sourcePath: string }): Promise<StageResult> };
     positionStore: { load(): { x: number; y: number } | null; save(position: { x: number; y: number }): void };
@@ -56,6 +57,7 @@ interface Factories {
 export interface DesktopMount0721Options {
   electron: Electron;
   getMainWindow(): import("electron").BrowserWindow | null;
+  readAccountSlot(): string | null;
   isEnabled(): boolean;
   exposeCaptureGate?: () => void;
   attachments: Attachments;
@@ -135,6 +137,7 @@ export function createDesktopMount0721(options: DesktopMount0721Options) {
   };
   const mount = upstream.createMount({
     getMainWindow: options.getMainWindow, isGateOn: options.isEnabled,
+    readAccountSlot: options.readAccountSlot,
     focusMainWindow: () => options.getMainWindow()?.focus(),
     attachments: createDesktopMountStagingPort(options.attachments),
     positionStore: upstream.createPositionStore(), startCapture: runCapture,

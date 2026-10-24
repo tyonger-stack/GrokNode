@@ -1,6 +1,6 @@
 {
   "name": "grok-bot-0.18-reconstructed",
-  "version": "0.75.3-reconstructed.1",
+  "version": "0.75.5-reconstructed.1",
   "private": true,
   "type": "module",
   "description": "Source-oriented reconstruction of the publicly shipped Grok Bot 0.18.0 macOS application",
