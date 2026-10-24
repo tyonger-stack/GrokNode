@@ -14,6 +14,14 @@ export const UPDATE_TRACK_LABELS: Readonly<Record<UpdateTrack, string>> = {
 export const INTERNAL_RELEASE_TRACK_CONFIG_URL =
   "https://console.statsig.com/5oWaLs1Xr8U2ei9Hq2R45w/dynamic_configs/sand_internal_release_track_override";
 
+/**
+ * Reconstructed-build update feed: this repo's GitHub Releases. Hardcoded (not
+ * from the update status) so the Settings panel can always offer a manual
+ * download fallback, even before the first check resolves or when Squirrel.Mac
+ * staging cannot auto-apply an ad-hoc signature.
+ */
+export const GITHUB_RELEASES_URL = "https://github.com/tyonger-stack/GrokNode/releases";
+
 export type DisabledUpdateReason =
   | "not-packaged"
   | "lab-build"
@@ -33,10 +41,18 @@ export type UpdateState =
   | { type: "ready"; version: string; lastCheck?: LastUpdateCheck | null }
   | { type: "idle"; lastCheck?: LastUpdateCheck | null };
 
+export interface GitHubReleaseInfo {
+  version: string;
+  releaseUrl: string;
+  downloadUrl: string;
+}
+
 export interface UpdateStatus {
   state: UpdateState;
   currentTrack: UpdateTrack;
   currentVersion: string;
+  releasesUrl?: string;
+  githubRelease?: GitHubReleaseInfo | null;
   isTrackManagedByPolicy?: boolean;
   autoUpdateWhenIdleOptIn?: boolean;
   autoUpdateWhenIdleGateEnabled?: boolean;

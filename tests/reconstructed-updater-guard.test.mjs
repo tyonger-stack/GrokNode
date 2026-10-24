@@ -16,9 +16,12 @@ test("reconstructed fallback and clean packaging share one idempotent service gu
   const guarded = applyReconstructedUpdaterGuard(source);
   assert.equal(guarded, `${reconstructedUpdaterGuard}${source}`);
   assert.equal(applyReconstructedUpdaterGuard(guarded), guarded);
-  assert.match(guarded, /SAND_DISABLE_UPDATES \?\?= "1"/);
+  // GitHub Releases updater: updates stay ENABLED on reconstructed builds, so the
+  // guard must not force SAND_DISABLE_UPDATES. Sentry/telemetry stay off.
+  assert.ok(!guarded.includes('SAND_DISABLE_UPDATES'), "guard must not disable updates (GitHub Releases feed)");
   assert.match(guarded, /SAND_DISABLE_SENTRY \?\?= "1"/);
   assert.match(guarded, /SAND_DISABLE_TELEMETRY \?\?= "1"/);
+  assert.match(reconstructedUpdaterGuard, /GitHub Releases/);
 
   const fallbackFixture = [
     "var isSandLabBuild2 = appPackageJson.sandLab === true;",
