@@ -137,18 +137,58 @@ function scopeSelector(selector, root) {
   return selector.split(",").map((part) => `${root} ${part.trim()}`).join(",");
 }
 
+function scopeActionSelector(selector) {
+  if (selector.includes(":root")) return "[data-sand-vault-actions]";
+  return selector.split(",").map((part) => `[data-sand-vault-actions] ${part.trim()}`).join(",");
+}
+
+function scopeMenuPortalSelector(selector) {
+  const guard = ':where(body:has(#sand-vault-0721-root [aria-expanded="true"], [data-sand-vault-actions] [aria-expanded="true"]))';
+  return selector.split(",").map((part) => {
+    const clean = part.trim().replaceAll(":not(#\\#)", "");
+    return `${guard} :where([data-component="menu-popup"], [data-component="menu-popup"] *):not(#sand-vault-portal-sentinel):not(#sand-vault-portal-sentinel-2):is(${clean})`;
+  }).join(",");
+}
+
+function vaultLegacyTokenLayer() {
+  const guard = ':where(body:has(#sand-vault-0721-root [aria-expanded="true"], [data-sand-vault-actions] [aria-expanded="true"]))';
+  return `.sand-settings-dialog,#sand-vault-0721-root,[data-sand-vault-actions],${guard} [data-component="menu-popup"]{--sand-bg-pane:var(--sand-bg-base);--sand-bg-chrome:var(--sand-bg-subtle);--sand-bg-sidebar:var(--sand-bg-subtle);--sand-bg-elevated-hover:var(--sand-fill-ghost-hover);--sand-bg-luminous:var(--sand-bg-elevated);--sand-bg-hover:var(--sand-fill-ghost-hover);--sand-bg-active:var(--sand-fill-ghost-selected);--sand-bg-primary:var(--sand-fill-primary);--sand-bg-primary-hover:var(--sand-fill-primary-hover);--sand-bg-primary-disabled:var(--sand-fill-primary-disabled);--sand-bg-secondary:var(--sand-fill-secondary);--sand-bg-secondary-hover:var(--sand-fill-secondary-hover);--sand-bg-secondary-active:var(--sand-fill-ghost-selected);--sand-bg-secondary-disabled:var(--sand-fill-secondary-disabled);--sand-bg-tertiary:var(--sand-fill-ghost-hover);--sand-bg-quaternary:var(--sand-fill-secondary-disabled);--sand-text-inverted:var(--sand-text-on-primary);--sand-border-primary-translucent:var(--sand-border-strong);--sand-border-secondary-translucent:var(--sand-border-default);--sand-border-tertiary-translucent:var(--sand-border-weak);--sand-border-quaternary-translucent:var(--sand-border-subtle);--sand-border-focus-primary:var(--sand-border-focus);}
+.sand-settings-dialog:not(#\\#):not(#\\#){--cursor-bg-elevated:var(--sand-bg-subtle);--cursor-bg-secondary:var(--sand-fill-secondary);--cursor-bg-tertiary:var(--sand-fill-ghost-hover);--cursor-border-secondary:var(--sand-border-default);--cursor-button-secondary-background:var(--sand-fill-secondary);--cursor-stroke-tertiary:var(--sand-border-weak);--cursor-stroke-focused:var(--sand-border-focus);--cursor-text-primary:var(--sand-text-primary);--cursor-text-secondary:var(--sand-text-secondary)}
+body:has(.sand-settings-dialog) .sand-settings-dialog:not(#\\#):not(#\\#):not(#\\#){background-color:var(--sand-bg-subtle)}
+body:has(.sand-settings-dialog) .sand-settings-dialog .sand-settings-nav:not(#\\#):not(#\\#):not(#\\#){background-color:transparent;border-inline-end:.5px solid var(--sand-border-weak)}`;
+}
+
 function extractScopedVaultCss(css, classNames) {
   const classes = new Set(classNames);
+  const uiClasses = new Set([...classes].filter((name) => name.startsWith("ui-")));
   const matched = [];
+  const tokenScopes = '#sand-vault-0721-root,[data-sand-vault-actions],:where(body:has(#sand-vault-0721-root [aria-expanded="true"], [data-sand-vault-actions] [aria-expanded="true"])) [data-component="menu-popup"]';
+  const appendRule = (selector, body) => {
+    matched.push(`${scopeSelector(selector, "#sand-vault-0721-root")}{${body}}`);
+    matched.push(`${scopeActionSelector(selector)}{${body}}`);
+    matched.push(`${scopeMenuPortalSelector(selector)}{${body}}`);
+  };
   for (const rule of cssRules(css)) {
+    if (rule.selector.includes(":root")) {
+      const dimensional = rule.body.split(";").filter((declaration) => {
+        const name = declaration.slice(0, declaration.indexOf(":")).trim();
+        return /^--sand-(?:menu|font|line-height|letter-spacing|spacing|radius|height|size|blur)/u.test(name);
+      }).join(";");
+      if (dimensional.length > 0) matched.push(`${tokenScopes}{${dimensional}}`);
+      continue;
+    }
     if (rule.selector.startsWith("@media") || rule.selector.startsWith("@supports")) {
       const children = cssRules(rule.body).filter((child) => child.selector.split(",").some((part) => [...classes].some((name) => part.includes(`.${name}`))));
-      if (children.length > 0) matched.push(`${rule.selector}{${children.map((child) => `${scopeSelector(child.selector, "#sand-vault-0721-root")}{${child.body}}`).join("")}}`);
+      if (children.length > 0) {
+        matched.push(`${rule.selector}{${children.map((child) => `${scopeSelector(child.selector, "#sand-vault-0721-root")}{${child.body}}`).join("")}}`);
+        matched.push(`${rule.selector}{${children.map((child) => `${scopeActionSelector(child.selector)}{${child.body}}`).join("")}}`);
+        matched.push(`${rule.selector}{${children.map((child) => `${scopeMenuPortalSelector(child.selector)}{${child.body}}`).join("")}}`);
+      }
       continue;
     }
     if (rule.selector.startsWith("@keyframes")) continue;
     if (rule.selector.split(",").some((part) => [...classes].some((name) => part.includes(`.${name}`)))) {
-      matched.push(`${scopeSelector(rule.selector, "#sand-vault-0721-root")}{${rule.body}}`);
+      appendRule(rule.selector, rule.body);
     }
   }
   const used = matched.join("\n");
@@ -171,9 +211,12 @@ export async function buildUpstreamVaultSettings() {
   });
   let code = result.code.replaceAll(os.tmpdir(), "<tmp>");
   code = code.replace(/<tmp>\/grok-upstream-module-[^/]+/gu, "<upstream>");
-  const classNames = [...new Set(code.match(/(?<![A-Za-z0-9_-])sand-[A-Za-z0-9_-]+/gu) ?? [])];
-  if (classNames.length < 20) throw new Error("Extracted Vault module has too few upstream style classes.");
-  const css = extractScopedVaultCss(archive.read(upstreamCss).toString("utf8").slice(browserGlobals.length), classNames);
+  code = replaceOnce(code, "var P = Me();", 'var P = Me({ locale: globalThis.navigator?.language || "en" });', "i18n locale");
+  const classNames = [...new Set(code.match(/(?<![A-Za-z0-9_-])(?:sand|ui)-[A-Za-z0-9_-]+/gu) ?? [])];
+  if (classNames.filter((name) => name.startsWith("ui-")).length < 100) {
+    throw new Error("Extracted Vault module lost the upstream UI design-system classes.");
+  }
+  const css = extractScopedVaultCss(archive.read(upstreamCss).toString("utf8").slice(browserGlobals.length), classNames) + "\n" + vaultLegacyTokenLayer();
   const provenance = {
     upstream: archive.identity,
     modules: result.modules.map((module) => ({ path: module.path, inputSha256: module.inputSha256, exports: module.exports })),

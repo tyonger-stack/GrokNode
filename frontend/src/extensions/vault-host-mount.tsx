@@ -93,6 +93,41 @@ function constantStore<T>(value: T): { get(): T; subscribe(listener: () => void)
   return { get: () => value, subscribe: () => () => undefined };
 }
 
+type VaultThemeSnapshot = { readonly resolved: "light" | "dark" };
+type VaultThemeStore = {
+  readonly snapshots: { get(): VaultThemeSnapshot; subscribe(listener: () => void): () => void };
+  dispose(): void;
+};
+
+function createVaultThemeStore(): VaultThemeStore {
+  const read = (): VaultThemeSnapshot => {
+    const theme = document.querySelector(".sand-shell")?.getAttribute("data-theme") ?? "dark";
+    return { resolved: theme.toLowerCase().includes("light") ? "light" : "dark" };
+  };
+  let snapshot = read();
+  const listeners = new Set<() => void>();
+  const shell = document.querySelector<HTMLElement>(".sand-shell");
+  const observer = new MutationObserver(() => {
+    const next = read();
+    if (next.resolved === snapshot.resolved) return;
+    snapshot = next;
+    for (const listener of listeners) listener();
+  });
+  if (shell !== null) observer.observe(shell, { attributes: true, attributeFilter: ["data-theme", "class"] });
+  return {
+    snapshots: {
+      get: () => snapshot,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+    },
+    dispose: () => observer.disconnect(),
+  };
+}
+
 // Minimal stand-in for the upstream @lingui/core i18n object consumed by the
 // original LinguiProvider (xb): it needs `locale`, `t.bind(i18n)` exposed as
 // `_`, and `on("change")` returning an unsubscribe. Translations resolve to the
@@ -165,6 +200,7 @@ const UpstreamVaultPaneHeaderProvider = createUpstreamVaultPaneHeaderProvider as
 export function RVaultSettingsHost(props: { readonly focusSetting?: string | null }) {
   const desktop = useMemo(() => vaultDesktopFromWindow(), []);
   const [paneActions, setPaneActions] = useState<HTMLDivElement | null>(null);
+  const themeStore = useMemo(() => createVaultThemeStore(), []);
   const client = useMemo(() => {
     const list = async (): Promise<VaultCredential[]> => validateCredentialList(await desktop.listGrokBotVaultCredentials());
     const healingDesktop = { ...desktop, heal: () => undefined, listGrokBotVaultCredentials: list };
@@ -178,12 +214,14 @@ export function RVaultSettingsHost(props: { readonly focusSetting?: string | nul
       },
       alert: { alert: () => undefined },
       auth: { snapshots: constantStore({ status: { kind: "logged-in" } }) },
-      theme: { snapshots: constantStore({ resolved: "light" }) },
+      theme: themeStore,
     };
     (globalThis as typeof globalThis & { __sandVault0721Client?: typeof value }).__sandVault0721Client = value;
     (window as WindowWithVault).__sandVault0721Client = value;
     return value;
   }, [desktop]);
+
+  useEffect(() => () => themeStore.dispose(), [themeStore]);
 
   useEffect(() => {
     void client.grokBotVault.load().catch(() => undefined);

@@ -132,8 +132,15 @@ function mockDesktop() {
 
 async function render(t, ui, Host) {
   const host = window.document.createElement("div");
+  const shell = window.document.createElement("div");
+  shell.className = "sand-shell";
+  shell.dataset.theme = "dark";
+  const header = window.document.createElement("header");
+  header.className = "sand-settings-pane-header";
+  header.append(window.document.createElement("span"));
   host.setAttribute("data-vault-test-root", "");
-  window.document.body.append(host);
+  shell.append(header, host);
+  window.document.body.append(shell);
   const root = ui.createRoot(host);
   t.after(async () => {
     await ui.act(async () => root.unmount());
@@ -150,6 +157,46 @@ async function render(t, ui, Host) {
   return host;
 }
 
+async function settle(ui, predicate) {
+  for (let index = 0; index < 30; index += 1) {
+    await ui.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    if (predicate()) return;
+  }
+}
+
+async function openNewItem(ui) {
+  const trigger = [...window.document.querySelectorAll("[data-sand-vault-actions] button, #sand-vault-0721-root button")]
+    .find((button) => (button.textContent ?? "").trim() === "New item");
+  assert.equal(trigger instanceof window.HTMLButtonElement, true, "New item trigger is missing");
+  await ui.act(async () => trigger.click());
+  await settle(ui, () => window.document.querySelector('[role="menuitem"]') !== null);
+  return [...window.document.querySelectorAll('[role="menuitem"]')];
+}
+
+async function chooseNewItem(ui, index) {
+  const items = await openNewItem(ui);
+  assert.equal(items.length, 4, "New item must expose login, card, contact, and CSV actions");
+  const item = items[index];
+  await ui.act(async () => {
+    item.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    item.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true, cancelable: true, button: 0 }));
+    item.click();
+  });
+  await settle(ui, () => window.document.querySelector('[role="dialog"]') !== null);
+  return window.document.querySelector('[role="dialog"]');
+}
+
+async function closeDialog(ui) {
+  const dialog = window.document.querySelector('[role="dialog"]');
+  const close = dialog && [...dialog.querySelectorAll("button")]
+    .find((button) => ["Close dialog", "关闭对话框", "Cancel", "取消"].includes(button.getAttribute("aria-label") ?? (button.textContent ?? "").trim()));
+  assert.equal(close instanceof window.HTMLButtonElement, true, "Open dialog must expose its close control");
+  await ui.act(async () => close.click());
+  await settle(ui, () => window.document.querySelector('[role="dialog"]') === null);
+}
+
 test("original 0.75.5 Vault settings render list, cards, and contacts through the local bridge", { skip: asarSkip }, async (t) => {
   const ui = { createElement: React.createElement, createRoot, act: React.act };
   const { built, host: Host } = await loadHost();
@@ -159,16 +206,69 @@ test("original 0.75.5 Vault settings render list, cards, and contacts through th
   const text = host.textContent ?? "";
   assert.equal(desktop.calls.list >= 1, true);
   const state = window.__sandVault0721Client?.grokBotVault.snapshots.get();
+  assert.equal(window.__sandVault0721Client?.theme.snapshots.get().resolved, "dark", "Vault must follow the Grok Node shell theme");
+  await ui.act(async () => {
+    window.document.querySelector(".sand-shell")?.setAttribute("data-theme", "light");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  assert.equal(window.__sandVault0721Client?.theme.snapshots.get().resolved, "light", "Vault must observe shell theme changes");
   assert.equal(text.includes("example.com"), true, `${host.outerHTML}\n${JSON.stringify(state)}`);
   assert.equal(text.includes("user@example.test"), true);
   assert.equal(text.includes("visa"), true);
   assert.equal(text.includes("Synthetic Contact"), true);
   assert.equal(host.querySelectorAll("button").length > 3, true);
-  assert.equal(text.includes("New item"), true, "Vault settings must render the official create menu in the pane header portal");
+  assert.equal((window.document.body.textContent ?? "").includes("New item"), true, "Vault settings must render the official create menu in the pane header portal");
   assert.equal(built.bundle.includes(VAULT_RENDERER_MARK), true);
+  const officialUiRules = [...built.generated.style.matchAll(/#sand-vault-0721-root \.ui-/gu)].length;
+  assert.equal(officialUiRules >= 500, true, "official UI design-system styles must accompany the transplanted component");
+  assert.match(built.generated.style, /\[data-sand-vault-actions\] \.sand-/u, "official Vault styles must cover the pane-action portal");
+  assert.match(built.generated.style, /data-sand-vault-actions\] \[aria-expanded="true"\].*data-component="menu-popup"/u, "official menu styles must also cover the body portal");
+  assert.match(built.generated.style, /--sand-menu-radius:12px/u, "official menu dimensions must be transplanted with the component");
+  assert.match(built.generated.style, /:is\(\.sand-13yp6sp\)/u, "official sand menu rules must reach the body portal");
+  assert.match(built.generated.style, /body:has\(\.sand-settings-dialog\) \.sand-settings-dialog:not.*background-color:var\(--sand-bg-subtle\)/u, "Every settings section must use the Vault settings background");
+  assert.match(built.generated.style, /body:has\(\.sand-settings-dialog\) \.sand-settings-dialog \.sand-settings-nav:not.*background-color:transparent/u, "Every settings section must use the Vault sidebar surface");
+  assert.match(built.generated.style, /\.sand-settings-dialog:not.*--cursor-bg-secondary:var\(--sand-fill-secondary\).*--cursor-border-secondary:var\(--sand-border-default\).*--cursor-text-primary:var\(--sand-text-primary\)/u, "Settings cards must reuse the Vault color tokens");
   assert.equal(/createRoot\s*\(/u.test(built.bundle), false);
   assert.equal(/new\s+MutationObserver[\s\S]{0,320}\.observe\(\s*(?:document\.(?:body|documentElement)|window)\b/u.test(built.bundle), false);
   record("vault-render-host", host.outerHTML);
+  const actions = window.document.querySelector("[data-sand-vault-actions]");
+  assert.equal(actions instanceof window.HTMLElement, true, "Vault pane actions portal is missing");
+  const newItem = [...actions.querySelectorAll("button")].find((button) => (button.textContent ?? "").includes("New item"));
+  assert.equal(newItem instanceof window.HTMLButtonElement, true, "New item trigger is missing");
+  await ui.act(async () => newItem.click());
+  for (let index = 0; index < 20; index += 1) {
+    await ui.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    if (window.document.querySelector('[data-component="menu-popup"], [role="menu"]') !== null) break;
+  }
+  const menu = window.document.querySelector('[data-component="menu-popup"], [role="menu"]');
+  assert.equal(menu !== null, true, "New item menu did not open");
+  record("vault-new-item-menu", window.document.body.outerHTML);
+
+  await ui.act(async () => {
+    window.document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  await settle(ui, () => window.document.querySelector('[role="menuitem"]') === null);
+
+  const loginDialog = await chooseNewItem(ui, 0);
+  assert.match(loginDialog?.textContent ?? "", /New login|新登录信息/u, "Login action must open the official login dialog");
+  await closeDialog(ui);
+
+  const cardDialog = await chooseNewItem(ui, 1);
+  assert.match(cardDialog?.textContent ?? "", /New card|新卡片/u, "Card action must open the official card dialog");
+  await closeDialog(ui);
+
+  const contactDialog = await chooseNewItem(ui, 2);
+  assert.match(contactDialog?.textContent ?? "", /New contact info|新建联系信息/u, "Contact info action must open the official contact form");
+  assert.equal(contactDialog?.querySelectorAll("input, select").length >= 8, true, "Contact form must retain every official field");
+  await closeDialog(ui);
+
+  const csvDialog = await chooseNewItem(ui, 3);
+  assert.match(csvDialog?.textContent ?? "", /Import from CSV|从 CSV 导入/u, "CSV action must open the official import dialog");
+  assert.equal(csvDialog?.querySelectorAll('input[type="file"]').length, 1, "CSV import must retain the official file picker");
+  await closeDialog(ui);
+  assert.equal(window.document.querySelector('[role="dialog"]') === null, true, "All New item dialogs must close without navigating away");
   record("vault-render-summary", {
     bundleBytes: built.bundle.length,
     styleBytes: built.generated.style.length,
