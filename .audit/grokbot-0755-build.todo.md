@@ -6,4 +6,4 @@
 - [x] Run typechecks, focused tests, full build, packaging, and live Vault session acceptance.
   - [x] Extract the shipped Simplified Chinese Vault catalog and title-bar create menu.
   - [x] Verify the final QA bundle can open the Vault settings surface.
-- [in_progress] Commit the reviewable units, synchronize with GitHub, and push the branch.
+- [x] Commit the reviewable units, synchronize with GitHub, and push the branch.
