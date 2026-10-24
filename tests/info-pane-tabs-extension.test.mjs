@@ -415,3 +415,35 @@ test('缺失目标键盘导航保持当前页的焦点与隐藏状态', async ()
     assert.equal(vis(document, '.comp-wrap'), false);
   });
 });
+test('群聊显示正式的详情、资料库、成员标签，成员页只露出成员列表，私聊选择独立保留', async () => {
+  await withEntry(async ({ window, document, pane }) => {
+    document.querySelector('[data-r-tab="other"]').click();
+    const overview = document.createElement('div');
+    overview.setAttribute('data-r-info-pane-overview', 'project-group');
+    overview.setAttribute('data-r-info-pane-group', '1');
+    for (const child of [...pane.children]) if (child.id !== 'sand-info-pane-tabs') overview.append(child);
+    const members = document.createElement('div');
+    members.className = 'sand-group-members-section';
+    members.innerHTML = '<ul class="sand-group-members-list"><li><button>红色 Bot</button></li><li><button>青色 Bot</button></li></ul>';
+    overview.append(members);
+    pane.append(overview);
+    await window.happyDOM.waitUntilComplete();
+    const tabIds = () => [...document.querySelectorAll('#sand-info-pane-tabs [role=tab]')].map((button) => button.dataset.rTab);
+    assert.deepEqual(tabIds(), ['details', 'library', 'members']);
+    selected(document, 'details');
+    assert.equal(vis(document, '.sand-group-members-list'), false);
+    document.querySelector('[data-r-tab="members"]').click();
+    selected(document, 'members');
+    assert.equal(vis(document, '.sand-group-members-list'), true);
+    assert.equal(vis(document, '.routine-wrap'), false);
+    assert.equal(vis(document, '.comp-wrap'), false);
+    assert.equal(vis(document, '.sand-agent-settings'), false);
+    assert.equal(window.localStorage.getItem('sand.groupInfoPaneTab'), 'members');
+    assert.equal(window.localStorage.getItem('sand.infoPaneTab'), 'other');
+    overview.setAttribute('data-r-info-pane-group', '0');
+    members.remove();
+    window.__sandInfoPaneTabsSync();
+    assert.deepEqual(tabIds(), ['details', 'library', 'computer', 'other']);
+    selected(document, 'other');
+  });
+});
