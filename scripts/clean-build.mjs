@@ -334,8 +334,6 @@ export async function buildFidelityReconstructedAsar({
   const prepared = await prepareProductionActivations(base, hostBindingManifest, electronMainBindingManifest, fidelityRuntimeComposition, { reconstructedPackage: true });
   const clean = await attachCompositionAudit(prepared);
   await overlayCleanDistribution(clean.outputRoot, { stageRoot, composition: clean.buildManifest.runtimeComposition });
-  await applyAgentDataRuntimePort({ stageRoot });
-  await applyMemoryImportRuntimePort({ stageRoot });
   await applyOriginalRendererRouterPatch({ stageRoot });
   // Settings → 记忆: Muse-style memory import (dialog distillation to the MAIN bot).
   // Anchors on the router patch's OUTPUT (registry entry list + panel switch), so it must
@@ -496,6 +494,8 @@ export async function buildFidelityReconstructedAsar({
   await applyRecipientPicker0755Patch({ stageRoot });
   await applyVaultSettingsRenderer0721({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
+  await applyAgentDataRuntimePort({ stageRoot });
+  await applyMemoryImportRuntimePort({ stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);
   console.log(`Fail-closed composition audit embedded: ${compositionAuditPath} (${sha256(await readFile(clean.compositionAuditPath))})`);
