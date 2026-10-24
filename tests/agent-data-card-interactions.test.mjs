@@ -6,7 +6,7 @@ import { jsx, jsxs } from 'react/jsx-runtime';
 import { Window } from 'happy-dom';
 import { COMPONENT_SOURCE, NONE_SENTINEL } from '../scripts/lib/agent-data-cards-renderer-patch.mjs';
 
-const data = id => ({ soul: `人格 ${id}\n第二行职责`, userProfile: null, soulTruncated: false, userProfileTruncated: false, botProfile: { name: `Bot ${id}`, description: `职责 ${id}`, avatarColor: 'violet', avatarShape: 'blob' }, memoryLogMonths: ['2026-10'], audit: { entries: [{ ts: null, type: 'shell_command', summary: 'echo first' }, { ts: null, type: 'browser_navigation', summary: 'https://example.test' }], truncated: false }, workflows: ['weekly-report'] });
+const data = id => ({ soul: `人格 ${id}\n第二行职责`, userProfile: null, soulTruncated: false, userProfileTruncated: false, botProfile: { name: `Bot ${id}`, description: `职责 ${id}`, avatarColor: 'violet', avatarShape: 'blob' }, memoryLogMonths: ['2026-10'], audit: { entries: [{ ts: null, type: 'shell_command', summary: 'echo first' }, { ts: null, type: 'browser_navigation', summary: 'https://example.test' }], truncated: false }, workflows: ['weekly-report'], ownWorkflows: ['own-skill'] });
 async function fixture(api, run) {
   const window = new Window(), saved = new Map();
   for (const name of ['window', 'document', 'HTMLElement', 'Element', 'Node', 'IS_REACT_ACT_ENVIRONMENT']) {
@@ -34,7 +34,7 @@ test('five cards open the right content, choose journals and skills, and preserv
     getAgentMemoryLog: async (id, month) => { calls.push([id, month]); return { ok: true, data: { content: '当月记忆正文' } }; },
     getAgentWorkflowContent: async slug => { calls.push([slug]); return { ok: true, data: { content: '# 周报技能' } }; },
   }, async ({ mount, window }) => {
-    assert.deepEqual([...mount.querySelectorAll('.sand-agent-settings__card')].map(card => card.querySelector('.sand-agent-settings__text').textContent), ['人格 (Soul)memory/profile.md', '记忆memory/log/YYYY-MM.md', 'Bot 画像agents profile.json + 记忆/技能/审计', '行为审计audit.jsonl（最近）', '技能workflows/*/SKILL.md']);
+    assert.deepEqual([...mount.querySelectorAll('.sand-agent-settings__card')].map(card => card.querySelector('.sand-agent-settings__text').textContent), ['人格 (Soul)memory/profile.md', '记忆memory/log/YYYY-MM.md', 'Bot 画像agents profile.json + 记忆/技能/审计', '行为审计audit.jsonl（最近）', '技能skills 自身 · workflows 共享']);
     for (const [key, content] of [['soul', '人格 one']]) {
       await React.act(async () => mount.querySelector(`[data-r-agent-${key}] button`).click());
       assert(mount.querySelector(`[data-r-agent-${key}]`).textContent.includes(content));

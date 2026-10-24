@@ -78,6 +78,7 @@ export const COMPONENT_SOURCE = [
   'Promise.resolve(g&&typeof g.getAgentWorkflowContent==="function"?g.getAgentWorkflowContent(s):null).then(r=>{if(wfSeq.current!==n)return;if(r&&r.ok){const c=r.data&&typeof r.data.content==="string"?r.data.content:null;setWf({busy:!1,content:c,error:c==null?RLocT("No SKILL.md in this workflow.","该技能没有 SKILL.md。"):null})}else setWf({busy:!1,content:null,error:String((r&&r.reason)||"read-failed")})}).catch(err=>{if(wfSeq.current===n)setWf({busy:!1,content:null,error:String((err&&err.message)||err)})})};',
   "if(t.isGroup)return null;",
   "const d=ov.data;",
+  "const ownS=d&&Array.isArray(d.ownWorkflows)?d.ownWorkflows.filter(x=>typeof x===\"string\"):[];const sharedS=d&&Array.isArray(d.workflows)?d.workflows.filter(x=>typeof x===\"string\"):[];",
   "const pick=(list,placeholder)=>[{value:RAgentDataNone,label:placeholder}].concat((list||[]).filter(m=>typeof m===\"string\").map(m=>({value:m,label:m})));",
   "const cardEl=(key,label,hint,control,extra)=>p.jsxs(\"div\",{className:re(\"sand-agent-settings__card\",RAgentDataCardClasses),[\"data-r-agent-\"+key]:\"\",children:[",
   'p.jsxs("div",{className:re("sand-agent-settings__row",RAgentDataRowClasses),children:[',
@@ -100,7 +101,7 @@ export const COMPONENT_SOURCE = [
   'cardEl("memory",RLocT("Memory","记忆"),RLocT("memory/log/YYYY-MM.md","memory/log/YYYY-MM.md"),p.jsx(so,{"aria-label":RLocT("Memory month","记忆月份"),disabled:!d.memoryLogMonths||d.memoryLogMonths.length===0,onValueChange:n=>{if(n!==null){setMemMonth(n);loadMem(n)}},options:pick(d.memoryLogMonths,d.memoryLogMonths&&d.memoryLogMonths.length>0?RLocT("Pick a month","选择月份"):RLocT("No journal yet","暂无记忆日志")),placement:"bottom-end",size:"md",value:memMonth??RAgentDataNone}),memExtra),',
   'cardEl("bot",RLocT("Bot profile","Bot 画像"),RLocT("agents profile.json + 记忆/技能/审计","agents profile.json + 记忆/技能/审计"),p.jsx(RAgentDataBtn,{label:open==="bot"?RLocT("Hide","收起"):RLocT("View","查看"),active:open==="bot",onClick:()=>setOpen(o=>o==="bot"?null:"bot")}),botExtra),',
   'cardEl("audit",RLocT("Audit","行为审计"),RLocT("audit.jsonl (latest)","audit.jsonl（最近）"),p.jsx(RAgentDataBtn,{label:open==="audit"?RLocT("Hide","收起"):RLocT("View","查看"),active:open==="audit",onClick:()=>setOpen(o=>o==="audit"?null:"audit")}),auditExtra),',
-  'cardEl("workflow",RLocT("Workflows","技能"),RLocT("workflows/*/SKILL.md","workflows/*/SKILL.md"),p.jsx(so,{"aria-label":RLocT("Workflow","技能"),disabled:!d.workflows||d.workflows.length===0,onValueChange:n=>{if(n!==null){setWfSlug(n);loadWf(n)}},options:pick(d.workflows,RLocT("Pick a workflow","选择技能")),placement:"bottom-end",size:"md",value:wfSlug??RAgentDataNone}),wfExtra)',
+  'cardEl("workflow",RLocT("Workflows","技能"),RLocT("skills/*/SKILL.md and workflows/*/SKILL.md","skills 自身 · workflows 共享"),p.jsx(so,{"aria-label":RLocT("Workflow","技能"),disabled:ownS.length===0&&sharedS.length===0,onValueChange:n=>{if(n!==null){setWfSlug(n);loadWf(n)}},options:[{value:RAgentDataNone,label:ownS.length===0&&sharedS.length===0?RLocT("No skills yet","暂无技能"):RLocT("Pick a skill","选择技能")}].concat(ownS.map(s=>({value:"own:"+t.id+":"+s,label:RLocT("Mine","自身")+" · "+s})),sharedS.map(s=>({value:s,label:RLocT("Shared","共享")+" · "+s}))),placement:"bottom-end",size:"md",value:wfSlug??RAgentDataNone}),wfExtra)',
   "]);",
   "}",
 ].join("\n");

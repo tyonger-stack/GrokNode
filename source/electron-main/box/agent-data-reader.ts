@@ -19,6 +19,7 @@ const AUDIT_FILE = "audit.jsonl";
 const USER_PROFILE_FILE = "profile.md";
 const BOT_PROFILE_FILE = "profile.json";
 const SKILL_FILE = "SKILL.md";
+const OWN_SKILLS_DIR = "skills";
 
 export const AGENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MEMORY_MONTH_PATTERN = /^\d{4}-(?:0[1-9]|1[0-2])$/;
@@ -41,6 +42,7 @@ export interface AgentDataOverview {
   readonly soulTruncated: boolean;
   readonly userProfile: string | null;
   readonly userProfileTruncated: boolean;
+  readonly ownWorkflows: readonly string[];
   readonly botProfile: AgentDataBotProfile | null;
   readonly memoryLogMonths: readonly string[];
   readonly audit: { readonly entries: readonly AgentDataAuditEntry[]; readonly truncated: boolean };
@@ -149,13 +151,14 @@ export async function readAgentDataOverview(rawAgentId: unknown): Promise<AgentD
   const agentId = normalizeAgentId(rawAgentId);
   if (agentId == null) return { ok: false, reason: "invalid-agent-id" };
   const agentDir = `${AGENT_DATA_ROOT}/${agentId}`;
-  const [soul, user, bot, months, audit, workflows] = await Promise.all([
+  const [soul, user, bot, months, audit, workflows, ownWorkflows] = await Promise.all([
     capRead(`head -c ${TEXT_READ_CAP_BYTES + 1} ${agentDir}/${PROFILE_FILE} 2>/dev/null; true`),
     capRead(`head -c ${TEXT_READ_CAP_BYTES + 1} ${USER_MEMORY_ROOT}/${agentId}/${USER_PROFILE_FILE} 2>/dev/null; true`),
     capRead(`head -c 8192 ${agentDir}/${BOT_PROFILE_FILE} 2>/dev/null; true`),
     execInBox(`ls -1 ${agentDir}/${LOG_DIR} 2>/dev/null; true`),
     execInBox(`tail -c ${AUDIT_TAIL_BYTES + 1} ${agentDir}/${AUDIT_FILE} 2>/dev/null; true`),
     execInBox(`ls -1 ${WORKFLOW_ROOT} 2>/dev/null; true`),
+    execInBox(`ls -1 ${agentDir}/${OWN_SKILLS_DIR} 2>/dev/null; true`),
   ]);
   if (!soul.ok) return soul;
   if (!user.ok) return user;
@@ -163,6 +166,7 @@ export async function readAgentDataOverview(rawAgentId: unknown): Promise<AgentD
   if (!months.ok) return months;
   if (!audit.ok) return audit;
   if (!workflows.ok) return workflows;
+  if (!ownWorkflows.ok) return ownWorkflows;
   const monthList = months.output.split("\n").map((name) => name.trim()).filter((name) => name.endsWith(".md")).map((name) => name.slice(0, -3)).filter((name) => MEMORY_MONTH_PATTERN.test(name)).sort().reverse();
   return {
     ok: true,
@@ -175,6 +179,7 @@ export async function readAgentDataOverview(rawAgentId: unknown): Promise<AgentD
       memoryLogMonths: monthList,
       audit: parseAuditTail(audit.output, AUDIT_TAIL_BYTES),
       workflows: workflows.output.split("\n").map((name) => name.trim()).filter((name) => WORKFLOW_SLUG_PATTERN.test(name)).sort(),
+      ownWorkflows: ownWorkflows.output.split("\n").map((name) => name.trim()).filter((name) => WORKFLOW_SLUG_PATTERN.test(name)).sort(),
     },
   };
 }
@@ -190,9 +195,13 @@ export async function readAgentMemoryLog(rawAgentId: unknown, rawMonth: unknown)
 }
 
 export async function readAgentWorkflowContent(rawSlug: unknown): Promise<AgentDataRead<{ content: string | null; truncated: boolean }>> {
-  const slug = normalizeWorkflowSlug(rawSlug);
-  if (slug == null) return { ok: false, reason: "invalid-slug" };
-  const outcome = await capRead(`head -c ${TEXT_READ_CAP_BYTES + 1} ${WORKFLOW_ROOT}/${slug}/${SKILL_FILE} 2>/dev/null; true`);
+  if (typeof rawSlug !== "string") return { ok: false, reason: "invalid-slug" };
+  const own = /^own:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(.+)$/i.exec(rawSlug.trim());
+  const ownerId = own == null ? null : normalizeAgentId(own[1]);
+  const slug = normalizeWorkflowSlug(own == null ? rawSlug : own[2]);
+  if (slug == null || (own != null && ownerId == null)) return { ok: false, reason: "invalid-slug" };
+  const base = ownerId == null ? `${WORKFLOW_ROOT}/${slug}` : `${AGENT_DATA_ROOT}/${ownerId}/${OWN_SKILLS_DIR}/${slug}`;
+  const outcome = await capRead(`head -c ${TEXT_READ_CAP_BYTES + 1} ${base}/${SKILL_FILE} 2>/dev/null; true`);
   if (!outcome.ok) return outcome;
   return { ok: true, data: { content: outcome.content, truncated: outcome.truncated } };
 }
