@@ -9,6 +9,8 @@ import { upstreamVaultMessages, type VaultCatalogEntry } from "../recovered/feat
 import { upstreamVaultMessages0755 } from "../recovered/features/vault/upstream-vault-messages-0755.mjs";
 import type { VaultDesktop, VaultCredential } from "../recovered/features/vault/types";
 import type { UpstreamVaultStore } from "../recovered/features/vault/upstream-vault-settings.generated.mjs";
+import { createAppAlertController } from "../recovered/features/window-chrome/app-alert/controller";
+import { AppAlertHost } from "../recovered/features/window-chrome/app-alert/view";
 
 type WindowWithVault = Window & {
   readonly desktop?: {
@@ -201,6 +203,7 @@ export function RVaultSettingsHost(props: { readonly focusSetting?: string | nul
   const desktop = useMemo(() => vaultDesktopFromWindow(), []);
   const [paneActions, setPaneActions] = useState<HTMLDivElement | null>(null);
   const themeStore = useMemo(() => createVaultThemeStore(), []);
+  const alertController = useMemo(() => createAppAlertController(), []);
   const client = useMemo(() => {
     const list = async (): Promise<VaultCredential[]> => validateCredentialList(await desktop.listGrokBotVaultCredentials());
     const healingDesktop = { ...desktop, heal: () => undefined, listGrokBotVaultCredentials: list };
@@ -212,16 +215,17 @@ export function RVaultSettingsHost(props: { readonly focusSetting?: string | nul
         snapshots: constantStore({ featureGates: { grok_bot_vault: true, grok_bot_vault_cards: true } }),
         expose: () => undefined,
       },
-      alert: { alert: () => undefined },
+      alert: alertController,
       auth: { snapshots: constantStore({ status: { kind: "logged-in" } }) },
       theme: themeStore,
     };
     (globalThis as typeof globalThis & { __sandVault0721Client?: typeof value }).__sandVault0721Client = value;
     (window as WindowWithVault).__sandVault0721Client = value;
     return value;
-  }, [desktop]);
+  }, [alertController, desktop]);
 
   useEffect(() => () => themeStore.dispose(), [themeStore]);
+  useEffect(() => () => alertController.dispose(), [alertController]);
 
   useEffect(() => {
     void client.grokBotVault.load().catch(() => undefined);
@@ -234,8 +238,8 @@ export function RVaultSettingsHost(props: { readonly focusSetting?: string | nul
     const target = document.createElement("div");
     target.setAttribute("data-sand-vault-actions", "");
     target.style.marginInlineStart = "auto";
-    target.style.marginInlineEnd = "44px";
-    header.insertBefore(target, header.lastElementChild);
+    target.style.marginInlineEnd = "20px";
+    header.append(target);
     setPaneActions(target);
     return () => target.remove();
   }, []);
@@ -248,6 +252,7 @@ export function RVaultSettingsHost(props: { readonly focusSetting?: string | nul
           <UpstreamVaultSettings params={{ focusSetting: props.focusSetting ?? null }} />
         </UpstreamVaultLinguiProvider>
       </UpstreamVaultPaneHeaderProvider>
+      <AppAlertHost controller={alertController} />
     </div>
   );
 }

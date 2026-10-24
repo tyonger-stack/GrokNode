@@ -161,10 +161,12 @@ function scopeDialogSelector(selector) {
 function vaultLegacyTokenLayer() {
   const guard = ':where(body:has(#sand-vault-0721-root [aria-expanded="true"], [data-sand-vault-actions] [aria-expanded="true"]))';
   return `.sand-settings-dialog,.sand-dialog,#sand-vault-0721-root,[data-sand-vault-actions],${guard} [data-component="menu-popup"]{--sand-bg-pane:var(--sand-bg-base);--sand-bg-chrome:var(--sand-bg-subtle);--sand-bg-sidebar:var(--sand-bg-subtle);--sand-bg-elevated-hover:var(--sand-fill-ghost-hover);--sand-bg-luminous:var(--sand-bg-elevated);--sand-bg-hover:var(--sand-fill-ghost-hover);--sand-bg-active:var(--sand-fill-ghost-selected);--sand-bg-primary:var(--sand-fill-primary);--sand-bg-primary-hover:var(--sand-fill-primary-hover);--sand-bg-primary-disabled:var(--sand-fill-primary-disabled);--sand-bg-secondary:var(--sand-fill-secondary);--sand-bg-secondary-hover:var(--sand-fill-secondary-hover);--sand-bg-secondary-active:var(--sand-fill-ghost-selected);--sand-bg-secondary-disabled:var(--sand-fill-secondary-disabled);--sand-bg-tertiary:var(--sand-fill-ghost-hover);--sand-bg-quaternary:var(--sand-fill-secondary-disabled);--sand-text-inverted:var(--sand-text-on-primary);--sand-border-primary-translucent:var(--sand-border-strong);--sand-border-secondary-translucent:var(--sand-border-default);--sand-border-tertiary-translucent:var(--sand-border-weak);--sand-border-quaternary-translucent:var(--sand-border-subtle);--sand-border-focus-primary:var(--sand-border-focus);}
-.sand-settings-dialog:not(#\\#):not(#\\#){--cursor-bg-elevated:var(--sand-bg-subtle);--cursor-bg-secondary:var(--sand-fill-secondary);--cursor-bg-tertiary:var(--sand-fill-ghost-hover);--cursor-border-secondary:var(--sand-border-default);--cursor-button-secondary-background:var(--sand-fill-secondary);--cursor-stroke-tertiary:var(--sand-border-weak);--cursor-stroke-focused:var(--sand-border-focus);--cursor-text-primary:var(--sand-text-primary);--cursor-text-secondary:var(--sand-text-secondary)}
-[data-theme=cursor-dark] .sand-dialog:not(#\\#):not(#\\#){--sand-bg-elevated:#1f1f1f;--sand-bg-hover:#f5f5f50f}
+.sand-settings-dialog:not(#\\#):not(#\\#),.sand-dialog:not(#\\#):not(#\\#){--cursor-bg-elevated:var(--sand-bg-subtle);--cursor-bg-secondary:var(--sand-fill-secondary);--cursor-bg-tertiary:var(--sand-fill-ghost-hover);--cursor-border-secondary:var(--sand-border-default);--cursor-button-secondary-background:var(--sand-fill-secondary);--cursor-stroke-tertiary:var(--sand-border-weak);--cursor-stroke-focused:var(--sand-border-focus);--cursor-text-primary:var(--sand-text-primary);--cursor-text-secondary:var(--sand-text-secondary)}
+[data-theme=cursor-dark] .sand-dialog:not(#\\#):not(#\\#){--sand-bg-elevated:#1f1f1f;--sand-bg-hover:#f5f5f50f;--sand-fill-secondary:#f5f5f50a;--sand-text-primary:#f5f5f5;--sand-text-secondary:#f5f5f58a;--sand-border-default:#f5f5f51a;--sand-bg-danger-primary:#cf2b35;--sand-bg-danger-secondary:#fc2c3e12;--sand-text-danger-primary:#ff6463;--cursor-bg-red-primary:var(--sand-bg-danger-primary);--cursor-bg-red-secondary:var(--sand-bg-danger-secondary);--cursor-text-red-primary:var(--sand-text-danger-primary)}
 [data-theme=cursor-light] .sand-dialog:not(#\\#):not(#\\#){--sand-bg-elevated:#fff;--sand-bg-hover:#1c1c1c0f}
-body:has(.sand-settings-dialog) .sand-settings-dialog:not(#\\#):not(#\\#):not(#\\#){background-color:var(--sand-bg-subtle)}
+body:has(.sand-settings-dialog) .sand-settings-dialog:not(#\\#):not(#\\#):not(#\\#):not(#\\#){width:min(900px,calc(100vw - 32px));height:min(666px,calc(100vh - 32px));background-color:var(--sand-bg-subtle)}
+body:has(.sand-settings-dialog) .sand-settings-panel > header.sand-settings-pane-header:not(#\\#):not(#\\#):not(#\\#){flex-direction:row;align-items:center;justify-content:space-between}
+body:has(#sand-vault-0721-root) .sand-settings-pane:has(> #sand-vault-0721-root):not(#\\#):not(#\\#):not(#\\#){padding:0}
 body:has(.sand-settings-dialog) .sand-settings-dialog .sand-settings-nav:not(#\\#):not(#\\#):not(#\\#){background-color:transparent;border-inline-end:.5px solid var(--sand-border-weak)}`;
 }
 
@@ -224,6 +226,12 @@ export async function buildUpstreamVaultSettings() {
   let code = result.code.replaceAll(os.tmpdir(), "<tmp>");
   code = code.replace(/<tmp>\/grok-upstream-module-[^/]+/gu, "<upstream>");
   code = replaceOnce(code, "var P = Me();", 'var P = Me({ locale: globalThis.navigator?.language || "en" });', "i18n locale");
+  code = replaceOnce(
+    code,
+    "return e38 instanceof ec3 && e38.failure.code === `grok-bot-vault/refused` ? e38.message : null;",
+    "return e38 instanceof ec3 && e38.failure.code === `grok-bot-vault/refused` ? e38.message : e38?.code === `grok-bot-vault/refused` ? e38.detail ?? e38.message : typeof e38?.message === `string` && e38.message.startsWith(`edge/handler-failed: Contact info needs `) ? e38.message.slice(`edge/handler-failed: `.length) : null;",
+    "vault refusal mapping",
+  );
   const classNames = [...new Set(code.match(/(?<![A-Za-z0-9_-])(?:sand|ui)-[A-Za-z0-9_-]+/gu) ?? [])];
   if (classNames.filter((name) => name.startsWith("ui-")).length < 100) {
     throw new Error("Extracted Vault module lost the upstream UI design-system classes.");

@@ -33,6 +33,7 @@ const ACCOUNT_SCOPE_PATTERN = /^[0-9a-f]{64}$/u;
 const MAX_PHOTOS = 4;
 const MAX_PHOTO_BYTES = 20 * 1024 * 1024;
 const PHOTO_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const CONTACT_REQUIRES_REACHABILITY = "Contact info needs a postal address, a phone number, or an email address.";
 const BILLING_FIELDS = [
   ["billing_line1", "line1"],
   ["billing_line2", "line2"],
@@ -497,6 +498,9 @@ export class LocalVaultBackend {
       const prior = account.get(id);
       if (prior !== undefined && prior.kind !== "contact") throw new VaultInvalidArgumentError("Vault item kind cannot change");
       const contact = input.contact;
+      if (contact.line1.trim().length === 0 && contact.phone.trim().length === 0 && contact.email.trim().length === 0) {
+        throw new VaultInvalidArgumentError(CONTACT_REQUIRES_REACHABILITY);
+      }
       const record: StoredContactRecord = {
         id,
         kind: "contact",

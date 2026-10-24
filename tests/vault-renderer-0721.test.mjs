@@ -226,15 +226,24 @@ test("original 0.75.5 Vault settings render list, cards, and contacts through th
   assert.match(built.generated.style, /--sand-menu-radius:12px/u, "official menu dimensions must be transplanted with the component");
   assert.match(built.generated.style, /:is\(\.sand-13yp6sp\)/u, "official sand menu rules must reach the body portal");
   assert.match(built.generated.style, /body:has\(\.sand-settings-dialog\) \.sand-settings-dialog:not.*background-color:var\(--sand-bg-subtle\)/u, "Every settings section must use the Vault settings background");
+  assert.match(built.generated.style, /\.sand-settings-dialog:not\(#\\#\):not\(#\\#\):not\(#\\#\):not\(#\\#\)\{width:min\(900px,calc\(100vw - 32px\)\);height:min\(666px,calc\(100vh - 32px\)\)/u, "Every settings section must use the shipped dialog dimensions with the required cascade weight");
+  assert.match(built.generated.style, /body:has\(\.sand-settings-dialog\) \.sand-settings-panel > header\.sand-settings-pane-header:not.*flex-direction:row.*justify-content:space-between/u, "Settings header must use the shipped horizontal layout");
+  assert.match(built.generated.style, /body:has\(#sand-vault-0721-root\) \.sand-settings-pane:has\(> #sand-vault-0721-root\):not.*padding:0/u, "Vault must not receive settings padding twice");
   assert.match(built.generated.style, /body:has\(\.sand-settings-dialog\) \.sand-settings-dialog \.sand-settings-nav:not.*background-color:transparent/u, "Every settings section must use the Vault sidebar surface");
   assert.match(built.generated.style, /\.sand-settings-dialog:not.*--cursor-bg-secondary:var\(--sand-fill-secondary\).*--cursor-border-secondary:var\(--sand-border-default\).*--cursor-text-primary:var\(--sand-text-primary\)/u, "Settings cards must reuse the Vault color tokens");
   assert.match(built.generated.style, /body:has\(#sand-vault-0721-root\).*\.sand-dialog.*\.sand-cjjqqt/u, "Official Vault dialogs must receive the component stylesheet outside the Vault root portal");
   assert.match(built.generated.style, /\[data-theme=cursor-dark\] \.sand-dialog:not.*--sand-bg-elevated:#1f1f1f/u, "Vault dialogs must retain the shipped dark elevated surface");
+  assert.match(built.generated.style, /--sand-bg-danger-primary:#cf2b35;--sand-bg-danger-secondary:#fc2c3e12;--sand-text-danger-primary:#ff6463/u, "Vault dialogs must use the shipped destructive colors");
+  assert.match(readFileSync(built.generated.path, "utf8"), /edge\/handler-failed: Contact info needs /u,
+    "Vault must surface the shipped contact reachability error");
   assert.equal(/createRoot\s*\(/u.test(built.bundle), false);
   assert.equal(/new\s+MutationObserver[\s\S]{0,320}\.observe\(\s*(?:document\.(?:body|documentElement)|window)\b/u.test(built.bundle), false);
   record("vault-render-host", host.outerHTML);
   const actions = window.document.querySelector("[data-sand-vault-actions]");
   assert.equal(actions instanceof window.HTMLElement, true, "Vault pane actions portal is missing");
+  assert.equal(window.document.querySelector("header.sand-settings-pane-header")?.lastElementChild, actions,
+    "Vault pane actions must stay after the title, matching the shipped header order");
+  assert.equal(actions.style.marginInlineEnd, "20px", "Vault pane actions must use the shipped header inset");
   const newItem = [...actions.querySelectorAll("button")].find((button) => (button.textContent ?? "").includes("New item"));
   assert.equal(newItem instanceof window.HTMLButtonElement, true, "New item trigger is missing");
   await ui.act(async () => newItem.click());
@@ -271,6 +280,33 @@ test("original 0.75.5 Vault settings render list, cards, and contacts through th
   assert.equal(csvDialog?.querySelectorAll('input[type="file"]').length, 1, "CSV import must retain the official file picker");
   await closeDialog(ui);
   assert.equal(window.document.querySelector('[role="dialog"]') === null, true, "All New item dialogs must close without navigating away");
+
+  const contactRow = [...host.querySelectorAll("button")]
+    .find((button) => (button.textContent ?? "").includes("Billing contact"));
+  assert.equal(contactRow instanceof window.HTMLButtonElement, true, "Saved contact row is missing");
+  await ui.act(async () => contactRow.click());
+  await settle(ui, () => [...window.document.querySelectorAll('[role="dialog"]')]
+    .some((dialog) => /Edit contact|编辑联系信息/u.test(dialog.textContent ?? "")));
+  const editContact = [...window.document.querySelectorAll('[role="dialog"]')]
+    .find((dialog) => /Edit contact|编辑联系信息/u.test(dialog.textContent ?? ""));
+  assert.equal(editContact instanceof window.HTMLElement, true, "Contact editor did not open");
+  const remove = [...editContact.querySelectorAll("button")]
+    .find((button) => ["Remove", "移除"].includes((button.textContent ?? "").trim()));
+  assert.equal(remove instanceof window.HTMLButtonElement, true, "Contact editor must retain its remove action");
+  await ui.act(async () => remove.click());
+  await settle(ui, () => [...window.document.querySelectorAll('[role="dialog"]')]
+    .some((dialog) => /Remove “|移除“/u.test(dialog.textContent ?? "")));
+  const removalDialog = [...window.document.querySelectorAll('[role="dialog"]')].at(-1);
+  assert.equal(removalDialog instanceof window.HTMLElement, true, "Remove confirmation did not open");
+  assert.equal(removalDialog.classList.contains("sand-alert-dialog"), true, "Remove confirmation must use the shipped alert dialog");
+  assert.equal(removalDialog.querySelectorAll(".sand-alert-dialog__actions > button").length, 2,
+    "Remove confirmation must present cancel and remove actions");
+  const confirmRemove = [...removalDialog.querySelectorAll("button")]
+    .find((button) => ["Remove", "移除"].includes((button.textContent ?? "").trim()));
+  assert.equal(confirmRemove instanceof window.HTMLButtonElement, true, "Remove confirmation action is missing");
+  await ui.act(async () => confirmRemove.click());
+  await settle(ui, () => desktop.calls.mutations.some(([kind]) => kind === "delete"));
+  assert.equal(JSON.stringify(desktop.calls.mutations.at(-1)), JSON.stringify(["delete", { id: "contact-1" }]));
   record("vault-render-summary", {
     bundleBytes: built.bundle.length,
     styleBytes: built.generated.style.length,

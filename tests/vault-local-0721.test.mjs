@@ -200,6 +200,12 @@ test("Vault creates upstream login and contact drafts with empty ids", async (t)
   assert.equal(contact.id.length > 0, true, "empty upstream contact ids must create a persisted id");
   assert.equal(contact.contact?.defaultShipping, false, "missing optional shipping flags default to false");
 
+  await assert.rejects(() => handlers.putGrokBotVaultContact({
+    id: "", title: "", contact: {
+      name: "", line1: "", line2: "", city: "", region: "", postalCode: "", country: "", phone: "", email: "",
+    },
+  }), /Contact info needs a postal address, a phone number, or an email address\./u);
+
   const login = await handlers.putGrokBotVaultCredential({
     id: "", title: "Example", username: "user@example.test", notes: "",
     sites: ["https://example.com"], password: "synthetic-password",
