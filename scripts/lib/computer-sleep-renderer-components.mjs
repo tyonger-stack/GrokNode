@@ -304,7 +304,9 @@ export function computerSleepOverlayRuntime(officialHtml, shapeSvgs, sleepIconGl
     if(title!=null){
       title.textContent=waking?L.waking:(mode==='offline'?L.offline:L.title);
       if(waking){
-        title.className=SHIMMER_CLS+' sand-78zum5 sand-6s0dn4 sand-l56j7k sand-193iq5w sand-euugli sand-mix8c7 sand-b3r6kr sand-uxw1ft sand-lyipyv';
+        // 官方 0.75.5 Z():shimmer 标题 = L(g.body2, …) — body2 排版(sand-11wthnw/sand-w8bs97/sand-14gdtuo)
+        // 照常携带,medium 与 title 颜色仅在非 shimmer 时叠加。缺这三个类时标题继承面板大字号。
+        title.className='sand-11wthnw sand-w8bs97 sand-14gdtuo '+SHIMMER_CLS+' sand-78zum5 sand-6s0dn4 sand-l56j7k sand-193iq5w sand-euugli sand-mix8c7 sand-b3r6kr sand-uxw1ft sand-lyipyv';
       }else{
         title.className='sand-11wthnw sand-w8bs97 sand-14gdtuo sand-1rhlpx6 sand-tyxrsu sand-78zum5 sand-6s0dn4 sand-l56j7k sand-193iq5w sand-euugli sand-mix8c7 sand-b3r6kr sand-uxw1ft sand-lyipyv';
       }

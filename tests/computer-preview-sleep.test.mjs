@@ -218,6 +218,11 @@ test("a computer that has not started renders the official 电脑正在休眠 ca
     assert.equal(waking.textContent.includes("正在唤醒"), true, "official pwcnuW title");
     const title = waking.querySelector("[data-stage-words]>span");
     assert.ok(title.className.includes("rcompsleep-shimmer"), "title runs official shimmer animation");
+    // 官方 0.75.5 Z():shimmer 标题仍带 g.body2 排版(base 字号/行高/字距),缺了会继承面板大字号。
+    for (const body2 of ["sand-11wthnw", "sand-w8bs97", "sand-14gdtuo"]) {
+      assert.ok(title.className.includes(body2), "waking title keeps body2 " + body2);
+    }
+    assert.equal(title.className.includes("sand-1rhlpx6"), false, "official shimmer title drops medium weight");
     assert.equal(waking.querySelector("[data-stage-avatar]>span").classList.contains("sand-1aquc0h"), false, "avatar pulse unlocked while waking");
     assert.equal(open.classList.contains("sand-oegz02"), false);
     assert.equal(open.getAttribute("aria-label"), "打开电脑");
