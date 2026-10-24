@@ -7,14 +7,15 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = await readFile(path.join(repoRoot, "scripts/clean-build.mjs"), "utf8");
 
-test("the fidelity pipeline mounts both source-derived runtime ports after audit overlay", () => {
-  const overlay = source.indexOf("await overlayAuditMetadata(clean, { stageRoot });");
-  const agentData = source.indexOf("await applyAgentDataRuntimePort({ stageRoot });");
-  const memoryImport = source.indexOf("await applyMemoryImportRuntimePort({ stageRoot });");
-  const pack = source.indexOf("await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });");
+const mainEdge = await readFile(path.join(repoRoot, "source/electron-main/main-edge.ts"), "utf8");
+const preload = await readFile(path.join(repoRoot, "source/electron-preload/preload.ts"), "utf8");
+const rpcTable = await readFile(path.join(repoRoot, "source/shared/rpc/main.ts"), "utf8");
 
-  assert.ok(overlay !== -1 && agentData !== -1 && memoryImport !== -1 && pack !== -1);
-  assert.ok(overlay < agentData, "runtime ports must run after the clean Electron main overlay");
-  assert.ok(agentData < memoryImport, "memory import extends the main output already carrying agent data methods");
-  assert.ok(memoryImport < pack, "runtime provenance must be present before the archive is packed");
+test("agent data and memory import compile from their canonical source owners", () => {
+  for (const method of ["getAgentDataOverview", "getAgentMemoryLog", "getAgentWorkflowContent", "importAgentMemory"]) {
+    assert.match(mainEdge, new RegExp(method + ":\\s+async\\s+\\("), method + " must be owned by the main edge");
+    assert.match(preload, new RegExp(method + ":\\s+\\("), method + " must be exposed by the preload bridge");
+    assert.match(rpcTable, new RegExp(method + ":\\s*\\{\\s*args:\\s*\"object\"\\s*\\}"), method + " must be registered in the RPC table");
+  }
+  assert.doesNotMatch(source, /apply(AgentData|MemoryImport)RuntimePort/, "the clean-source pipeline must not re-inject methods it already compiled");
 });

@@ -35,8 +35,6 @@ import {
   buildProductionElectronMainIfSupplied,
   electronMainBindingProvenancePath,
 } from "./electron-main-production-activation.mjs";
-import { applyAgentDataRuntimePort } from "./lib/agent-data-runtime-patch.mjs";
-import { applyMemoryImportRuntimePort } from "./lib/memory-import-runtime-patch.mjs";
 import { applyOriginalRendererRouterPatch } from "./lib/router-renderer-patch.mjs";
 import { applyOriginalRendererMemoryImport } from "./lib/agent-memory-import-renderer-patch.mjs";
 import { applyOriginalRendererLibraryStageClose } from "./lib/library-stage-close-renderer-patch.mjs";
@@ -494,8 +492,6 @@ export async function buildFidelityReconstructedAsar({
   await applyRecipientPicker0755Patch({ stageRoot });
   await applyVaultSettingsRenderer0721({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
-  await applyAgentDataRuntimePort({ stageRoot });
-  await applyMemoryImportRuntimePort({ stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);
   console.log(`Fail-closed composition audit embedded: ${compositionAuditPath} (${sha256(await readFile(clean.compositionAuditPath))})`);
