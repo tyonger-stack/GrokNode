@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile, stat } from "node:fs/promises";
+import path from "node:path";
+import { tmpdir } from "node:os";
+import vm from "node:vm";
+import test from "node:test";
+import { build } from "esbuild";
+import { fileURLToPath } from "node:url";
+import { patchGroupRosterHost, groupHostFunction } from "../scripts/lib/group-roster-host-patch.mjs";
+
+test("the shipped host delta exposes the same persisted group fields as source and is idempotent", async t => {
+  const archive = "/Applications/Grok Node.app/Contents/Resources/app.asar";
+  if (await stat(archive).catch(error => { if (error.code === "ENOENT") return null; throw error; }) == null) return t.skip("installed host comparison artifact unavailable");
+  const { extractFile } = await import("@electron/asar");
+  const host = extractFile(archive, "dist/host/host-main.cjs").toString();
+  const patched = patchGroupRosterHost(host);
+  assert.equal(patchGroupRosterHost(patched.source).changed, false);
+  const bundle = await build({ stdin: { contents: 'export {readSandGroupConfig} from "./source/host/groups/group-store.ts";', resolveDir: fileURLToPath(new URL("../", import.meta.url)), loader: "ts" }, bundle: true, platform: "node", format: "esm", write: false, logLevel: "silent" });
+  const { readSandGroupConfig } = await import("data:text/javascript;base64," + Buffer.from(bundle.outputFiles[0].text).toString("base64"));
+  const directory = await mkdtemp(path.join(tmpdir(), "group-host-delta-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(path.join(directory, "group"));
+  await writeFile(path.join(directory, "group/profile.json"), JSON.stringify({ name: "项目群" }));
+  await writeFile(path.join(directory, "group/group.json"), JSON.stringify({ version: 1, memberIds: ["one", "two"] }));
+  const fn = groupHostFunction(patched.source, "minimalAgentSummary").text;
+  const namespaces = [...new Set(fn.match(/import_node_path\d*/g) ?? [])];
+  const context = vm.createContext({ readSandGroupConfig, readSandProfileFile: file => JSON.parse(readFileSync(file, "utf8")), getSandProfilePath: dir => path.join(dir, "profile.json"), orNull: value => value || null, ...Object.fromEntries(namespaces.map(name => [name, { dirname: path.dirname }])) });
+  vm.runInContext(fn + ";globalThis.summary=minimalAgentSummary;", context);
+  const summary = context.summary({ dbPath: path.join(directory, "group/store.db"), dirName: "group" });
+  assert.equal(summary.isGroup, true);
+  assert.deepEqual(Array.from(summary.memberIds), ["one", "two"]);
+});
