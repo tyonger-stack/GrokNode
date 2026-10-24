@@ -89,8 +89,10 @@ export function patchSettingsUpdate0753(source) {
   const replacement = REPLACEMENT.replace("MA_PLACEHOLDER", name);
   let patched = source.slice(0, node.start) + replacement + source.slice(node.end);
   const computerCall = /,a\.jsx\(qs,\{[^{}]*\}\)/;
+  const computerOnlyBranch = patched.includes('P=x==="beta"||x==="computer"?')
+    && patched.includes('children:[x==="beta"?a.jsx(ma,{}):a.jsx("div",{"data-r-app-setting":"computers"');
   if (!computerCall.test(patched)) throw new Error("Update panel patch: computer section call not found.");
-  patched = patched.replace(computerCall, "");
+  if (!computerOnlyBranch) patched = patched.replace(computerCall, "");
   parse(patched, { ecmaVersion: "latest", sourceType: "module" });
   return { text: patched, applied: true, reason: "patched", name };
 }
@@ -117,7 +119,7 @@ export async function applySettingsUpdate0753Patch({ stageRoot }) {
     reference: "chunk-view-DROqRPMJ.js",
     file,
     files: [{ file, originalSha256: hash(source), patchedSha256: hash(result.text) }],
-    features: ["automatic-updates-row", "version-status-check-row", "single-github-releases-track", "no-computer-section-in-updates"],
+    features: ["automatic-updates-row", "version-status-check-row", "single-github-releases-track", "computer-section-preserved-on-computer-tab"],
   };
   await writeFile(path.join(stageRoot, "dist", "renderer-settings-update-0753-extension.json"), JSON.stringify(provenance, null, 2) + "\n");
   return provenance;

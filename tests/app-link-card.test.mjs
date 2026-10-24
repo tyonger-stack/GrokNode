@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { parse } from 'acorn';
 import vm from 'node:vm';
 import { parseAppCardLink, openAppCardLink, patchAppLinkCards, patchAppComputerSettings } from '../scripts/lib/app-link-card-renderer-patch.mjs';
+import { patchSettingsUpdate0753 } from '../scripts/lib/settings-update-0753-patch.mjs';
 
 const rendererManifest = JSON.parse(await readFile(new URL('./fixtures/app-link-card-renderer/manifest.json', import.meta.url), 'utf8'));
 const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -108,6 +109,17 @@ test('Computer settings is a real native section with live permission and mainte
   const calls = [];
   openAppCardLink(parseAppCardLink('sand://app/v1/settings?id=update-status'), 'bot_1', { settings: section => calls.push(section) });
   assert.deepEqual(calls, ['beta']);
+});
+
+test('the 0.75.3 updates patch keeps the shared-computer section on the Computer tab', async () => {
+  const source = await pinnedRenderer('index-BlqerJhg.js');
+  const withComputer = patchAppComputerSettings(source);
+  const result = patchSettingsUpdate0753(withComputer);
+  assert.equal(result.applied, true);
+  assert.match(result.text, /x==="beta"\|\|x==="computer"\?/);
+  assert.match(result.text, /a\.jsx\(qs,\{canResetBox:h,canUpdateBaseline:c,canUpdateBox:f/);
+  assert.match(result.text, /children:\[a\.jsx\(re,\{title:RLocT\("Your computer","你的电脑"\),children:a\.jsx\(da,\{\}\)\}\),a\.jsx\(qs,/);
+  parse(result.text, { ecmaVersion: 'latest', sourceType: 'module' });
 });
 
 test('rendered chips and preview footer use the same native destination; keyboard activation works', async () => {
