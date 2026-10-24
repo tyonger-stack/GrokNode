@@ -35,6 +35,8 @@ import {
   buildProductionElectronMainIfSupplied,
   electronMainBindingProvenancePath,
 } from "./electron-main-production-activation.mjs";
+import { applyAgentDataRuntimePort } from "./lib/agent-data-runtime-patch.mjs";
+import { applyMemoryImportRuntimePort } from "./lib/memory-import-runtime-patch.mjs";
 import { applyOriginalRendererRouterPatch } from "./lib/router-renderer-patch.mjs";
 import { applyOriginalRendererMemoryImport } from "./lib/agent-memory-import-renderer-patch.mjs";
 import { applyOriginalRendererLibraryStageClose } from "./lib/library-stage-close-renderer-patch.mjs";
@@ -332,6 +334,8 @@ export async function buildFidelityReconstructedAsar({
   const prepared = await prepareProductionActivations(base, hostBindingManifest, electronMainBindingManifest, fidelityRuntimeComposition, { reconstructedPackage: true });
   const clean = await attachCompositionAudit(prepared);
   await overlayCleanDistribution(clean.outputRoot, { stageRoot, composition: clean.buildManifest.runtimeComposition });
+  await applyAgentDataRuntimePort({ stageRoot });
+  await applyMemoryImportRuntimePort({ stageRoot });
   await applyOriginalRendererRouterPatch({ stageRoot });
   // Settings → 记忆: Muse-style memory import (dialog distillation to the MAIN bot).
   // Anchors on the router patch's OUTPUT (registry entry list + panel switch), so it must
