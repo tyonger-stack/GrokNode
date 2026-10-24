@@ -25,6 +25,29 @@ function createBackends(context: ProductionServiceContext) {
   const accountScope = createHash("sha256").update("grok-node-local-profile\0").update(profile).digest("hex");
   const privateRoot = join(profile, "local-0721");
   let vault: ReturnType<typeof createLocalVaultBackend> | undefined;
+  const getVault = (): ReturnType<typeof createLocalVaultBackend> => vault ??= createLocalVaultBackend({
+    accountScope, storePath: join(privateRoot, "vault.enc"), codec: context.native.safeStorage,
+    loadCardPhotoNative, onChange: () => syncVaultContext().catch(() => undefined),
+  });
+  const syncVaultContext = async (): Promise<void> => {
+    try {
+      const snapshot = await getVault().sessionSnapshot();
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const applied = await context.coordinatorResync.pushHostSettings({ grokBotVaultContext: snapshot });
+          if (applied !== null) return;
+          lastError = new Error("Host rejected the Vault session context");
+        } catch (error) { lastError = error; }
+        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+      }
+      throw lastError ?? new Error("Host did not acknowledge the Vault session context");
+    } catch (error) {
+      await context.coordinatorResync.pushHostSettings({ grokBotVaultContext: null }).catch(() => null);
+      context.reportFailure("vault", "session-context-sync", error);
+      throw error;
+    }
+  };
   const tailnet = createLocalTailnet({ dataRoot: privateRoot, codec: context.native.safeStorage,
     async requireTeam(teamId, action) {
       const legs = context.coordinatorLegs.legs;
@@ -36,10 +59,7 @@ function createBackends(context: ProductionServiceContext) {
       z.object({ authorized: z.literal(true) }).parse(result);
     },
   });
-  return { get vault() {
-    return vault ??= createLocalVaultBackend({ accountScope,
-      storePath: join(privateRoot, "vault.enc"), codec: context.native.safeStorage, loadCardPhotoNative });
-  }, tailnet };
+  return { syncVaultContext, get vault() { return getVault(); }, tailnet };
 }
 
 export type Local0721Backends = ReturnType<typeof createBackends>;

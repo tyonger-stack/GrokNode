@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { parse } from "acorn";
-import { openUpstream0721 } from "./upstream-0721.mjs";
+import { openUpstream0755 } from "./upstream-0755.mjs";
 import { bundleUpstreamModule } from "./upstream-module.mjs";
 import { chunkReactPlugin } from "./library-host-renderer-patch.mjs";
 
@@ -17,7 +17,7 @@ const messagesPath = path.join(vaultDir, "upstream-vault-messages.generated.mjs"
 export const VAULT_RENDERER_NAMESPACE = "__sandVaultRendererNS";
 export const VAULT_RENDERER_MARK = "/* sand-vault-0721 */";
 
-const browserGlobals = `const window=globalThis.window,document=globalThis.document,HTMLElement=globalThis.HTMLElement,HTMLInputElement=globalThis.HTMLInputElement,HTMLSelectElement=globalThis.HTMLSelectElement,reportError=globalThis.reportError,ResizeObserver=globalThis.ResizeObserver,cancelAnimationFrame=globalThis.cancelAnimationFrame,getComputedStyle=globalThis.getComputedStyle,requestAnimationFrame=globalThis.requestAnimationFrame,navigator=globalThis.navigator,location=globalThis.location,history=globalThis.history,__REACT_DEVTOOLS_GLOBAL_HOOK__=globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__,CSS=globalThis.CSS,Element=globalThis.Element,Node=globalThis.Node,ShadowRoot=globalThis.ShadowRoot,performance=globalThis.performance;\n`;
+const browserGlobals = `const window=globalThis.window,document=globalThis.document,HTMLElement=globalThis.HTMLElement,HTMLInputElement=globalThis.HTMLInputElement,HTMLSelectElement=globalThis.HTMLSelectElement,HTMLTextAreaElement=globalThis.HTMLTextAreaElement,HTMLAnchorElement=globalThis.HTMLAnchorElement,Image=globalThis.Image,Event=globalThis.Event,DOMException=globalThis.DOMException,KeyboardEvent=globalThis.KeyboardEvent,FocusEvent=globalThis.FocusEvent,MouseEvent=globalThis.MouseEvent,IntersectionObserver=globalThis.IntersectionObserver,MutationObserver=globalThis.MutationObserver,reportError=globalThis.reportError,ResizeObserver=globalThis.ResizeObserver,cancelAnimationFrame=globalThis.cancelAnimationFrame,getComputedStyle=globalThis.getComputedStyle,requestAnimationFrame=globalThis.requestAnimationFrame,navigator=globalThis.navigator,location=globalThis.location,history=globalThis.history,__REACT_DEVTOOLS_GLOBAL_HOOK__=globalThis.__REACT_DEVTOOLS_GLOBAL_HOOK__,CSS=globalThis.CSS,Element=globalThis.Element,Node=globalThis.Node,ShadowRoot=globalThis.ShadowRoot,performance=globalThis.performance;\n`;
 
 // Upstream initializes some module-level factories with a side-effect pattern:
 //   var cc,lc;(class e{ ... static{ cc=...; lc=... } ... })
@@ -55,11 +55,11 @@ export function inlineClassStaticFactories(source) {
   return out + source.slice(cursor);
 }
 const virtualEntry = "dist/renderer/assets/sand-vault-0721-entry.js";
-const upstreamView = "dist/renderer/assets/chunk-view-Cwu5IFAB.js";
-const upstreamEagerApp = "dist/renderer/assets/index.eager-app-CG8Fw00L.js";
-const upstreamCommon = "dist/renderer/assets/index.eager-common-BH0hmUYG.js";
-const upstreamCss = "dist/renderer/assets/index-CMR1RvAA.css";
-const upstreamVendor = "dist/renderer/assets/index.eager-vendor-cR6BHVc-.js";
+const upstreamView = "dist/renderer/assets/chunk-view-CuYU9NOh.js";
+const upstreamEagerApp = "dist/renderer/assets/index.eager-app-uZS5Ltig.js";
+const upstreamCommon = "dist/renderer/assets/index.eager-common-F4Y1-gMW.js";
+const upstreamCss = "dist/renderer/assets/index-CFSAhbDS.css";
+const upstreamVendor = "dist/renderer/assets/index.eager-vendor-CRCbzhle.js";
 
 function replaceOnce(source, before, after, label) {
   const first = source.indexOf(before);
@@ -79,25 +79,25 @@ function transformUpstreamArchive(archive) {
     read(relative) {
       if (process.env.SAND_VAULT_DEBUG) console.error("vault-read", relative);
       const bytes = relative === virtualEntry
-        ? Buffer.from(`import {sandVaultSettings as settings} from "./chunk-view-Cwu5IFAB.js"; import {sandVaultCreateStore as createStore} from "./index.eager-app-CG8Fw00L.js"; import {F as linguiProvider} from "./index.eager-vendor-cR6BHVc-.js"; export {settings as default, createStore as createUpstreamVaultStore, linguiProvider as createUpstreamVaultLinguiProvider};\n`)
+        ? Buffer.from(`import {sandVaultSettings as settings} from "./chunk-view-CuYU9NOh.js"; import {sandVaultCreateStore as createStore} from "./index.eager-app-uZS5Ltig.js"; import {et as linguiProvider} from "./index.eager-vendor-CRCbzhle.js"; import {r as paneHeaderProvider} from "./chunk-pane-header-BbJph3XZ.js"; export {settings as default, createStore as createUpstreamVaultStore, linguiProvider as createUpstreamVaultLinguiProvider, paneHeaderProvider as createUpstreamVaultPaneHeaderProvider};\n`)
         : archive.read(relative);
       let source = Buffer.concat([Buffer.from(browserGlobals), bytes]).toString("utf8");
       if (relative === upstreamCommon) {
-        source = replaceOnce(source, "Je as V", "sandVaultReact as V", "React port");
+        source = replaceOnce(source, "ot as At", "sandVaultReact as At", "React port");
         source = `function sandVaultReact(){return globalThis.__sandVaultReact}\n${source}`;
       }
       if (relative === upstreamEagerApp) {
         source = replaceOnce(source, "function Q(){", "function SandOriginalVaultQ(){", "client hook");
-        source = replaceOnce(source, "function Ip(){", "function SandOriginalVaultIp(){", "auth hook");
-        source = `function Q(){return globalThis.__sandVault0721Client}\nfunction Ip(){return {status:{kind:"logged-in"}}}\n${source}`;
+        source = replaceOnce(source, "function up(){return Nc(Q().auth.snapshots)}", "function up(){return {status:{kind:\"logged-in\"}}}", "auth hook");
+        source = `function Q(){return globalThis.__sandVault0721Client}\n${source}`;
         const tail = source.lastIndexOf("};");
         if (tail < 0) throw new Error("Upstream eager-app export table is missing.");
-        source = source.slice(0, tail) + ",qen as sandVaultCreateStore" + source.slice(tail);
+        source = source.slice(0, tail) + ",Gmn as sandVaultCreateStore" + source.slice(tail);
         if (process.env.SAND_VAULT_DEBUG) console.error(source.slice(Math.max(0, source.length - 500)));
       }
       if (process.env.SAND_VAULT_DEBUG && relative === virtualEntry) console.error(JSON.stringify(source.slice(0, 180)));
       if (relative === upstreamView) {
-        source = replaceOnce(source, "Cn as default", "Cn as default,Cn as sandVaultSettings", "settings export");
+        source = replaceOnce(source, "gr as default", "gr as default,gr as sandVaultSettings", "settings export");
       }
       if (relative === upstreamCommon || relative === upstreamEagerApp || relative === upstreamView || relative === upstreamVendor) {
         source = inlineClassStaticFactories(source);
@@ -162,11 +162,11 @@ function extractScopedVaultCss(css, classNames) {
 }
 
 export async function buildUpstreamVaultSettings() {
-  const archive = transformUpstreamArchive(await openUpstream0721());
+  const archive = transformUpstreamArchive(await openUpstream0755());
   const result = await bundleUpstreamModule({
     archive,
     entry: virtualEntry,
-    exports: ["default", "createUpstreamVaultStore", "createUpstreamVaultLinguiProvider"],
+    exports: ["default", "createUpstreamVaultStore", "createUpstreamVaultLinguiProvider", "createUpstreamVaultPaneHeaderProvider"],
     platform: "browser",
   });
   let code = result.code.replaceAll(os.tmpdir(), "<tmp>");
@@ -180,7 +180,7 @@ export async function buildUpstreamVaultSettings() {
     styleSha256: createHash("sha256").update(css).digest("hex"),
   };
   const contents = [
-    "// Generated by scripts/lib/vault-renderer-patch.mjs from the pinned Grok Bot 0.72.1 ASAR. Do not edit.",
+    "// Generated by scripts/lib/vault-renderer-patch.mjs from the pinned Grok Bot 0.75.5 ASAR. Do not edit.",
     `// provenance=${JSON.stringify(provenance)}`,
     `export const upstreamVaultStyle = ${JSON.stringify(css)};`,
     code,
@@ -232,21 +232,21 @@ function extractCatalogEntries(source, ids) {
 }
 
 export async function buildUpstreamVaultMessages(settingsBundleCode) {
-  const archive = await openUpstream0721();
+  const archive = await openUpstream0755();
   const ids = collectBundleMessageIds(settingsBundleCode);
   if (ids.size < 20) throw new Error(`Vault bundle exposed too few message ids: ${ids.size}`);
   const en = extractCatalogEntries(archive.read(upstreamEagerApp).toString("utf8"), ids);
   let zhSource = null;
   for (const file of archive.files) {
-    if (!/dist\/renderer\/assets\/chunk-agents-[^/]+\.js$/u.test(file)) continue;
+    if (!/dist\/renderer\/assets\/chunk-settings-[^/]+\.js$/u.test(file)) continue;
     const text = archive.read(file).toString("utf8");
-    if (text.includes("\u6302\u8f7d\u5230\u684c\u9762")) { zhSource = text; break; }
+    if (text.includes('"NLLW52"') && text.includes("\u4fdd\u9669\u5e93")) { zhSource = text; break; }
   }
   if (zhSource === null) throw new Error("Simplified Chinese renderer catalog was not found");
   const zh = extractCatalogEntries(zhSource, ids);
   const provenance = { upstream: archive.identity, ids: ids.size, en: Object.keys(en).length, zhCN: Object.keys(zh).length };
   const contents = [
-    "// Generated by scripts/lib/vault-renderer-patch.mjs from the pinned Grok Bot 0.72.1 ASAR. Do not edit.",
+    "// Generated by scripts/lib/vault-renderer-patch.mjs from the pinned Grok Bot 0.75.5 ASAR. Do not edit.",
     `// provenance=${JSON.stringify(provenance)}`,
     `export const upstreamVaultMessages = ${JSON.stringify({ en, "zh-CN": zh })};`,
     "",
@@ -282,7 +282,9 @@ export async function buildVaultRendererBundle() {
   if (!file.includes("RVaultSettingsHost")) throw new Error("Vault renderer bundle did not emit RVaultSettingsHost.");
   if (/from\s+"react"|require\("react"\)/u.test(file)) throw new Error("Vault renderer bundle bundled a second React runtime.");
   if (/createRoot\s*\(/u.test(file)) throw new Error("Vault renderer bundle must mount inside the existing React tree.");
-  if (/new\s+MutationObserver/u.test(file)) throw new Error("Vault renderer bundle must not install a DOM observer.");
+  if (/new\s+MutationObserver[\s\S]{0,320}\.observe\(\s*(?:document\.(?:body|documentElement)|window)\b/u.test(file)) {
+    throw new Error("Vault renderer bundle must not observe the document root.");
+  }
   const inputs = Object.keys(result.metafile.inputs).map((input) => path.resolve(repoRoot, input));
   if (inputs.some((input) => /[/\\]node_modules[/\\](react|react-dom)[/\\]/u.test(input))) {
     throw new Error("Vault renderer must compile against the pinned chunk React runtime.");

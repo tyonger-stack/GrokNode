@@ -14,6 +14,7 @@ import {
   type WebAuthnPromptWindowOptions,
 } from "./coordinator-executors.js";
 import { createCoordinatorHandoffTelemetry } from "./coordinator-handoff-telemetry.js";
+import { getLocal0721Backends } from "../local-backends-0721.js";
 import type {
   CoordinatorChildProcess,
   CoordinatorMessageChannel,
@@ -404,7 +405,9 @@ export function createProductionCoordinatorAdapter<
               void Promise.resolve(ports.telemetry.flushNow()).catch((error) =>
                 ports.reportFailure("coordinator", "connect-flush", error),
               );
-              void resync.onTransportConnected();
+              void resync.onTransportConnected()
+                .then(() => getLocal0721Backends(context).syncVaultContext())
+                .catch(() => undefined);
               ports.resync.onHostSettingsTransportConnected();
               context.hostSettingsFields.onTransportConnected();
             },

@@ -2,14 +2,14 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { openUpstream0721 } from "./upstream-0721.mjs";
+import { openUpstream0755 } from "./upstream-0755.mjs";
 import { buildUpstreamVaultParsers } from "./vault-0721.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 
 export async function stageVaultResources0721({ outputRoot, archive: supplied } = {}) {
-  const archive = supplied ?? await openUpstream0721();
+  const archive = supplied ?? await openUpstream0755();
   const output = path.resolve(outputRoot, "dist/upstream-0721/vault-parsers.mjs");
   const generated = await buildUpstreamVaultParsers({ archive, output });
   const expected = await readFile(path.join(root, "source/electron-main/vault/upstream-vault-parsers.generated.mjs"));

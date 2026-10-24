@@ -4,11 +4,11 @@ import path from "node:path";
 import { parse } from "acorn";
 import { buildVaultRendererBundle, VAULT_RENDERER_MARK } from "./vault-renderer-patch.mjs";
 
-const REGISTRY_ANCHOR = 'const wDn=[{id:"general",label:"General",icon:"settings-gear"},';
-const REGISTRY_ENTRY = '{id:"vault",label:"Vault",icon:"vault"},';
+const REGISTRY_ANCHOR = '{id:"computer",label:RLocT("Computer","电脑"),icon:"device-desktop"},';
+const REGISTRY_ENTRY = '{id:"vault",label:RLocT("Vault","保险库"),icon:"vault"},';
 // Anchors on the general-section test itself so the pass composes with the
 // local-teams patch, which rewrites the leading `Q=` of this ternary chain.
-const PANEL_ANCHOR = 'x==="general"?a.jsx(Te,{children:a.jsx(Sa,{auth:t})}):';
+const PANEL_ANCHOR = 'x==="router"?a.jsx(RRouterPanel,{}):';
 const PANEL_BRANCH = 'x==="vault"?a.jsx(Te,{children:a.jsx(globalThis.__sandVaultRendererNS.RVaultSettingsHost,{focusSetting:null})}):';
 
 function replaceOnce(source, before, after, label) {
@@ -46,6 +46,6 @@ export async function applyVaultSettingsRenderer0721({ stageRoot }) {
   const provenance = { version: 1, feature: "vault-settings-0721", files,
     upstream: built.generated.provenance, messages: built.messages?.provenance ?? null };
   await writeFile(path.join(stageRoot, "dist/renderer/renderer-vault-settings-0721.json"), `${JSON.stringify(provenance, null, 2)}\n`);
-  console.log(`Vault settings: original 0.72.1 panel mounted into ${registry[0].name} + ${panel[0].name}`);
+  console.log(`Vault settings: original 0.75.5 panel mounted into ${registry[0].name} + ${panel[0].name}`);
   return provenance;
 }

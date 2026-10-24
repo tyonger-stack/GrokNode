@@ -13,6 +13,7 @@ import { isGrokBotBotColorThemingEnabled } from "./bot-color-gate.js";
 import { isSandInferenceProvider, type SandInferenceProvider } from "../../../shared/inference-router.js";
 import type { McpServerConfig } from "../../../shared/node/mcp/mcp-display-runtime.js";
 import { normalizeOpenRouterChannelStatus, type OpenRouterChannelStatus } from "../../../shared/openrouter-channel-status.js";
+import { parseVaultSessionSnapshot, type VaultSessionSnapshot } from "../../../shared/vault.js";
 
 export function isValidIanaTimeZone(value: string): boolean { try { new Intl.DateTimeFormat("en", { timeZone: value }).format(); return true; } catch { return false; } }
 
@@ -29,6 +30,7 @@ export interface HostSettingsUpdate {
   defaultMainAgentId?: string;
   /** 强调色 = Bot 颜色. Stored as upstream's boolean preference; getHostSettings reports the gate-resolved effective value. */
   botColorInChatEnabled?: boolean;
+  grokBotVaultContext?: unknown | null;
 }
 
 export class SettingsService {
@@ -36,8 +38,10 @@ export class SettingsService {
   private readonly featureFlagOverrideListeners = new Set<(overrides: Record<string, boolean>) => void>();
   private readonly userTimeZoneListeners = new Set<(zone: string | undefined) => void>();
   private readonly changeListeners = new Set<(event: { readonly fields: string[] }) => void>();
+  private grokBotVaultContext: VaultSessionSnapshot | undefined;
   constructor(private readonly settingsPath = join(getSandRootDir(), "settings.json")) { this.store = new SandSettingsStore(settingsPath); }
   getSettingsPath(): string { return this.settingsPath; }
+  getGrokBotVaultContext(): VaultSessionSnapshot | undefined { return this.grokBotVaultContext; }
   getHostSettings() {
     const userTimeZone = this.store.getDetectedUserTimeZone(); const userTimeZoneOverride = this.store.getUserTimeZoneOverride();
     const agentDefaultModel = this.store.getAgentDefaultModel(); const computerUseModel = this.store.getComputerUseModel();
@@ -56,6 +60,15 @@ export class SettingsService {
     if (id !== undefined && ids.includes(id)) this.store.setMainAgentId(undefined);
   }
   setHostSettings(update: HostSettingsUpdate) {
+    const nextVaultContext = update.grokBotVaultContext === undefined
+      ? this.grokBotVaultContext
+      : update.grokBotVaultContext === null
+        ? undefined
+        : parseVaultSessionSnapshot(update.grokBotVaultContext);
+    if (update.grokBotVaultContext !== undefined && update.grokBotVaultContext !== null && nextVaultContext === null) {
+      this.grokBotVaultContext = undefined;
+      throw new Error("Invalid Grok Bot Vault session context");
+    }
     const previousUserTimeZone = this.store.getUserTimeZone(); this.store.setNotificationConfig(update.notifications ?? {});
     if (update.mcpCustomInstructionsAccountScope === null) this.store.clearAccountScope(); else if (update.mcpCustomInstructionsAccountScope !== undefined) this.store.scopeToAccount(update.mcpCustomInstructionsAccountScope);
     if (update.mcpCustomInstructions !== undefined) this.store.setMcpCustomInstructions(update.mcpCustomInstructions);
@@ -99,6 +112,7 @@ export class SettingsService {
     if (update.computerUseModel === null) this.store.setComputerUseModel(undefined); else if (isSandAgentModelSelection(update.computerUseModel)) this.store.setComputerUseModel(update.computerUseModel);
     const userTimeZone = this.store.getUserTimeZone(); if (userTimeZone !== previousUserTimeZone) for (const listener of [...this.userTimeZoneListeners]) listener(userTimeZone);
     const fields = Object.keys(update); if (fields.length > 0) for (const listener of [...this.changeListeners]) listener({ fields });
+    this.grokBotVaultContext = nextVaultContext === null ? undefined : nextVaultContext;
     return this.getHostSettings();
   }
   subscribeToChanges(listener: (event: { readonly fields: string[] }) => void): () => void { this.changeListeners.add(listener); return () => this.changeListeners.delete(listener); }

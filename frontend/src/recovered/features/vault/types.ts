@@ -13,6 +13,7 @@ export type VaultCard = {
   readonly expMonth: number;
   readonly expYear: number;
   readonly holderName: string;
+  readonly nickname: string;
   readonly billingAddressId: string;
   readonly billingAddress: VaultAddress;
 };
@@ -65,6 +66,7 @@ export type VaultDesktop = {
   readonly updateGrokBotVaultCard: (input: {
     readonly id: string;
     readonly holderName: string;
+    readonly nickname?: string;
     readonly expiry: string;
     readonly billingAddress: VaultAddress;
     readonly billingAddressId: string;

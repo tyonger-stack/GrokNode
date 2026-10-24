@@ -15,3 +15,8 @@ export declare function createUpstreamVaultLinguiProvider(props: {
   readonly defaultComponent?: unknown;
   readonly children?: React.ReactNode;
 }): React.ReactNode;
+
+export declare function createUpstreamVaultPaneHeaderProvider(props: {
+  readonly value: HTMLElement | null;
+  readonly children?: React.ReactNode;
+}): React.ReactNode;

@@ -52,6 +52,7 @@ import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patc
 import { applyHardwareAccelerationSettingsPatch } from "./lib/hardware-acceleration-settings-patch.mjs";
 import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs";
 import { applySettingsUpdate0753Patch } from "./lib/settings-update-0753-patch.mjs";
+import { applyVaultSettingsRenderer0721 } from "./lib/vault-settings-renderer-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
 import { applyUpdatePillCopy0755Patch } from "./lib/update-pill-copy-0755-patch.mjs";
@@ -477,6 +478,7 @@ export async function buildFidelityReconstructedAsar({
   // ON from Statsig, 9 kept OFF). Same table, own gate-name already-present guard; must
   // run after the three passes above so their names are not mistaken for ours.
   await apply0712GateEcosystemPatch({ stageRoot });
+  await applyVaultSettingsRenderer0721({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);

@@ -16,10 +16,13 @@ import { defineCommunicateTool } from "./communicate-tool.js";
 import { SandToolInputError } from "./tool-input-error.js";
 import { createTranscriptTools } from "./transcript-tools.js";
 import { createEntryTranscriptReader, type EntryTranscriptDependencies, type TranscriptReader } from "../sessions/transcript-reader.js";
+import type { VaultSessionSnapshot } from "../../../shared/vault.js";
 
 export const UPDATE_MEMORY_TOOL_NAME = "UpdateMemory";
 export const RECALL_MEMORY_TOOL_NAME = "RecallMemory";
 export const SEARCH_TRANSCRIPTS_TOOL_NAME = "SearchTranscripts";
+export const VAULT_LIST_TOOL_NAME = "vault_list";
+export const VAULT_GET_LOGIN_TOOL_NAME = "vault_get_login";
 
 const immediateDebounce = {
   name: "sand-context-memory",
@@ -55,6 +58,7 @@ export interface ContextToolDependencies {
   readonly supportsUserBotMemory?: boolean;
   readonly transcriptReader?: TranscriptReader;
   readonly agents?: () => readonly { readonly id: string; readonly name: string }[];
+  readonly vault?: () => VaultSessionSnapshot | undefined;
 }
 
 interface OwnMemoryRecord {
@@ -122,6 +126,7 @@ export function buildContextToolDependencies(input: EntryTranscriptDependencies 
   readonly related: () => readonly { readonly id: string; readonly name: string }[];
   readonly loadSubagentTranscript?: (id: string) => Promise<LoadedTranscript | null>;
   readonly transcriptReader?: TranscriptReader;
+  readonly vault?: () => VaultSessionSnapshot | undefined;
 }): ContextToolDependencies {
   const resolveAgentName = input.resolveAgentName ?? ((id: string) => id);
   return {
@@ -138,6 +143,7 @@ export function buildContextToolDependencies(input: EntryTranscriptDependencies 
     loadTranscript: input.loadTranscript,
     related: input.related,
     ...(input.loadSubagentTranscript === undefined ? {} : { loadSubagentTranscript: input.loadSubagentTranscript }),
+    ...(input.vault === undefined ? {} : { vault: input.vault }),
   };
 }
 
@@ -164,6 +170,30 @@ const recallMemoryParameters = z.object({
   limit: z.number().int().min(1).max(50).optional().describe("Maximum facts to return (default 20, max 50)."),
   scope: z.enum(["agent", "user", "all"]).optional().describe("Search agent memory, shared user memory, or both (all)."),
 });
+
+const vaultListParameters = z.object({});
+const vaultGetLoginParameters = z.object({ id: z.string().trim().min(1).max(256) });
+
+function vaultSnapshot(deps: ContextToolDependencies): VaultSessionSnapshot {
+  if (deps.vault === undefined) throw new SandToolInputError("Grok Bot Vault is unavailable in this session.");
+  const snapshot = deps.vault();
+  if (snapshot === undefined) throw new SandToolInputError("Grok Bot Vault has not synced to this computer yet.");
+  return snapshot;
+}
+
+export function renderVaultCatalog(snapshot: VaultSessionSnapshot): string {
+  return JSON.stringify({
+    logins: snapshot.logins.map(({ id, title, username, sites }) => ({ id, title, username, sites })),
+    contacts: snapshot.contacts.map((contact) => ({ ...contact })),
+    cards: "unavailable to the model by design",
+  });
+}
+
+export function renderVaultLogin(snapshot: VaultSessionSnapshot, id: string): string {
+  const login = snapshot.logins.find((item) => item.id === id);
+  if (login === undefined) throw new SandToolInputError("No saved Vault login has that id.");
+  return JSON.stringify(login);
+}
 
 async function forgetFact(state: ContextStatePort, fact: string): Promise<string> {
   const scopes = ["agent", "user"] as const;
@@ -225,5 +255,31 @@ export function createContextTools(deps: ContextToolDependencies) {
     },
   });
 
-  return [updateMemory, recallMemory, ...createTranscriptTools(deps)];
+  const vaultTools = deps.vault === undefined ? [] : [
+    defineCommunicateTool(deps, {
+      id: "PLATFORM_ACTION",
+      name: VAULT_LIST_TOOL_NAME,
+      description: [
+        "List the user's saved Vault logins and contact information so you can help them sign in or fill a form.",
+        "The result gives ids, titles, usernames, sites, and contact fields. Use vault_get_login with an id only when you actually need that login's password.",
+        "Saved cards are intentionally unavailable to you. Never claim to know a card number or security code.",
+      ].join("\n"),
+      parameters: vaultListParameters,
+      execute: async () => renderVaultCatalog(vaultSnapshot(deps)),
+    }),
+    defineCommunicateTool(deps, {
+      id: "READ",
+      name: VAULT_GET_LOGIN_TOOL_NAME,
+      description: [
+        "Read one saved Vault login by its id from vault_list.",
+        "Use the returned password only in the requested sign-in flow. Never repeat, summarize, or include the password in SendMessage.",
+        "This tool cannot return payment cards or security codes.",
+      ].join("\n"),
+      parameters: vaultGetLoginParameters,
+      describeActivity: (args: z.infer<typeof vaultGetLoginParameters>) => ({ detail: args.id }),
+      execute: async (_ctx, args: z.infer<typeof vaultGetLoginParameters>) => renderVaultLogin(vaultSnapshot(deps), args.id),
+    }),
+  ];
+
+  return [updateMemory, recallMemory, ...vaultTools, ...createTranscriptTools(deps)];
 }

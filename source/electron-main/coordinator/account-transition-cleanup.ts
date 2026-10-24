@@ -45,6 +45,7 @@ export function createProductionAccountTransitionCleanup(
           mcpCustomInstructions: {},
           mcpCustomInstructionsByServerId: {},
           mcpDisabledToolsByServerId: {},
+          grokBotVaultContext: null,
         });
       } catch (error) {
         deps.reportHostSettingsClearFailure(error);

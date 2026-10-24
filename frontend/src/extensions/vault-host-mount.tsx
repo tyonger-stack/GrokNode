@@ -1,10 +1,12 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   createUpstreamVaultStore,
   createUpstreamVaultLinguiProvider,
+  createUpstreamVaultPaneHeaderProvider,
   default as UpstreamVaultSettings,
 } from "../recovered/features/vault/upstream-vault-settings.generated.mjs";
 import { upstreamVaultMessages, type VaultCatalogEntry } from "../recovered/features/vault/upstream-vault-messages.generated.mjs";
+import { upstreamVaultMessages0755 } from "../recovered/features/vault/upstream-vault-messages-0755.mjs";
 import type { VaultDesktop, VaultCredential } from "../recovered/features/vault/types";
 import type { UpstreamVaultStore } from "../recovered/features/vault/upstream-vault-settings.generated.mjs";
 
@@ -17,6 +19,7 @@ type WindowWithVault = Window & {
     readonly desktop: VaultDesktop;
     readonly experiments: { readonly snapshots: { get(): unknown; subscribe(listener: () => void): () => void } };
     readonly auth: { readonly snapshots: { get(): unknown; subscribe(listener: () => void): () => void } };
+    readonly theme: { readonly snapshots: { get(): unknown; subscribe(listener: () => void): () => void } };
   };
 };
 
@@ -53,7 +56,37 @@ export function vaultDesktopFromWindow(candidate: Window | undefined = window): 
 
 async function validateCredentialList(value: Awaited<ReturnType<VaultDesktop["listGrokBotVaultCredentials"]>>): Promise<VaultCredential[]> {
   if (!Array.isArray(value)) throw new Error("Vault list returned a non-array value");
+  if (!value.every(isVaultCredential)) throw new Error("Vault list returned an invalid item");
   return value;
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isVaultAddress(value: unknown): boolean {
+  return isRecord(value) && ["line1", "line2", "city", "region", "postalCode", "country"].every((key) => isString(value[key]));
+}
+
+function isVaultCredential(value: unknown): value is VaultCredential {
+  if (!isRecord(value)) return false;
+  if (!["id", "title", "username", "notes"].every((key) => isString(value[key]))
+    || !Array.isArray(value.sites) || !value.sites.every(isString)
+    || typeof value.createdAtMs !== "number" || typeof value.updatedAtMs !== "number") return false;
+  if (value.card !== undefined) {
+    const card = value.card;
+    if (!isRecord(card)
+      || !["brand", "last4", "holderName", "nickname", "billingAddressId"].every((key) => isString(card[key]))
+      || typeof card.expMonth !== "number" || typeof card.expYear !== "number"
+      || !isVaultAddress(card.billingAddress)) return false;
+  }
+  if (value.contact !== undefined) {
+    const contact = value.contact;
+    if (!isRecord(contact)
+      || !["name", "line1", "line2", "city", "region", "postalCode", "country", "phone", "email"].every((key) => isString(contact[key]))
+      || typeof contact.defaultShipping !== "boolean") return false;
+  }
+  return true;
 }
 
 function constantStore<T>(value: T): { get(): T; subscribe(listener: () => void): () => void } {
@@ -103,7 +136,12 @@ const vaultI18n = {
       : idOrDescriptor;
     const merged = values ?? descriptor.values;
     const id = descriptor.id ?? "";
-    const catalogEntry = id.length > 0 ? upstreamVaultMessages[vaultLocale][id] : undefined;
+    const catalogEntry = id.length > 0
+      ? upstreamVaultMessages0755[vaultLocale][id]
+        ?? upstreamVaultMessages[vaultLocale]?.[id]
+        ?? upstreamVaultMessages0755.en[id]
+        ?? upstreamVaultMessages.en[id]
+      : undefined;
     if (catalogEntry !== undefined) {
       const rendered = renderCatalogEntry(catalogEntry, merged);
       if (rendered !== null) return rendered;
@@ -121,8 +159,12 @@ const vaultI18n = {
 const UpstreamVaultLinguiProvider = createUpstreamVaultLinguiProvider as unknown as
   (props: { readonly i18n: unknown; readonly children?: React.ReactNode }) => React.ReactNode;
 
+const UpstreamVaultPaneHeaderProvider = createUpstreamVaultPaneHeaderProvider as unknown as
+  (props: { readonly value: HTMLElement | null; readonly children?: React.ReactNode }) => React.ReactNode;
+
 export function RVaultSettingsHost(props: { readonly focusSetting?: string | null }) {
   const desktop = useMemo(() => vaultDesktopFromWindow(), []);
+  const [paneActions, setPaneActions] = useState<HTMLDivElement | null>(null);
   const client = useMemo(() => {
     const list = async (): Promise<VaultCredential[]> => validateCredentialList(await desktop.listGrokBotVaultCredentials());
     const healingDesktop = { ...desktop, heal: () => undefined, listGrokBotVaultCredentials: list };
@@ -136,6 +178,7 @@ export function RVaultSettingsHost(props: { readonly focusSetting?: string | nul
       },
       alert: { alert: () => undefined },
       auth: { snapshots: constantStore({ status: { kind: "logged-in" } }) },
+      theme: { snapshots: constantStore({ resolved: "light" }) },
     };
     (globalThis as typeof globalThis & { __sandVault0721Client?: typeof value }).__sandVault0721Client = value;
     (window as WindowWithVault).__sandVault0721Client = value;
@@ -147,11 +190,26 @@ export function RVaultSettingsHost(props: { readonly focusSetting?: string | nul
     return () => client.grokBotVault.dispose();
   }, [client]);
 
+  useEffect(() => {
+    const header = document.querySelector<HTMLElement>("header.sand-settings-pane-header");
+    if (header === null) return;
+    const target = document.createElement("div");
+    target.setAttribute("data-sand-vault-actions", "");
+    target.style.marginInlineStart = "auto";
+    target.style.marginInlineEnd = "44px";
+    header.insertBefore(target, header.lastElementChild);
+    setPaneActions(target);
+    return () => target.remove();
+  }, []);
+
   return (
-    <div id="sand-vault-0721-root">
-      <UpstreamVaultLinguiProvider i18n={vaultI18n}>
-        <UpstreamVaultSettings params={{ focusSetting: props.focusSetting ?? null }} />
-      </UpstreamVaultLinguiProvider>
+    <div id="sand-vault-0721-root" style={{ position: "relative" }}>
+      <div ref={setPaneActions} style={{ position: "absolute", top: 28, right: 44, zIndex: 4 }} />
+      <UpstreamVaultPaneHeaderProvider value={paneActions}>
+        <UpstreamVaultLinguiProvider i18n={vaultI18n}>
+          <UpstreamVaultSettings params={{ focusSetting: props.focusSetting ?? null }} />
+        </UpstreamVaultLinguiProvider>
+      </UpstreamVaultPaneHeaderProvider>
     </div>
   );
 }
