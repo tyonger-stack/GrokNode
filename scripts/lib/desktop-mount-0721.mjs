@@ -4,8 +4,9 @@ import path from "node:path";
 import { parse } from "acorn";
 import { simple, ancestor } from "acorn-walk";
 import { transform } from "esbuild";
-import { openUpstream0721 } from "./upstream-0721.mjs";
+import { openUpstream0755 } from "./upstream-0755.mjs";
 import { extractUpstreamDeclarations } from "./upstream-declarations.mjs";
+import { desktopCoreRuntimeSource } from "./desktop-core-runtime-0721.mjs";
 
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const panel = "src/electron-renderer/desktop-mount/panel/panel.html";
@@ -24,7 +25,7 @@ function extractInitialized(code, exports, bindings = {}) {
     const functions = parents.filter((parent) => /Function/.test(parent.type));
     if (functions.length !== 1 || functions[0].type !== "ArrowFunctionExpression") return;
     const parent = parents[parents.indexOf(functions[0]) - 1];
-    if (parent?.type !== "CallExpression" || !["I", "N"].includes(parent.callee.name)) return;
+    if (parent?.type !== "CallExpression" || parent.callee.type !== "Identifier") return;
     const list = assignments.get(node.left.name) ?? [];
     list.push(node);
     assignments.set(node.left.name, list);
@@ -53,18 +54,19 @@ function extractInitialized(code, exports, bindings = {}) {
 
 export async function stageDesktopMount0721({ distRoot, asarPath } = {}) {
   if (!distRoot || !path.isAbsolute(distRoot)) throw new TypeError("distRoot must be absolute");
-  const upstream = await openUpstream0721(asarPath === undefined ? {} : { asarPath });
+  const upstream = await openUpstream0755(asarPath === undefined ? {} : { asarPath });
   const coreCode = upstream.read("dist/electron-main/main-core.cjs").toString("utf8");
+  const coreRuntime = `const module = {exports:{}};\nconst exports = module.exports;\n${desktopCoreRuntimeSource(coreCode)}`;
   const appCode = upstream.read("dist/electron-main/main-app.cjs").toString("utf8");
   const core = extractInitialized(coreCode, {
-    rpcObject: "LB", rpcString: "PB", rpcUint8Array: "UB", rpcOptional: "NB",
-    createTaskBoundaryPolicy: "Pa", ipcMainTransport: "tB", parseAgentId: "Na",
-    invariant: "Ze", isUnknownRecord: "k", errorLogTag: "Nt", writeFileAtomicSync: "rn",
+    rpcObject: "HB", rpcString: "LB", rpcUint8Array: "WB", rpcOptional: "GB",
+    createTaskBoundaryPolicy: "Oa", ipcMainTransport: "aB", parseAgentId: "Na",
+    invariant: "Ze", isUnknownRecord: "k", errorLogTag: "Nt", writeFileAtomicSync: "Wt",
   });
   const app = extractInitialized(appCode, {
-    createMount: "wet", createCapture: "ftt", createPicker: "att", createCaptureService: "ctt",
-    createPositionStore: "Uet", createCaptureGate: "Get", createHotkey: "Vet",
-    isCaptureSupported: "Fet", loadNative: "ltt", serveEdge: "kl", mountEdge: "uet",
+    createMount: "xet", createCapture: "Att", createPicker: "ltt", createCaptureService: "mtt",
+    createPositionStore: "Qet", createCaptureGate: "zet", createHotkey: "jet",
+    isCaptureSupported: "Vet", loadNative: "utt",
   }, {
     _c: '() => require("@desktop/core")', NV: '() => require("@desktop/core")',
     LGe: '() => require("@desktop/core")',
@@ -72,7 +74,7 @@ export async function stageDesktopMount0721({ distRoot, asarPath } = {}) {
     be: '() => require("@desktop/core")', Ot: '() => require("@desktop/core")',
     xe: '() => require("@desktop/core")', Fr: '() => require("@desktop/core")',
     co: '() => require("@desktop/report")', xw: '() => ({PRELOAD_DIST_DIR: require("@desktop/paths").preloadRoot})',
-    E: 'require("@desktop/zod")',
+    E: 'require("@desktop/zod")', p: 'require("@desktop/zod")',
     okn: 'require("@desktop/paths").panelDocument', kkn: 'require("@desktop/paths").overlayDocument',
     Nkn: 'require("@desktop/nativeRequire")',
   });
@@ -84,10 +86,13 @@ module.exports.createUpstream = function(ports) {
   let core;
   const require = (name) => {
     if (name === "electron") return ports.electron;
+    if (name === "original-fs") return nodeRequire("node:fs");
     if (name === "@desktop/core") return {...core, ipcMainTransport: (config) => core.ipcMainTransport({...config,
       broadcast: (channel, value) => {
         config.broadcast(channel, value);
-        if (channel === "dune-rpc:desktop-mount:e:prompt-submitted") ports.onPromptSubmitted(value);
+        if (typeof value === "object" && value !== null && "agentId" in value && "prompt" in value && "attachments" in value) {
+          ports.onPromptSubmitted(value);
+        }
       }
     })};
     if (name === "@desktop/report") return {captureSandSentryWarning: ports.reportWarning};
@@ -96,6 +101,28 @@ module.exports.createUpstream = function(ports) {
     if (name === "@desktop/nativeRequire") return ports.nativeRequire;
     return nodeRequire(name);
   };
+  (() => {
+    const __import_meta_url = nodeRequire("node:url").pathToFileURL(__filename).href;
+    const savedElectronVersion = process.versions.electron;
+    if (savedElectronVersion === undefined) process.versions.electron = "0.0.0";
+    try {
+${coreRuntime}
+    } finally {
+      if (savedElectronVersion === undefined) delete process.versions.electron;
+    }
+  })();
+  const coreModules = globalThis[Symbol.for("sand.main-core.modules")];
+  const mountCore = coreModules[31];
+  const modulesWithMountTransport = [...coreModules];
+  modulesWithMountTransport[31] = {...mountCore, ipcMainTransport: (config) => mountCore.ipcMainTransport({...config,
+    broadcast: (channel, value) => {
+      config.broadcast(channel, value);
+      if (typeof value === "object" && value !== null && "agentId" in value && "prompt" in value && "attachments" in value) {
+        ports.onPromptSubmitted(value);
+      }
+    }
+  })};
+  globalThis[Symbol.for("sand.main-core.modules")] = modulesWithMountTransport;
   core = (() => { const module = {exports:{}}; ${coreCjs}\nreturn module.exports; })();
   return (() => { const module = {exports:{}}; ${appCjs}\nreturn module.exports; })();
 };

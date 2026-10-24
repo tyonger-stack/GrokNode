@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { statFile } from "@electron/asar";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
-const asarPath = path.resolve(repoRoot, "../rea-grokbot-0750/asar/app.asar");
-const outputPath = path.join(repoRoot, "manifests/ports/grokbot-0750-unpacked.json");
+const asarPath = path.resolve(repoRoot, "../rea-grokbot-0755/asar/app.asar");
+const outputPath = path.join(repoRoot, "manifests/ports/grokbot-0755-unpacked.json");
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 const NATIVE_PATHS = [
@@ -29,8 +29,8 @@ for (const relative of NATIVE_PATHS) {
 
 const manifest = {
   schemaVersion: 1,
-  version: "0.75.0",
-  source: "rea-grokbot-0750/asar/app.asar.unpacked",
+  version: "0.75.5",
+  source: "rea-grokbot-0755/asar/app.asar.unpacked",
   integritySource: "captured-unpacked-bytes",
   files,
 };

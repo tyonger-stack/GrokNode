@@ -18,8 +18,8 @@ const evidence = path.resolve(process.env.DESKTOP_0721_EVIDENCE_DIR ?? path.join
 const require = createRequire(import.meta.url);
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const record = async (name, value) => writeFile(path.join(evidence, name), `${JSON.stringify(value, null, 2)}\n`);
-const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0721/asar/app.asar"))
-  && "0.72.1 snapshot is absent";
+const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0755/asar/app.asar"))
+  && "0.75.5 snapshot is absent";
 const options = { skip: asarSkip };
 let createDesktop0721;
 let transplant;
@@ -31,17 +31,17 @@ let ruleModule;
 before(async () => {
   if (asarSkip) return;
   await mkdir(evidence, { recursive: true });
-  let helpers = new URL("../scripts/lib/upstream-0721.mjs", import.meta.url);
+  let helpers = new URL("../scripts/lib/upstream-0755.mjs", import.meta.url);
   try { await readFile(helpers); }
   catch (error) {
     if (error.code !== "ENOENT") throw error;
     helpers = new URL("../../grok-node-port-0721/scripts/lib/upstream-0721.mjs", import.meta.url);
   }
-  const { openUpstream0721 } = await import(helpers);
-  upstream = await openUpstream0721();
+  const { openUpstream0755 } = await import(helpers);
+  upstream = await openUpstream0755();
   generated = await generateDesktop0721Module({ upstream, outputFile: path.join(evidence, "upstream.cjs") });
   resources = await stageDesktop0721Resources({ upstream, outputDir: path.join(evidence, "staged"),
-    notificationNativePath: path.resolve(root, "../rea-grokbot-0721/asar/app.asar.unpacked", notificationNativePin.path) });
+    notificationNativePath: path.resolve(root, "../rea-grokbot-0755/asar/app.asar.unpacked", notificationNativePin.path) });
   await generateDesktop0721RulesModule({ upstream, outputFile: path.join(evidence, "rules.mjs") });
   ruleModule = await import(pathToFileURL(path.join(evidence, "rules.mjs")));
   await build({ entryPoints: [path.join(root, "source/electron-main/desktop-0721/index.ts")], bundle: true,
@@ -105,7 +105,7 @@ function makePorts({ settings = [{ platform: "darwin", setting: "authorized" }],
         },
         createFromDataURL: () => new Image(), createFromBuffer: () => new Image(), createEmpty: () => new Image(),
       }, shell: { async openExternal(url) { trace.push(["open-settings", url]); } },
-      app: { name: "Grok Node", quit() { trace.push(["quit"]); } },
+      app: { name: "Grok Node", quit() { trace.push(["quit"]); }, getAppPath: () => root },
     },
     translate: ({ id }) => id,
     reportFailure: (...args) => { errors.push(args.map((arg) => arg instanceof Error ? arg.message : arg)); },

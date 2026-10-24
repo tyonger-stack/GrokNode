@@ -5,8 +5,6 @@ import { egressTunnelStatusDescription, type EgressTunnelStatus, type UpdateStat
 // @evidence src/app/dist/renderer/assets/index-BlqerJhg.js#L1
 import { GITHUB_RELEASES_URL, INTERNAL_RELEASE_TRACK_CONFIG_URL, UPDATE_TRACK_LABELS, updateStatusMessage } from "./updates";
 import { AutoReviewRulesPanel, type AutoReviewSettings } from "./auto-review";
-import { SettingsComputerPanel } from "./computer-view";
-import type { SettingsComputerMount } from "./computer";
 import { useAsyncAction } from "../../../runtime/async-action";
 import { SandButton } from "../../../ui/sand-kit-primitives";
 import { SandSelect } from "../../../ui/sand-floating-primitives";
@@ -523,7 +521,6 @@ export interface UpdatesSettingsPanelProps {
   onInstall?(): void | Promise<unknown>;
   onSetTrack(track: UpdateTrack): void | Promise<unknown>;
   onSetAutoUpdateWhenIdle(enabled: boolean): void | Promise<unknown>;
-  computer?: SettingsComputerMount;
   egressTunnel?: {
     available: boolean;
     enabled: boolean;
@@ -541,7 +538,6 @@ export function UpdatesSettingsPanel({
   onInstall,
   onSetTrack,
   onSetAutoUpdateWhenIdle,
-  computer,
   egressTunnel
 }: UpdatesSettingsPanelProps) {
   const [checkPending, setCheckPending] = useState(false);
@@ -572,7 +568,6 @@ export function UpdatesSettingsPanel({
           enabled={egressTunnel.enabled}
           onChange={egressTunnel.onChange}
         /> : null}
-        {computer ? <SettingsComputerPanel {...computer} /> : null}
       </div>
     );
   }
@@ -631,7 +626,6 @@ export function UpdatesSettingsPanel({
         </div>
       </SettingsGroup>
       {egressVisible ? <EgressTunnelSettingsGroup available={egressAvailable} description={egressDescription} enabled={egressTunnel.enabled} onChange={egressTunnel.onChange} /> : null}
-      {computer ? <SettingsComputerPanel {...computer} /> : null}
     </div>
   );
 }

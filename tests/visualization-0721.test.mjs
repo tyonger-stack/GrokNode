@@ -7,10 +7,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { stageVisualization0721 } from "../scripts/lib/visualization-0721.mjs";
 
-const snapshot = fileURLToPath(new URL("../../rea-grokbot-0721/asar/app.asar", import.meta.url));
+const snapshot = fileURLToPath(new URL("../../rea-grokbot-0755/asar/app.asar", import.meta.url));
 
 test("transplanted SandViz builds a sealed D3 document and validates actual frame messages", {
-  skip: !existsSync(snapshot) && "0.72.1 snapshot is absent",
+  skip: !existsSync(snapshot) && "0.75.5 snapshot is absent",
 }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "grok-sandviz-"));
   try {
@@ -36,10 +36,10 @@ test("transplanted SandViz builds a sealed D3 document and validates actual fram
     assert.deepEqual(runtime.parseVisualizationFrameMessage({ type: "visualization-height", height: 123.5 }),
       { kind: "height", contentHeightPx: 124 });
     assert.equal(runtime.parseVisualizationFrameMessage({ type: "visualization-height", height: -1 }), null);
-    assert.equal(runtime.parseVisualizationFrameMessage({ type: "visualization-state", state: '{"answer":42}' }).stateJson,
-      '{"answer":42}');
-    const circular = {}; circular.self = circular;
-    assert.equal(runtime.parseVisualizationFrameMessage({ type: "visualization-state", state: circular }), null);
+    assert.equal(runtime.parseVisualizationFrameMessage({ type: "visualization-state", state: '{"answer":42}' }), null);
+    assert.deepEqual(runtime.parseVisualizationFrameMessage({ type: "visualization-wheel", deltaY: 18 }), {
+      kind: "wheel", deltaMode: 0, deltaX: 0, deltaY: 18,
+    });
     assert.equal(runtime.parseVisualizationFrameMessage({ type: "openExternal", url: "https://example.com" }), null);
     assert.ok(provenance.modules.every((module) => module.inputSha256.length === 64));
     assert.ok(provenance.modules.every((module) => !module.path.includes("index.eager-app")));

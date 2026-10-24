@@ -162,6 +162,7 @@ export function prepareDesktop0721(electron: typeof import("electron") = require
             return window instanceof electron.BrowserWindow ? window : null;
           },
           isEnabled: () => resolveLocal0721Feature("sand_desktop_mount") === true,
+          readAccountSlot: () => context.accountLifecycle.getAccountScope() ?? null,
           attachments,
           generatedPath: join(mainRoot, "desktop-mount/upstream-0721.cjs"),
           rendererRoot: join(dist, "renderer/upstream-0721"),

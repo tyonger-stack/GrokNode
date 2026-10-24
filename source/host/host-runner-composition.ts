@@ -206,6 +206,8 @@ import type {
   RunningSubagentInfo,
   SubagentManagementController,
 } from "./runner/tools/sand-subagent-management-tools.js";
+import type { VaultSessionSnapshot } from "../shared/vault.js";
+import { canUseGrokBotVault } from "./runner/vault-session-access.js";
 import type {
   SubagentSession,
   SubagentRunOptions,
@@ -2658,6 +2660,14 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
             loadSubagentTranscript: (id) => readOwnedSubagentTranscript(builtRunner, id),
             agents: conversationAccess.agents,
             related: conversationAccess.related,
+            ...(canUseGrokBotVault({ isSharedRoomTurn,
+              isSubagentRunner: (builtRunner as { readonly isSubagentRunner?: boolean } | undefined)?.isSubagentRunner,
+              agentId, sessionId: session.id }) ? {
+              vault: (): VaultSessionSnapshot | undefined => {
+                const read = method(extensions.api("settings"), "getGrokBotVaultContext");
+                return read?.() as VaultSessionSnapshot | undefined;
+              },
+            } : {}),
             ownSource: () => {
               const store = session.agentStore;
               const blobs = method(store, "getBlobStore")?.();

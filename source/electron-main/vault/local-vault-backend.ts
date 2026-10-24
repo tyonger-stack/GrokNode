@@ -15,6 +15,7 @@ import type {
   VaultCredentialReference,
   VaultLoginInput,
   VaultLoginValues,
+  VaultSessionSnapshot,
   VaultTrustedCredential,
 } from "../../shared/vault.js";
 import {
@@ -92,6 +93,7 @@ interface StoredCardRecord extends StoredVaultRecordBase {
   readonly expMonth: number;
   readonly expYear: number;
   readonly holderName: string;
+  readonly nickname: string;
   readonly billingAddressId: string;
   readonly billingAddress: VaultAddress;
   readonly secretCiphertextBase64: string;
@@ -126,6 +128,7 @@ export interface LocalVaultBackendOptions {
   readonly cardsEnabled?: boolean;
   readonly now?: () => number;
   readonly loadCardPhotoNative?: () => CardTextRecognitionNative | undefined;
+  readonly onChange?: () => Promise<void> | void;
 }
 
 const mutationTails = new Map<string, Promise<void>>();
@@ -210,6 +213,7 @@ function parseStoredRecord(value: unknown): StoredVaultRecord {
       expMonth,
       expYear,
       holderName: stringProperty(value, "holderName", 200),
+      nickname: typeof value.nickname === "string" && value.nickname.length <= 200 ? value.nickname : "",
       billingAddressId: stringProperty(value, "billingAddressId", 256),
       billingAddress: parseStoredAddress(value.billingAddress),
       secretCiphertextBase64: stringProperty(value, "secretCiphertextBase64", 262144),
@@ -277,6 +281,7 @@ function credentialOf(record: StoredVaultRecord): VaultCredential {
       expMonth: record.expMonth,
       expYear: record.expYear,
       holderName: record.holderName,
+      nickname: record.nickname,
       billingAddressId: record.billingAddressId,
       billingAddress: record.billingAddress,
     } };
@@ -392,6 +397,28 @@ export class LocalVaultBackend {
     return this.withAccount(async (account) => [...account.values()].map(credentialOf));
   }
 
+  async sessionSnapshot(): Promise<VaultSessionSnapshot> {
+    const account = await this.loadAccount();
+    const nowMs = this.nowMs();
+    const records = [...account.values()].sort((left, right) => left.updatedAtMs - right.updatedAtMs);
+    const logins: VaultSessionSnapshot["logins"][number][] = [];
+    const contacts: VaultSessionSnapshot["contacts"][number][] = [];
+    for (const record of records) {
+      if (record.kind === "login") {
+        const secret = decryptedSecret(this.options.codec, record.secretCiphertextBase64);
+        if (secret.password === undefined) throw new VaultStorageCorruptedError("Vault login secret is malformed");
+        logins.push({ id: record.id, title: record.title, username: record.username, notes: record.notes,
+          sites: [...record.sites], password: secret.password, updatedAtMs: record.updatedAtMs });
+      } else if (record.kind === "contact") {
+        contacts.push({ id: record.id, title: record.title, name: record.name, line1: record.line1,
+          line2: record.line2, city: record.city, region: record.region, postalCode: record.postalCode,
+          country: record.country, phone: record.phone, email: record.email,
+          defaultShipping: record.defaultShipping, updatedAtMs: record.updatedAtMs });
+      }
+    }
+    return { version: 1, updatedAtMs: nowMs, logins, contacts };
+  }
+
   async put(input: VaultLoginInput): Promise<VaultCredential> {
     return this.withAccount(async (account, nowMs) => {
       const id = this.validId(input.id);
@@ -456,7 +483,7 @@ export class LocalVaultBackend {
       this.validateHolderName(input.holderName);
       const expiry = expiryOf(input.expiry, "expiry");
       this.assertNotExpired(expiry, nowMs);
-      const updated: StoredCardRecord = { ...record, holderName: input.holderName, expMonth: expiry.month, expYear: expiry.year,
+      const updated: StoredCardRecord = { ...record, holderName: input.holderName, nickname: input.nickname ?? record.nickname, expMonth: expiry.month, expYear: expiry.year,
         billingAddress: this.validAddress(input.billingAddress), billingAddressId: this.validText(input.billingAddressId, 256),
         updatedAtMs: nowMs };
       account.set(id, updated);
@@ -522,6 +549,7 @@ export class LocalVaultBackend {
         expMonth: expiry.month,
         expYear: expiry.year,
         holderName,
+        nickname: "",
         billingAddressId: values.billingAddressId ?? "",
         billingAddress: addressFromCardValues(values),
         secretCiphertextBase64: encryptedSecret(this.options.codec, secret),
@@ -798,19 +826,26 @@ export function createLocalVaultBackend(options: LocalVaultBackendOptions): {
   readonly readGrokBotCardPhoto: (request: VaultCardPhotoRequest, signal?: AbortSignal) => Promise<VaultCardPhotoResult>;
   readonly credentialReferenceFor: (id: string) => VaultCredentialReference;
   readonly readTrustedCredential: (reference: VaultCredentialReference) => Promise<VaultTrustedCredential>;
+  readonly sessionSnapshot: () => Promise<VaultSessionSnapshot>;
 } {
   const backend = new LocalVaultBackend(options);
+  const changed = async <T>(operation: Promise<T>): Promise<T> => {
+    const result = await operation;
+    try { void Promise.resolve(options.onChange?.()).catch(() => undefined); } catch {}
+    return result;
+  };
   return {
     listGrokBotVaultCredentials: () => backend.list(),
-    putGrokBotVaultCredential: (input) => backend.put(input),
-    createGrokBotVaultLogins: (input) => backend.createLogins(input),
-    updateGrokBotVaultCard: (input) => backend.updateCard(input),
-    putGrokBotVaultContact: (input) => backend.putContact(input),
-    createGrokBotVaultCard: (input) => backend.createCard(input),
-    deleteGrokBotVaultCredential: (id) => backend.remove(id),
+    putGrokBotVaultCredential: (input) => changed(backend.put(input)),
+    createGrokBotVaultLogins: (input) => changed(backend.createLogins(input)),
+    updateGrokBotVaultCard: (input) => changed(backend.updateCard(input)),
+    putGrokBotVaultContact: (input) => changed(backend.putContact(input)),
+    createGrokBotVaultCard: (input) => changed(backend.createCard(input)),
+    deleteGrokBotVaultCredential: (id) => changed(backend.remove(id)),
     readCardPhoto: (request, signal) => backend.readCardPhoto(request, signal),
     readGrokBotCardPhoto: (request, signal) => backend.readCardPhoto(request, signal),
     credentialReferenceFor: (id) => backend.credentialReferenceFor(id),
     readTrustedCredential: (reference) => backend.readTrustedCredential(reference),
+    sessionSnapshot: () => backend.sessionSnapshot(),
   };
 }

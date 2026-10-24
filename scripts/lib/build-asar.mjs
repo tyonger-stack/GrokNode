@@ -150,13 +150,21 @@ export async function buildAsar({
   await mkdir(buildRoot, { recursive: true });
   await copySourceAppForStaging(sourceAppDir, stageRoot);
 
+  // The reconstructed app always reports the release tag (for example
+  // 0.75.3-reconstructed.1), never the pinned upstream 0.18.0 base. The
+  // updater compares this value against GitHub release tags, so the staged
+  // package.json is the single source of truth for the installed version.
+  const releaseVersion = process.env.GROK_NODE_APP_VERSION?.trim() || "0.75.5-reconstructed.1";
+  const stagedPackagePath = path.join(stageRoot, "package.json");
+  const stagedPackage = JSON.parse(await readFile(stagedPackagePath, "utf8"));
+  stagedPackage.version = releaseVersion;
+  stagedPackage.sandTrack ??= "stable";
+
   if (process.env.GROK_BOT_BUILD_DEV_APP === "1") {
-    const stagedPackagePath = path.join(stageRoot, "package.json");
-    const stagedPackage = JSON.parse(await readFile(stagedPackagePath, "utf8"));
     stagedPackage.sandLab = true;
     stagedPackage.productName = "Grok Bot 0.18 Dev";
-    await writeFile(stagedPackagePath, `${JSON.stringify(stagedPackage, null, 2)}\n`);
   }
+  await writeFile(stagedPackagePath, `${JSON.stringify(stagedPackage, null, 2)}\n`);
 
   for (const directory of ["deps", "native"]) {
     const source = path.join(runtimeUnpacked, directory);

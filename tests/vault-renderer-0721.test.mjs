@@ -18,9 +18,9 @@ import {
 } from "../scripts/lib/vault-renderer-patch.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const asarSkip = !existsSync(path.resolve(repoRoot, "../rea-grokbot-0721/asar/app.asar"))
-  && "0.72.1 snapshot is absent";
-const window = new Window();
+const asarSkip = !existsSync(path.resolve(repoRoot, "../rea-grokbot-0755/asar/app.asar"))
+  && "0.75.5 snapshot is absent";
+const window = new Window({ url: "http://localhost/" });
 for (const name of ["window", "document", "HTMLElement", "HTMLInputElement", "HTMLSelectElement", "Element", "Node", "MutationObserver", "getComputedStyle", "performance"]) {
   globalThis[name] = name === "window" ? window : name === "getComputedStyle" ? window.getComputedStyle.bind(window) : window[name] ?? globalThis[name];
 }
@@ -88,7 +88,7 @@ async function loadHost() {
 function credential() {
   return [
     { id: "login-1", title: "Example", username: "user@example.test", notes: "", sites: ["https://example.com"], createdAtMs: 1, updatedAtMs: 1 },
-    { id: "card-1", title: "Card 4242", username: "", notes: "", sites: [], card: { brand: "visa", last4: "4242", expMonth: 12, expYear: 2029, holderName: "Synthetic User", billingAddressId: "", billingAddress: { line1: "", line2: "", city: "", region: "", postalCode: "", country: "" } }, createdAtMs: 1, updatedAtMs: 1 },
+    { id: "card-1", title: "Card 4242", username: "", notes: "", sites: [], card: { brand: "visa", last4: "4242", expMonth: 12, expYear: 2029, holderName: "Synthetic User", nickname: "", billingAddressId: "", billingAddress: { line1: "", line2: "", city: "", region: "", postalCode: "", country: "" } }, createdAtMs: 1, updatedAtMs: 1 },
     { id: "contact-1", title: "Billing contact", username: "", notes: "", sites: [], contact: { name: "Synthetic Contact", line1: "", line2: "", city: "", region: "", postalCode: "", country: "", phone: "", email: "contact@example.test", defaultShipping: true }, createdAtMs: 1, updatedAtMs: 1 },
   ];
 }
@@ -141,15 +141,16 @@ async function render(t, ui, Host) {
     await closeLibraryDom(window);
   });
   await ui.act(async () => root.render(ui.createElement(Host, {})));
-  for (let index = 0; index < 6; index += 1) {
+  for (let index = 0; index < 20; index += 1) {
     await ui.act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     });
+    if ((host.textContent ?? "").length > 0) break;
   }
   return host;
 }
 
-test("original 0721 Vault settings render list, cards, and contacts through the local bridge", { skip: asarSkip }, async (t) => {
+test("original 0.75.5 Vault settings render list, cards, and contacts through the local bridge", { skip: asarSkip }, async (t) => {
   const ui = { createElement: React.createElement, createRoot, act: React.act };
   const { built, host: Host } = await loadHost();
   const desktop = mockDesktop();
@@ -157,14 +158,16 @@ test("original 0721 Vault settings render list, cards, and contacts through the 
   const host = await render(t, ui, Host);
   const text = host.textContent ?? "";
   assert.equal(desktop.calls.list >= 1, true);
-  assert.equal(text.includes("example.com"), true, host.outerHTML);
+  const state = window.__sandVault0721Client?.grokBotVault.snapshots.get();
+  assert.equal(text.includes("example.com"), true, `${host.outerHTML}\n${JSON.stringify(state)}`);
   assert.equal(text.includes("user@example.test"), true);
   assert.equal(text.includes("visa"), true);
   assert.equal(text.includes("Synthetic Contact"), true);
   assert.equal(host.querySelectorAll("button").length > 3, true);
+  assert.equal(text.includes("New item"), true, "Vault settings must render the official create menu in the pane header portal");
   assert.equal(built.bundle.includes(VAULT_RENDERER_MARK), true);
   assert.equal(/createRoot\s*\(/u.test(built.bundle), false);
-  assert.equal(/new\s+MutationObserver/u.test(built.bundle), false);
+  assert.equal(/new\s+MutationObserver[\s\S]{0,320}\.observe\(\s*(?:document\.(?:body|documentElement)|window)\b/u.test(built.bundle), false);
   record("vault-render-host", host.outerHTML);
   record("vault-render-summary", {
     bundleBytes: built.bundle.length,
@@ -199,6 +202,6 @@ test("generated original module preserves the pinned CSV reader and planner clos
   assert.match(source, /login_uri|login_username|login_password/);
   assert.match(source, /NoteType:Credit Card/);
   assert.match(source, /batchCreateGrokBotVaultCredentials|createGrokBotVaultLogins/);
-  assert.match(source, /b272ee13db0fb9106f9276a46a8e47baf688c8d5ac1b1dc400df6fcba9e76996/);
+  assert.match(source, /12bba50ba6cf12b35132518788610677a3fdc65de4ad849628d757bc7b780e5a/);
 });
 

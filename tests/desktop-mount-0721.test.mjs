@@ -13,8 +13,8 @@ import { stageDesktopMount0721 } from "../scripts/lib/desktop-mount-0721.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const evidence = path.resolve(process.env.DESKTOP_MOUNT_EVIDENCE ?? path.join(root, ".omo/evidence/desktop-mount-0721"));
-const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0721/asar/app.asar"))
-  && "0.72.1 snapshot is absent";
+const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0755/asar/app.asar"))
+  && "0.75.5 snapshot is absent";
 const options = { skip: asarSkip };
 await mkdir(evidence, { recursive: true });
 let staged, generated, createDesktopMount0721, createDesktopMountStagingPort, createAttachmentEdgePort;
@@ -32,7 +32,8 @@ if (!asarSkip) {
   ({ createAttachmentEdgePort } = require(attachmentsPath));
 }
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
-const target = { agentId: "agent-fixture", name: "Fixture", markSvgDataUrl: "data:image/svg+xml,<svg/>" };
+const target = { agentId: "agent-fixture", name: "Fixture", shape: "blob",
+  ink: { light: "#000000", dark: "#ffffff" }, markSvgDataUrl: "data:image/svg+xml,<svg/>" };
 const channel = (method, edge = "desktop-mount") => `dune-rpc:${edge}:m:${method}`;
 async function record(name, observed) {
   await writeFile(path.join(evidence, `${name}.json`), JSON.stringify({
@@ -78,7 +79,7 @@ function electronFixture() {
   const shortcuts = new Map();
   const electron = { BrowserWindow: Window, screen,
     ipcMain: { handle(name, fn) { assert.equal(handlers.has(name), false); handlers.set(name, fn); }, removeHandler: (name) => handlers.delete(name) },
-    app: { getPath: () => evidence }, shell: { openExternal: async () => {} },
+    app: { getPath: () => evidence, getAppPath: () => root }, shell: { openExternal: async () => {} },
     systemPreferences: { getAccentColor: () => "007affff" },
     globalShortcut: { register(name, fn) { shortcuts.set(name, fn); return true; }, unregister: (name) => shortcuts.delete(name) },
   };
@@ -124,7 +125,7 @@ test("verified build retains raw preloads, renderer closure and native bytes", o
   const native = require(path.join(staged.nativeRoot, "index.js"));
   const names = ["screen_capture_access_sync", "request_screen_capture_access_sync", "list_windows_sync", "capture_window_async", "capture_rect_async"];
   for (const name of names) assert.equal(typeof native[name], "function");
-  assert.ok(provenance.outputs.some((output) => output.path.endsWith("chunk-prompt-editor-DMTH7gmV.js")));
+  assert.ok(provenance.outputs.some((output) => /chunk-prompt-editor-[^/]+\.js$/u.test(output.path)));
   await record("build-and-native-load", { verifiedOutputs: provenance.outputs.length, nativeExports: names, provenancePath: staged.provenancePath });
 });
 
@@ -140,7 +141,7 @@ test("complete wet factory enforces sender, args, ownership and sends through ex
   } };
   let enabled = true;
   const runtime = createDesktopMount0721({ ...staged, electron: f.electron,
-    getMainWindow: () => f.main, isEnabled: () => enabled, systemVersion: "26.0",
+    getMainWindow: () => f.main, isEnabled: () => enabled, readAccountSlot: () => null, systemVersion: "26.0",
     attachments, reportWarning: (message) => errors.push(message),
     onPromptSubmissionError: (error) => errors.push(String(error)),
     async onPromptSubmitted(prompt) {

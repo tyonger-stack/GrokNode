@@ -293,7 +293,6 @@ export function SettingsDesktopSurface({ bridge, coordinatorClient = null, initi
               }),
               status: snapshot.egressTunnel.status
             }}
-            computer={computer}
             status={snapshot.update}
           />
         );

@@ -4,11 +4,12 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import * as React from "react";
 import { buildDesktopMountRenderer0721 } from "../scripts/lib/desktop-mount-renderer-0721.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0721/asar/app.asar"))
-  && "0.72.1 snapshot is absent";
+const asarSkip = !existsSync(path.resolve(root, "../rea-grokbot-0755/asar/app.asar"))
+  && "0.75.5 snapshot is absent";
 const options = { skip: asarSkip };
 
 let factory;
@@ -38,15 +39,16 @@ function fixture() {
   const client = { roster: { snapshots: roster }, experiments: { snapshots: experiments }, boot,
     desktopWindow: { ingestFocusAgent: input => calls.push(["focus", input]) },
     drafts: { recoverDraft: (...args) => recoveries.push(args) } };
-  const parts = factory({ client, React: {}, jsx: {}, compiler: {}, Menu: {}, Icon: {}, SourceFailure,
+  const parts = factory({ client, React, jsx: {}, compiler: {}, Menu: {}, Icon: {}, SourceFailure,
     agentName: agent => agent.name, useSnapshot: () => undefined, platform: "darwin", translate: () => "",
     sendPrompt: async (_client, input) => { calls.push(["send", input]); if (failure) throw new SourceFailure(failure); },
     reportPromise: promise => { void promise.catch(() => {}); }, reportError: error => { throw error; } });
   const source = { subscribe(next) { handlers = next; return () => { handlers = undefined; }; },
+    async bindMainWindow() { return { snapshot: { mount: null }, submissions: [] }; },
     async mount(target) { return { mount: target }; }, async unmount() { return { mount: null }; },
-    async offerChoices(input) { choices.push(input); }, async offerPreview() {} };
+    async offerChoices(input) { choices.push(input); }, async offerPreview() {}, async offerMarkState() {} };
   const controller = parts.createController({ source, client, choicesOf: parts.choicesOf,
-    previewOf: parts.previewOf, discardStaged: path => discarded.push(path) });
+    previewOf: parts.previewOf, markStateOf: parts.markStateOf, discardStaged: path => discarded.push(path) });
   return { agent, parts, controller, calls, recoveries, discarded, choices, roster, experiments,
     emit: input => handlers["prompt-submitted"](input), fail: value => { failure = value; } };
 }

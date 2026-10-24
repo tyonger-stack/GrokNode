@@ -3,26 +3,43 @@ import type { Local0721Backends } from "./local-backends-0721.js";
 
 const text = z.string().max(16384);
 const id = z.string().max(512);
-const address = z.object({ line1: text, line2: text, city: text, region: text, postalCode: text, country: text }).strict();
-const login = z.object({ title: text, username: text, password: text, notes: text,
-  sites: z.array(z.string().max(4096)).max(128) }).strict();
+const vaultId = z.string().min(1).max(256);
+const vaultTitle = z.string().max(200);
+const vaultUsername = z.string().max(512);
+const vaultNotes = z.string().max(2048);
+const vaultSite = z.string().max(2048);
+const vaultPassword = z.string().refine((value) => new TextEncoder().encode(value).byteLength <= 4096,
+  "Vault password must be at most 4096 bytes");
+const vaultAddress = z.object({ line1: z.string().max(256), line2: z.string().max(256),
+  city: z.string().max(256), region: z.string().max(256), postalCode: z.string().max(256),
+  country: z.string().max(256) }).strict();
+const login = z.object({ title: vaultTitle, username: vaultUsername, password: vaultPassword,
+  notes: vaultNotes, sites: z.array(vaultSite).max(10) }).strict();
 const team = z.object({ teamId: id.min(1) }).strict();
 
 export function createLocalBackendHandlers0721(get: () => Local0721Backends) {
   const cardPhotoReads = new Map<string, AbortController>();
   return {
     listGrokBotVaultCredentials: () => get().vault.listGrokBotVaultCredentials(),
-    putGrokBotVaultCredential: (raw: unknown) => get().vault.putGrokBotVaultCredential(login.extend({ id }).parse(raw)),
+    putGrokBotVaultCredential: (raw: unknown) => get().vault.putGrokBotVaultCredential(login.extend({ id: vaultId }).parse(raw)),
     createGrokBotVaultLogins: (raw: unknown) => get().vault.createGrokBotVaultLogins(
-      z.object({ logins: z.array(login).max(10000) }).strict().parse(raw)),
-    updateGrokBotVaultCard: (raw: unknown) => get().vault.updateGrokBotVaultCard(
-      z.object({ id, holderName: text, expiry: text, billingAddress: address, billingAddressId: id }).strict().parse(raw)),
+      z.object({ logins: z.array(login).max(1000) }).strict().parse(raw)),
+    updateGrokBotVaultCard: (raw: unknown) => {
+      const card = z.object({ id: vaultId, holderName: z.string().max(200),
+        nickname: z.string().max(200).optional(), expiry: z.string().max(64),
+        billingAddress: vaultAddress, billingAddressId: vaultId }).strict().parse(raw);
+      const { nickname, ...base } = card;
+      return get().vault.updateGrokBotVaultCard({ ...base,
+        ...(nickname === undefined ? {} : { nickname }) });
+    },
     putGrokBotVaultContact: (raw: unknown) => get().vault.putGrokBotVaultContact(
-      z.object({ id, title: text, contact: address.extend({ name: text, phone: text, email: text, defaultShipping: z.boolean() }) }).strict().parse(raw)),
+      z.object({ id: vaultId, title: vaultTitle,
+        contact: vaultAddress.extend({ name: z.string().max(200), phone: z.string().max(64),
+          email: z.string().max(320), defaultShipping: z.boolean() }) }).strict().parse(raw)),
     createGrokBotVaultCard: (raw: unknown) => get().vault.createGrokBotVaultCard(
-      z.object({ values: z.record(z.string(), text) }).strict().parse(raw)),
+      z.object({ values: z.record(z.string(), z.string().max(4096)) }).strict().parse(raw)),
     deleteGrokBotVaultCredential: async (raw: unknown) => {
-      await get().vault.deleteGrokBotVaultCredential(z.object({ id }).strict().parse(raw).id);
+      await get().vault.deleteGrokBotVaultCredential(z.object({ id: vaultId }).strict().parse(raw).id);
       return {};
     },
     readGrokBotCardPhoto: async (raw: unknown) => {

@@ -176,11 +176,16 @@ export function patchAppLinkCards(source) {
 
 export function patchAppComputerSettings(source) {
   const branch = 'P=x==="beta"?a.jsx(Te,{', rows = 'children:[a.jsx(ma,{}),a.jsx(qs,{';
-  for (const anchor of [branch, rows, 'function da(){']) {
+  // The shared-computer section is mounted inside the computer pane. Left as a sibling of
+  // the pane switch it also rendered on Settings → 更新, which must only carry the channel
+  // and version rows.
+  const rowsEnd = 'workingAgentNames:p})]})}):null';
+  for (const anchor of [branch, rows, rowsEnd, 'function da(){']) {
     if (source.split(anchor).length !== 2) throw new Error('Computer settings anchor missing or ambiguous: ' + anchor);
   }
   const patched = source.replace(branch, 'P=x==="beta"||x==="computer"?a.jsx(Te,{')
-    .replace(rows, 'children:[x==="beta"?a.jsx(ma,{}):a.jsx("div",{"data-r-app-setting":"computers",tabIndex:-1,children:a.jsx(re,{title:RLocT("Your computer","你的电脑"),children:a.jsx(da,{})})}),a.jsx(qs,{');
+    .replace(rows, 'children:[x==="beta"?a.jsx(ma,{}):a.jsx("div",{"data-r-app-setting":"computers",tabIndex:-1,children:[a.jsx(re,{title:RLocT("Your computer","你的电脑"),children:a.jsx(da,{})}),a.jsx(qs,{')
+    .replace(rowsEnd, 'workingAgentNames:p})]})]})}):null');
   parse(patched, { ecmaVersion: 'latest', sourceType: 'module' });
   return patched;
 }
