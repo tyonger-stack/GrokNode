@@ -2358,72 +2358,72 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
       createAgentManagementToolInputs: () => ({
         dependencies: dependencies.agentManagement,
       }),
+      createMcpMetaToolInputs: (
+        turn: TurnToolsetTurnInput,
+        props,
+      ): TurnMcpMetaToolFactoryInput => {
+        const suppliedMcpMeta = props.mcp?.mcpMeta ?? turnInputs?.mcp?.mcpMeta;
+        if (suppliedMcpMeta !== undefined) {
+          return {
+            resourceAccessor: props.resourceAccessor,
+            ...suppliedMcpMeta,
+          };
+        }
+        const mcpMode = turn.autoReviewModes.mcp;
+        return {
+          resourceAccessor: props.resourceAccessor,
+          getMcpTools: () => props.mcpTools ?? turn.mcpTools ?? [],
+          discoveryOptions: { allowInteractiveMcpAuth: false },
+          callOptions: {
+            allowInteractiveMcpAuth: false,
+            validateMcpToolDescriptors: true,
+            smartModeClassifierMode: mcpMode === "enforce",
+            smartModeClassifierShadowMode: mcpMode === "shadow",
+            ...(props.requestContext === undefined
+              ? {}
+              : {
+                  requestContext: props.requestContext,
+                  ...(props.requestContext.mcpFileSystemOptions === undefined
+                    ? {}
+                    : { mcpFileSystemOptions: props.requestContext.mcpFileSystemOptions }),
+                }),
+            ...(autoReviewController === undefined || mcpMode !== "enforce"
+              ? {}
+              : {
+                  smartModeApprovalProvider: {
+                    requestApproval: request =>
+                      createSandMcpApprovalProvider({
+                        controller: autoReviewController,
+                        agentId,
+                        getExpiryPolicy: () => sandAutoReviewApprovalExpiryPolicy("turn"),
+                      }).requestApproval({
+                        fingerprint: request.fingerprint,
+                        signal: request.signal,
+                        target: {
+                          blockReason: request.target.blockReason,
+                          serverDisplayName: request.target.serverDisplayName
+                            ?? request.target.serverName
+                            ?? request.target.serverIdentifier,
+                          toolName: request.target.toolName,
+                          ...(request.target.mcpArguments === undefined
+                            ? {}
+                            : { mcpArguments: request.target.mcpArguments }),
+                          ...(request.target.description === undefined
+                            ? {}
+                            : { description: request.target.description }),
+                          ...(request.target.proposedAllowRule === undefined
+                            ? {}
+                            : { proposedAllowRule: request.target.proposedAllowRule }),
+                        },
+                      }),
+                  },
+                }),
+          },
+        };
+      },
       ...(turnInputs === undefined
         ? {}
         : {
-            createMcpMetaToolInputs: (
-              turn: TurnToolsetTurnInput,
-              props,
-            ): TurnMcpMetaToolFactoryInput => {
-              const suppliedMcpMeta = props.mcp?.mcpMeta ?? turnInputs.mcp?.mcpMeta;
-              if (suppliedMcpMeta !== undefined) {
-                return {
-                  resourceAccessor: props.resourceAccessor,
-                  ...suppliedMcpMeta,
-                };
-              }
-              const mcpMode = turn.autoReviewModes.mcp;
-              return {
-                resourceAccessor: props.resourceAccessor,
-                getMcpTools: () => props.mcpTools ?? turn.mcpTools ?? [],
-                discoveryOptions: { allowInteractiveMcpAuth: false },
-                callOptions: {
-                  allowInteractiveMcpAuth: false,
-                  validateMcpToolDescriptors: true,
-                  smartModeClassifierMode: mcpMode === "enforce",
-                  smartModeClassifierShadowMode: mcpMode === "shadow",
-                  ...(props.requestContext === undefined
-                    ? {}
-                    : {
-                        requestContext: props.requestContext,
-                        ...(props.requestContext.mcpFileSystemOptions === undefined
-                          ? {}
-                          : { mcpFileSystemOptions: props.requestContext.mcpFileSystemOptions }),
-                      }),
-                  ...(autoReviewController === undefined || mcpMode !== "enforce"
-                    ? {}
-                    : {
-                        smartModeApprovalProvider: {
-                          requestApproval: request =>
-                            createSandMcpApprovalProvider({
-                              controller: autoReviewController,
-                              agentId,
-                              getExpiryPolicy: () => sandAutoReviewApprovalExpiryPolicy("turn"),
-                            }).requestApproval({
-                              fingerprint: request.fingerprint,
-                              signal: request.signal,
-                              target: {
-                                blockReason: request.target.blockReason,
-                                serverDisplayName: request.target.serverDisplayName
-                                  ?? request.target.serverName
-                                  ?? request.target.serverIdentifier,
-                                toolName: request.target.toolName,
-                                ...(request.target.mcpArguments === undefined
-                                  ? {}
-                                  : { mcpArguments: request.target.mcpArguments }),
-                                ...(request.target.description === undefined
-                                  ? {}
-                                  : { description: request.target.description }),
-                                ...(request.target.proposedAllowRule === undefined
-                                  ? {}
-                                  : { proposedAllowRule: request.target.proposedAllowRule }),
-                              },
-                            }),
-                        },
-                      }),
-                },
-              };
-            },
             createTaskToolInputs: (turn): TurnTaskToolFactoryInput => ({
               resourceAccessor: turnInputs.resourceAccessor as unknown as TurnTaskToolFactoryInput["resourceAccessor"],
               stateHandler: turnInputs.stateHandler as unknown as TurnTaskToolFactoryInput["stateHandler"],

@@ -47,6 +47,7 @@ const manager = {
   sessionStore: { markSessionActivity() {} },
   roster: { applyAgentUpdateToOutline() {}, emitAgentUpdate: async () => {} },
   runLifecycle: {
+    lastRequestIdBySession: new Map(),
     trackProgressFromUpdate() {}, trackComposingFromUpdate() {},
     trackRetryingFromUpdate() {}, trackActivityFromUpdate() {},
   },

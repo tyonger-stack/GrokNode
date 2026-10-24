@@ -240,7 +240,10 @@ export class RunnerRegistry {
         createSandTransport((update) =>
           this.tm.handleAgentUpdate(update, session),
         ),
-      onRunLifecycle: (event: unknown) => this.tm.emitAgentRunLifecycle(event),
+      onRunLifecycle: (event: { readonly type: "started" | "ended"; readonly requestId: string }) => {
+        if (event.type === "started") this.tm.handleAgentUpdate({ type: "request-id", requestId: event.requestId }, session);
+        this.tm.emitAgentRunLifecycle(event);
+      },
       ingestAttachment: this.tm.createAttachmentIngestor(session),
       persistImage: this.tm.createAssetImagePersister(session),
       persistMediaBytes: this.tm.createMediaBytesPersister(session),

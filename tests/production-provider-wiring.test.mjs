@@ -48,6 +48,18 @@ test("the production turn provider exposes MCP discovery and invocation tools", 
     /createMcpMetaToolInputs:[\s\S]{0,700}getMcpTools:\s*\(\)\s*=>\s*props\.mcpTools\s*\?\?\s*turn\.mcpTools\s*\?\?\s*\[\]/,
     "the model toolset must receive this step's discovered MCP descriptors",
   );
+  const mcpMetaIndex = provider.indexOf("createMcpMetaToolInputs:");
+  const turnInputsGateIndex = provider.indexOf("...(turnInputs === undefined");
+  assert.ok(mcpMetaIndex !== -1, "the provider must register the MCP meta-tool factory");
+  assert.ok(
+    turnInputsGateIndex === -1 || mcpMetaIndex < turnInputsGateIndex,
+    "the MCP meta-tool factory must not be gated on per-turn tool inputs; the production shell builds it lazily",
+  );
+  assert.match(
+    provider,
+    /turnInputs\?\.mcp\?\.mcpMeta/,
+    "the unconditional MCP meta-tool factory must tolerate a missing per-turn input carrier",
+  );
   assert.match(
     provider,
     /validateMcpToolDescriptors:\s*true/,

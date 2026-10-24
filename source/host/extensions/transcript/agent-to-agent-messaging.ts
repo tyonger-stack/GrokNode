@@ -16,6 +16,7 @@ export interface AgentInboundMessage {
   from: { id: string; name: string };
   text: string;
   timestampMs: number;
+  requestId?: string;
   images?: readonly { url: string; alt?: string }[];
   priority?: boolean;
   isDisplayed?: boolean;
@@ -140,6 +141,7 @@ export class AgentToAgentMessaging {
       from: { id: fromAgentId, name: sender?.name ?? "An agent" },
       text: message,
       timestampMs: Date.now(),
+      requestId: this.tm.runLifecycle.lastRequestIdBySession.get(fromAgentId),
       ...(images.length === 0 ? {} : { images }),
       ...(priority ? { priority: true } : {}),
     };
@@ -339,6 +341,7 @@ export class AgentToAgentMessaging {
         isStreaming: false,
         timestampMs: message.timestampMs,
         fromAgent: message.from,
+        ...(message.requestId == null ? {} : { requestId: message.requestId }),
         ...(message.images?.length ? { images: message.images } : {}),
       };
       raisesActivity ||= entryRaisesUserActivitySignal(entry);
@@ -360,6 +363,7 @@ export class AgentToAgentMessaging {
     const session = this.tm.sessions.liveSessions.get(fromAgentId);
     if (session == null) return;
     const isActive = session.id === this.tm.sessions.activeSession?.id;
+    const requestId = this.tm.runLifecycle.lastRequestIdBySession.get(fromAgentId);
     const entry = {
       kind: "message",
       id: nextEntryId(
@@ -371,6 +375,7 @@ export class AgentToAgentMessaging {
       isStreaming: false,
       timestampMs,
       toAgent,
+      ...(requestId == null ? {} : { requestId }),
       ...(images.length === 0 ? {} : { images }),
     };
     if (isActive) this.tm.appendEntry(entry);

@@ -901,8 +901,12 @@ export class TurnRuntime {
           threaded.type === "attachment" && runSession != null
             ? this.tm.sendPipeline.claimSendAttachmentBatchId(runSession.id)
             : undefined;
+        const requestId = runSession == null
+          ? undefined
+          : this.tm.runLifecycle.lastRequestIdBySession.get(runSession.id);
         const base = {
           ...createSendMessageEntry(sendId, threaded, update.timestampMs),
+          ...(requestId == null ? {} : { requestId }),
           ...(batchId == null ? {} : { batchId }),
         };
         const stamped =
