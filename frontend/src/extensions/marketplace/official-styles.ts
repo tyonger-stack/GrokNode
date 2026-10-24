@@ -1104,10 +1104,7 @@ export const DETAIL_ACCOUNT_NAME_ROW_CLASSES = [
  *          官方侧 className 由 `chunk-plugin-detail-view-tZskkHRA.js` 的 `ve()` 语义绑定到
  *          「重命名 input 的直接父 span / 最近的 div 变体祖先」逐字抽取。
  */
-export const DETAIL_ACCOUNT_FORM_SLOT_CLASSES = [
-  "sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-1qughib", "sand-167g77z",
-  "sand-z9dl7a", "sand-1pic42t", "sand-sag5q8", "sand-1onr9mi",
-];
+export const DETAIL_ACCOUNT_FORM_SLOT_CLASSES = ["sand-9f619", "sand-78zum5", "sand-6s0dn4", "sand-1qughib", "sand-167g77z", "sand-oyc9vk", "sand-1pic42t", "sand-2lprc", "sand-1onr9mi"];
 
 /** 表单里的输入框自身（官方 input 的完整 14 类，含 `sand-15kz4h8`；0.70.2 起 `sand-1wd3ewq`→`sand-tyxrsu`）。 */
 export const DETAIL_ACCOUNT_FORM_INPUT_CLASSES = [

@@ -52,7 +52,13 @@ import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patc
 import { applyHardwareAccelerationSettingsPatch } from "./lib/hardware-acceleration-settings-patch.mjs";
 import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs";
 import { applySettingsUpdate0753Patch } from "./lib/settings-update-0753-patch.mjs";
+import { applyMessageCopy0753Patch } from "./lib/message-copy-0753-patch.mjs";
+import { applyReplyComposer0753Patch } from "./lib/reply-composer-0753-patch.mjs";
+import { applyReplyTarget0753Patch } from "./lib/reply-target-0753-patch.mjs";
+import { applyEmojiLocale0753Patch } from "./lib/emoji-i18n-0753-patch.mjs";
+import { applyPromptCta0753Patch } from "./lib/prompt-cta-0753-patch.mjs";
 import { applyVaultSettingsRenderer0721 } from "./lib/vault-settings-renderer-patch.mjs";
+import { applyRecipientPicker0755Patch } from "./lib/recipient-picker-0755-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
 import { applyUpdatePillCopy0755Patch } from "./lib/update-pill-copy-0755-patch.mjs";
@@ -327,17 +333,17 @@ export async function buildFidelityReconstructedAsar({
   const clean = await attachCompositionAudit(prepared);
   await overlayCleanDistribution(clean.outputRoot, { stageRoot, composition: clean.buildManifest.runtimeComposition });
   await applyOriginalRendererRouterPatch({ stageRoot });
+  // Settings → 记忆: Muse-style memory import (dialog distillation to the MAIN bot).
+  // Anchors on the router patch's OUTPUT (registry entry list + panel switch), so it must
+  // run immediately after it — and, like the router patch, before the i18n passes below
+  // (its labels resolve through the RLocT runtime settings-i18n appends later).
+  await applyOriginalRendererMemoryImport({ stageRoot });
   await applyOriginalRendererLibraryStageClose({ stageRoot });
   // Must run after the renderer extension (it patches the same chunk) and before the
   // i18n passes (its "Search" label is localised by main-i18n's existing pair).
   await applyOriginalRendererSidebarTopBarSearch({ stageRoot });
   // Must run before the i18n passes (it resolves its label through RLocT, which
   // main-i18n appends to this chunk later — function declarations hoist).
-  // Settings → 记忆: Muse-style memory import (dialog distillation to the MAIN bot).
-  // Anchors on the router patch's OUTPUT (registry entry list + panel switch), so it must
-  // run immediately after it — and, like the router patch, before the i18n passes below
-  // (its labels resolve through the RLocT runtime settings-i18n appends later).
-  await applyOriginalRendererMemoryImport({ stageRoot });
   await applyOriginalRendererChatHeaderIdentity({ stageRoot });
   // Independent of the header patches (it rewrites the transcript's activity mark, not the
   // chat header) and touches no string literal, so it is order-free against the passes
@@ -449,6 +455,7 @@ export async function buildFidelityReconstructedAsar({
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
+  await applyMessageCopy0753Patch({ stageRoot });
   // The 0.18 renderer already has the footer update pill and Update-ready
   // modal; port the official 0.75.5 copy now that RLocT exists.
   await applyUpdatePillCopy0755Patch({ stageRoot });
@@ -478,6 +485,11 @@ export async function buildFidelityReconstructedAsar({
   // ON from Statsig, 9 kept OFF). Same table, own gate-name already-present guard; must
   // run after the three passes above so their names are not mistaken for ours.
   await apply0712GateEcosystemPatch({ stageRoot });
+  await applyReplyComposer0753Patch({ stageRoot });
+  await applyReplyTarget0753Patch({ stageRoot });
+  await applyEmojiLocale0753Patch({ stageRoot });
+  await applyPromptCta0753Patch({ stageRoot });
+  await applyRecipientPicker0755Patch({ stageRoot });
   await applyVaultSettingsRenderer0721({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });

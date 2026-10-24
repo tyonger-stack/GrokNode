@@ -2,8 +2,8 @@
 //
 // 0.75.3's sidebar search button opens the same command palette but without the
 // Anysphere-only developer tabs. The visible rows, row height, search icon, and
-// "Bot" type label are the palette's shipped 0.18 primitives; the only new
-// behaviour is the source flag and the 402px no-tab list height.
+// "Bot" type label reuse the shipped 0.18 primitives. The command catalog and
+// keyboard shortcut dialog are ported from 0.75.3 tcn/jrn/Jon.
 //
 // @evidence /Applications/Grok Bot.app 0.75.3 renderer assets/index.eager-app-DjFE9lSq.js
 //   QFn, 5528358-5532769: dialog has class sand-command-palette, the tablist is
@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "acorn";
+import { patchSearchMenu0753, SEARCH_MENU_0753_STYLE, SEARCH_MENU_0753_REFERENCE } from "./search-menu-0753-patch.mjs";
 
 const TYPE_LABEL_BEFORE = 'case"agent":return n.agent.isGroup?"Group":"Agent"';
 const TYPE_LABEL_AFTER = 'case"agent":return n.agent.isGroup?"Group":"Bot"';
@@ -66,6 +67,7 @@ export function patchSearchPaletteRenderer(source) {
   patched = replaceExactlyOnce(patched, SEARCH_KEY_BEFORE, SEARCH_KEY_AFTER, "search key");
   patched = replaceExactlyOnce(patched, PLUS_CONTENT_BEFORE, PLUS_CONTENT_AFTER, "plus label");
   patched = replaceExactlyOnce(patched, PLUS_CLICK_BEFORE, PLUS_CLICK_AFTER, "plus click");
+  patched = patchSearchMenu0753(patched);
   parse(patched, { ecmaVersion: "latest", sourceType: "module" });
   return patched;
 }
@@ -88,15 +90,16 @@ export async function applySearchPaletteRendererPatch({ stageRoot }) {
   await writeFile(path.join(assets, file), patched);
   const cssFile = cssFiles[0];
   const css = await readFile(path.join(assets, cssFile), "utf8");
-  const patchedCss = css + SEARCH_PALETTE_STYLE;
+  const patchedCss = css + SEARCH_PALETTE_STYLE + "\n" + SEARCH_MENU_0753_STYLE;
   await writeFile(path.join(assets, cssFile), patchedCss);
   const provenance = {
     mode: "sidebar-search-palette-0753",
+    officialCommandMenu: SEARCH_MENU_0753_REFERENCE,
     files: [
       { file: "dist/renderer/assets/" + file, originalSha256: sha256(source), patchedSha256: sha256(patched) },
       { file: "dist/renderer/assets/" + cssFile, originalSha256: sha256(css), patchedSha256: sha256(patchedCss) },
     ],
-    features: ["sidebar-search-no-tabs", "bot-row-label"],
+    features: ["sidebar-search-no-tabs", "bot-row-label", "official-command-catalog-0753", "keyboard-shortcuts-dialog-0753", "group-chat-entry", "localized-setting-commands"],
   };
   await writeFile(path.join(stageRoot, "dist", "renderer-search-palette-extension.json"), JSON.stringify(provenance, null, 2) + "\n");
   return provenance;

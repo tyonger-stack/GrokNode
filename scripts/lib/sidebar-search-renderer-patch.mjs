@@ -73,6 +73,22 @@ const NEW_ACTIONS_PLUS_AFTER =
 const NEW_ACTIONS_GROUP_AFTER = 'v={className:"sand-78zum5 sand-gjt6br sand-6s0dn4 sand-167g77z sand-vc5jky"}';
 const SIDEBAR_BAR_AFTER = "ki=null";
 
+// 0.75.3 index.eager-app-DjFE9lSq.js header recipe and index-CFSAhbDS.css atoms.
+// Padding plus min-height lets the 36px controls retain the official 12px top inset.
+export const SIDEBAR_HEADER_LAYOUT_0753 = Object.freeze({
+  before: 'k={className:"sand-78zum5 sand-6s0dn4 sand-1qughib sand-8ltcs7 sand-167g77z sand-2lah0s sand-14kp3v7 sand-1wobr2e sand-exx8yu sand-18d9i69 sand-v54qhq sand-qrzla8 sand-f7dkkf sand-1mzfiwd sand-1a4o4su"}',
+  after: 'k={className:"sand-78zum5 sand-6s0dn4 sand-1qughib sand-8ltcs7 sand-167g77z sand-2lah0s sand-9f619 sand-vgscje sand-epcdes sand-jrphtx sand-brci43 sand-ddjrh3 sand-10v4lu7 sand-v54qhq sand-qrzla8 sand-f7dkkf sand-1mzfiwd sand-1a4o4su"}',
+  css: String.raw`
+.sand-vgscje:not(#\#):not(#\#):not(#\#):not(#\#){min-height:var(--sand-titlebar-block,38px)}
+.sand-jrphtx:not(#\#):not(#\#):not(#\#):not(#\#){padding-top:12px}
+.sand-ddjrh3:not(#\#):not(#\#):not(#\#):not(#\#){padding-bottom:12px}
+@container sand-sidebar (width<=130px){
+.sand-epcdes.sand-epcdes:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#){min-height:var(--sand-titlebar-collapsed-block,8px)}
+.sand-10v4lu7.sand-10v4lu7:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#){padding-bottom:0}
+.sand-brci43.sand-brci43:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#){padding-top:0}
+}`,
+});
+
 // Ir.topBarButton: width 36px, height 36px, -webkit-app-region no-drag.
 const TOP_BAR_BUTTON_CLASSES = ["sand-14qfxbe", "sand-c9qbxq", "sand-lvsv26"];
 // Ka.elevated (0.61) expressed with classes 0.18 also ships; see the header comment.
@@ -129,6 +145,7 @@ export function patchOriginalSidebarTopBarSearch(source) {
   patched = replaceExactlyOnce(patched, HEADER_CALL_ANCHOR, HEADER_CALL_AFTER, "sidebar header onOpenSearch wiring");
   patched = replaceExactlyOnce(patched, NEW_ACTIONS_PLUS_BEFORE, NEW_ACTIONS_PLUS_AFTER, "sidebar top-bar search mount");
   patched = replaceExactlyOnce(patched, NEW_ACTIONS_GROUP_BEFORE, NEW_ACTIONS_GROUP_AFTER, "sidebar top-bar group spacing");
+  patched = replaceExactlyOnce(patched, SIDEBAR_HEADER_LAYOUT_0753.before, SIDEBAR_HEADER_LAYOUT_0753.after, "sidebar header 0.75.3 layout");
   return replaceExactlyOnce(patched, SIDEBAR_BAR_BEFORE, SIDEBAR_BAR_AFTER, "sidebar full-width search bar removal");
 }
 
@@ -154,15 +171,25 @@ export async function applyOriginalRendererSidebarTopBarSearch({ stageRoot }) {
     throw new Error("Sidebar top-bar search lost its localizable Search literals.");
   }
   let checkedClasses = 0;
+  const stylesheets = [];
   for (const name of await readdir(assetsRoot)) {
     if (!name.endsWith(".css")) continue;
-    checkedClasses += assertTopBarClassesResolve(await readFile(path.join(assetsRoot, name), "utf8"));
+    const target = path.join(assetsRoot, name);
+    const source = await readFile(target, "utf8");
+    checkedClasses += assertTopBarClassesResolve(source);
+    if (source.includes(".sand-14kp3v7:")) stylesheets.push({ name, target, source });
   }
   if (checkedClasses === 0) {
     throw new Error("Sidebar top-bar search found no renderer stylesheet to validate its classes against.");
   }
+  if (stylesheets.length !== 1) {
+    throw new Error(`Expected one original sidebar stylesheet, found ${stylesheets.length}.`);
+  }
+  const stylesheet = stylesheets[0];
+  const patchedCss = stylesheet.source + SIDEBAR_HEADER_LAYOUT_0753.css;
   const patched = patchOriginalSidebarTopBarSearch(candidate.source);
   await writeFile(candidate.target, patched);
+  await writeFile(stylesheet.target, patchedCss);
   const record = {
     schemaVersion: 1,
     mode: "original-renderer-sidebar-top-bar-search",
@@ -174,6 +201,12 @@ export async function applyOriginalRendererSidebarTopBarSearch({ stageRoot }) {
         patched: { bytes: Buffer.byteLength(patched), sha256: createHash("sha256").update(patched).digest("hex") },
         validatedStyleClasses: SIDEBAR_TOP_BAR_CLASS_NAMES,
       },
+      {
+        role: "sidebar-layout",
+        path: `dist/renderer/assets/${stylesheet.name}`,
+        original: { bytes: Buffer.byteLength(stylesheet.source), sha256: createHash("sha256").update(stylesheet.source).digest("hex") },
+        patched: { bytes: Buffer.byteLength(patchedCss), sha256: createHash("sha256").update(patchedCss).digest("hex") },
+      },
     ],
     features: ["sidebar-top-bar-search"],
     transformations: [
@@ -182,6 +215,7 @@ export async function applyOriginalRendererSidebarTopBarSearch({ stageRoot }) {
       "mount-search-left-of-new-chat",
       "new-chat-elevated-circle",
       "top-bar-group-gap-8px",
+      "official-0753-header-min-height-and-padding",
       "remove-full-width-search-bar",
     ],
   };

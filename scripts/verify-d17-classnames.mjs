@@ -23,8 +23,8 @@ const OFFICIAL_ASAR = "/Applications/Grok Bot.app/Contents/Resources/app.asar";
 // 特征串从渲染层消失、BJ7R7v 等消息 id 内联进 38 个 chunk-core 语言表（不再是组件特征）。
 // 新锚 = 用法形态 `id:"BJ7R7v"`（aria-label 构造）：消息表里是 `"BJ7R7v":[…]` 键形态，
 // 不会误配；0.71.2 实测全 asar 恰好一个 chunk、一个函数（chunk-view-DYLZy-Qo.js 表单内）。
-// 历史锚沿革：0.66-0.70 = mcp_multi_account + BJ7R7v 同函数；0.71.2 起 = id:"BJ7R7v" 用法。
-const FEATURE_MARKER = 'id:"BJ7R7v"';
+// 历史锚沿革：0.66-0.70 = mcp_multi_account + BJ7R7v；0.71.2–0.74 = id:"BJ7R7v"；0.75.3 = id:`BJ7R7v`。
+const FEATURE_MARKER = "id:`BJ7R7v`";  // 0.75.3+ backtick usage form
 const INPUT_ARIA_ID = "BJ7R7v";
 
 // ── asar 读取 ────────────────────────────────────────────────────────────────
@@ -113,26 +113,27 @@ export function extractFunction(source, name) {
 function parseClassNames(raw) {
   if (raw == null) return null;
   const s = raw.trim();
-  const asString = /^"([^"]*)"$/.exec(s);
-  if (asString) return asString[1].split(/\s+/).filter(Boolean);
+  const asString = /^(?:"([^"]*)"|`([^`]*)`)$/.exec(s);
+  if (asString) return (asString[1] ?? asString[2]).split(/\s+/).filter(Boolean);
   // 变体形态优先判：只要含 className: 就说明是「按条件选一组」的载体
   if (s.includes("className:")) {
-    return [...s.matchAll(/className:\s*(?:"([^"]*)"|\[([^\]]*)\])/g)].map((m) =>
-      m[1] !== undefined
-        ? m[1].split(/\s+/).filter(Boolean)
-        : (m[2].match(/"([^"]+)"/g) || []).map((q) => q.slice(1, -1)),
-    );
+    return [...s.matchAll(/className:\s*(?:"([^"]*)"|`([^`]*)`|\[([^\]]*)\])/g)].map((m) => {
+      if (m[1] !== undefined) return m[1].split(/\s+/).filter(Boolean);
+      if (m[2] !== undefined) return m[2].split(/\s+/).filter(Boolean);
+      return (m[3].match(/(?:"([^"]+)"|`([^`]+)`)/g) || []).map((q) => q.slice(1, -1));
+    });
   }
   const arr = /^\[([^\]]*)\]/.exec(s);
-  if (arr) return (arr[1].match(/"([^"]+)"/g) || []).map((q) => q.slice(1, -1));
-  const quoted = s.match(/"([^"]+)"/g);
+  if (arr) return (arr[1].match(/(?:"([^"]+)"|`([^`]+)`)/g) || []).map((q) => q.slice(1, -1));
+  const quoted = s.match(/(?:"([^"]+)"|`([^`]+)`)/g);
   return quoted ? quoted.map((q) => q.slice(1, -1)) : null;
 }
 
 /** 扫出组件体内所有 jsx/jsxs 调用。返回 {tag, props, propsStart, propsEnd, callEnd, at}。 */
 export function scanJsxCalls(body) {
   const out = [];
-  const re = /\bjsx(s?)\(\s*("(?:[^"]*)"|[A-Za-z_$][\w$]*)\s*,\s*\{/g;
+  // 0.75.3+ 官方常见 (0,B.jsx)(`tag`,{…})；旧版为 n.jsx("tag",{…})。标签支持双引号与反引号。
+  const re = /(?:\bjsx(s?)\(|\(0,[A-Za-z_$][\w$]*\.jsx(s?)\)\()\s*("(?:[^"]*)"|`(?:[^`]*)`|[A-Za-z_$][\w$]*)\s*,\s*\{/g;
   let m;
   while ((m = re.exec(body)) !== null) {
     const propsStart = m.index + m[0].length - 1; // 指向 '{'
@@ -153,13 +154,13 @@ export function scanJsxCalls(body) {
       j++;
     }
     out.push({
-      tag: m[2],
+      tag: m[3],
       props: body.slice(propsStart, i + 1),
       propsStart,
       propsEnd: i + 1,
       callEnd: j,
       at: m.index,
-      key: `jsx${m[1]}`,
+      key: `jsx${m[1] ?? m[2] ?? ""}`,
     });
   }
   return out;
@@ -254,7 +255,7 @@ function propRaw(call, propName) {
 function ariaLabelIds(call) {
   const raw = propRaw(call, '"aria-label"');
   if (raw == null) return [];
-  return [...raw.full.matchAll(/id:\s*"([^"]+)"/g)].map((x) => x[1]).slice(0, 4);
+  return [...raw.full.matchAll(/id:\s*(?:"([^"]+)"|`([^`]+)`)/g)].map((x) => x[1] ?? x[2]).slice(0, 4);
 }
 
 /** 数某个元素的顶层 className 解析出几个变体（[!!f<<0] 这种按状态切的形态）。 */
@@ -356,8 +357,8 @@ function selftest() {
   // ⑩ 三元两个分支的 id 都要取到
   eq("夹具⑩ 三元 aria-label 两分支", ariaLabelIds({ props: `{"aria-label":V!=null?c({id:"a"}):c({id:"b"}),"aria-expanded":V!=null}` }), ["a", "b"]);
 
-  // 0.71.2 锚形态：组件里 aria-label 以 t({id:"BJ7R7v",…}) 用法引用；字符串内 "}" 不得截断函数体。
-  const target = 'function renamed(){const brace="}";return jsx("input",{"aria-label":t({id:"BJ7R7v",values:{label:x}})})}';
+  // 0.75.3 锚形态：反引号 id:`BJ7R7v` + jsx(`input`,…)；字符串内 "}" 不得截断函数体。
+  const target = "function renamed(){const brace=\"}\";return jsx(`input`,{\"aria-label\":t({id:`BJ7R7v`,values:{label:x}})})}";
   const discovered = findFeatureTargets([{ chunk: "chunk-renamed.js", source: target }]);
   eq("特征发现不依赖 chunk 或函数名，且字符串括号不截断函数", discovered.map(hit => [hit.chunk, hit.component, hit.fn.text]), [["chunk-renamed.js", "renamed", target]]);
   const shadowed = 'function outer(){function renamed(){return "unrelated"}}' + target;
@@ -365,6 +366,21 @@ function selftest() {
   // 消息表键形态（"BJ7R7v":[…]）不含用法形态 —— 38 个语言表 chunk 不得误配成锚。
   eq("消息表键形态不是组件用法，不得组成目标", findFeatureTargets([{ chunk: "table.js", source: 'function a(){return {"BJ7R7v":["Rename ",["label"]," account"]}}' }]).length, 0);
   eq("跨 chunk 的重复目标必须全部保留供唯一性守卫拒绝", findFeatureTargets([{ chunk: "a.js", source: target }, { chunk: "b.js", source: target }]).length, 2);
+
+  // ⑫ 0.75.3 官方 (0,B.jsx)(`input`,…) 调用形态
+  const fixture12 = "(0,B.jsx)(`input`,{\"aria-label\":c({id:`BJ7R7v`}),className:g(`a b`)})";
+  const calls12 = scanJsxCalls(fixture12);
+  eq("夹具⑫ (0,B.jsx) 可扫", calls12.length, 1);
+  eq("夹具⑫ 标签", calls12[0]?.tag, "`input`");
+  eq("夹具⑫ aria id", ariaLabelIds(calls12[0]), ["BJ7R7v"]);
+
+  // ⑪ 反引号 jsx 标签 / className / aria id（0.75.3）
+  const fixtureBt = "n.jsx(`input`,{\"aria-label\":c({id:`BJ7R7v`,values:{l:1}}),className:g(`a b`)})";
+  const callsBt = scanJsxCalls(fixtureBt);
+  eq("夹具⑪ 反引号标签可扫", callsBt.length, 1);
+  eq("夹具⑪ 反引号标签值", callsBt[0]?.tag, "`input`");
+  eq("夹具⑪ 反引号 className", parseClassNames(propRaw(callsBt[0], "className")?.value), ["a", "b"]);
+  eq("夹具⑪ 反引号 aria id", ariaLabelIds(callsBt[0]), ["BJ7R7v"]);
 
   console.log(fails === 0 ? "\n✅ 自检全绿" : `\n❌ 自检 ${fails} 项失败`);
   return fails === 0;
@@ -416,8 +432,9 @@ const INPUT_IDS = ["BJ7R7v"]; // 重命名输入框的 aria-label 消息 id
 const BTN_IDS = ["xzJ6xV", "tT4tWM"]; // 展开态(保存) / 收起态(编辑) —— 官方同一个 button
 
 const hasAriaId = (c, ids) => ariaLabelIds(c).some((id) => ids.includes(id));
-const input = tree.find((c) => c.tag === `"input"` && hasAriaId(c, INPUT_IDS));
-const button = tree.find((c) => c.tag === `"button"` && hasAriaId(c, BTN_IDS));
+const tagName = (c) => (c?.tag ?? "").replace(/^["`]|["`]$/g, "");
+const input = tree.find((c) => tagName(c) === "input" && hasAriaId(c, INPUT_IDS));
+const button = tree.find((c) => tagName(c) === "button" && hasAriaId(c, BTN_IDS));
 // 账户名行 = input 的直接父 span（不是外层那个 span —— 两层都含 input 的 aria-label）
 const nameRow = input?.parent;
 // 表单槽位 = 沿父链向上最近的**带 className 的 div** 祖先。⚠️ 不能写死成「直接父」：
@@ -428,7 +445,7 @@ const nameRow = input?.parent;
 //         变体下沉到 input 的兄弟显示态 span 上 —— 「div+变体」判据因此扑空（0 个变体）。
 // 新判据「最近带 className 的 div」在两个版本下都唯一：外层 wrapper div 无 className，
 // 分隔线 div 不是账户名行的祖先。变体数降级为汇报信息，不再是判据。
-const formSlot = nearestAncestor(nameRow, (p) => p.tag === `"div"` && propRaw(p, "className") != null);
+const formSlot = nearestAncestor(nameRow, (p) => tagName(p) === "div" && propRaw(p, "className") != null);
 
 function officialClasses(call, label, extra = "") {
   if (call == null) {

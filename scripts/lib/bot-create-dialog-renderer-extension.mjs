@@ -24,7 +24,7 @@ export const BOT_CREATE_STYLE = `
 .r-create-bot-body{padding:0 16px 16px}
 .r-create-bot{display:flex;flex-direction:column;gap:12px;width:100%;min-width:0}
 .r-create-bot-preview{position:relative;display:flex;align-items:center;justify-content:center;align-self:center;width:96px;height:96px;margin:8px 0 2px}
-.r-create-bot-name{display:block;width:100%;box-sizing:border-box;padding:8px 10px;margin:4px 0;color:#f5f5f5;background:transparent;border:.5px solid rgba(245,245,245,.1);border-radius:8px;outline:none;font:inherit;font-size:13px;line-height:18px}
+.r-create-bot-name{display:block;width:100%;box-sizing:border-box;padding:8px 10px;margin:4px 0;color:#f5f5f5;background:transparent;border:.5px solid rgba(245,245,245,.1);border-radius:8px;outline:none;font:inherit;font-size:13px;line-height:18px;text-align:center}
 .r-create-bot-name::placeholder{color:rgba(245,245,245,.54)}
 .r-create-bot-name:focus{border-color:var(--sand-border-focus)}
 .r-create-bot-shapes{display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px 0}
@@ -129,9 +129,39 @@ function replaceExactlyOnce(source, before, after, label) {
   return source.slice(0, first) + after + source.slice(first + before.length);
 }
 
+// Official 0.75.3 bKe (expanded) and qYe (rail) share onNewBot; 0.18 n0n still used onNewChat.
+export function patchCollapsedCreateBotEntry(source) {
+  let patched = replaceExactlyOnce(source, "p.jsx(n0n,{onNewChat:F})", "p.jsx(n0n,{onNewChat:RCreateBotOpen})", "collapsed plus callback");
+  const ast = parse(patched, { ecmaVersion: "latest", sourceType: "module" });
+  const rail = ast.body.find(node => node.type === "FunctionDeclaration" && node.id.name === "n0n");
+  if (!rail) throw new Error("Create Bot collapsed rail component is missing.");
+  const edits = [];
+  function visit(node) {
+    const key = node.type === "Property" ? (node.key.name ?? node.key.value) : null;
+    if (key === "content" || key === "aria-label") {
+      const value = node.value;
+      const original = value.type === "Literal" ? value.value
+        : value.type === "CallExpression" && value.callee.name === "RLocT" ? value.arguments[0]?.value : null;
+      if (original !== (key === "content" ? "New chat" : "New")) throw new Error("Create Bot collapsed plus label changed.");
+      edits.push({ start: value.start, end: value.end });
+    }
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) value.forEach(child => { if (child?.type) visit(child); });
+      else if (value?.type) visit(value);
+    }
+  }
+  visit(rail.body);
+  if (edits.length !== 2) throw new Error("Create Bot collapsed plus labels are missing or ambiguous.");
+  for (const { start, end } of edits.sort((a, b) => b.start - a.start)) {
+    patched = patched.slice(0, start) + 'RCreateBotT("New Bot","新建 Bot")' + patched.slice(end);
+  }
+  return patched;
+}
+
 export function patchBotCreateDialogRenderer(source) {
   if (source.includes("function RCreateBotHost(")) throw new Error("Create Bot patch was already applied.");
   let patched = replaceExactlyOnce(source, MOUNT_ANCHOR, MOUNT_ANCHOR + ",p.jsx(RCreateBotHost,{})", "mount");
+  patched = patchCollapsedCreateBotEntry(patched);
   patched += BOT_CREATE_COMPONENTS;
   parse(patched, { ecmaVersion: "latest", sourceType: "module" });
   return patched;
@@ -163,7 +193,7 @@ export async function applyBotCreateDialogRendererExtension({ stageRoot }) {
       { file: "dist/renderer/assets/" + file, originalSha256: sha256(source), patchedSha256: sha256(patched) },
       { file: "dist/renderer/assets/" + cssFile, originalSha256: sha256(css), patchedSha256: sha256(patchedCss) },
     ],
-    features: ["create-bot-dialog", "official-14-shape-picker", "n5n-kickstart"],
+    features: ["create-bot-dialog", "collapsed-plus-create-bot", "official-14-shape-picker", "n5n-kickstart"],
   };
   await writeFile(path.join(stageRoot, "dist", "renderer-create-bot-extension.json"), JSON.stringify(provenance, null, 2) + "\n");
   return provenance;

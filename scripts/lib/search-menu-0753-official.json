@@ -1,0 +1,377 @@
+{
+  "reference": "Grok Bot 0.75.3 tcn command rows and Jon keyboard shortcuts",
+  "appSha256": "952696656fa99b6631d0d0d4acdb7372fbb62b3a28f0e20c89f2baa340a250bb",
+  "cssSha256": "f427579fa76c117aaea459e52ef2340b2bb674b8ed3e02d292bad87cdd671a43",
+  "functions": {
+    "PC": "function PC(e){PC.d=2354;let t=(0,Z.c)(22),n,r,i,a,o,s,c;t[0]===e?(n=t[1],r=t[2],i=t[3],a=t[4],o=t[5],s=t[6],c=t[7]):({children:n,size:s,isSelected:c,className:r,style:o,ref:i,...a}=e,t[0]=e,t[1]=n,t[2]=r,t[3]=i,t[4]=a,t[5]=o,t[6]=s,t[7]=c);let l=s===void 0?`sm`:s,u=c!==void 0&&c,d=l===`lg`,f,p,m;t[8]!==r||t[9]!==d||t[10]!==u||t[11]!==a||t[12]!==o?(f=ga(NC.root,d?Jb.label:Jb.caption,d?Yb.medium:Yb.regular,d&&NC.lg,u&&NC.selected,o),p=a,m=$(`sand-kit-key-cap`,f.className,r),t[8]=r,t[9]=d,t[10]=u,t[11]=a,t[12]=o,t[13]=f,t[14]=p,t[15]=m):(f=t[13],p=t[14],m=t[15]);let h;return t[16]!==f.style||t[17]!==n||t[18]!==i||t[19]!==p||t[20]!==m?(h=(0,Y.jsx)(`span`,{...p,className:m,ref:i,style:f.style,children:n}),t[16]=f.style,t[17]=n,t[18]=i,t[19]=p,t[20]=m,t[21]=h):h=t[21],h}",
+    "Ion": "function Ion(e){return e===`ctrl`||e===`alt`||e===`shift`||e===`meta`}",
+    "E8": "function E8(e,t){let n=t?jon:Mon,r=Non[t?`mac`:`other`],i=t?`meta`:`ctrl`;return e.split(`,`).map(e=>{let a=e.split(`+`).map(e=>e.trim().toLowerCase()).map(e=>e===`mod`?i:e),o=new Set(a.filter(Ion));return[...n.filter(e=>o.has(e)).map(e=>r[e]),...a.filter(e=>!Ion(e)).map(e=>(t?Fon[e]:void 0)??Pon[e]??e.toUpperCase())]})}",
+    "Lon": "function Lon(e,t){let[n=[]]=E8(e,t);return n.join(t?``:`+`)}",
+    "zon": "function zon(e){let t=Lon(`shift+enter`,e),n=Lon(`ctrl`,e);return[{id:`essentials`,title:{id:`UQjid/`},entries:[{id:`search`,label:{id:`A1taO8`},keys:[D8(`sand.commandPalette`),D8(`sand.focusSearch`)]},{id:`new-bot`,label:{id:`2hjDEV`},keys:[D8(`sand.newAgent`)]},{id:`send`,label:{id:`JlFcis`},hint:{id:`8xEOPI`,values:{newLineKeys:t}},keys:[O8(`enter`)]},{id:`go-to-bot`,label:{id:`gxtNie`},keys:[{kind:`range`,ids:Ron}]},{id:`compact-sidebar`,label:{id:`dZ1Zpg`},keys:[D8(`sand.toggleSidebar`)]},{id:`settings`,label:{id:`Tz0i8g`},keys:[D8(`sand.openSettings`)]},{id:`keyboard-shortcuts`,label:{id:`77Emn0`},keys:[D8(kon)]}]},{id:`chat`,title:{id:`AHZflp`},entries:[{id:`focus-chat`,label:{id:`85qDhL`},keys:[D8(`sand.focusInput`)]},{id:`find-in-chat`,label:{id:`pF1b7U`},keys:[D8(`sand.findInChat`)]},{id:`dictate`,label:{id:`mwHVVa`},hint:{id:`lO8IrZ`},keys:[O8(`mod+d`)]},{id:`add-selection`,label:{id:`t1U5Lc`},keys:[D8(`sand.addSelectionToPrompt`)]}]},{id:`navigation`,title:{id:`UxKoFf`},entries:[{id:`previous-next-bot`,label:{id:`KmkBNH`},keys:[D8(`sand.previousAgent`),D8(`sand.nextAgent`)],separator:`slash`,requiresAll:!0},{id:`back-forward`,label:{id:`lNG0Eo`},keys:[D8(`sand.navigateBack`),D8(`sand.navigateForward`)],separator:`slash`,requiresAll:!0},{id:`switch-bots`,label:{id:`LES8xp`},hint:{id:`7/6Ntt`,values:{cycleKey:n}},keys:[O8(`ctrl+tab`)]}]},{id:`panels`,title:{id:`GCrhIF`},entries:[{id:`details`,label:{id:`URmyfc`},keys:[D8(`sand.toggleInfo`)]},{id:`bot-settings`,label:{id:`q/EMCC`},keys:[D8(`sand.toggleAgentSettings`)]},{id:`skills`,label:{id:`PCSkw2`},keys:[D8(`sand.openSkills`)]},{id:`connect-apps`,label:{id:`h8AWBN`},keys:[D8(`sand.openTools`)]}]},{id:`window`,title:{id:`T3Mld1`},entries:[{id:`zoom`,label:{id:`ACjxWW`},keys:[O8(`mod+equal`),O8(`mod+minus`),O8(`mod+0`)],separator:`slash`},{id:`full-screen`,label:{id:`OwIqiD`},keys:[O8({mac:`ctrl+meta+f`,other:`f11`})]}]}]}",
+    "Bon": "function Bon(e,t){return typeof e==`string`?e:t?e.mac:e.other}",
+    "Von": "function Von(e,t,n){if(e.some(e=>!t.has(e)))return null;let[r]=E8(t.get(e[0]??``)??``,n),[i]=E8(t.get(e.at(-1)??``)??``,n);return r==null||i==null?null:[...r.slice(0,-1),`${r.at(-1)}\\u2013${i.at(-1)}`]}",
+    "Hon": "function Hon(e,t,n){switch(e.kind){case`action`:{let r=t.get(e.id);return r==null?null:E8(r,n).slice(0,1)}case`range`:{let r=Von(e.ids,t,n);return r==null?null:[r]}case`fixed`:return E8(Bon(e.hotkey,n),n);default:return e}}",
+    "Uon": "function Uon(e,t,n,r){let i=e.keys.map(e=>Hon(e,t,r));if(e.requiresAll===!0&&i.some(e=>e==null))return null;let a=i.flatMap(e=>e??[]);return a.length===0?null:{id:e.id,label:n(e.label),...e.hint==null?{}:{hint:n(e.hint)},chords:a,separator:e.separator??`or`}}",
+    "Won": "function Won(e){let t=new Map;for(let n of e.actions)n.hotkey!=null&&t.set(n.id,n.hotkey);return zon(e.isMacPlatform).flatMap(n=>{let r=n.entries.flatMap(n=>{let r=Uon(n,t,e.translate,e.isMacPlatform);return r==null?[]:[r]});return r.length===0?[]:[{id:n.id,title:e.translate(n.title),rows:r}]})}",
+    "qon": "function qon(e){let t=e.reduce((e,t)=>e+t.rows.length,0),n=0,r=0;for(;r<e.length&&n<t/2;)n+=e[r]?.rows.length??0,r+=1;return[e.slice(0,r),e.slice(r)]}",
+    "Jon": "function Jon(e){Jon.d=2585;let t=(0,Z.c)(26),{groups:n,onClose:r}=e,{_:i}=J(),a=(0,X.useRef)(null),o;t[0]===n?o=t[1]:(o=qon(n),t[0]=n,t[1]=o);let[s,c]=o,l;t[2]===i?l=t[3]:(l=i({id:`77Emn0`}),t[2]=i,t[3]=l);let u;t[4]===r?u=t[5]:(u=e=>{e||r()},t[4]=r,t[5]=u);let d,f;t[6]===Symbol.for(`react.memo_cache_sentinel`)?(d={className:`sand-78zum5 sand-6s0dn4 sand-1qughib sand-ehausa sand-2lah0s sand-t9g0qb sand-1xlntvz sand-92arao sand-t1q3vd`},f=(0,Y.jsx)(`h2`,{...ga(k8.title,Jb.lg,Yb.semibold),children:(0,Y.jsx)(ka,{id:`77Emn0`})}),t[6]=d,t[7]=f):(d=t[6],f=t[7]);let p;t[8]===i?p=t[9]:(p=i({id:`yz7wBu`}),t[8]=i,t[9]=p);let m;t[10]!==r||t[11]!==p?(m=(0,Y.jsxs)(`div`,{...d,children:[f,(0,Y.jsx)(uS,{\"aria-label\":p,icon:`x`,onClick:r,size:`sm`,variant:`ghost`})]}),t[10]=r,t[11]=p,t[12]=m):m=t[12];let h;t[13]===Symbol.for(`react.memo_cache_sentinel`)?(h={className:`sand-78zum5 sand-t4v3it sand-1odjw0f sand-13ly8rp sand-mw8u6f sand-20eq2h sand-1t137rt`},t[13]=h):h=t[13];let g;t[14]===s?g=t[15]:(g=(0,Y.jsx)(A8,{groups:s}),t[14]=s,t[15]=g);let _;t[16]===c?_=t[17]:(_=(0,Y.jsx)(A8,{groups:c}),t[16]=c,t[17]=_);let v;t[18]!==_||t[19]!==g?(v=(0,Y.jsxs)(`div`,{...h,ref:a,tabIndex:-1,children:[g,_]}),t[18]=_,t[19]=g,t[20]=v):v=t[20];let y;return t[21]!==v||t[22]!==l||t[23]!==u||t[24]!==m?(y=(0,Y.jsxs)(cC,{\"aria-label\":l,initialFocus:a,onOpenChange:u,open:!0,width:Gon,children:[m,v]}),t[21]=v,t[22]=l,t[23]=u,t[24]=m,t[25]=y):y=t[25],y}",
+    "A8": "function A8(e){A8.d=2587;let t=(0,Z.c)(5),{groups:n}=e,r;t[0]===Symbol.for(`react.memo_cache_sentinel`)?(r={className:`sand-78zum5 sand-dt5ytf sand-1qqbgdy sand-1r8uery sand-1iyjqo2 sand-euugli`},t[0]=r):r=t[0];let i;t[1]===n?i=t[2]:(i=n.map(Yon),t[1]=n,t[2]=i);let a;return t[3]===i?a=t[4]:(a=(0,Y.jsx)(`div`,{...r,children:i}),t[3]=i,t[4]=a),a}",
+    "Yon": "function Yon(e){return(0,Y.jsx)(Xon,{group:e},e.id)}",
+    "Xon": "function Xon(e){Xon.d=2588;let t=(0,Z.c)(13),{group:n}=e,r=(0,X.useId)(),i;t[0]===Symbol.for(`react.memo_cache_sentinel`)?(i=ga(k8.groupTitle,Jb.sm,Yb.medium),t[0]=i):i=t[0];let a;t[1]!==n.title||t[2]!==r?(a=(0,Y.jsx)(`h3`,{...i,id:r,children:n.title}),t[1]=n.title,t[2]=r,t[3]=a):a=t[3];let o;t[4]===Symbol.for(`react.memo_cache_sentinel`)?(o={className:`sand-e8uvvx sand-dj266r sand-at24cr sand-1c1uobl`},t[4]=o):o=t[4];let s;t[5]===n.rows?s=t[6]:(s=n.rows.map(Zon),t[5]=n.rows,t[6]=s);let c;t[7]===s?c=t[8]:(c=(0,Y.jsx)(`ul`,{...o,children:s}),t[7]=s,t[8]=c);let l;return t[9]!==a||t[10]!==c||t[11]!==r?(l=(0,Y.jsxs)(`section`,{\"aria-labelledby\":r,children:[a,c]}),t[9]=a,t[10]=c,t[11]=r,t[12]=l):l=t[12],l}",
+    "Zon": "function Zon(e){return(0,X.createElement)(`li`,{...ga(k8.row,Jb.base),\"data-row\":e.id,key:e.id},(0,Y.jsxs)(`span`,{className:`sand-78zum5 sand-1pha0wt sand-ehausa sand-euugli sand-b3r6kr sand-uxw1ft`,children:[(0,Y.jsx)(`span`,{className:`sand-2lah0s`,children:e.label}),e.hint==null?null:(0,Y.jsx)(`span`,{...ga(k8.rowHint,Jb.sm),children:e.hint})]}),(0,Y.jsx)(Qon,{row:e}))}",
+    "Qon": "function Qon(e){Qon.d=2589;let t=(0,Z.c)(8),{row:n}=e,r;t[0]===Symbol.for(`react.memo_cache_sentinel`)?(r={className:`sand-3nfvp2 sand-6s0dn4 sand-2lah0s sand-1jnr06f`},t[0]=r):r=t[0];let i;if(t[1]!==n.chords||t[2]!==n.separator){let e;t[4]===n.separator?e=t[5]:(e=(e,t)=>(0,Y.jsxs)(`span`,{className:`sand-3nfvp2 sand-6s0dn4 sand-195vfkc`,children:[t>0?(0,Y.jsx)(`span`,{...ga(k8.joiner,Jb.caption),children:n.separator===`slash`?`/`:(0,Y.jsx)(ka,{id:`BzEFor`})}):null,e.map($on)]},e.join(`+`)),t[4]=n.separator,t[5]=e),i=n.chords.map(e),t[1]=n.chords,t[2]=n.separator,t[3]=i}else i=t[3];let a;return t[6]===i?a=t[7]:(a=(0,Y.jsx)(`span`,{...r,dir:`ltr`,children:i}),t[6]=i,t[7]=a),a}",
+    "$on": "function $on(e){return(0,Y.jsx)(PC,{style:k8.keyCap,children:e},e)}"
+  },
+  "variables": {
+    "Jb": "{xxs:{kGuDYH:`sand-7uqsge`,kLWn49:`sand-19jnaw5`,kb6lSQ:`sand-1h1hs02`,$$css:!0},xs:{kGuDYH:`sand-1ao5zh4`,kLWn49:`sand-10jubzo`,kb6lSQ:`sand-b7p3tu`,$$css:!0},sm:{kGuDYH:`sand-g2dot2`,kLWn49:`sand-w8bs97`,kb6lSQ:`sand-14gdtuo`,$$css:!0},base:{kGuDYH:`sand-1yil2se`,kLWn49:`sand-1lvvshy`,kb6lSQ:`sand-ja3w2a`,$$css:!0},lg:{kGuDYH:`sand-q1hgy8`,kLWn49:`sand-1971ylj`,kb6lSQ:`sand-99smjr`,$$css:!0},xl:{kGuDYH:`sand-79ao00`,kLWn49:`sand-10ux60h`,kb6lSQ:`sand-k0i524`,$$css:!0},xxl:{kGuDYH:`sand-1mmermx`,kLWn49:`sand-vh7mc1`,kb6lSQ:`sand-1ehaq9d`,$$css:!0},xxxl:{kGuDYH:`sand-zdi6ij`,kLWn49:`sand-1odv9bt`,kb6lSQ:`sand-lnf3q9`,$$css:!0},heading1:{kGuDYH:`sand-1ewwscv`,kLWn49:`sand-1odv9bt`,kb6lSQ:`sand-lnf3q9`,$$css:!0},heading2:{kGuDYH:`sand-1i1m3gp`,kLWn49:`sand-vh7mc1`,kb6lSQ:`sand-1ehaq9d`,$$css:!0},heading3:{kGuDYH:`sand-19d36u7`,kLWn49:`sand-10ux60h`,kb6lSQ:`sand-k0i524`,$$css:!0},body1:{kGuDYH:`sand-fc7y3v`,kLWn49:`sand-1lvvshy`,kb6lSQ:`sand-ja3w2a`,$$css:!0},body2:{kGuDYH:`sand-11wthnw`,kLWn49:`sand-w8bs97`,kb6lSQ:`sand-14gdtuo`,$$css:!0},label:{kGuDYH:`sand-1wm8ruf`,kLWn49:`sand-10jubzo`,kb6lSQ:`sand-b7p3tu`,$$css:!0},caption:{kGuDYH:`sand-y5h43f`,kLWn49:`sand-19jnaw5`,kb6lSQ:`sand-1h1hs02`,$$css:!0}}",
+    "Yb": "{regular:{k63SB2:`sand-1k6tqyu`,$$css:!0},medium:{k63SB2:`sand-1rhlpx6`,$$css:!0},semibold:{k63SB2:`sand-xzm5a7`,$$css:!0}}",
+    "NC": "{root:{k1xSpc:`sand-3nfvp2`,kGNEyG:`sand-6s0dn4`,kjj79g:`sand-l56j7k`,kB7OPa:`sand-9f619`,kmuXW:`sand-2lah0s`,k7Eaqz:`sand-16xo4sp`,kLKAdn:`sand-4p5aij`,kwRFfy:`sand-11lfxj5`,kGO01o:`sand-1j85h84`,kZCmMZ:`sand-135b78x`,kaIpWk:`sand-1i6gnc1`,kMzoRj:`sand-4hv7ue`,ksu8eU:`sand-1y0btm7`,kVAM5u:`sand-14ed0nm`,kWkggS:`sand-fwqdrz`,kMwMTN:`sand-1o0liin`,kcqcaj:`sand-ss6m8b`,khDVqt:`sand-uxw1ft`,kfSwDN:`sand-87ps6o`,kfzvcC:`sand-47corl`,$$css:!0},lg:{kzqmXN:`sand-vy4d1p`,kZKoxP:`sand-xk0z11`,k7Eaqz:`sand-nei2rj`,kLKAdn:`sand-exx8yu`,kwRFfy:`sand-yri2b`,kGO01o:`sand-18d9i69`,kZCmMZ:`sand-1c1uobl`,kaIpWk:`sand-1qmwy7c`,kVAM5u:`sand-5fd6op`,kWkggS:`sand-fwqdrz`,$$css:!0},selected:{kVAM5u:`sand-5fd6op`,kWkggS:`sand-1cgqir`,kKwaWg:`sand-r82q86`,kMwMTN:`sand-xcaa6e`,$$css:!0}}",
+    "kon": "`sand.keyboardShortcuts`",
+    "Aon": "[`mod+slash`,`mod+shift+slash`].join(`, `)",
+    "jon": "[`ctrl`,`alt`,`shift`,`meta`]",
+    "Mon": "[`ctrl`,`meta`,`alt`,`shift`]",
+    "Non": "{mac:{ctrl:`⌃`,alt:`⌥`,shift:`⇧`,meta:`⌘`},other:{ctrl:`Ctrl`,alt:`Alt`,shift:`Shift`,meta:`Meta`}}",
+    "Pon": "{enter:`Enter`,escape:`Escape`,tab:`Tab`,equal:`+`,minus:`−`,comma:`,`,slash:`/`,bracketleft:`[`,bracketright:`]`,up:`↑`,down:`↓`}",
+    "Fon": "{enter:`↵`,escape:`⎋`}",
+    "D8": "e=>({kind:`action`,id:e})",
+    "O8": "e=>({kind:`fixed`,hotkey:e})",
+    "Ron": "Array.from({length:9},(e,t)=>`sand.focusAgent${t+1}`)",
+    "Gon": "720",
+    "k8": "{title:{keoZOQ:`sand-dj266r`,k1K539:`sand-at24cr`,kMwMTN:`sand-tyxrsu`,$$css:!0},groupTitle:{keoZOQ:`sand-dj266r`,k1K539:`sand-at24cr`,kGO01o:`sand-cnij5n`,kMwMTN:`sand-tyxrsu`,$$css:!0},row:{k1xSpc:`sand-78zum5`,kGNEyG:`sand-6s0dn4`,kjj79g:`sand-1qughib`,kOIVth:`sand-1oot3zn`,kAzted:`sand-u97haq`,kMwMTN:`sand-tyxrsu`,kt9PQ7:`sand-1hkp6id`,kfdmCh:`sand-1q0q8m5`,kL6WhQ:`sand-rmjj2h sand-1bta2m4`,$$css:!0},rowHint:{k7Eaqz:`sand-euugli`,kVQacm:`sand-b3r6kr`,kg5iWk:`sand-lyipyv`,kMwMTN:`sand-169k319`,$$css:!0},keyCap:{k7Eaqz:`sand-t4ypqs`,kZKoxP:`sand-1qx5ct2`,$$css:!0},joiner:{kMwMTN:`sand-169k319`,$$css:!0}}"
+  },
+  "messages": {
+    "en": {
+      "UQjid/": [
+        "Essentials"
+      ],
+      "A1taO8": [
+        "Search"
+      ],
+      "2hjDEV": [
+        "New Bot"
+      ],
+      "JlFcis": [
+        "Send"
+      ],
+      "8xEOPI": [
+        [
+          "newLineKeys"
+        ],
+        " for new line"
+      ],
+      "gxtNie": [
+        "Go to Bot"
+      ],
+      "dZ1Zpg": [
+        "Compact sidebar"
+      ],
+      "Tz0i8g": [
+        "Settings"
+      ],
+      "77Emn0": [
+        "Keyboard shortcuts"
+      ],
+      "AHZflp": [
+        "Chat"
+      ],
+      "85qDhL": [
+        "Focus chat"
+      ],
+      "pF1b7U": [
+        "Find in chat"
+      ],
+      "mwHVVa": [
+        "Dictate"
+      ],
+      "lO8IrZ": [
+        "Hold to talk"
+      ],
+      "t1U5Lc": [
+        "Add selection to chat"
+      ],
+      "UxKoFf": [
+        "Navigation"
+      ],
+      "KmkBNH": [
+        "Previous / next Bot"
+      ],
+      "lNG0Eo": [
+        "Back / forward"
+      ],
+      "LES8xp": [
+        "Switch Bots"
+      ],
+      "7/6Ntt": [
+        "Hold ",
+        [
+          "cycleKey"
+        ]
+      ],
+      "GCrhIF": [
+        "Panels"
+      ],
+      "URmyfc": [
+        "Details"
+      ],
+      "q/EMCC": [
+        "Bot settings"
+      ],
+      "PCSkw2": [
+        "Skills"
+      ],
+      "h8AWBN": [
+        "Connect apps"
+      ],
+      "T3Mld1": [
+        "Window"
+      ],
+      "ACjxWW": [
+        "Zoom"
+      ],
+      "OwIqiD": [
+        "Full screen"
+      ],
+      "yz7wBu": [
+        "Close"
+      ],
+      "BzEFor": [
+        "or"
+      ],
+      "yqxI6O": [
+        "New group chat"
+      ],
+      "c3XJ18": [
+        "Help"
+      ],
+      "wlQNTg": [
+        "Members"
+      ],
+      "KeHQxt": [
+        "Current chat"
+      ],
+      "8OT456": [
+        "Settings: ",
+        [
+          "0"
+        ]
+      ]
+    },
+    "zh": {
+      "UQjid/": [
+        "常用"
+      ],
+      "A1taO8": [
+        "搜索"
+      ],
+      "2hjDEV": [
+        "新建 Bot"
+      ],
+      "JlFcis": [
+        "发送"
+      ],
+      "8xEOPI": [
+        [
+          "newLineKeys"
+        ],
+        " 换行"
+      ],
+      "gxtNie": [
+        "转到 Bot"
+      ],
+      "dZ1Zpg": [
+        "紧凑侧边栏"
+      ],
+      "Tz0i8g": [
+        "设置"
+      ],
+      "77Emn0": [
+        "键盘快捷键"
+      ],
+      "AHZflp": [
+        "聊天"
+      ],
+      "85qDhL": [
+        "聚焦聊天"
+      ],
+      "pF1b7U": [
+        "在聊天中查找"
+      ],
+      "mwHVVa": [
+        "听写"
+      ],
+      "lO8IrZ": [
+        "按住说话"
+      ],
+      "t1U5Lc": [
+        "将所选内容添加到聊天"
+      ],
+      "UxKoFf": [
+        "导航"
+      ],
+      "KmkBNH": [
+        "上一个 / 下一个 Bot"
+      ],
+      "lNG0Eo": [
+        "后退 / 前进"
+      ],
+      "LES8xp": [
+        "切换 Bot"
+      ],
+      "7/6Ntt": [
+        "按住 ",
+        [
+          "cycleKey"
+        ]
+      ],
+      "GCrhIF": [
+        "面板"
+      ],
+      "URmyfc": [
+        "详情"
+      ],
+      "q/EMCC": [
+        "Bot 设置"
+      ],
+      "PCSkw2": [
+        "技能"
+      ],
+      "h8AWBN": [
+        "连接应用"
+      ],
+      "T3Mld1": [
+        "窗口"
+      ],
+      "ACjxWW": [
+        "缩放"
+      ],
+      "OwIqiD": [
+        "全屏"
+      ],
+      "yz7wBu": [
+        "关闭"
+      ],
+      "BzEFor": [
+        "或"
+      ],
+      "yqxI6O": [
+        "创建群聊"
+      ],
+      "c3XJ18": [
+        "帮助"
+      ],
+      "wlQNTg": [
+        "成员"
+      ],
+      "KeHQxt": [
+        "当前聊天"
+      ],
+      "8OT456": [
+        "设置：",
+        [
+          "0"
+        ]
+      ]
+    }
+  },
+  "css": ".rsm0753-sand-14ed0nm:not(#\\#):not(#\\#){border-color:var(--sand-border-quaternary-translucent)}\n.rsm0753-sand-5fd6op:not(#\\#):not(#\\#){border-color:var(--sand-border-tertiary-translucent)}\n.rsm0753-sand-1i6gnc1:not(#\\#):not(#\\#){border-radius:4px}\n.rsm0753-sand-1qmwy7c:not(#\\#):not(#\\#){border-radius:8px}\n.rsm0753-sand-1y0btm7:not(#\\#):not(#\\#){border-style:solid}\n.rsm0753-sand-4hv7ue:not(#\\#):not(#\\#){border-width:.5px}\n.rsm0753-sand-195vfkc:not(#\\#):not(#\\#){gap:2px}\n.rsm0753-sand-1jnr06f:not(#\\#):not(#\\#){gap:4px}\n.rsm0753-sand-ehausa:not(#\\#):not(#\\#){gap:var(--cursor-spacing-2)}\n.rsm0753-sand-1oot3zn:not(#\\#):not(#\\#){gap:var(--cursor-spacing-3)}\n.rsm0753-sand-1qqbgdy:not(#\\#):not(#\\#){gap:var(--cursor-spacing-5)}\n.rsm0753-sand-t4v3it:not(#\\#):not(#\\#){gap:var(--cursor-spacing-8)}\n.rsm0753-sand-e8uvvx:not(#\\#):not(#\\#){list-style:none}\n.rsm0753-sand-b3r6kr:not(#\\#):not(#\\#){overflow:hidden}\n.rsm0753-sand-mw8u6f:not(#\\#):not(#\\#){padding-inline:var(--cursor-spacing-5)}\n.rsm0753-sand-1pha0wt:not(#\\#):not(#\\#):not(#\\#){align-items:baseline}\n.rsm0753-sand-6s0dn4:not(#\\#):not(#\\#):not(#\\#){align-items:center}\n.rsm0753-sand-1cgqir:not(#\\#):not(#\\#):not(#\\#){background-color:var(--sand-bg-accent-primary)}\n.rsm0753-sand-fwqdrz:not(#\\#):not(#\\#):not(#\\#){background-color:var(--sand-bg-secondary)}\n.rsm0753-sand-r82q86:not(#\\#):not(#\\#):not(#\\#){background-image:linear-gradient(var(--lightningcss-light,#ffffff29)var(--lightningcss-dark,#ffffff08),#0000)}\n.rsm0753-sand-9f619:not(#\\#):not(#\\#):not(#\\#){box-sizing:border-box}\n.rsm0753-sand-xcaa6e:not(#\\#):not(#\\#):not(#\\#){color:var(--sand-text-on-primary)}\n.rsm0753-sand-tyxrsu:not(#\\#):not(#\\#):not(#\\#){color:var(--sand-text-primary)}\n.rsm0753-sand-1o0liin:not(#\\#):not(#\\#):not(#\\#){color:var(--sand-text-secondary)}\n.rsm0753-sand-169k319:not(#\\#):not(#\\#):not(#\\#){color:var(--sand-text-tertiary)}\n.rsm0753-sand-78zum5:not(#\\#):not(#\\#):not(#\\#){display:flex}\n.rsm0753-sand-3nfvp2:not(#\\#):not(#\\#):not(#\\#){display:inline-flex}\n.rsm0753-sand-1r8uery:not(#\\#):not(#\\#):not(#\\#){flex-basis:0}\n.rsm0753-sand-dt5ytf:not(#\\#):not(#\\#):not(#\\#){flex-direction:column}\n.rsm0753-sand-1iyjqo2:not(#\\#):not(#\\#):not(#\\#){flex-grow:1}\n.rsm0753-sand-2lah0s:not(#\\#):not(#\\#):not(#\\#){flex-shrink:0}\n.rsm0753-sand-19d36u7:not(#\\#):not(#\\#):not(#\\#){font-size:17px}\n.rsm0753-sand-1i1m3gp:not(#\\#):not(#\\#):not(#\\#){font-size:22px}\n.rsm0753-sand-1ewwscv:not(#\\#):not(#\\#):not(#\\#){font-size:26px}\n.rsm0753-sand-11wthnw:not(#\\#):not(#\\#):not(#\\#){font-size:var(--cursor-font-size-base)}\n.rsm0753-sand-fc7y3v:not(#\\#):not(#\\#):not(#\\#){font-size:var(--cursor-font-size-lg)}\n.rsm0753-sand-1wm8ruf:not(#\\#):not(#\\#):not(#\\#){font-size:var(--cursor-font-size-sm)}\n.rsm0753-sand-y5h43f:not(#\\#):not(#\\#):not(#\\#){font-size:var(--cursor-font-size-xs)}\n.rsm0753-sand-1yil2se:not(#\\#):not(#\\#):not(#\\#){font-size:var(--sand-font-size-base)}\n.rsm0753-sand-q1hgy8:not(#\\#):not(#\\#):not(#\\#){font-size:var(--sand-font-size-lg)}\n.rsm0753-sand-g2dot2:not(#\\#):not(#\\#):not(#\\#){font-size:var(--sand-font-size-sm)}\n.rsm0753-sand-79ao00:not(#\\#):not(#\\#):not(#\\#){font-size:var(--sand-font-size-xl)}\n.rsm0753-sand-1ao5zh4:not(#\\#):not(#\\#):not(#\\#){font-size:var(--sand-font-size-xs)}\n.rsm0753-sand-1mmermx:not(#\\#):not(#\\#):not(#\\#){font-size:var(--sand-font-size-xxl)}\n.rsm0753-sand-7uqsge:not(#\\#):not(#\\#):not(#\\#){font-size:var(--sand-font-size-xxs)}\n.rsm0753-sand-zdi6ij:not(#\\#):not(#\\#):not(#\\#){font-size:var(--sand-font-size-xxxl)}\n.rsm0753-sand-ss6m8b:not(#\\#):not(#\\#):not(#\\#){font-variant-numeric:tabular-nums}\n.rsm0753-sand-1rhlpx6:not(#\\#):not(#\\#):not(#\\#){font-weight:var(--sand-font-weight-medium)}\n.rsm0753-sand-1k6tqyu:not(#\\#):not(#\\#):not(#\\#){font-weight:var(--sand-font-weight-regular)}\n.rsm0753-sand-xzm5a7:not(#\\#):not(#\\#):not(#\\#){font-weight:var(--sand-font-weight-semibold)}\n.rsm0753-sand-l56j7k:not(#\\#):not(#\\#):not(#\\#){justify-content:center}\n.rsm0753-sand-1qughib:not(#\\#):not(#\\#):not(#\\#){justify-content:space-between}\n.rsm0753-sand-ja3w2a:not(#\\#):not(#\\#):not(#\\#){letter-spacing:var(--sand-letter-spacing-base)}\n.rsm0753-sand-99smjr:not(#\\#):not(#\\#):not(#\\#){letter-spacing:var(--sand-letter-spacing-lg)}\n.rsm0753-sand-14gdtuo:not(#\\#):not(#\\#):not(#\\#){letter-spacing:var(--sand-letter-spacing-sm)}\n.rsm0753-sand-k0i524:not(#\\#):not(#\\#):not(#\\#){letter-spacing:var(--sand-letter-spacing-xl)}\n.rsm0753-sand-b7p3tu:not(#\\#):not(#\\#):not(#\\#){letter-spacing:var(--sand-letter-spacing-xs)}\n.rsm0753-sand-1ehaq9d:not(#\\#):not(#\\#):not(#\\#){letter-spacing:var(--sand-letter-spacing-xxl)}\n.rsm0753-sand-1h1hs02:not(#\\#):not(#\\#):not(#\\#){letter-spacing:var(--sand-letter-spacing-xxs)}\n.rsm0753-sand-lnf3q9:not(#\\#):not(#\\#):not(#\\#){letter-spacing:var(--sand-letter-spacing-xxxl)}\n.rsm0753-sand-1lvvshy:not(#\\#):not(#\\#):not(#\\#){line-height:var(--sand-line-height-base)}\n.rsm0753-sand-1971ylj:not(#\\#):not(#\\#):not(#\\#){line-height:var(--sand-line-height-lg)}\n.rsm0753-sand-w8bs97:not(#\\#):not(#\\#):not(#\\#){line-height:var(--sand-line-height-sm)}\n.rsm0753-sand-10ux60h:not(#\\#):not(#\\#):not(#\\#){line-height:var(--sand-line-height-xl)}\n.rsm0753-sand-10jubzo:not(#\\#):not(#\\#):not(#\\#){line-height:var(--sand-line-height-xs)}\n.rsm0753-sand-vh7mc1:not(#\\#):not(#\\#):not(#\\#){line-height:var(--sand-line-height-xxl)}\n.rsm0753-sand-19jnaw5:not(#\\#):not(#\\#):not(#\\#){line-height:var(--sand-line-height-xxs)}\n.rsm0753-sand-1odv9bt:not(#\\#):not(#\\#):not(#\\#){line-height:var(--sand-line-height-xxxl)}\n.rsm0753-sand-1t137rt:not(#\\#):not(#\\#):not(#\\#){outline-style:none}\n.rsm0753-sand-yri2b:not(#\\#):not(#\\#):not(#\\#){padding-inline-end:0}\n.rsm0753-sand-11lfxj5:not(#\\#):not(#\\#):not(#\\#){padding-inline-end:4px}\n.rsm0753-sand-t1q3vd:not(#\\#):not(#\\#):not(#\\#){padding-inline-end:var(--cursor-spacing-3)}\n.rsm0753-sand-1c1uobl:not(#\\#):not(#\\#):not(#\\#){padding-inline-start:0}\n.rsm0753-sand-135b78x:not(#\\#):not(#\\#):not(#\\#){padding-inline-start:4px}\n.rsm0753-sand-92arao:not(#\\#):not(#\\#):not(#\\#){padding-inline-start:var(--cursor-spacing-5)}\n.rsm0753-sand-47corl:not(#\\#):not(#\\#):not(#\\#){pointer-events:none}\n.rsm0753-sand-lyipyv:not(#\\#):not(#\\#):not(#\\#){text-overflow:ellipsis}\n.rsm0753-sand-87ps6o:not(#\\#):not(#\\#):not(#\\#){-webkit-user-select:none;user-select:none}\n.rsm0753-sand-uxw1ft:not(#\\#):not(#\\#):not(#\\#){white-space:nowrap}\n.rsm0753-sand-rmjj2h:not(#\\#):not(#\\#):not(#\\#):not(#\\#){border-bottom-color:var(--sand-border-tertiary-translucent)}\n.rsm0753-sand-1q0q8m5:not(#\\#):not(#\\#):not(#\\#):not(#\\#){border-bottom-style:solid}\n.rsm0753-sand-1hkp6id:not(#\\#):not(#\\#):not(#\\#):not(#\\#){border-bottom-width:.5px}\n.rsm0753-sand-1qx5ct2:not(#\\#):not(#\\#):not(#\\#):not(#\\#){height:20px}\n.rsm0753-sand-xk0z11:not(#\\#):not(#\\#):not(#\\#):not(#\\#){height:24px}\n.rsm0753-sand-at24cr:not(#\\#):not(#\\#):not(#\\#):not(#\\#){margin-bottom:0}\n.rsm0753-sand-dj266r:not(#\\#):not(#\\#):not(#\\#):not(#\\#){margin-top:0}\n.rsm0753-sand-u97haq:not(#\\#):not(#\\#):not(#\\#):not(#\\#){min-height:34px}\n.rsm0753-sand-euugli:not(#\\#):not(#\\#):not(#\\#):not(#\\#){min-width:0}\n.rsm0753-sand-16xo4sp:not(#\\#):not(#\\#):not(#\\#):not(#\\#){min-width:18px}\n.rsm0753-sand-t4ypqs:not(#\\#):not(#\\#):not(#\\#):not(#\\#){min-width:20px}\n.rsm0753-sand-nei2rj:not(#\\#):not(#\\#):not(#\\#):not(#\\#){min-width:24px}\n.rsm0753-sand-1odjw0f:not(#\\#):not(#\\#):not(#\\#):not(#\\#){overflow-y:auto}\n.rsm0753-sand-18d9i69:not(#\\#):not(#\\#):not(#\\#):not(#\\#){padding-bottom:0}\n.rsm0753-sand-1j85h84:not(#\\#):not(#\\#):not(#\\#):not(#\\#){padding-bottom:1px}\n.rsm0753-sand-cnij5n:not(#\\#):not(#\\#):not(#\\#):not(#\\#){padding-bottom:var(--cursor-spacing-1)}\n.rsm0753-sand-1xlntvz:not(#\\#):not(#\\#):not(#\\#):not(#\\#){padding-bottom:var(--cursor-spacing-2)}\n.rsm0753-sand-20eq2h:not(#\\#):not(#\\#):not(#\\#):not(#\\#){padding-bottom:var(--cursor-spacing-4)}\n.rsm0753-sand-exx8yu:not(#\\#):not(#\\#):not(#\\#):not(#\\#){padding-top:0}\n.rsm0753-sand-4p5aij:not(#\\#):not(#\\#):not(#\\#):not(#\\#){padding-top:1px}\n.rsm0753-sand-13ly8rp:not(#\\#):not(#\\#):not(#\\#):not(#\\#){padding-top:var(--cursor-spacing-2)}\n.rsm0753-sand-t9g0qb:not(#\\#):not(#\\#):not(#\\#):not(#\\#){padding-top:var(--cursor-spacing-4)}\n.rsm0753-sand-vy4d1p:not(#\\#):not(#\\#):not(#\\#):not(#\\#){width:24px}\n.rsm0753-sand-1bta2m4:last-child:not(#\\#):not(#\\#):not(#\\#):not(#\\#){border-bottom-color:#0000}",
+  "themes": {
+    "light": {
+      "--sand-border-quaternary-translucent": "#1c1c1c0f",
+      "--sand-border-tertiary-translucent": "#1c1c1c14",
+      "--cursor-spacing-2": "8px",
+      "--cursor-spacing-3": "12px",
+      "--cursor-spacing-5": "20px",
+      "--cursor-spacing-8": "32px",
+      "--sand-bg-accent-primary": "#1680f3",
+      "--sand-bg-secondary": "#1c1c1c0f",
+      "--lightningcss-light": " ",
+      "--lightningcss-dark": "initial",
+      "--sand-text-on-primary": "#ffffff",
+      "--sand-text-primary": "#1c1c1c",
+      "--sand-text-secondary": "#1c1c1cad",
+      "--sand-text-tertiary": "#1c1c1c8f",
+      "--cursor-font-size-base": "13px",
+      "--cursor-font-size-lg": "14px",
+      "--cursor-font-size-sm": "12px",
+      "--cursor-font-size-xs": "11px",
+      "--sand-font-size-base": "14px",
+      "--sand-font-size-lg": "15px",
+      "--sand-font-size-sm": "13px",
+      "--sand-font-size-xl": "17px",
+      "--sand-font-size-xs": "12px",
+      "--sand-font-size-xxl": "22px",
+      "--sand-font-size-xxs": "11px",
+      "--sand-font-size-xxxl": "26px",
+      "--sand-font-weight-medium": "500",
+      "--sand-font-weight-regular": "400",
+      "--sand-font-weight-semibold": "600",
+      "--sand-letter-spacing-base": "0em",
+      "--sand-letter-spacing-lg": "0em",
+      "--sand-letter-spacing-sm": "0em",
+      "--sand-letter-spacing-xl": "-.008em",
+      "--sand-letter-spacing-xs": "0em",
+      "--sand-letter-spacing-xxl": "-.012em",
+      "--sand-letter-spacing-xxs": ".005em",
+      "--sand-letter-spacing-xxxl": "-.015em",
+      "--sand-line-height-base": "20px",
+      "--sand-line-height-lg": "22px",
+      "--sand-line-height-sm": "18px",
+      "--sand-line-height-xl": "24px",
+      "--sand-line-height-xs": "16px",
+      "--sand-line-height-xxl": "28px",
+      "--sand-line-height-xxs": "16px",
+      "--sand-line-height-xxxl": "32px",
+      "--cursor-spacing-1": "4px",
+      "--cursor-spacing-4": "16px"
+    },
+    "dark": {
+      "--sand-border-quaternary-translucent": "#f5f5f50a",
+      "--sand-border-tertiary-translucent": "#f5f5f50f",
+      "--cursor-spacing-2": "8px",
+      "--cursor-spacing-3": "12px",
+      "--cursor-spacing-5": "20px",
+      "--cursor-spacing-8": "32px",
+      "--sand-bg-accent-primary": "#116dd2",
+      "--sand-bg-secondary": "#f5f5f50a",
+      "--lightningcss-light": " ",
+      "--lightningcss-dark": "initial",
+      "--sand-text-on-primary": "#f5f5f5",
+      "--sand-text-primary": "#f5f5f5",
+      "--sand-text-secondary": "#f5f5f5a8",
+      "--sand-text-tertiary": "#f5f5f58a",
+      "--cursor-font-size-base": "13px",
+      "--cursor-font-size-lg": "14px",
+      "--cursor-font-size-sm": "12px",
+      "--cursor-font-size-xs": "11px",
+      "--sand-font-size-base": "14px",
+      "--sand-font-size-lg": "15px",
+      "--sand-font-size-sm": "13px",
+      "--sand-font-size-xl": "17px",
+      "--sand-font-size-xs": "12px",
+      "--sand-font-size-xxl": "22px",
+      "--sand-font-size-xxs": "11px",
+      "--sand-font-size-xxxl": "26px",
+      "--sand-font-weight-medium": "500",
+      "--sand-font-weight-regular": "400",
+      "--sand-font-weight-semibold": "600",
+      "--sand-letter-spacing-base": "0em",
+      "--sand-letter-spacing-lg": "0em",
+      "--sand-letter-spacing-sm": "0em",
+      "--sand-letter-spacing-xl": "-.008em",
+      "--sand-letter-spacing-xs": "0em",
+      "--sand-letter-spacing-xxl": "-.012em",
+      "--sand-letter-spacing-xxs": ".005em",
+      "--sand-letter-spacing-xxxl": "-.015em",
+      "--sand-line-height-base": "20px",
+      "--sand-line-height-lg": "22px",
+      "--sand-line-height-sm": "18px",
+      "--sand-line-height-xl": "24px",
+      "--sand-line-height-xs": "16px",
+      "--sand-line-height-xxl": "28px",
+      "--sand-line-height-xxs": "16px",
+      "--sand-line-height-xxxl": "32px",
+      "--cursor-spacing-1": "4px",
+      "--cursor-spacing-4": "16px"
+    }
+  }
+}

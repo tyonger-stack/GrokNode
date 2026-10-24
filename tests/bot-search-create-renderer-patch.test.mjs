@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import test from "node:test";
+import vm from "node:vm";
 import { parse } from "acorn";
+import { applyPair } from "../scripts/lib/i18n-patch-engine.mjs";
 import { patchOriginalSidebarTopBarSearch } from "../scripts/lib/sidebar-search-renderer-patch.mjs";
 import { patchMainAgentRenderer } from "../scripts/lib/main-agent-renderer-patch.mjs";
 import { BOT_CREATE_STYLE, patchBotCreateDialogRenderer } from "../scripts/lib/bot-create-dialog-renderer-extension.mjs";
@@ -55,4 +58,64 @@ test("search mode fails closed after the source has already been patched", { ski
   const patched = patchBotCreateDialogRenderer(patchSearchPaletteRenderer(patchMainAgentRenderer(patchOriginalSidebarTopBarSearch(source))));
   assert.throws(() => patchSearchPaletteRenderer(patched), /already applied/);
   assert.throws(() => patchBotCreateDialogRenderer(patched), /already applied/);
+});
+
+test("collapsed and expanded plus buttons open the same Bot dialog without creating a chat", { skip }, async () => {
+  const archive = process.env.GROK_NODE_COLLAPSED_CREATE_TEST_ASAR;
+  let source = archive
+    ? createRequire(import.meta.url)("@electron/asar").extractFile(archive, "dist/renderer/assets/index-UbX-y3il.js").toString()
+    : patchBotCreateDialogRenderer(patchSearchPaletteRenderer(patchMainAgentRenderer(patchOriginalSidebarTopBarSearch(await readFile(baseline, "utf8")))));
+  if (!archive) {
+    for (const [en, zh] of [["New chat", "新建聊天"], ["New Bot", "新建 Bot"], ["New", "新"]]) {
+      source = applyPair(source, en, zh, "FULL").patched;
+    }
+  }
+  const ast = parse(source, { ecmaVersion: "latest", sourceType: "module" });
+  const functions = ast.body.filter(node => node.type === "FunctionDeclaration");
+  const pick = name => {
+    const node = functions.find(candidate => candidate.id.name === name);
+    assert.ok(node, `Missing renderer function ${name}`);
+    return source.slice(node.start, node.end);
+  };
+  const routes = [];
+  function visit(node) {
+    if (node?.type === "CallExpression" && node.arguments[0]?.name === "n0n") routes.push(node.arguments[1]);
+    for (const value of Object.values(node ?? {})) {
+      if (Array.isArray(value)) value.forEach(child => { if (child?.type) visit(child); });
+      else if (value?.type) visit(value);
+    }
+  }
+  visit(ast);
+  assert.equal(routes.length, 1);
+  const route = source.slice(routes[0].start, routes[0].end);
+  const code = ["n0n", "pcn", "RCreateBotPublish", "RCreateBotOpen", "RCreateBotClose", "RCreateBotSnapshot", "RCreateBotT"].map(pick).join("\n");
+  for (const language of ["en", "zh"]) {
+    let chats = 0;
+    const context = vm.createContext({
+      p: { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) },
+      he: { c: size => Array(size).fill(Symbol.for("react.memo_cache_sentinel")) },
+      re: (...values) => values.filter(Boolean).join(" "),
+      yo: "tooltip", fr: "button", RSidebarSearchButton: "search", Ete: {}, Xbe: {},
+      RSidebarElevated: {}, RSidebarTopBarButton: {},
+      F: () => { chats++; },
+      RLocT: (en, zh) => language === "zh" ? zh : en,
+    });
+    vm.runInContext(`let RCreateBotOpenValue=false;const RCreateBotListeners=new Set();${code};globalThis.rail=n0n(${route});globalThis.header=pcn({isSelecting:false,onNewChat:F});`, context);
+    const findPlus = node => {
+      if (node?.type === "button" && node.props.icon === "plus") return node;
+      const children = node?.props?.children;
+      return (Array.isArray(children) ? children : [children]).filter(Boolean).map(findPlus).find(Boolean);
+    };
+    for (const entry of [context.rail, context.header]) {
+      const button = findPlus(entry);
+      assert.ok(button);
+      button.props.onClick();
+      assert.equal(vm.runInContext("RCreateBotSnapshot()", context), true, "plus must open the Bot dialog");
+      assert.equal(chats, 0, "plus must not invoke the legacy chat callback");
+      assert.equal(button.props["aria-label"], language === "zh" ? "新建 Bot" : "New Bot");
+      vm.runInContext("RCreateBotClose()", context);
+      assert.equal(vm.runInContext("RCreateBotSnapshot()", context), false);
+    }
+    assert.equal(context.rail.props.children.props.content, language === "zh" ? "新建 Bot" : "New Bot");
+  }
 });
