@@ -41,9 +41,9 @@ test('five cards open the right content, choose journals and skills, and preserv
     }
     await React.act(async () => mount.querySelector('[data-r-agent-bot] button').click());
     const botText = mount.querySelector('[data-r-agent-bot] [data-r-agent-data-pre]').textContent;
-    assert(botText.includes('名称：Bot one') && botText.includes('职责：职责 one') && botText.includes('violet / blob'));
+    assert(botText.includes('名称: Bot one') && botText.includes('职责: 职责 one') && botText.includes('violet / blob'));
     assert(botText.includes('1 个月记忆（最近 2026-10）') && botText.includes('1 个技能') && botText.includes('2 条审计'));
-    assert(botText.includes('自我定位：人格 one 第二行职责'));
+    assert(botText.includes('自我定位: 人格 one 第二行职责'));
     assert(!botText.includes('user-memory'));
     await React.act(async () => mount.querySelector('[data-r-agent-audit] button').click());
     const audit = mount.querySelector('[data-r-agent-audit] [data-r-agent-data-pre]').textContent;
