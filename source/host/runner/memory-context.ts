@@ -1,4 +1,5 @@
 import { dirname } from "node:path";
+import { readLocalUserProfile } from "../extensions/memory/local-user-profile.js";
 import { UserMemoryStore, ProjectMemoryStore, getProjectMemoryShardDir } from "../extensions/memory/memory-service.js";
 import { AgentProjectMembership } from "../extensions/memory/project-membership.js";
 import { mergeUserMemoryShards, selectProjectMemoryBlocks } from "./sand-memory.js";
@@ -39,12 +40,13 @@ export function createRunnerMemoryContext(input: {
   readonly store: unknown;
   readonly snapshots: unknown;
   readonly resolveAgentName: (id: string) => string;
-}): Pick<SystemPromptAssemblyDependencies, "memoryStore" | "memorySnapshots" | "userMemory" | "projectMemory"> {
+}): Pick<SystemPromptAssemblyDependencies, "memoryStore" | "memorySnapshots" | "userMemory" | "projectMemory" | "localUserProfile"> {
   const root = input.sandRoot;
   const membership = new AgentProjectMembership(dirname(input.dbPath));
   const user = root === undefined ? null : new UserMemoryStore(root, input.agentId, input.resolveAgentName, immediateDebounce);
   const project = root === undefined ? null : new ProjectMemoryStore(root, input.agentId, membership, input.resolveAgentName, immediateDebounce);
   return {
+    localUserProfile: () => root === undefined ? "" : readLocalUserProfile(root),
     memoryStore: () => isPromptStore(input.store) ? input.store : null,
     memorySnapshots: () => isSnapshotStore(input.snapshots) ? input.snapshots : null,
     userMemory: () => user === null ? null : {
