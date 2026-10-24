@@ -100,6 +100,10 @@ test('Computer settings is a real native section with live permission and mainte
   assert.ok(body.includes('x==="beta"||x==="computer"'));
   assert.ok(body.includes('children:a.jsx(da,{})'));
   assert.ok(body.includes('a.jsx(qs,{canResetBox:h,canUpdateBaseline:c,canUpdateBox:f'));
+  // The shared-computer section belongs to the computer pane; as a sibling of the pane
+  // switch it also rendered on Settings → 更新.
+  assert.ok(body.includes('children:[a.jsx(re,{title:RLocT("Your computer","你的电脑"),children:a.jsx(da,{})}),a.jsx(qs,{'));
+  assert.ok(!body.includes('children:a.jsx(re,{title:RLocT("Your computer"'));
   assert.throws(() => patchAppComputerSettings(patched), /anchor/);
   const calls = [];
   openAppCardLink(parseAppCardLink('sand://app/v1/settings?id=update-status'), 'bot_1', { settings: section => calls.push(section) });
