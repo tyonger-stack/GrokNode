@@ -1,9 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { createCoordinatorClient } from "../production/coordinator-client";
-import type { CoordinatorPortBridge, DesktopBridge, EffectivePlugin } from "../recovered/contracts/desktop-bridge";
+import type { DesktopBridge, EffectivePlugin } from "../recovered/contracts/desktop-bridge";
 import { PluginsPort0750Extras } from "../recovered/features/plugins/overlay/port-0750-extras";
-import { MemoryImportHost } from "../recovered/features/settings/overlay/memory-import-host";
-import { VaultCardDialogHost } from "./vault-card-dialog-host";
 
 function desktopBridge(): Pick<DesktopBridge, "agent" | "experiments" | "mcp"> | null {
   const desktop = (window as Window & { desktop?: Pick<DesktopBridge, "agent" | "experiments" | "mcp"> }).desktop;
@@ -11,22 +8,14 @@ function desktopBridge(): Pick<DesktopBridge, "agent" | "experiments" | "mcp"> |
   return desktop;
 }
 
-function coordinatorFromWindow() {
-  const port = (window as Window & { coordinatorPort?: CoordinatorPortBridge }).coordinatorPort;
-  if (port == null || typeof port.claim !== "function") return null;
-  return createCoordinatorClient(port);
-}
-
+/**
+ * Settings → 通用 no longer mounts anything. The memory-import card that lived here was the
+ * English 0.75 stopgap; the real import flow is its own Settings tab (memory-import entry),
+ * and the vault "New card" trigger was a development entry. Both showed up at the bottom of
+ * 通用. The export stays because the pinned settings chunk references it.
+ */
 export function RPort0750SettingsPack(): ReactNode {
-  const [coordinator] = useState(coordinatorFromWindow);
-  const bridge = desktopBridge();
-  if (bridge == null) return null;
-  return (
-    <>
-      <MemoryImportHost bridge={bridge} coordinator={coordinator} />
-      <VaultCardDialogHost />
-    </>
-  );
+  return null;
 }
 
 export function RPort0750PluginsPack(): ReactNode {
