@@ -119,7 +119,7 @@ async function verifyHostIdentity(hostBundle: LocalHostBundle): Promise<HostIden
   return classifyHostIdentity({ gatewayPid, cmdline, runningBundleSha256, expectedSha256: hostBundle.sha256, hostEntryPath: SAND_BOX_HOST_ENTRY });
 }
 
-interface CommandResult { readonly ok: boolean; readonly code: number | null; readonly output: string }
+export interface CommandResult { readonly ok: boolean; readonly code: number | null; readonly output: string }
 interface LocalHostBundle { readonly path: string; readonly sha256: string; readonly boxExecDaemonPath: string; readonly boxExecDaemonSha256: string }
 
 export interface LocalDockerHostConnector {
@@ -153,7 +153,7 @@ function resolveDockerBinary(): string {
   return dockerBinaryPath;
 }
 
-function runDocker(args: readonly string[]): Promise<CommandResult> {
+export function runDocker(args: readonly string[]): Promise<CommandResult> {
   return new Promise((resolve) => {
     const binary = resolveDockerBinary();
     const installDir = dirname(binary);

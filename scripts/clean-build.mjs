@@ -36,6 +36,7 @@ import {
   electronMainBindingProvenancePath,
 } from "./electron-main-production-activation.mjs";
 import { applyOriginalRendererRouterPatch } from "./lib/router-renderer-patch.mjs";
+import { applyOriginalRendererMemoryImport } from "./lib/agent-memory-import-renderer-patch.mjs";
 import { applyOriginalRendererLibraryStageClose } from "./lib/library-stage-close-renderer-patch.mjs";
 import { applyOriginalRendererSidebarTopBarSearch } from "./lib/sidebar-search-renderer-patch.mjs";
 import { applyOriginalRendererChatHeaderIdentity } from "./lib/chat-header-identity-renderer-patch.mjs";
@@ -45,6 +46,7 @@ import { applyOriginalRendererSkillDetail } from "./lib/skill-detail-renderer-pa
 import { applyOriginalRendererTeachSuccessPath } from "./lib/teach-success-path-renderer-patch.mjs";
 import { applyOriginalRendererInfoPaneSplit } from "./lib/info-pane-split-renderer-patch.mjs";
 import { applyOriginalRendererAgentModel } from "./lib/agent-model-renderer-patch.mjs";
+import { applyOriginalRendererAgentDataCards } from "./lib/agent-data-cards-renderer-patch.mjs";
 import { applyOriginalRendererComputerUpdate } from "./lib/computer-update-renderer-patch.mjs";
 import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patch.mjs";
 import { applyHardwareAccelerationSettingsPatch } from "./lib/hardware-acceleration-settings-patch.mjs";
@@ -330,6 +332,11 @@ export async function buildFidelityReconstructedAsar({
   await applyOriginalRendererSidebarTopBarSearch({ stageRoot });
   // Must run before the i18n passes (it resolves its label through RLocT, which
   // main-i18n appends to this chunk later — function declarations hoist).
+  // Settings → 记忆: Muse-style memory import (dialog distillation to the MAIN bot).
+  // Anchors on the router patch's OUTPUT (registry entry list + panel switch), so it must
+  // run immediately after it — and, like the router patch, before the i18n passes below
+  // (its labels resolve through the RLocT runtime settings-i18n appends later).
+  await applyOriginalRendererMemoryImport({ stageRoot });
   await applyOriginalRendererChatHeaderIdentity({ stageRoot });
   // Independent of the header patches (it rewrites the transcript's activity mark, not the
   // chat header) and touches no string literal, so it is order-free against the passes
@@ -369,6 +376,11 @@ export async function buildFidelityReconstructedAsar({
   // check-circle banner). It pins the two inputs that decide that card and rewrites the
   // group's strings through RLocT, so — like every pass that emits RLocT — it must land
   // before the i18n passes below, which append the RLocT runtime to this same chunk.
+  // Experimental read-only bot data cards (soul / memory journal / user profile / audit /
+  // workflows) in the same panel. Anchors on the agent-model patch's OUTPUT, so it must
+  // run immediately after it — and, like every pass that emits RLocT literals, before the
+  // i18n passes below, which append the RLocT runtime to this same chunk.
+  await applyOriginalRendererAgentDataCards({ stageRoot });
   await applyOriginalRendererComputerUpdate({ stageRoot });
   await applyMainAgentRendererPatch({ stageRoot });
   // 0.75.3 sidebar search presentation and its Create new Bot host. Both depend on

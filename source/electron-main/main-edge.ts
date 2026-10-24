@@ -15,6 +15,9 @@ import { OPENCODEX_CHANNEL_PROBE_TIMEOUT_MS, OPENCODEX_MAC_FORWARDER_PORT, effor
 import { mergeOpenRouterChannelStatus, normalizeOpenRouterChannelStatus } from "../shared/openrouter-channel-status.js";
 import { decodeLibraryJson } from "../shared/library/json-bytes.js";
 import { getLocalDockerStatus, probeLocalDockerRelay, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
+import { readAgentDataOverview, readAgentMemoryLog, readAgentWorkflowContent } from "./box/agent-data-reader.js";
+import { buildImportMemoryPrompt, IMPORT_MEMORY_MAX_CHARS } from "../shared/node/agent-memory-import.js";
+import { GATEWAY_API_PREFIX, GATEWAY_AUTH_SCHEME } from "../shared/gateway-wire.js";
 import { setApplicationMenuUnreadFilterChecked } from "./application-menu.js";
 import { createComputerPreviewController } from "./computer-sleep.js";
 import { createLocalBackendHandlers0721 } from "./local-backend-handlers-0721.js";
@@ -349,6 +352,46 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
         await (deps.delay ?? sleep)(250 * (attempt + 1));
       }
       return { agentId: id, effort: selected };
+    },
+    getAgentDataOverview: async (raw) => {
+      const agentId = req(raw).agentId;
+      invariant(typeof agentId === "string" && agentId.trim().length > 0, "Choose a Bot.");
+      return await readAgentDataOverview(agentId);
+    },
+    getAgentMemoryLog: async (raw) => {
+      const { agentId, month } = req(raw);
+      invariant(typeof agentId === "string" && agentId.trim().length > 0, "Choose a Bot.");
+      invariant(typeof month === "string" && month.trim().length > 0, "Choose a memory month.");
+      return await readAgentMemoryLog(agentId, month);
+    },
+    getAgentWorkflowContent: async (raw) => {
+      const slug = req(raw).slug;
+      invariant(typeof slug === "string" && slug.trim().length > 0, "Choose a workflow.");
+      return await readAgentWorkflowContent(slug);
+    },
+    importAgentMemory: async (raw) => {
+      const { agentId, text } = req(raw);
+      invariant(typeof agentId === "string" && agentId.trim().length > 0, "Choose a Bot.");
+      invariant(typeof text === "string" && text.trim().length > 0, "Paste the memory snapshot first.");
+      invariant(typeof text === "string" && text.length <= IMPORT_MEMORY_MAX_CHARS, "The memory snapshot is too large.");
+      const id = agentId.trim();
+      const snapshot = text as string;
+      // Dialog distillation (v1): deliver the snapshot as an ordinary user turn whose
+      // prompt tells the bot to distill durable facts via its UpdateMemory tool. No host
+      // or protocol change — this is the same /api/sendPrompt the chat composer uses.
+      const prompt = buildImportMemoryPrompt(snapshot);
+      const connection = await startLocalDockerBox(String(Reflect.get(deps.settingsStore, "settingsPath")));
+      const response = await fetch(`${connection.baseUrl}${GATEWAY_API_PREFIX}/sendPrompt`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `${GATEWAY_AUTH_SCHEME} ${connection.token}` },
+        body: JSON.stringify({ agentId: id, prompt, clientNonce: `memory-import-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}` }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!response.ok) {
+        const detail = (await response.text().catch(() => response.statusText)).slice(0, 300);
+        return { ok: false, reason: `gateway ${response.status}: ${detail}` };
+      }
+      return { ok: true };
     },
     getOpenRouterBaseUrl: async () => {
       const persisted = persistedOpenRouterBaseUrl(deps.settingsStore);
