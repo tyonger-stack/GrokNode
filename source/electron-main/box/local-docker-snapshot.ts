@@ -211,45 +211,45 @@ export function createLocalDockerSnapshotStore(deps: {
     } catch (error) {
       deps.log?.(`local-docker-snapshot: space preflight unavailable, proceeding: ${error instanceof Error ? error.message : String(error)}`);
     }
-    // Quiesce: pause the container so the committed layer and both volume
-    // tars capture ONE instant instead of three torn ones (review life-3).
-    // A container that is not running is already quiescent; any other pause
-    // failure aborts the save.
-    const paused = await deps.runDocker(["pause", deps.container]);
-    const wasPaused = paused.ok;
-    if (!wasPaused && !/is not running|is already paused/i.test(paused.output)) return { ok: false, error: `could not quiesce ${deps.container} for snapshot: ${paused.output}` };
-    try {
-      const id = newSnapshotId(deps.now);
-      const directory = join(deps.root, id);
-      let archivedBytes = { workspace: 0, data: 0 };
-      const committed = await deps.runDocker(["commit", deps.container, `${repo}:${id}`]);
-      if (!committed.ok) return { ok: false, error: `docker commit failed: ${committed.output}` };
-      try {
-        await mkdir(directory, { recursive: true });
-        for (const { volume, file } of SNAPSHOT_VOLUME_FILES) {
-          const args = buildVolumeArchiveArgs({ helperImage: deps.helperImage, volume: volumeName[volume], destinationFile: file })
-            .map((argument) => argument.replaceAll("__SNAPSHOT_DIR__", directory));
-          const archived = await deps.runDocker(args);
-          if (!archived.ok) throw new Error(`volume ${volume} archive failed: ${archived.output}`);
-        }
-        archivedBytes = { workspace: (await stat(join(directory, "workspace.tgz"))).size, data: (await stat(join(directory, "data.tgz"))).size };
-        const manifest: SnapshotManifest = { schemaVersion: SNAPSHOT_SCHEMA_VERSION, id, createdAt: (deps.now ?? Date.now)(), imageTag: `${repo}:${id}`, boxSchemaVersion: deps.boxSchemaVersion, archiveBytes: archivedBytes };
-        await writeAtomicJson(manifestPath(id), manifest);
-        await writeAtomicJson(join(deps.root, SNAPSHOT_LATEST_FILENAME), { schemaVersion: SNAPSHOT_SCHEMA_VERSION, id });
-      } catch (error) {
-        await rm(directory, { recursive: true, force: true });
-        await deps.runDocker(["rmi", "--force", `${repo}:${id}`]).catch(() => undefined);
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
-      }
-      deps.log?.(`local-docker-snapshot: saved ${id} (${archivedBytes.workspace + archivedBytes.data} bytes archived)`);
-      await pruneInner();
-      return { ok: true, id };
-    } finally {
-      if (wasPaused) {
-        const unpaused = await deps.runDocker(["unpause", deps.container]);
-        if (!unpaused.ok) deps.log?.(`local-docker-snapshot: WARNING unpause failed for ${deps.container}: ${unpaused.output}`);
-      }
+    // Never `docker pause` the box for the length of a save: the volume
+    // archives take minutes on a real box, and a pause that leaks (the app
+    // exiting mid-save skips `finally`, leaving the daemon-side pause
+    // behind) freezes every later `docker exec` — liveness probes and bot
+    // turns — until someone unpauses manually. Instead, heal any pause
+    // leaked by an earlier attempt, let `docker commit`'s own sub-second
+    // freeze keep the container layer consistent, and accept a
+    // crash-consistent (possibly torn across the two tars) volume pair.
+    const frozen = await deps.runDocker(["inspect", "--format", "{{.State.Paused}}", deps.container]);
+    if (frozen.ok && frozen.output.trim() === "true") {
+      const unpaused = await deps.runDocker(["unpause", deps.container]);
+      if (!unpaused.ok) return { ok: false, error: `could not unpause ${deps.container} before snapshot: ${unpaused.output}` };
+      deps.log?.(`local-docker-snapshot: healed leaked pause on ${deps.container} before save`);
     }
+    const id = newSnapshotId(deps.now);
+    const directory = join(deps.root, id);
+    let archivedBytes = { workspace: 0, data: 0 };
+    const committed = await deps.runDocker(["commit", deps.container, `${repo}:${id}`]);
+    if (!committed.ok) return { ok: false, error: `docker commit failed: ${committed.output}` };
+    try {
+      await mkdir(directory, { recursive: true });
+      for (const { volume, file } of SNAPSHOT_VOLUME_FILES) {
+        const args = buildVolumeArchiveArgs({ helperImage: deps.helperImage, volume: volumeName[volume], destinationFile: file })
+          .map((argument) => argument.replaceAll("__SNAPSHOT_DIR__", directory));
+        const archived = await deps.runDocker(args);
+        if (!archived.ok) throw new Error(`volume ${volume} archive failed: ${archived.output}`);
+      }
+      archivedBytes = { workspace: (await stat(join(directory, "workspace.tgz"))).size, data: (await stat(join(directory, "data.tgz"))).size };
+      const manifest: SnapshotManifest = { schemaVersion: SNAPSHOT_SCHEMA_VERSION, id, createdAt: (deps.now ?? Date.now)(), imageTag: `${repo}:${id}`, boxSchemaVersion: deps.boxSchemaVersion, archiveBytes: archivedBytes };
+      await writeAtomicJson(manifestPath(id), manifest);
+      await writeAtomicJson(join(deps.root, SNAPSHOT_LATEST_FILENAME), { schemaVersion: SNAPSHOT_SCHEMA_VERSION, id });
+    } catch (error) {
+      await rm(directory, { recursive: true, force: true });
+      await deps.runDocker(["rmi", "--force", `${repo}:${id}`]).catch(() => undefined);
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+    deps.log?.(`local-docker-snapshot: saved ${id} (${archivedBytes.workspace + archivedBytes.data} bytes archived)`);
+    await pruneInner();
+    return { ok: true, id };
   };
   const pruneInner = async (): Promise<void> => {
     let entries: readonly string[];
