@@ -1,6 +1,7 @@
 import {
   DEFAULT_TAB,
-  INFO_PANE_TABS,
+  infoPaneTabs,
+  isGroupContext,
   HERO_SELECTOR,
   STYLE_ID,
   TABBAR_ID,
@@ -72,14 +73,17 @@ function paintBar(pane: Element, tab: InfoPaneTabId): void {
   }
 }
 function setTab(pane: Element, tab: InfoPaneTabId, isUserAction = true): void {
-  applyTab(pane, tab);
-  activeTab = currentTab(pane);
-  paintBar(pane, activeTab);
-  writeStoredTab(storageOf(), activeTab);
+  const group = isGroupContext(pane);
+  applyTab(pane, infoPaneTabs(pane).some(def => def.id === tab) ? tab : DEFAULT_TAB);
+  const selected = currentTab(pane);
+  if (group) activeGroupTab = selected;
+  else activeTab = selected;
+  paintBar(pane, selected);
+  writeStoredTab(storageOf(), selected, group);
   if (isUserAction) scrollTop(pane);
 }
 function onKey(btn: HTMLElement, pane: Element, tab: InfoPaneTabId, event: KeyboardEvent): void {
-  const order = INFO_PANE_TABS.map((t) => t.id);
+  const order = infoPaneTabs(pane).map((t) => t.id);
   const at = order.indexOf(tab);
   let next: InfoPaneTabId | null = null;
   if (event.key === "ArrowRight") next = order[(at + 1) % order.length] ?? null;
@@ -100,8 +104,13 @@ function ensureBar(pane: Element, doc: Document): void {
     bar = doc.createElement("div");
     bar.id = TABBAR_ID;
     bar.setAttribute("role", "tablist");
-    bar.setAttribute("aria-label", "Bot \u8be6\u60c5");
-    for (const def of INFO_PANE_TABS) {
+  }
+  const context = isGroupContext(pane) ? "group" : "bot";
+  if (bar.getAttribute("data-r-tabs-context") !== context) {
+    bar.replaceChildren();
+    bar.setAttribute("data-r-tabs-context", context);
+    bar.setAttribute("aria-label", context === "group" ? "\u7fa4\u804a\u8be6\u60c5" : "Bot \u8be6\u60c5");
+    for (const def of infoPaneTabs(pane)) {
       const btn = doc.createElement("button");
       btn.type = "button";
       btn.setAttribute("role", "tab");
@@ -121,6 +130,7 @@ function ensureBar(pane: Element, doc: Document): void {
   paintBar(pane, currentTab(pane));
 }
 let activeTab: InfoPaneTabId | null = null;
+let activeGroupTab: InfoPaneTabId | null = null;
 function sync(): void {
   const doc = document;
   const pane = paneRoot(doc);
@@ -131,9 +141,9 @@ function sync(): void {
   }
   ensureStyle(doc);
   ensureBar(pane, doc);
-  if (activeTab == null) activeTab = readStoredTab(storageOf());
-  setTab(pane, activeTab, false);
-  activeTab = currentTab(pane);
+  const group = isGroupContext(pane);
+  const selected = group ? activeGroupTab : activeTab;
+  setTab(pane, selected ?? readStoredTab(storageOf(), group), false);
 }
 function mutationTouchesPane(records: MutationRecord[], pane: Element): boolean {
   return records.some((record) =>
@@ -157,15 +167,15 @@ observer.observe(document.body, { childList: true, subtree: true });
 scheduleSync();
 window.addEventListener('grok-node-info-pane-tab', event => {
   if (!(event instanceof CustomEvent) || typeof event.detail !== 'string' || !isTabId(event.detail)) return;
-  activeTab = event.detail;
   const pane = paneRoot(document);
   if (pane != null && isBotContext(pane)) setTab(pane, event.detail);
-  else scheduleSync();
+  else { activeTab = event.detail; scheduleSync(); }
 });
 const testHooks = globalThis as unknown as { __sandInfoPaneTabsSync?: () => void; __sandInfoPaneTabsStop?: () => void; __sandInfoPaneTabsSet?: (tab: InfoPaneTabId) => void };
 testHooks.__sandInfoPaneTabsSync = sync;
 testHooks.__sandInfoPaneTabsStop = () => { observer.disconnect(); };
 testHooks.__sandInfoPaneTabsSet = (tab: InfoPaneTabId) => {
-  activeTab = tab;
-  sync();
+  const pane = paneRoot(document);
+  if (pane != null && isBotContext(pane)) setTab(pane, tab);
+  else { activeTab = tab; sync(); }
 };

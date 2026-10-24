@@ -1,4 +1,4 @@
-export type InfoPaneTabId = "details" | "library" | "computer" | "other";
+export type InfoPaneTabId = "details" | "library" | "computer" | "other" | "members";
 export interface InfoPaneTabDef {
   readonly id: InfoPaneTabId;
   readonly label: string;
@@ -10,8 +10,21 @@ export const INFO_PANE_TABS: readonly InfoPaneTabDef[] = [
   { id: "other", label: "其他" },
 ];
 export const DEFAULT_TAB: InfoPaneTabId = "details";
+export function officialOverviewTabs0755({ isGroup: e, membersOnly: t = !1, hasComputerTab: n = !0 }: {
+  isGroup: boolean; membersOnly?: boolean; hasComputerTab?: boolean;
+}): readonly ("overview" | "media" | "computer" | "members")[] {
+  return t ? ["members"] : e ? ["overview", "media", "members"] : n ? ["overview", "media", "computer"] : ["overview", "media"];
+}
+export function isGroupContext(pane: Element): boolean {
+  return pane.querySelector('[data-r-info-pane-group="1"]') != null;
+}
+export function infoPaneTabs(pane: Element): readonly InfoPaneTabDef[] {
+  if (!isGroupContext(pane)) return INFO_PANE_TABS;
+  return officialOverviewTabs0755({ isGroup: true }).map(id =>
+    id === "members" ? { id: "members", label: "成员" } : id === "media" ? INFO_PANE_TABS[1] : INFO_PANE_TABS[0]);
+}
 export function isTabId(value: string): value is InfoPaneTabId {
-  return value === "details" || value === "library" || value === "computer" || value === "other";
+  return value === "details" || value === "library" || value === "computer" || value === "other" || value === "members";
 }
 export const PANE_SELECTOR = '[class*="sand-info-pane__inner"]';
 export const ROUTINE_LIST_SELECTOR = "ul.sand-routine__list, .sand-routine__empty";
@@ -27,6 +40,7 @@ export const TAB_ATTR = "data-r-tabs-tab";
 export const HIDE_MARK = "data-r-tabs-hidden";
 export const STYLE_ID = "sand-info-pane-tabs-style";
 export const STORAGE_KEY = "sand.infoPaneTab";
+export const GROUP_STORAGE_KEY = "sand.groupInfoPaneTab";
 function asElement(node: Node | null): Element | null {
   return node != null && node.nodeType === 1 ? (node as Element) : null;
 }
@@ -51,12 +65,14 @@ export function topPaneChild(pane: Element, node: Element | null): Element | nul
 }
 export function isBotContext(pane: Element): boolean {
   return (
+    isGroupContext(pane) ||
     pane.querySelector(ROUTINE_LIST_SELECTOR) != null ||
     pane.querySelector(LIBRARY_SECTION_SELECTOR) != null ||
     pane.querySelector(COMPUTER_POOL_SELECTOR) != null
   );
 }
 export interface TabNodes {
+  readonly members: Element | null;
   readonly library: Element | null;
   readonly pool: Element | null;
   readonly cards: Element[];
@@ -65,6 +81,7 @@ export interface TabNodes {
 }
 export function collectTabNodes(pane: Element): TabNodes {
   return {
+    members: pane.querySelector(".sand-group-members-section"),
     library: pane.querySelector(LIBRARY_SECTION_SELECTOR),
     pool: pane.querySelector(COMPUTER_POOL_SELECTOR),
     cards: Array.from(pane.querySelectorAll(OTHER_CARD_SELECTOR)),
@@ -109,16 +126,24 @@ export function applyTab(pane: Element, tab: InfoPaneTabId): void {
   const nodes = collectTabNodes(pane);
   const overview = pane.querySelector('[data-r-info-pane-overview]') ?? pane;
   if (tab === "library" && nodes.library == null || tab === "computer" && nodes.pool == null ||
+      tab === "members" && nodes.members == null ||
       tab === "other" && nodes.settings == null && nodes.cards.length === 0 && nodes.desc == null) return;
   resetHidden(pane);
   const description = fieldParts(pane, nodes.desc);
   if (tab === "details") {
+    if (nodes.members != null) markHide(nodes.members);
     if (nodes.library != null) markHide(nodes.library);
     const comp = computerPart(pane, nodes.pool);
     if (comp != null) markHide(comp);
     if (nodes.settings != null) markHide(nodes.settings);
     for (const card of nodes.cards) markHide(card);
     for (const part of description) markHide(part);
+    pane.setAttribute(TAB_ATTR, tab);
+    return;
+  }
+  if (tab === "members") {
+    if (nodes.members == null) return;
+    keepOnly(overview, [nodes.members]);
     pane.setAttribute(TAB_ATTR, tab);
     return;
   }
@@ -148,18 +173,18 @@ export function applyTab(pane: Element, tab: InfoPaneTabId): void {
   }
   pane.setAttribute(TAB_ATTR, tab);
 }
-export function readStoredTab(storage: Storage | null): InfoPaneTabId {
+export function readStoredTab(storage: Storage | null, group = false): InfoPaneTabId {
   try {
-    const raw = storage != null ? storage.getItem(STORAGE_KEY) : null;
+    const raw = storage != null ? storage.getItem(group ? GROUP_STORAGE_KEY : STORAGE_KEY) : null;
     if (raw != null && isTabId(raw)) return raw;
   } catch {
     return DEFAULT_TAB;
   }
   return DEFAULT_TAB;
 }
-export function writeStoredTab(storage: Storage | null, tab: InfoPaneTabId): void {
+export function writeStoredTab(storage: Storage | null, tab: InfoPaneTabId, group = false): void {
   try {
-    if (storage != null) storage.setItem(STORAGE_KEY, tab);
+    if (storage != null) storage.setItem(group ? GROUP_STORAGE_KEY : STORAGE_KEY, tab);
   } catch {
     return;
   }
