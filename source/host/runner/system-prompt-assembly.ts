@@ -68,6 +68,7 @@ export interface SystemPromptAssemblyDependencies {
   readonly compactionEpoch: () => number;
   readonly memoryStore: () => MemoryPromptStore | null;
   readonly memorySnapshots: () => MemorySnapshotStore | null;
+  readonly localUserProfile?: () => string;
   readonly userMemory: () => {
     recall(limits: { profileLimit: number; recentLimit: number }): { profile: readonly ProvenancedMemory[]; recent: readonly ProvenancedMemory[] };
     getLocation(): string | null; getOwnShardLocation(): string | null;
@@ -277,6 +278,8 @@ export function createSystemPromptAssembly(deps: SystemPromptAssemblyDependencie
     if (deps.isSharedRoomRunner) return sections.join("\n\n");
     const add = (value: string | null | undefined): void => { if (value != null && value.length > 0) sections.push(value); };
     add(getUserIdentitySection());
+    const userProfile = deps.localUserProfile?.().trim();
+    if (userProfile) add(`<user_profile>\nThis describes the local human user's work style and preferences. Use it as context; current user instructions and project rules take precedence.\n${userProfile}\n</user_profile>`);
     if (!deps.isSubagentRunner && !deps.isSystemPromptOverridden && deps.isMultitaskEnabled?.() === true) add(deps.multitaskSection);
     if (deps.isSystemPromptOverridden && !deps.isSubagentRunner && cloudDisabled) add(SAND_CLOUD_AGENTS_DISABLED_PROMPT_SECTION);
     if (!deps.isSubagentRunner && deps.mcpManagement() != null && deps.isMcpMultiAccountEnabled?.() === true) add(SAND_MCP_MULTI_ACCOUNT_PROMPT_SECTION);
