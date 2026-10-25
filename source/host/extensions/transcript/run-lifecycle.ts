@@ -21,7 +21,6 @@ import {
 import { turnFailureCopy } from "../../../shared/trays/agent-run-error-title-copy.js";
 import { hostTrayTitle } from "../../../shared/trays/tray-title-fallbacks.js";
 import { isTurnInterruptedFailure } from "./turn-runtime.js";
-import { isAgentBusyOnInferenceSlot } from "../inference/inference-inflight.js";
 import { ToolRepeatDetector } from "./tool-repeat-detector.js";
 import { SandRunScheduler, type RunLane } from "./run-scheduler.js";
 import type { TranscriptManagerLike } from "./transcript-hub.js";
@@ -45,249 +44,21 @@ export function envPositiveInt(name: string, fallback: number): number {
 }
 export const RUN_WATCHDOG_DEFAULT_MS = 120_000;
 export const RUN_WATCHDOG_GRACE_DEFAULT_MS = 30_000;
-// Hard ceiling for ANY dispatched run, arming when the run starts executing.
-// The run-queue watchdog above only arms when a user task is queued behind an
-// active run, so automation/background-dispatched runs that hang before their
-// first inference (2026-09-28: an agent's blob-db worker stopped answering,
-// wedging every subsequent run with no error and no exit) hold the agent's
-// exclusive queue forever. Racing the task against this deadline converts the
-// wedge into an ordinary failure: the queue releases, the turn-failure notice
-// fires, and the next message or automation gets a real chance to run. The
-// wording deliberately avoids isTurnInterruptedFailure's interrupt vocabulary
-// so the failure stays user-visible.
-//
-// Two budgets, judged on progress rather than elapsed time (2026-10-01: a
-// fixed 30-minute ceiling killed healthy long research turns that were
-// streaming and calling tools the whole time; the official host has no
-// run-level duration cap at all and bounds provider silence instead):
-// - idle: no model output and no tool activity for this long means wedged.
-//   Suspended while a tool call is in flight, so long tool work never trips it.
-// - total: a generous active-time cap so a runaway loop cannot hold the queue
-//   forever.
-export const RUN_IDLE_DEADLINE_DEFAULT_MS = 10 * 60_000;
-export const RUN_HARD_DEADLINE_DEFAULT_MS = 2 * 60 * 60_000;
-// Time spent parked on the user (confirmation card, selection) does not count
-// against the hard deadline - the same anti-false-kill rule the run-queue
-// watchdog follows with its deferred_awaiting_user stage. A run waiting on a
-// human is not wedged, and killing it would strand the question the bot just
-// asked. The cap keeps a permanently-unanswered prompt from pinning the agent
-// queue forever.
-export const RUN_HARD_DEADLINE_AWAITING_MAX_MS = 24 * 60 * 60_000;
-export const RUN_HARD_DEADLINE_TICK_MS = 30_000;
-// Test deployments run with minute-scale budgets where a 30s tick floor
-// would never fire; the floor stays an env-tunable safety rail.
-const RUN_HARD_DEADLINE_TICK_FLOOR_MS = envPositiveInt(
-  "SAND_RUN_HARD_DEADLINE_TICK_FLOOR_MS",
-  1_000
-);
-
-export interface RunProgressSnapshot {
-  /** Monotonic count of progress events (model output, tool activity). */
-  readonly progressSeq: number;
-  readonly toolInFlight: boolean;
-  /**
-   * True while SummarizationOrchestrator has emitted summaryStarted and has
-   * not yet emitted summaryCompleted. Self-summary / XaiCompaction drains its
-   * model stream without forwarding text-delta/thinking-delta into the turn
-   * update path, so without this flag a long compaction await looks identical
-   * to a wedged turn and trips the 10-minute idle deadline.
-   */
-  readonly summarizing?: boolean;
-  /**
-   * True while the turn is parked on the global OpenRouter inflight gate
-   * (no dial yet). Official host only bounds provider silence after a stream
-   * starts; queuing for capacity must not trip the run-idle deadline.
-   */
-  readonly inferenceQueued?: boolean;
-}
-
-const PROGRESS_UPDATE_TYPES = new Set([
-  "text-delta",
-  "thinking-delta",
-  "tool-call",
-  "send-message",
-  "turn-ended",
-  "summary-started",
-  "summary-completed",
-]);
-
-/** Per-agent liveness signal for the idle deadline, fed from the runner's own
- * update stream (each runner's transport carries its session explicitly, so
- * concurrent bots never credit each other's progress). */
-export class RunProgressTracker {
-  private readonly seqByAgent = new Map<string, number>();
-  private readonly pendingToolsByAgent = new Map<string, Set<string>>();
-  private readonly summarizingByAgent = new Set<string>();
-
-  record(agentId: string, update: ActivityUpdate): void {
-    if (!PROGRESS_UPDATE_TYPES.has(update.type)) return;
-    this.seqByAgent.set(agentId, (this.seqByAgent.get(agentId) ?? 0) + 1);
-    if (update.type === "summary-started") {
-      this.summarizingByAgent.add(agentId);
-      return;
-    }
-    if (update.type === "summary-completed") {
-      this.summarizingByAgent.delete(agentId);
-      return;
-    }
-    if (update.type === "turn-ended") {
-      this.pendingToolsByAgent.delete(agentId);
-      this.summarizingByAgent.delete(agentId);
-      return;
-    }
-    if (update.type !== "tool-call") return;
-    const { id, status } = update as { id?: unknown; status?: unknown };
-    if (typeof id !== "string" || id.length === 0) return;
-    let pending = this.pendingToolsByAgent.get(agentId);
-    if (status === "pending") {
-      if (pending == null) this.pendingToolsByAgent.set(agentId, (pending = new Set()));
-      pending.add(id);
-    } else if (pending != null) {
-      pending.delete(id);
-      if (pending.size === 0) this.pendingToolsByAgent.delete(agentId);
-    }
-  }
-
-  /** A tool call left pending by an earlier run must not suspend the idle
-   * deadline of the next one. */
-  reset(agentId: string): void {
-    this.pendingToolsByAgent.delete(agentId);
-    this.summarizingByAgent.delete(agentId);
-  }
-
-  snapshot(agentId: string): RunProgressSnapshot {
-    return {
-      progressSeq: this.seqByAgent.get(agentId) ?? 0,
-      toolInFlight: (this.pendingToolsByAgent.get(agentId)?.size ?? 0) > 0,
-      summarizing: this.summarizingByAgent.has(agentId),
-    };
-  }
-}
-
-export function withRunHardDeadline(
-  agentId: string,
-  source: string,
-  task: () => Promise<void>,
-  isAwaitingUser: (agentId: string) => boolean = () => false,
-  onDeadlineFired: (agentId: string) => void = () => {},
-  readProgress: (agentId: string) => RunProgressSnapshot | undefined = () => undefined
-): () => Promise<void> {
-  const deadlineMs = envPositiveInt(
-    "SAND_RUN_HARD_DEADLINE_MS",
-    RUN_HARD_DEADLINE_DEFAULT_MS
-  );
-  const idleDeadlineMs = envPositiveInt(
-    "SAND_RUN_IDLE_DEADLINE_MS",
-    RUN_IDLE_DEADLINE_DEFAULT_MS
-  );
-  const awaitingCapMs = envPositiveInt(
-    "SAND_RUN_HARD_DEADLINE_AWAITING_MAX_MS",
-    RUN_HARD_DEADLINE_AWAITING_MAX_MS
-  );
-  const tickMs = Math.max(
-    RUN_HARD_DEADLINE_TICK_FLOOR_MS,
-    Math.min(deadlineMs, idleDeadlineMs, RUN_HARD_DEADLINE_TICK_MS)
-  );
-  const probe = (): RunProgressSnapshot | undefined => {
-    try {
-      return readProgress(agentId);
-    } catch {
-      return undefined;
-    }
-  };
-  return () =>
-    new Promise<void>((resolve, reject) => {
-      let activeMs = 0;
-      let awaitingMs = 0;
-      let idleMs = 0;
-      let lastProgressSeq = probe()?.progressSeq;
-      let lastTickAt = Date.now();
-      let timer: NodeJS.Timeout | null = null;
-      // The deadline check and the task's own settlement are two independent
-      // callbacks. If the task settles in the same macrotask window where the
-      // tick already fired, the tick must not abort a finished turn or write
-      // a failure notice for it.
-      let settled = false;
-      const finish = (
-        settle: (value: void) => void,
-        fail: (error: Error) => void,
-        error?: Error
-      ) => {
-        if (settled) return;
-        settled = true;
-        if (timer != null) clearTimeout(timer);
-        timer = null;
-        if (error != null) fail(error);
-        else settle();
-      };
-      const check = () => {
-        if (settled) return;
-        const now = Date.now();
-        const delta = Math.max(0, now - lastTickAt);
-        lastTickAt = now;
-        // Reject first, then ask the runner to abort: the rejection is what
-        // releases the queue and writes the notice, and the abort is the
-        // best-effort stop for the task that keeps running as the loser's
-        // target (without it a wedged run could keep writing the agent's
-        // transcript while the next run already started).
-        const fail = (message: string) => {
-          finish(resolve, reject, new Error(message));
-          onDeadlineFired(agentId);
-        };
-        const progress = probe();
-        const progressed =
-          progress != null && progress.progressSeq !== lastProgressSeq;
-        lastProgressSeq = progress?.progressSeq;
-        if (isAwaitingUser(agentId)) {
-          idleMs = 0;
-          awaitingMs += delta;
-          if (awaitingMs >= awaitingCapMs) {
-            fail(
-              `run hard deadline exceeded: still awaiting the user after ${awaitingCapMs}ms for agent ${agentId} (source: ${source}); the run was failed so the queue can move on`
-            );
-            return;
-          }
-        } else {
-          awaitingMs = 0;
-          activeMs += delta;
-          if (
-            progressed ||
-            progress?.toolInFlight === true ||
-            progress?.summarizing === true ||
-            progress?.inferenceQueued === true
-          ) {
-            idleMs = 0;
-          } else {
-            idleMs += delta;
-          }
-          if (activeMs >= deadlineMs) {
-            fail(
-              `run hard deadline exceeded (${deadlineMs}ms) for agent ${agentId} (source: ${source}): the run never settled and was failed so the queue can move on`
-            );
-            return;
-          }
-          if (idleMs >= idleDeadlineMs) {
-            fail(
-              `run stalled: no model output and no tool activity for ${idleDeadlineMs}ms for agent ${agentId} (source: ${source}); the run was failed so the queue can move on`
-            );
-            return;
-          }
-        }
-        timer = setTimeout(check, tickMs);
-        if (typeof timer.unref === "function") timer.unref();
-      };
-      timer = setTimeout(check, tickMs);
-      if (typeof timer.unref === "function") timer.unref();
-      task().then(
-        value => {
-          finish(() => resolve(value), reject);
-        },
-        error => {
-          finish(resolve, reject, error);
-        }
-      );
-    });
-}
+// No run-level idle/hard deadline, matching the official host. Verified against
+// the image-baked official host bundle (sha256 68b8ce61…, git-sha 2e44baf,
+// built 2026-10-21) on 2026-10-25: enqueueExclusiveRun there is a bare queue
+// chain, and "run stalled" / "no model output" / SAND_RUN_*_DEADLINE_MS appear
+// nowhere. Official bounds provider silence at the stream level only
+// (FirstTokenStallError / StreamIdleError, ported in runner/stream-attempt.ts).
+// The local run deadline added 2026-09-28/10-01 was removed because it killed
+// healthy group turns: a group room agent emits no model output or tool
+// activity of its own while awaiting member bots (progress is tracked
+// per-agent), so every fan-out slower than 10 minutes was failed as wedged
+// (2026-10-25 incident, 09:12 group turn with all four members replying).
+// Wedge protection that remains: stream deadlines (above), the queue watchdog
+// above (official, arms only when a task queues behind), the per-op agent
+// worker RPC deadline (2026-09-28 blob-db fix), and the Mac-side
+// turn-watchdog alerting layer.
 
 // Real bot-turn sources only: bookkeeping reruns (ack-redrive, spend_guard, ...)
 // must not raise user-facing failure notices.
@@ -327,7 +98,6 @@ export class RunLifecycle {
   /** Observes tool-call loops per session (OpenMausBot RepeatDetector
    * equivalent). Observes only - a suspect hit never interrupts the turn. */
   readonly toolRepeatDetector = new ToolRepeatDetector();
-  readonly progressTracker = new RunProgressTracker();
   readonly sessionActivities = new Map<string, SandAgentActivity>();
   readonly sessionActivityHolds = new Map<string, NamedActivityHoldState>();
   readonly lastRequestIdBySession = new Map<string, string>();
@@ -537,18 +307,6 @@ export class RunLifecycle {
     }
   }
 
-  private isRunAwaitingUserSelection(agentId: string): boolean {
-    try {
-      const registry = this.tm.runnerRegistry as
-        | { isAwaitingUserSelection?: (agentId: string) => boolean }
-        | undefined;
-      return registry?.isAwaitingUserSelection?.(agentId) === true;
-    } catch {
-      // A broken probe must not fail the run; the deadline just keeps ticking.
-      return false;
-    }
-  }
-
   async enqueueExclusiveRun(
     agentId: string,
     task: () => Promise<void>,
@@ -561,54 +319,13 @@ export class RunLifecycle {
   ): Promise<void> {
     if (this.tm.execution?.waitForLocalWork !== undefined)
       await this.tm.execution.waitForLocalWork();
-    // Deadline INSIDE the notice wrapper: the deadline rejection must flow
-    // through the turn-failure notice catch, or a wedged run would fail
-    // silently (the notice wrapper's catch only sees rejections of the task
-    // promise it wrapped itself).
-    const deadlinedTask = withRunHardDeadline(
-      agentId,
-      options.source,
-      () => {
-        this.progressTracker.reset(agentId);
-        return task();
-      },
-      id => this.isRunAwaitingUserSelection(id),
-      id => {
-        // Same escalation the run-queue watchdog uses: abort the runner we
-        // just gave up on so it stops writing this agent's state. The return
-        // value matters: a failed abort means the abandoned run may still be
-        // writing while the next run starts (the "durable steps moved
-        // backwards" soil). Surface it loudly instead of swallowing it.
-        try {
-          const aborted = this.tm.runnerRegistry?.interruptWedgedRunForWatchdog?.(id);
-          if (aborted === false) {
-            console.warn(
-              `[run-lifecycle] hard-deadline abort refused for agent ${id}: the abandoned run may still be writing; watch for mirror corruption`
-            );
-          }
-        } catch {
-          // best-effort; the deadline itself already released the queue
-        }
-      },
-      id => {
-        const snap = this.progressTracker.snapshot(id);
-        // Fan-out parks many agents on the global inference gate before any
-        // text-delta/tool-call arrives — and after a slot is granted the
-        // first-token wait is still silent. Both are capacity/provider wait,
-        // not a wedged turn — suspend idle the same way toolInFlight does.
-        if (isAgentBusyOnInferenceSlot(id)) {
-          return { ...snap, inferenceQueued: true };
-        }
-        return snap;
-      }
-    );
     const guardedTask = TURN_FAILURE_NOTICE_SOURCES.has(options.source)
       ? () =>
-          deadlinedTask().catch((error: unknown) => {
+          task().catch((error: unknown) => {
             this.appendTurnFailureNotice(agentId, options.source, error);
             throw error;
           })
-      : deadlinedTask;
+      : task;
     if (this.runScheduler != null)
       return this.runScheduler.enqueue(agentId, guardedTask, options);
     const previous = this.runChains.get(agentId) ?? Promise.resolve();
@@ -837,9 +554,6 @@ export class RunLifecycle {
     if (isRetrying) this.retryingSessionIds.add(sessionId);
     else this.retryingSessionIds.delete(sessionId);
     void this.tm.roster.emitAgentUpdate(sessionId);
-  }
-  trackProgressFromUpdate(update: ActivityUpdate, sessionId: string): void {
-    this.progressTracker.record(sessionId, update);
   }
   trackRetryingFromUpdate(update: ActivityUpdate, session: any): void {
     if (update.type === "retrying") {

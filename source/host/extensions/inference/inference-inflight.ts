@@ -73,14 +73,6 @@ export function isAgentHoldingInferenceSlot(agentId: string): boolean {
   return holdingAgentIds.has(agentId);
 }
 
-/**
- * True while this agent is either queued for or holding a global inference
- * slot. Run-idle must suspend for both — first-token silence is not a wedge.
- */
-export function isAgentBusyOnInferenceSlot(agentId: string): boolean {
-  return waitingAgentIds.has(agentId) || holdingAgentIds.has(agentId);
-}
-
 /** Test / restart seam: drops waiters and clears the counter. */
 export function resetInferenceInflightForTests(): void {
   for (const waiter of waiters.splice(0)) {
