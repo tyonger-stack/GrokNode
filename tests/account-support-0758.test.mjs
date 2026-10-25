@@ -95,8 +95,10 @@ function assertSubmenuStructure(tree, handlers, bt) {
   const section = content.props.children;
   assert.equal(section.type, "It.Section");
   const items = section.props.children;
-  assert.deepEqual(items.map(item => item.props.children), ["Help Center", "Keyboard shortcuts", "Send Feedback", "About"]);
-  assert.deepEqual(items.map(item => item.props.leading.props.name), ["question-circle", "keyboard", "mail", "info"]);
+  // The Send Feedback row is a deliberate user-directed omission (2026-10-25);
+  // official 0.75.8 renders it third. Do not restore it silently.
+  assert.deepEqual(items.map(item => item.props.children), ["Help Center", "Keyboard shortcuts", "About"]);
+  assert.deepEqual(items.map(item => item.props.leading.props.name), ["question-circle", "keyboard", "info"]);
   assert.equal(items[1].props.onSelect, handlers.onOpenKeyboardShortcuts, "the keyboard shortcuts item must select the exact onOpenKeyboardShortcuts prop");
   return items;
 }
@@ -159,8 +161,10 @@ test("structure eval: the submenu renders with official labels, icons and handle
   // keyboard item's label is the raw literal main-i18n's PANEL pair localizes.
   assert.equal(items[0].props.children, "Help Center");
   assert.equal(items[1].props.children, "Keyboard shortcuts");
-  assert.equal(items[2].props.children, "Send Feedback");
-  assert.equal(items[3].props.children, "About");
+  assert.equal(items[2].props.children, "About");
+  // The omitted feedback row must not resurface anywhere in the transplant.
+  assert.ok(!SUPPORT_SUBMENU_COMPONENT.includes('name:"mail"'), "the mail icon was removed deliberately");
+  assert.ok(!SUPPORT_SUBMENU_COMPONENT.includes('children:"Send Feedback"'), "the Send Feedback row was removed deliberately");
 });
 
 test("the three new pairs localize the injected literals and the moved labels keep their anchors", { skip: bundleSkip }, () => {
@@ -169,9 +173,12 @@ test("the three new pairs localize the injected literals and the moved labels ke
     const row = MAIN_I18N_PAIRS.find(entry => entry[0] === en);
     assert.ok(row != null && row[3] === "FULL", en + " must keep its FULL pair");
     const { patched: localized, hits } = applyPair(patched, en, zh, row[3]);
-    assert.ok(hits >= 2, en + " should anchor in the pristine flat row and the injected copy");
+    // "Send Feedback" anchors only in the router pass's dead flat row now; the
+    // other two also anchor in the injected copy.
+    const minHits = en === "Send Feedback" ? 1 : 2;
+    assert.ok(hits >= minHits, en + " should keep at least " + minHits + " anchor(s)");
     const localizedChildren = localized.split(`children:(RLocT("${en}","${zh}"))`).length - 1;
-    assert.ok(localizedChildren >= 2, en + " must localize inside children props (flat row + injected item)");
+    assert.ok(localizedChildren >= 1, en + " must localize inside its children prop");
   }
 });
 
@@ -183,13 +190,23 @@ test("mutation: reverting the section rewire while keeping the transplant fails 
 
 test("mutation: two swapped submenu items fail the order assertion", { skip: bundleSkip }, () => {
   const source = extractFunction(patched, "ROGe0758");
-  const before = "children:[h,v,x,w]";
+  const before = "children:[h,v,w]";
   assert.equal(source.split(before).length - 1, 1);
-  const swapped = source.replace(before, "children:[v,h,x,w]");
+  const swapped = source.replace(before, "children:[v,h,w]");
   const RSMOpenShortcuts = () => {};
   const handlers = { onOpenHelpCenter: "HELP", onOpenKeyboardShortcuts: RSMOpenShortcuts, onSendFeedback: "FEEDBACK", onOpenAbout: "ABOUT" };
   const { tree, bt } = renderSubmenu(swapped, handlers);
   assert.throws(() => assertSubmenuStructure(tree, handlers, bt), /Help Center/);
+});
+
+test("mutation: restoring the official feedback row fails the three-item assertion", { skip: bundleSkip }, () => {
+  const source = extractFunction(patched, "ROGe0758");
+  const before = "children:[h,v,w]";
+  const restored = source.replace(before, 'children:[h,v,p.jsx(It.Item,{leading:p.jsx(bt,{name:"mail",size:"base"}),onSelect:i,children:"Send Feedback"}),w]');
+  const RSMOpenShortcuts = () => {};
+  const handlers = { onOpenHelpCenter: "HELP", onOpenKeyboardShortcuts: RSMOpenShortcuts, onSendFeedback: "FEEDBACK", onOpenAbout: "ABOUT" };
+  const { tree, bt } = renderSubmenu(restored, handlers);
+  assert.throws(() => assertSubmenuStructure(tree, handlers, bt), /Send Feedback|DeepEqual/);
 });
 
 test("mutation: wiring the keyboard item to the about handler fails the identity assertion", { skip: bundleSkip }, () => {
