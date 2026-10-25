@@ -3,7 +3,7 @@ import http, { type IncomingMessage, type Server, type ServerResponse } from "no
 import { isSandThemePreference, type SandThemePreference } from "../../shared/desktop.js";
 import { resolveDevControlPort } from "./dev-controls-gate.js";
 import { getSimulatedGatewayLatencyMs, setSimulatedGatewayLatencyMs } from "./dev-network-latency.js";
-import { grokNodeNetworkDebuggerProbes, runNetworkDebuggerChecks } from "./network-debugger.js";
+import { grokNodeNetworkDebuggerProbes, renderNetworkDebuggerHtml, runNetworkDebuggerChecks } from "./network-debugger.js";
 
 export interface DevThemeController {
   getState(): unknown;
@@ -32,6 +32,7 @@ export function handleDevControlRequest(req: IncomingMessage, res: ServerRespons
   if (req.method === "GET" && req.url?.startsWith("/network-latency")) { json(res, 200, { ms: getSimulatedGatewayLatencyMs() }); return; }
   if (req.method === "GET" && req.url === "/gateway-offline") { json(res, 200, { induced: deps.isGatewayOfflineInduced() }); return; }
   if (req.method === "GET" && req.url === "/theme") { json(res, 200, deps.themeController.getState()); return; }
+  if (req.method === "GET" && req.url === "/network-debugger") { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(renderNetworkDebuggerHtml()); return; }
   if ((req.method === "GET" || req.method === "POST") && req.url === "/skip-onboarding") { deps.skipOnboarding(); res.writeHead(204).end(); return; }
   if (req.method !== "POST") { res.writeHead(405).end(); return; }
   if (req.url?.startsWith("/network-latency")) {

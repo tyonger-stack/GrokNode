@@ -15,7 +15,7 @@ await build({
 });
 const {
   NETWORK_DEBUGGER_KIND, NETWORK_DEBUGGER_PROTOCOLS, NETWORK_DEBUGGER_STATUSES,
-  grokNodeNetworkDebuggerProbes, httpProbe, networkDebuggerReportFileName,
+  grokNodeNetworkDebuggerProbes, httpProbe, networkDebuggerReportFileName, renderNetworkDebuggerHtml,
   runNetworkDebuggerChecks, serializeNetworkDebuggerReport, tcpProbe,
 } = require(outfile);
 
@@ -79,4 +79,15 @@ test("the grok-node default probe list covers gateway, vnc, and relay targets", 
   assert.equal(probes[0].target, "http://127.0.0.1:1340/health");
   assert.equal(probes[1].target, "127.0.0.1:6080");
   assert.equal(probes[2].target, "127.0.0.1:11010");
+});
+
+test("the dialog page is self-contained and wired to the run endpoint", async () => {
+  const html = renderNetworkDebuggerHtml();
+  assert.ok(html.startsWith("<!doctype html>"));
+  assert.ok(html.includes("/network-debugger"));
+  assert.ok(html.includes("grok-bot-network-debugger-"));
+  for (const marker of ["\u2713", "\u2715", "\u2013", "运行检查", "导出报告"]) assert.ok(html.includes(marker), marker);
+  for (const external of ["http://", "https://", "<link", "<script src"]) {
+    assert.ok(!html.slice(html.indexOf("<body")).includes(external), `page must not depend on ${external}`);
+  }
 });
