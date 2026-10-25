@@ -1,3 +1,4 @@
+import { parseArgs } from "node:util";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -5,9 +6,21 @@ import { fileURLToPath } from "node:url";
 import { statFile } from "@electron/asar";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
-const asarPath = path.resolve(repoRoot, "../rea-grokbot-0755/asar/app.asar");
-const outputPath = path.join(repoRoot, "manifests/ports/grokbot-0755-unpacked.json");
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+const { values } = parseArgs({
+  options: {
+    version: { type: "string" },
+  },
+});
+const version = values.version;
+if (!version || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)) {
+  throw new Error("usage: node scripts/lib/generate-upstream-unpacked-manifest.mjs --version <x.y.z>");
+}
+const compact = version.replaceAll(".", "");
+
+const asarPath = path.resolve(repoRoot, `../rea-grokbot-${compact}/asar/app.asar`);
+const outputPath = path.join(repoRoot, `manifests/ports/grokbot-${compact}-unpacked.json`);
 
 const NATIVE_PATHS = [
   "dist/deps/sand-notification-settings/build/Release/sand_notification_settings.node",
@@ -29,12 +42,11 @@ for (const relative of NATIVE_PATHS) {
 
 const manifest = {
   schemaVersion: 1,
-  version: "0.75.5",
-  source: "rea-grokbot-0755/asar/app.asar.unpacked",
+  version,
+  source: `rea-grokbot-${compact}/asar/app.asar.unpacked`,
   integritySource: "captured-unpacked-bytes",
   files,
 };
 
 await writeFile(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(`wrote ${outputPath} (${files.length} native artifacts)`);
-
