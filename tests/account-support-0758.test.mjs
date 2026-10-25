@@ -9,6 +9,7 @@ import { parse } from "acorn";
 import { applyPair } from "../scripts/lib/i18n-patch-engine.mjs";
 import { MAIN_I18N_PAIRS } from "../scripts/lib/main-i18n-patch.mjs";
 import {
+  ROUTER_SECTION_CHILDREN_BEFORE,
   SECTION_CHILDREN_AFTER,
   SECTION_CHILDREN_BEFORE,
   SUPPORT_SUBMENU_COMPONENT,
@@ -19,9 +20,12 @@ const assetsRoot = path.resolve(import.meta.dirname, "../src/app/dist/renderer/a
 const bundle = await readFile(path.join(assetsRoot, "index-UbX-y3il.js"), "utf8").catch(() => null);
 const bundleSkip = bundle == null ? "src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped." : false;
 
-// The search-menu pass contributes the only prerequisite this patch needs: the
-// module-scope (hoisted) RSMOpenShortcuts declaration it appends to this chunk.
-const staged = bundle == null ? null : bundle + "\nfunction RSMOpenShortcuts(){}\n";
+// Two prerequisites run before this pass on the same chunk: the router patch
+// drops the Help Center / Send Feedback rows from the section (its
+// ACCOUNT_MENU_AFTER), and the search-menu pass appends the module-scope
+// (hoisted) RSMOpenShortcuts declaration. Simulate both on the pristine bytes.
+const staged = bundle == null ? null
+  : (bundle.replace(ROUTER_SECTION_CHILDREN_BEFORE, SECTION_CHILDREN_BEFORE) + "\nfunction RSMOpenShortcuts(){}\n");
 const patched = staged == null ? null : patchAccountSupport0758(staged);
 
 // Memo slots the official OGe claims; the transplant must keep the same cache size.
@@ -109,6 +113,8 @@ function assertNewPairsLocalize(source, table) {
 
 test("the account support patch is guarded by the search-menu pass and lands exactly once", { skip: bundleSkip }, () => {
   assert.throws(() => patchAccountSupport0758(bundle), /function RSMOpenShortcuts/, "must fail closed before the search-menu pass has run");
+  const unroutered = bundle.replace(ROUTER_SECTION_CHILDREN_BEFORE, ROUTER_SECTION_CHILDREN_BEFORE) + "\nfunction RSMOpenShortcuts(){}\n";
+  assert.equal(unroutered.split(SECTION_CHILDREN_BEFORE).length - 1, 0, "pristine bytes must not match the post-router anchor");
   assertPatchedShape(patched);
   parse(patched, { ecmaVersion: "latest", sourceType: "module" });
   assert.throws(() => patchAccountSupport0758(patched), /already applied/);

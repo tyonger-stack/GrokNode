@@ -4,6 +4,9 @@
 // search-menu-0753 port (RSMOpenShortcuts, RSMShortcutsHost), so this pass only
 // transplants the submenu component and rewires the account menu section that
 // renders it. Support sits before Settings, matching the official order.
+// The router patch already dropped the Help Center / Send Feedback rows from
+// this section (ACCOUNT_MENU_AFTER), so the baseline this pass rewires is the
+// post-router children array; About is the only moved row still present.
 //
 // @evidence rea-grokbot-0758/app/dist/renderer/assets/index.eager-app-BPR02W4s.js
 //   OGe @1029237 (support submenu), CGe section @1025168 (children become
@@ -17,7 +20,8 @@ import { parse } from "acorn";
 
 const hash = text => createHash("sha256").update(text).digest("hex");
 
-export const SECTION_CHILDREN_BEFORE = "children:[ee,te,ne,Z,se,Q,ce]";
+export const SECTION_CHILDREN_BEFORE = "children:[ee,te,ne,Z,se]";
+export const ROUTER_SECTION_CHILDREN_BEFORE = "children:[ee,te,ne,Z,se,Q,ce]";
 export const SECTION_CHILDREN_AFTER =
   "children:[ee,te,ne,p.jsx(ROGe0758,{onOpenHelpCenter:Y,onOpenKeyboardShortcuts:RSMOpenShortcuts,onSendFeedback:h.open,onOpenAbout:H}),Z]";
 
