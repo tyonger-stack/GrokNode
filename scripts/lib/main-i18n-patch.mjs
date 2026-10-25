@@ -226,6 +226,11 @@ export const MAIN_I18N_PAIRS = [
   ["Invoice Chaser", "催款助手", "VtyLJf", "FULL"],
   ["Jump to", "跳转到", "NiZZRh", "FULL"],
   ["Jump to replied message", "跳转到被回复的消息", "i/GPhL", "FULL"],
+  // 0.75.8's account-menu Support submenu, injected by account-support-0758-patch.mjs.
+  // The message id is 0.75.8's own, so the translation is the one that version ships
+  // rather than anything authored here. PANEL because the literal only ever appears
+  // inside the injected submenu component.
+  ["Keyboard shortcuts", "键盘快捷键", "77Emn0", "PANEL"],
   ["Links", "链接", "Rj01Fz", "FULL"],
   ["Loading conversation", "正在加载对话", "L2FsIn", "FULL"],
   ["Log out", "退出登录", "FgAxTj", "FULL"],
@@ -400,6 +405,11 @@ export const MAIN_I18N_PAIRS = [
   ["Stop recording", "停止录制", "pJ/IRc", "FULL"],
   ["Store securely", "安全保存", "S8cdO2", "FULL"],
   ["Suggestions", "建议", "8J32PY", "FULL"],
+  // Same injected Support submenu as the "Keyboard shortcuts" pair above: the trigger
+  // label doubles as the submenu's accessible name, and "Support options" labels the
+  // submenu content (aria-label). Both are 0.75.8 message ids; PANEL for the same reason.
+  ["Support", "支持", "XYLcNv", "PANEL"],
+  ["Support options", "支持选项", "KKkUEB", "PANEL"],
   ["Take over", "接管", "yqwjpd", "FULL"],
   ["Take over the computer", "接管电脑", "kP9LHY", "FULL"],
   ["Teach a task", "教它做一项任务", "yrMloC", "FULL"],

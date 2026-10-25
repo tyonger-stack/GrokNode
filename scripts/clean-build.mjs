@@ -70,6 +70,7 @@ import { apply0712GateEcosystemPatch } from "./lib/0712-gate-ecosystem-patch.mjs
 import { applyMainAgentRendererPatch } from "./lib/main-agent-renderer-patch.mjs";
 import { applyBotCreateDialogRendererExtension } from "./lib/bot-create-dialog-renderer-extension.mjs";
 import { applySearchPaletteRendererPatch } from "./lib/search-palette-renderer-patch.mjs";
+import { applyAccountSupport0758Patch } from "./lib/account-support-0758-patch.mjs";
 import { applyBotColorRendererPatch } from "./lib/bot-color-renderer-patch.mjs";
 import { applyBotColorSettingsPatch } from "./lib/bot-color-settings-patch.mjs";
 import { applyComputerSleepRendererPatch } from "./lib/computer-sleep-renderer-patch.mjs";
@@ -395,6 +396,12 @@ export async function buildFidelityReconstructedAsar({
   // the main-agent wrapper and the sidebar top-bar injection above. They emit
   // RLocT calls, so they must land before the i18n passes.
   await applySearchPaletteRendererPatch({ stageRoot });
+  // 0.75.8's account menu groups About / Help Center / Send Feedback under a new
+  // Support submenu whose first row opens the keyboard-shortcuts dialog. Depends on
+  // the search-palette pass above (its RSMOpenShortcuts) and must precede the i18n
+  // passes below: "Support", "Keyboard shortcuts" and "Support options" are raw
+  // literals those passes localize.
+  await applyAccountSupport0758Patch({ stageRoot });
   await applyBotCreateDialogRendererExtension({ stageRoot });
   // 强调色 = Bot 颜色 (bot color in chat): appends a self-starting IIFE to the ENTRY
   // chunk (not the sidebar chunk the pass above edits), so the two never touch the same
