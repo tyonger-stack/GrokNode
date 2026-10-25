@@ -273,8 +273,8 @@ test("身份区标签：空 title 仍渲染 Add a label / 添加标签（对齐�
   assert.ok(entry.includes("[aria-label=\"Agent title\"]::placeholder"), "empty-label tertiary placeholder style");
   assert.ok(source.includes('className:"sand-78zum5 sand-dt5ytf sand-6s0dn4 sand-h8yej3",style:{gap:"16px",padding:"0 0 12px"'),
     "hero must retain the shipped single-layer vertical rhythm");
-  assert.ok(entry.includes('margin:0 -16px;padding:4px 16px 10px'),
-    "tab strip must use the shipped zero-gap parent directly");
+  assert.ok(entry.includes('margin:0 -16px 10px;padding:4px 16px 10px'),
+    "tab strip must keep the 0.75.8 tabpanel's 10px below-bar chrome (sand-889kno)");
   assert.ok(entry.includes('--cursor-bg-editor:#121212'),
     "details pane must resolve its recovered background token to the shipped chrome color");
 });

@@ -17,7 +17,13 @@ import {
 const BAR_CSS = [
   '[class*="sand-info-pane__inner"] [data-r-tabs-hidden="1"][hidden]{display:none!important;}',
   '[class*="sand-info-pane__inner"] .ui-scroll-area__content > div:has(> #' + TABBAR_ID + '){padding-top:0!important;gap:0!important;}',
-  "#" + TABBAR_ID + "{--r-tabs-chrome:var(--sand-bg-chrome,var(--sand-bg-base,#0b0d0b));position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:center;gap:2px;margin:0 -16px;padding:4px 16px 10px;background-color:var(--r-tabs-chrome);}",
+  // Official 0.75.8 keeps 10px of chrome between the sticky bar and the tabpanel content
+  // (tabpanel wrapper carries sand-889kno padding-top:10px; measured live 2026-10-25:
+  // official 本周 section y=261 with the bar at 211..251, ours started flush at 251).
+  // Our flattened overview has no tabpanel wrapper, so the 10px rides on the bar's own
+  // margin-bottom — it scrolls away with the bar's flow slot once the bar sticks, matching
+  // official where the padding scrolls with the panel.
+  "#" + TABBAR_ID + "{--r-tabs-chrome:var(--sand-bg-chrome,var(--sand-bg-base,#0b0d0b));position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:center;gap:2px;margin:0 -16px 10px;padding:4px 16px 10px;background-color:var(--r-tabs-chrome);}",
   "#" + TABBAR_ID + "::after{content:\"\";position:absolute;inset-inline:0;top:100%;height:12px;pointer-events:none;background-image:linear-gradient(to bottom,var(--r-tabs-chrome),transparent);}",
   "#" + TABBAR_ID + " [role=tab]{appearance:none;-webkit-appearance:none;display:flex;align-items:center;box-sizing:border-box;padding:4px 8px;margin:0;border:0;border-radius:9999px;background-color:transparent;color:var(--sand-text-secondary,#8a8f87);font-family:inherit;font-size:13px;line-height:18px;font-weight:400;cursor:pointer;white-space:nowrap;}",
   "#" + TABBAR_ID + " [role=tab][aria-selected=true]{background-color:var(--sand-bg-secondary,var(--sand-fill-secondary,#77777717));color:var(--sand-text-primary,#eef3e7);}",
