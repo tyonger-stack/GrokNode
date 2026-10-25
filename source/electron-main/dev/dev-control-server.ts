@@ -3,6 +3,7 @@ import http, { type IncomingMessage, type Server, type ServerResponse } from "no
 import { isSandThemePreference, type SandThemePreference } from "../../shared/desktop.js";
 import { resolveDevControlPort } from "./dev-controls-gate.js";
 import { getSimulatedGatewayLatencyMs, setSimulatedGatewayLatencyMs } from "./dev-network-latency.js";
+import { grokNodeNetworkDebuggerProbes, runNetworkDebuggerChecks } from "./network-debugger.js";
 
 export interface DevThemeController {
   getState(): unknown;
@@ -58,6 +59,13 @@ export function handleDevControlRequest(req: IncomingMessage, res: ServerRespons
     deps.broadcast("sand:dev-widget-gallery", { isOn }); res.writeHead(204).end(); return;
   }
   if (req.url === "/restart-onboarding") { deps.restartOnboarding(); res.writeHead(204).end(); return; }
+  if (req.url === "/network-debugger") {
+    void runNetworkDebuggerChecks(grokNodeNetworkDebuggerProbes()).then(
+      (report) => json(res, 200, report),
+      (error: unknown) => json(res, 500, { error: error instanceof Error ? error.message : String(error) }),
+    );
+    return;
+  }
   res.writeHead(404).end();
 }
 
