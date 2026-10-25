@@ -33,3 +33,11 @@
 - Sidecar 二进制本身复用 0721 线已 stage 的官方签名的 `Grok Bot Computer Use.app`（computer-use-sidecar-0721.mjs）。
 - Messages consent 流（S2/S3 范围外）：decideLocalUse 判决链 + 渲染器审批 UI 需要渲染层补丁线，记为后续工作，不在本轮伪装完成。
 - P2 UI 结构锚点：上游 chunk-network-debugger-dialog 的 data-network-check / remediation / tested-endpoint 属性。
+
+## 打包部署验证（2026-10-25 18:31）
+
+- 打包：整包清 .build + 三 CODEBUDDY 开关关闭 + GROK_NODE_SIDECAR_APP 指向装机 staged 官方 sidecar（DCNK4UB866 验签过），node scripts/package-macos.mjs 全绿。
+- 内容检查：staged daemon 含 apple-events/run×2 / SidecarMcpSession / messages-consent-result / deviceTools×4；host-main 零命中（本线 host/local-exec 编进 Mac 侧 daemon，未碰容器 host——预期）。装机 asar f02418c5… 五个符号全在。
+- 部署：停旧进程 → ditto → open。CDP 冒烟 root 挂载/正文非空/无错误横幅；daemon 从装机 asar 路径拉起（pid 884 + discovery/connection 落盘）；容器随新 host 内容寻址重建（Up 15s）。
+- 诊断路由实测：GET /network-debugger HTML ✓；POST 报告三探针全 passed（gateway 1340 / VNC 6080 / 中继 11010，对实机当下状态）。dev-control 门 = !isPackaged，成品内不启服务器（按既有门语义），HTTP 实测用同源码起服验证。
+- **部署测试发现的成品缺口**：resolveAppleSidefarLaunch 只读 env GROK_NODE_SIDECAR_APP；成品 daemon 进程环境无此变量，apple 调用会显式回 sidecar_missing（fail-visible，不装活）。staged sidecar 已在包内，缺的是 electron-main 拉起 daemon 时把打包路径注入 spawn env 的一针（下轮补）。
