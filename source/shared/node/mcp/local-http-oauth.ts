@@ -5,6 +5,7 @@ import { MCP_OAUTH_LOOPBACK_CALLBACK_URL } from "./mcp-oauth-loopback.js";
 import { LocalHttpCredentials } from "./local-http-credentials.js";
 import { SandMcpConfigError } from "./mcp-config-error.js";
 import { GMAIL_MCP_URL } from "./local-http-gmail.js";
+import { CALENDAR_MCP_URL } from "./local-http-calendar.js";
 
 export class LocalHttpOAuth implements OAuthClientProvider {
   readonly redirectUrl = MCP_OAUTH_LOOPBACK_CALLBACK_URL;
@@ -29,6 +30,7 @@ export class LocalHttpOAuth implements OAuthClientProvider {
     const { client } = await this.options.credentials.read(this.options.serverUrl, "default");
     if (client == null && !this.options.interactive) throw new UnauthorizedError();
     if (client == null && this.options.serverUrl === GMAIL_MCP_URL) throw new SandMcpConfigError("Gmail requires your registered Google OAuth client. Add Gmail again in Marketplace and enter its client ID and secret.");
+    if (client == null && this.options.serverUrl === CALENDAR_MCP_URL) throw new SandMcpConfigError("Google Calendar requires your registered Google OAuth client. Add Google Calendar again in Marketplace and enter its client ID and secret.");
     return client;
   }
   async saveClientInformation(client: OAuthClientInformationMixed): Promise<void> {
@@ -49,6 +51,9 @@ export class LocalHttpOAuth implements OAuthClientProvider {
       throw new SandMcpConfigError("OAuth requires HTTPS or a local test server.");
     }
     if (this.options.serverUrl === GMAIL_MCP_URL) { url.searchParams.set("access_type", "offline"); url.searchParams.set("prompt", "consent"); }
+    // Official connector sends access_type=offline + prompt=select_account consent (0.75.8 authorizationParams), so the
+    // browser account picker lets the user choose which Google account to connect.
+    if (this.options.serverUrl === CALENDAR_MCP_URL) { url.searchParams.set("access_type", "offline"); url.searchParams.set("prompt", "select_account consent"); }
     this.authorizationUrl = url.toString();
   }
   saveCodeVerifier(verifier: string): void { this.verifier = verifier; }

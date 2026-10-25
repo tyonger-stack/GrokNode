@@ -7,6 +7,9 @@ import { OAuthClientInformationSchema, OAuthClientInformationFullSchema, OAuthTo
 const credentialsSchema = z.object({
   client: z.union([OAuthClientInformationFullSchema, OAuthClientInformationSchema]).optional(),
   tokens: OAuthTokensSchema.optional(),
+  // Display-only account label ("生活", …). Storage stays on the single "default" slot; the label
+  // only changes what listTools reports so the marketplace account row shows it.
+  label: z.string().min(1).max(64).optional(),
 });
 export type LocalMcpCredentials = z.infer<typeof credentialsSchema>;
 

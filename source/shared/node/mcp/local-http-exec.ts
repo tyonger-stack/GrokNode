@@ -7,14 +7,24 @@ import { LocalHttpCredentials } from "./local-http-credentials.js";
 import { LocalHttpOAuth } from "./local-http-oauth.js";
 import { createLocalHttpClient, localMcpFetch, localMcpToolResult, type HttpMcpConfig, LOCAL_HTTP_TIMEOUT_MS } from "./local-http-client.js";
 import { GMAIL_MCP_URL, GMAIL_MCP_SCOPE } from "./local-http-gmail.js";
+import { CALENDAR_MCP_URL, CALENDAR_MCP_SCOPES } from "./local-http-calendar.js";
 import type { McpServerConfig } from "./mcp-display-runtime.js";
 import { SandMcpConfigError } from "./mcp-config-error.js";
 import { generatedMcpResultFactory } from "./mcp-result-factory.js";
 import { MCP_OAUTH_LOOPBACK_CALLBACK_URL } from "./mcp-oauth-loopback.js";
 
-const accountKey = z.literal("default");
+// Google's hosted MCP servers (gmail/calendar/…) have no public dynamic client registration and
+// need a preconfigured OAuth client plus an explicit scope before connect. Keyed by server URL.
+const GOOGLE_HOSTED_AUTH = new Map<string, string>([
+  [GMAIL_MCP_URL, GMAIL_MCP_SCOPE],
+  [CALENDAR_MCP_URL, CALENDAR_MCP_SCOPES.join(" ")],
+]);
+// Local connectors keep a single credential slot stored under "default"; any other account key is
+// a display-only label persisted alongside the credentials (see LocalHttpCredentials.label).
+const STORAGE_ACCOUNT_KEY = "default";
+const accountKey = z.string().min(1).max(64);
 export const localHttpRequestSchema = z.discriminatedUnion("operation", [
-  z.object({ operation: z.literal("configure"), serverUrl: z.literal(GMAIL_MCP_URL), clientId: z.string().min(1).max(512), clientSecret: z.string().min(1).max(2048) }),
+  z.object({ operation: z.literal("configure"), serverUrl: z.enum([GMAIL_MCP_URL, CALENDAR_MCP_URL]), clientId: z.string().min(1).max(512), clientSecret: z.string().min(1).max(2048) }),
   z.object({ operation: z.literal("list"), identifiers: z.array(z.string()).max(100) }),
   z.object({ operation: z.literal("execute"), serverIdentifier: z.string(), toolName: z.string(), args: z.record(z.unknown()) }),
   z.object({ operation: z.literal("authenticate"), serverId: z.string(), accountKey, oauthRedirectUri: z.literal(MCP_OAUTH_LOOPBACK_CALLBACK_URL), forceReauth: z.boolean().optional() }),
@@ -22,6 +32,7 @@ export const localHttpRequestSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("validate"), targets: z.array(z.object({ serverUrl: z.string(), accountKey })).max(100) }),
   z.object({ operation: z.literal("logout"), serverUrl: z.string(), accountKey }),
   z.object({ operation: z.literal("delete-account"), serverId: z.string(), accountKey }),
+  z.object({ operation: z.literal("rename"), serverId: z.string(), accountKey, newAccountKey: accountKey }),
 ]);
 type Connection = ReturnType<typeof createLocalHttpClient>;
 type PendingAuth = { readonly connection: Connection; readonly serverIdentifier: string; readonly url: string; readonly expiresAt: number };
@@ -62,9 +73,9 @@ export class LocalHttpMcpExec {
   async listTools(identifiers: readonly string[]) {
     return Promise.all(this.rows().filter(row => identifiers.includes(row.name)).map(row => this.serial(row.config.url, async () => {
       const connection = this.connection(row);
-      const base = { serverIdentifier: row.name, rowServerIdentifier: row.name, accountLabel: "default" };
+      const base = { serverIdentifier: row.name, rowServerIdentifier: row.name, accountLabel: (await this.credentials.read(row.config.url, STORAGE_ACCOUNT_KEY)).label ?? STORAGE_ACCOUNT_KEY };
       try {
-        if (row.config.url === GMAIL_MCP_URL && await connection.provider.tokens() == null && !row.config.headers?.Authorization) throw new UnauthorizedError();
+        if (GOOGLE_HOSTED_AUTH.has(row.config.url) && await connection.provider.tokens() == null && !row.config.headers?.Authorization) throw new UnauthorizedError();
         await connection.connect();
         const tools = [];
         let cursor: string | undefined;
@@ -98,8 +109,9 @@ export class LocalHttpMcpExec {
     });
   }
   async checkAuthStatus(args: { readonly serverId: string | number; readonly accountKey: string; readonly forceReauth?: boolean | undefined }) {
-    if (args.accountKey !== "default") throw new SandMcpConfigError("Local connectors currently support one account. Reconnect to switch accounts.");
     const row = this.row(args.serverId);
+    // "添加其他账户"/rename flow: the requested label becomes the display name of the single slot.
+    if (args.accountKey !== STORAGE_ACCOUNT_KEY) await this.writeLabel(row.config.url, args.accountKey);
     return this.serial(row.config.url, async () => {
       for (const [state, pending] of this.pending) {
         if (pending.expiresAt <= Date.now() || args.forceReauth && pending.serverIdentifier === row.name) { this.pending.delete(state); await pending.connection.close(); }
@@ -108,8 +120,8 @@ export class LocalHttpMcpExec {
       const connection = this.connection(row, true);
       if (args.forceReauth) await connection.provider.invalidateCredentials("tokens");
       try {
-        if (row.config.url === GMAIL_MCP_URL && await connection.provider.tokens() == null) {
-          await auth(connection.provider, { serverUrl: row.config.url, scope: GMAIL_MCP_SCOPE, fetchFn: localMcpFetch });
+        if (GOOGLE_HOSTED_AUTH.has(row.config.url) && await connection.provider.tokens() == null) {
+          await auth(connection.provider, { serverUrl: row.config.url, scope: GOOGLE_HOSTED_AUTH.get(row.config.url)!, fetchFn: localMcpFetch });
           if (connection.provider.authorizationUrl != null) throw new UnauthorizedError();
         }
         await connection.connect();
@@ -134,20 +146,32 @@ export class LocalHttpMcpExec {
     } finally { await pending.connection.close(); }
   }
   async validateTokens(targets: readonly { serverUrl: string; accountKey: string }[]) {
-    return Promise.all(targets.map(async target => ({ ...target, hasValidToken: target.accountKey === "default" && (await this.credentials.read(target.serverUrl, "default")).tokens != null })));
+    return Promise.all(targets.map(async target => ({ ...target, hasValidToken: (await this.credentials.read(target.serverUrl, STORAGE_ACCOUNT_KEY)).tokens != null })));
   }
   async logoutAccount(args: { readonly serverUrl: string; readonly accountKey: string }): Promise<void> {
-    if (args.accountKey !== "default") throw new SandMcpConfigError("Local connectors currently support the default account only.");
     for (const [state, pending] of this.pending) if (pending.url === args.serverUrl) { this.pending.delete(state); await pending.connection.close(); }
-    await this.serial(args.serverUrl, () => this.credentials.update(args.serverUrl, "default", value => ({ client: value.client })));
+    await this.serial(args.serverUrl, () => this.credentials.update(args.serverUrl, STORAGE_ACCOUNT_KEY, value => ({ client: value.client, ...(value.label == null ? {} : { label: value.label }) })));
   }
-  async deleteAccount(args: { readonly serverId: string | number; readonly accountKey: string }): Promise<void> { await this.logoutAccount({ serverUrl: this.row(args.serverId).config.url, accountKey: args.accountKey }); }
+  // Removing the account also clears its display label: the row falls back to the plain default
+  // slot, matching the marketplace "移除 <account> 账户" expectation.
+  async deleteAccount(args: { readonly serverId: string | number; readonly accountKey: string }): Promise<void> {
+    const serverUrl = this.row(args.serverId).config.url;
+    for (const [state, pending] of this.pending) if (pending.url === serverUrl) { this.pending.delete(state); await pending.connection.close(); }
+    await this.serial(serverUrl, () => this.credentials.update(serverUrl, STORAGE_ACCOUNT_KEY, value => ({ client: value.client })));
+  }
+  async renameAccount(args: { readonly serverId: string | number; readonly accountKey: string; readonly newAccountKey: string }): Promise<void> {
+    await this.writeLabel(this.row(args.serverId).config.url, args.newAccountKey);
+  }
+  private async writeLabel(serverUrl: string, rawLabel: string): Promise<void> {
+    const label = rawLabel.trim();
+    if (label.length === 0 || label === STORAGE_ACCOUNT_KEY) throw new SandMcpConfigError("MCP account label is required.");
+    await this.credentials.update(serverUrl, STORAGE_ACCOUNT_KEY, value => ({ ...value, label }));
+  }
   async configureClient(args: { readonly serverUrl: string; readonly clientId: string; readonly clientSecret: string }): Promise<void> {
     if (!this.rows().some(row => row.config.url === args.serverUrl)) throw new SandMcpConfigError("Configure the connector before its OAuth client.");
     await this.logoutAccount({ serverUrl: args.serverUrl, accountKey: "default" });
     await this.credentials.update(args.serverUrl, "default", () => ({ client: { client_id: args.clientId.trim(), client_secret: args.clientSecret.trim() } }));
   }
-  async renameAccount(): Promise<never> { throw new SandMcpConfigError("Local connectors currently support one default account. Reconnect to switch accounts."); }
   async control(raw: unknown): Promise<unknown> {
     const request = localHttpRequestSchema.parse(raw);
     switch (request.operation) {
@@ -159,6 +183,7 @@ export class LocalHttpMcpExec {
       case "validate": return this.validateTokens(request.targets);
       case "logout": return this.logoutAccount(request);
       case "delete-account": return this.deleteAccount(request);
+      case "rename": return this.renameAccount(request);
     }
   }
   async dispose(): Promise<void> {

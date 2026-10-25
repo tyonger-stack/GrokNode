@@ -4,6 +4,7 @@ import { findMissingRequiredCatalogFields } from "./mcp-plugin-variables.js";
 import { fetchPluginServers } from "./mcp-marketplace.js";
 import type { SandMarketplacePlugin } from "./mcp-marketplace.js";
 import { GMAIL_LOCAL_OAUTH_FIELDS, GMAIL_MCP_URL } from "./local-http-gmail.js";
+import { CALENDAR_LOCAL_OAUTH_FIELDS, CALENDAR_MCP_URL } from "./local-http-calendar.js";
 import { mergeLocalCatalogSupplements } from "./local-catalog-supplements.js";
 import { parseMcpServerConfig, type McpServerConfig } from "./mcp-display-runtime.js";
 export class SandMcpCatalogFlow {
@@ -54,9 +55,12 @@ export class SandMcpCatalogFlow {
     const substitute = (config: McpServerConfig): McpServerConfig => "command" in config ? { command: replace(config.command), ...(config.args == null ? {} : { args: config.args.map(replace) }), ...(config.env == null ? {} : { env: Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, replace(value)])) }) } : { url: replace(config.url), ...(config.type == null ? {} : { type: config.type }), ...(config.headers == null ? {} : { headers: Object.fromEntries(Object.entries(config.headers).map(([key, value]) => [key, replace(value)])) }) };
     const current = this.core.getLocalMcpServers();
     this.core.setLocalMcpServers({ ...current, ...Object.fromEntries(Object.entries(servers).map(([name, config]) => [plugin.displayName + ":" + name, substitute(config)])) });
-    if (Object.values(servers).some(config => "url" in config && config.url === GMAIL_MCP_URL)) {
+    // Google's hosted MCP servers (Gmail, Google Calendar) need the user's own OAuth client before
+    // the first connect; the same GOOGLE_CLIENT_ID/SECRET pair works for both.
+    for (const serverUrl of [GMAIL_MCP_URL, CALENDAR_MCP_URL]) {
+      if (!Object.values(servers).some(config => "url" in config && config.url === serverUrl)) continue;
       if (this.core.configureLocalOAuth == null) throw new SandMcpConfigError("Local OAuth setup is unavailable.");
-      await this.core.configureLocalOAuth({ serverUrl: GMAIL_MCP_URL, clientId: values.GOOGLE_CLIENT_ID ?? "", clientSecret: values.GOOGLE_CLIENT_SECRET ?? "" });
+      await this.core.configureLocalOAuth({ serverUrl, clientId: values.GOOGLE_CLIENT_ID ?? "", clientSecret: values.GOOGLE_CLIENT_SECRET ?? "" });
     }
     return this.core.reloadServers();
   }
@@ -93,6 +97,7 @@ export class SandMcpCatalogFlow {
     const serverViews = listing.plugins
       .map((plugin) => {
         if (this.core.localOnly && plugin.name === "gmail") plugin = { ...plugin, variableFields: GMAIL_LOCAL_OAUTH_FIELDS };
+        if (this.core.localOnly && plugin.name === "google-calendar") plugin = { ...plugin, variableFields: CALENDAR_LOCAL_OAUTH_FIELDS };
         this.catalog.set(plugin.pluginId, plugin);
         return marketplace.marketplacePluginToView(plugin);
       })
