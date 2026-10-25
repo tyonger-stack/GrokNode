@@ -7,6 +7,11 @@ import type { JsonValue } from "@bufbuild/protobuf";
 import { createDeadlinePolicy, createIdleWatchdogPolicy, createPollingPolicy, createRetryPolicy, realClock } from "../../internal/scheduling.js";
 import { errorLogTag, errorMessage } from "../../shared/errors.js";
 import { runMessagesOpConsent, type MessagesConsentEvent, type MessagesVerdict } from "./messages-consent.js";
+import { deviceToolCallServerMessage, isDeviceToolCallShape, parseDeviceToolCall } from "../../packages/local-exec/device-tool-call.js";
+
+export interface LocalExecDeviceTools {
+  readonly callTool: (toolId: string, input: Record<string, unknown>, options: { readonly conversationId: string }) => Promise<{ readonly status: "completed" | "failed"; readonly value?: unknown; readonly error?: { readonly code: string; readonly message: string } }>;
+}
 import { GATEWAY_AUTH_SCHEME } from "../../shared/gateway-wire.js";
 import {
   DEFAULT_MAX_LOCAL_EXEC_FILE_BYTES, GATEWAY_LOCAL_EXEC_REQUESTS_PATH, GATEWAY_LOCAL_EXEC_RESPONSES_PATH,
@@ -83,6 +88,7 @@ export interface SandLocalExecProviderOptions {
   readonly decideLocalUse?: (args: { readonly op: JsonValue; readonly approvalId?: string }) => Promise<MessagesVerdict | undefined> | MessagesVerdict | undefined;
   readonly performMessagesOp?: (op: JsonValue) => Promise<JsonValue> | JsonValue;
   readonly messagesOpGeneration?: number;
+  readonly deviceTools?: LocalExecDeviceTools;
 }
 
 export function withLocalExecAuth(headers: Record<string, string>, connection: LocalExecConnection): Record<string, string> {
@@ -140,7 +146,15 @@ export class SandLocalExecProvider {
   }
   private describeFrame(frame: Extract<LocalExecRequestFrame, { kind: "exec" | "upload" | "download" }>): SandLocalToolRequest | undefined { if (frame.kind === "upload") return { action: "write-file", target: frame.path }; if (frame.kind === "download") return { action: "read-file", target: frame.path, attachToResourcePath: frame.path }; try { const decoded = this.options.executor.decodeServerMessage(frame.serverMessage); const normalized = normalizeDescribableMessage(decoded); return normalized === undefined ? undefined : describeLocalExec(normalized, this.terminalsFolder); } catch { return undefined; } }
   private refuse(requestId: string, kind: "exec" | "upload" | "download", reason: string): void { if (kind === "exec") this.enqueue({ kind: "control", requestId, message: this.options.executor.throwControl(reason) }); else this.enqueue({ kind: "file-error", requestId, error: reason }); }
-  private async handleExec(requestId: string, json: JsonValue): Promise<void> { let message: LocalExecDecodedMessage; try { message = this.options.executor.decodeServerMessage(json); } catch (error) { this.enqueue({ kind: "control", requestId, message: this.options.executor.throwControl(errorMessage(error)) }); return; } const execId = this.nextExecId++; message.id = execId; const controller = new AbortController(); this.inflight.set(requestId, { execId, controller }); this.options.onInflightChange?.(this.inflight.size); try { for await (const output of this.options.executor.execute(message, controller.signal)) this.enqueue({ kind: output.kind, requestId, message: output.message }); } finally { this.inflight.delete(requestId); this.options.onInflightChange?.(this.inflight.size); } }
+  private async handleExec(requestId: string, json: JsonValue): Promise<void> {
+    if (this.options.deviceTools !== undefined && isDeviceToolCallShape(json)) {
+      const parsed = parseDeviceToolCall(json);
+      if (parsed.kind === "invalid") { this.enqueue({ kind: "client", requestId, message: { status: "failed", error: { code: "unsupported", message: parsed.error } } as JsonValue }); return; }
+      const outcome = await this.options.deviceTools.callTool(parsed.toolId, parsed.input, { conversationId: parsed.conversationId });
+      this.enqueue({ kind: "client", requestId, message: outcome as JsonValue });
+      return;
+    }
+    let message: LocalExecDecodedMessage; try { message = this.options.executor.decodeServerMessage(json); } catch (error) { this.enqueue({ kind: "control", requestId, message: this.options.executor.throwControl(errorMessage(error)) }); return; } const execId = this.nextExecId++; message.id = execId; const controller = new AbortController(); this.inflight.set(requestId, { execId, controller }); this.options.onInflightChange?.(this.inflight.size); try { for await (const output of this.options.executor.execute(message, controller.signal)) this.enqueue({ kind: output.kind, requestId, message: output.message }); } finally { this.inflight.delete(requestId); this.options.onInflightChange?.(this.inflight.size); } }
   private async handleMessagesOp(requestId: string, op: JsonValue, approvalId: string | undefined): Promise<void> {
     if (this.options.performMessagesOp === undefined) {
       this.enqueue({ kind: "messages-error", requestId, error: "Messages tools are not available in this build." });

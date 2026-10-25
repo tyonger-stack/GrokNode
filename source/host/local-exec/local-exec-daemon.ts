@@ -13,7 +13,8 @@ import {
   getLocalExecSupervisorHeartbeatPath, readLocalExecDaemonConnection, readLocalExecDaemonCredential, readLocalExecSupervisorHeartbeat,
   writeLocalExecDaemonConnection, writeLocalExecDaemonDiscovery, type LocalExecConnection
 } from "./local-exec-daemon-protocol.js";
-import { SandLocalExecProvider, type LocalExecExecutor, type SandLocalExecProviderOptions } from "./local-exec-provider.js";
+import { SandLocalExecProvider, type LocalExecDeviceTools, type LocalExecExecutor, type SandLocalExecProviderOptions } from "./local-exec-provider.js";
+import { appleAppsEnabled, AppleAppsToolRunner } from "../../local-exec-daemon/apple-apps/runner.js";
 import { getLocalToolApprovalsPath, getLocalToolRetirementsPath, readLiveLocalToolApprovals, retireLocalToolApproval } from "./local-tool-approvals.js";
 
 export class SandLocalExecConnectionError extends Error {}
@@ -52,8 +53,13 @@ export async function runLocalExecDaemon(options: RunLocalExecDaemonOptions = {}
   const settingsStore = options.settingsStore ?? new SandSettingsStore(join(getSandRootDir(), "settings.json")); const approvalsPath = options.approvalsPath ?? getLocalToolApprovalsPath(); const retirementsPath = options.retirementsPath ?? getLocalToolRetirementsPath();
   const executor = options.executor;
   if (executor === undefined) throw new SandLocalExecConnectionError("local-exec executor runtime is not configured");
+  const appleRunner = appleAppsEnabled() ? new AppleAppsToolRunner() : undefined;
+  const deviceTools: LocalExecDeviceTools | undefined = appleRunner === undefined ? undefined : {
+    callTool: (toolId, input, callOptions) => appleRunner.callTool(toolId, input, callOptions),
+  };
   const providerOptions: SandLocalExecProviderOptions = {
     executor,
+    ...(deviceTools === undefined ? {} : { deviceTools }),
     resolveConnection: async () => { const connection = await readLocalExecDaemonConnection(connectionPath); if (connection == null) throw new SandLocalExecConnectionError(NO_LOCAL_EXEC_CONNECTION_MESSAGE); return connection; },
     onConnectionStale: async () => { const handoff = await readLocalExecDaemonCredential(credentialPath); if (handoff == null) return; const fresh = await backendResolver({ backendUrl: handoff.backendUrl, credential: handoff.credential }); if (fresh != null) await writeLocalExecDaemonConnection(fresh, connectionPath); },
     isLocalUseBlocked: async ({ approvalId, describes, terminalsFolder }) => { const permission = settingsStore.getLocalToolPermission(); if (permission === "never") return SAND_LOCAL_TOOLS_DISABLED_MESSAGE; if (permission === "always") return undefined; if (approvalId == null || approvalId.length === 0 || describes == null) return SAND_LOCAL_TOOLS_UNAPPROVED_MESSAGE; const approval = (await readLiveLocalToolApprovals(approvalsPath, retirementsPath)).get(approvalId); if (approval == null) return SAND_LOCAL_TOOLS_UNAPPROVED_MESSAGE; return localToolApprovalCovers({ ...approval, ...(approval.action === "run-command" ? { resourcePath: terminalsFolder } : {}) }, describes) ? undefined : SAND_LOCAL_TOOLS_UNAPPROVED_MESSAGE; },
