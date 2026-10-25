@@ -23,7 +23,7 @@
 - [x] S0 本 todo + 决策痕（本文件）
 - [x] S1 P1 契约模块 `source/shared/node/apple-apps-tools.ts` + 测试（对照 evidence.json 逐项断言）
 - [x] S2 P1 sidecar 传输 + daemon 执行器（修正：传输是 MCP stdio 而非 Unix socket——Zge 语义逐字：--mcp-stdio --conversation-id、initialize 2025-06-18、2m 请求超时、10m 空闲、cancel 通知、est/Vnt 分发 + lD 写未确认包装）
-- [x] S3 P1 grok_bot_apple_apps 门控 + AppleAppsToolRunner（含 GROK_NODE_SIDECAR_APP 启动解析）。**未做**：host bridge 帧暴露（依赖 local-cua U3 的帧扩展，见 .audit/local-cua.todo.md）与 messages consent 运行时（判决链契约已在 contract 模块定型）
+- [x] S3 P1 grok_bot_apple_apps 门控 + AppleAppsToolRunner（含 GROK_NODE_SIDECAR_APP 启动解析）。**后续补齐**（d920eeb 面板 / 08c6d4b 帧扩展+consent 判决链 / device-tool exec 分流三个提交落地）：bridge 暴露已完成到 provider 帧 + daemon runner 一层；剩余缝 = agent 可见工具表（gateway announce，hello capabilities 已按上游形状宣告 messagesOp）与 messages perform 端（sidecar Messages 工具执行，上游执行体未锚定）
 - [x] S4 P2 网络诊断：契约逐字移植（状态/协议/报告/文件名）+ Grok Node 本地探针（1340/6080/11010）+ dev-control POST /network-debugger。**未做**：诊断对话框 UI（需 renderer patch 线，上游 17 项云端检查 id 全部不适用本地链路）
 - [x] S5 P3 主 Bot 预热：**证据否决，不移植**——glass_main_bot_prewarm_on_launch 在 0.75.8 dist 全部产物中仅出现 1 次（main-app flag 默认表），零消费点，无可重建行为
 - [x] S6 验证 + 提交（P3 屏幕预览未移植：纯 renderer 大件，证据在 chunk-computer-screen-preview/grok_bot_manage_screen，留待 renderer 线）
