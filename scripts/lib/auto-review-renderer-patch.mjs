@@ -15,17 +15,47 @@
 // same-token stand-ins sand-1tiofj7 (--sand-fill-secondary) + sand-n3e42v
 // (--sand-text-accent) with sand-18zih8k (border-radius:3px). Collapse uses
 // sand-104kibb / sand-1ua5tub / sand-1h7i4cw / ui-1l13ptj / sand-b3r6kr.
+//
+// 2026-10-25 whole-card zh pass (explicit user authorization, same standing as the
+// 2026-10-02 activity-label authorizations): titles / surface captions / red errors
+// wrap with RArT; host-composed summary shapes ("Use X tool Y with D", "Run a
+// command on …", block reason) translate display-side via RArSum/RArReason only.
+// The raw English strings still feed the ie()/re()/le() matchers below, saved
+// auto-review rules, and the model-facing classifier — never translate those.
+// "Approval needed" (badge) is a main-i18n LOCAL pair (index-UbX-y3il.js).
 
 const LOAD_BEFORE =
   'async function de(t,e){if(e===void 0)return"approved";try{await t.load();const s=ne(t.snapshots.get());return s==null?"approved":(await t.setInstructions(W(s,e)),"always")}catch{return"approved"}}';
 const LOCAL_DOCKER_SHELL_RULE = '"Always allow all Shell commands on this local Docker VM."';
-const LOAD_AFTER = `async function de(t,e,s){const n=s==="box_shell"?${LOCAL_DOCKER_SHELL_RULE}:e;if(n===void 0)throw new Error("No reusable rule is available. Choose Allow once or retry the command for a new review.");await t.load();const o=ne(t.snapshots.get());if(o==null)throw new Error("Could not load Auto-review settings. Retry or choose Allow once.");await t.setInstructions(W(o,n));return"always"}`;
+const LOAD_AFTER = `async function de(t,e,s){const n=s==="box_shell"?${LOCAL_DOCKER_SHELL_RULE}:e;if(n===void 0)throw new Error(RArT("No reusable rule is available. Choose Allow once or retry the command for a new review.","没有可复用的规则。请选择“允许一次”，或重试命令以重新审核。"));await t.load();const o=ne(t.snapshots.get());if(o==null)throw new Error(RArT("Could not load Auto-review settings. Retry or choose Allow once.","无法加载自动审核设置。请重试或选择“允许一次”。"));await t.setInstructions(W(o,n));return"always"}`;
 const RESOLVE_BEFORE =
   'let o=a;a==="always"&&(o=await l());try{const r=await i({entryId:s,requestId:n,resolution:o,agentId:e});D({agentId:e,entryId:s,status:r==="stale"?"expired":o})}catch{H({agentId:e,entryId:s})}';
 const RESOLVE_AFTER =
   'try{const o=a==="always"?await l():a,r=await i({entryId:s,requestId:n,resolution:o,agentId:e});D({agentId:e,entryId:s,status:r==="stale"?"expired":o})}catch(error){H({agentId:e,entryId:s});throw error}';
 const SURFACE_BEFORE = "loadAlwaysAllow:()=>de(r.autoReviewInstructions,N)";
 const SURFACE_AFTER = "loadAlwaysAllow:()=>de(r.autoReviewInstructions,N,a.surface)";
+
+// Whole-card zh (2026-10-25 authorization). Titles are upstream 0.18 literals with no
+// catalog id (0.75.8 redesigned the copy), so they wrap with the patch's own RArT.
+// subject stays raw: it is a semantic disclosure kind ("details"/"command"), not copy.
+const TITLE_MAP_BEFORE =
+  'const ee={host_shell:{title:"The agent wants to run a command",subject:"command"},box_shell:{title:"The agent wants to run a command",subject:"command"},mcp:{title:"The agent wants to use a connected service",subject:"details"},computer:{title:"Auto-review Paused This Action",subject:"details"},automation_write:{title:"Auto-review Paused This Action",subject:"details"},cloud_agent:{title:"Auto-review Paused This Action",subject:"details"},subagent:{title:"The agent wants to run a task",subject:"details"}},te={title:"Auto-review Paused This Action",subject:"details"};';
+const TITLE_MAP_AFTER =
+  'const ee={host_shell:{title:RArT("The agent wants to run a command","Bot 想要运行一条命令"),subject:"command"},box_shell:{title:RArT("The agent wants to run a command","Bot 想要运行一条命令"),subject:"command"},mcp:{title:RArT("The agent wants to use a connected service","Bot 想要使用连接服务"),subject:"details"},computer:{title:RArT("Auto-review Paused This Action","自动审核已暂停此操作"),subject:"details"},automation_write:{title:RArT("Auto-review Paused This Action","自动审核已暂停此操作"),subject:"details"},cloud_agent:{title:RArT("Auto-review Paused This Action","自动审核已暂停此操作"),subject:"details"},subagent:{title:RArT("The agent wants to run a task","Bot 想要运行一个任务"),subject:"details"}},te={title:RArT("Auto-review Paused This Action","自动审核已暂停此操作"),subject:"details"};';
+
+const CAPTION_BEFORE =
+  'function J(t){switch(t){case"host_shell":return"Runs on your local computer";case"box_shell":case"computer":return"Runs on Grok Bot\'s computer";case"mcp":case"automation_write":case"cloud_agent":case"subagent":return;default:return}}';
+const CAPTION_AFTER =
+  'function J(t){switch(t){case"host_shell":return RArT("Runs on your local computer","在你的电脑上运行");case"box_shell":case"computer":return RArT("Runs on Grok Bot\'s computer","在 Grok Bot 的电脑上运行");case"mcp":case"automation_write":case"cloud_agent":case"subagent":return;default:return}}';
+
+// Display-side summary translation: the raw a.summary/a.reason keep feeding the
+// ie()/re()/le() matchers, copyText and saved rules; only rendered text goes zh.
+const DISPLAY_V_BEFORE = "const m=I,v=a.command??a.summary;";
+const DISPLAY_V_AFTER = "const m=I,v=a.command??RArSum(a.summary);";
+const DISPLAY_D_BEFORE = "le(a.summary)?void 0:a.summary";
+const DISPLAY_D_AFTER = "le(a.summary)?void 0:RArSum(a.summary)";
+const DISPLAY_REASON_BEFORE = "const $=a.reason,B=m.subject;";
+const DISPLAY_REASON_AFTER = "const $=RArReason(a.reason),B=m.subject;";
 // Clear string settledNote; the rule notice card replaces ue() copy (0.71.2 notice).
 const SETTLED_NOTE_BEFORE = "_=ue(u,N)";
 const SETTLED_NOTE_AFTER = "_=void 0";
@@ -40,6 +70,11 @@ const NOTICE_HELPERS = [
   "const RArDockerRule=" + LOCAL_DOCKER_SHELL_RULE + ";",
   "function RArLocale(){",
   "try{",
+  'const pref=window.desktop&&window.desktop.language&&window.desktop.language.initial&&window.desktop.language.initial.preference;',
+  'if(pref==="zh-CN")return "zh-CN";',
+  'if(pref==="en")return "en";',
+  "}catch(_e){}",
+  "try{",
   "const tags=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language];",
   "for(const raw of tags){",
   'const tag=String(raw||"").trim().toLowerCase();',
@@ -50,6 +85,38 @@ const NOTICE_HELPERS = [
   'return "en";',
   "}",
   "function RArT(en,zh){return RArLocale()===\"zh-CN\"?zh:en}",
+  // Host-composed summary shapes (sand-auto-review-summaries.ts) + fixed host
+  // strings, translated for display only. Matchers ie()/re()/le() and saved rules
+  // keep comparing the raw English text.
+  "const RArSumKnown={",
+  "\"Run a command on your local computer\":\"在你的电脑上运行命令\",",
+  "\"Run a command on Grok Bot's computer\":\"在 Grok Bot 的电脑上运行命令\",",
+  "\"Run a command on the agent's VM\":\"在 Bot 的虚拟机上运行命令\",",
+  "\"Local Auto-review requires your confirmation.\":\"自动审核需要你的确认。\"",
+  "};",
+  "function RArKnownSum(s){return typeof s===\"string\"?RArSumKnown[s]:void 0}",
+  "function RArUseSum(s){",
+  "var t=s.replace(/^Use (.+?) tool (.+?) with ([\\s\\S]+)$/,function(_m,srv,tool,det){if(srv===\"a connected service\")srv=\"连接服务\";return \"使用 \"+srv+\" 的 \"+tool+\" 工具，参数：\"+det});",
+  "if(t!==s)return t;",
+  "t=s.replace(/^Use a connected service$/,\"使用连接服务\");",
+  "if(t!==s)return t;",
+  "t=s.replace(/^Use (.+?) to (.+)$/,function(_m,one,two){if(one===\"a connected service\")one=\"连接服务\";return \"使用 \"+one+\"：\"+two});",
+  "if(t!==s)return t;",
+  "return s.replace(/^Use (.+)$/,function(_m,one){if(one===\"a connected service\")one=\"连接服务\";return \"使用 \"+one});",
+  "}",
+  "function RArSum(s){",
+  "if(typeof s!==\"string\")return s;",
+  "if(RArLocale()!==\"zh-CN\")return s;",
+  "var k=RArKnownSum(s);",
+  "if(k!==void 0)return k;",
+  "return RArUseSum(s).replace(/\\[(\\d+) chars omitted\\]/,function(_m,n){return \"[已省略 \"+n+\" 字符]\"});",
+  "}",
+  "function RArReason(s){",
+  "if(typeof s!==\"string\")return s;",
+  "if(RArLocale()!==\"zh-CN\")return s;",
+  "var k=RArKnownSum(s);",
+  "return k===void 0?s:k;",
+  "}",
   // 0.71.2 G() — LCS token diff; inserted spans become <mark>.
   "const RArTokenRe=/[^\\s,]+/g;",
   "function RArDiffSegments(before,after){",
@@ -142,6 +209,11 @@ export function patchOriginalAutoReviewApproval(source) {
     ".then(()=>i(void 0),()=>i(void 0))",
     ".then(()=>i(void 0),error=>{i(void 0);setArError(error instanceof Error?error.message:String(error))})",
   );
+  result = replaceOnce(result, TITLE_MAP_BEFORE, TITLE_MAP_AFTER);
+  result = replaceOnce(result, CAPTION_BEFORE, CAPTION_AFTER);
+  result = replaceOnce(result, DISPLAY_V_BEFORE, DISPLAY_V_AFTER);
+  result = replaceOnce(result, DISPLAY_D_BEFORE, DISPLAY_D_AFTER);
+  result = replaceOnce(result, DISPLAY_REASON_BEFORE, DISPLAY_REASON_AFTER);
   return replaceOnce(result, RETURN_BEFORE, RETURN_AFTER);
 }
 
@@ -151,8 +223,7 @@ export function patchAutoReviewSettingsOpener(source) {
 }
 
 /** Pure port of 0.71.2 `G({before,after})` for unit tests (same algorithm as NOTICE_HELPERS). */
-export function rArDiffSegments(before, after) {
-  const tokenRe = /[^\s,]+/g;
+export function rArDiffSegments(before, after) {  const tokenRe = /[^\s,]+/g;
   const a = before.match(tokenRe) ?? [];
   const n = [...after.matchAll(tokenRe)];
   const i = n.length + 1;
@@ -190,4 +261,38 @@ export function rArDiffSegments(before, after) {
   }
   if (c < after.length) u.push({ text: after.slice(c), isInserted: false });
   return u;
+}
+
+/**
+ * Pure port of the injected display translation (RArSum minus the locale gate) for
+ * unit tests: known host strings first, then the host-composed "Use …" shapes, then
+ * the Q() truncation marker. The injected code must stay byte-equivalent in shape.
+ */
+export function rArSumTranslate(s) {
+  if (typeof s !== "string") return s;
+  const known = {
+    "Run a command on your local computer": "在你的电脑上运行命令",
+    "Run a command on Grok Bot's computer": "在 Grok Bot 的电脑上运行命令",
+    "Run a command on the agent's VM": "在 Bot 的虚拟机上运行命令",
+    "Local Auto-review requires your confirmation.": "自动审核需要你的确认。",
+  };
+  if (known[s] !== undefined) return known[s];
+  let t = s.replace(/^Use (.+?) tool (.+?) with ([\s\S]+)$/, (_m, srv, tool, det) => {
+    if (srv === "a connected service") srv = "连接服务";
+    return "使用 " + srv + " 的 " + tool + " 工具，参数：" + det;
+  });
+  if (t === s) t = s.replace(/^Use a connected service$/, "使用连接服务");
+  if (t === s) {
+    t = s.replace(/^Use (.+?) to (.+)$/, (_m, one, two) => {
+      if (one === "a connected service") one = "连接服务";
+      return "使用 " + one + "：" + two;
+    });
+  }
+  if (t === s) {
+    t = s.replace(/^Use (.+)$/, (_m, one) => {
+      if (one === "a connected service") one = "连接服务";
+      return "使用 " + one;
+    });
+  }
+  return t.replace(/\[(\d+) chars omitted\]/, (_m, n) => "[已省略 " + n + " 字符]");
 }

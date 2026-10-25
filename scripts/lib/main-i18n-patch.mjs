@@ -726,6 +726,12 @@ export const MAIN_I18N_LOCAL_PAIRS = [
   ["Duplicate", "创建副本", "PROP"],
   ["Start a thread", "开始线程", "PROP"],
   ["Edit agent avatar", "编辑 Bot 头像", "PANEL"],
+  // 2026-10-25 — approval card badge (index-UbX-y3il.js `N?"Approval needed":y.label`,
+  // ternary branch). No upstream catalog id carries this 0.18 wording (the 0.75.8 card
+  // copy was redesigned), so this is a direct translation under explicit user
+  // authorization (2026-10-25). The rest of the card's zh pass lives in
+  // auto-review-renderer-patch.mjs (titles, captions, errors, summary display).
+  ["Approval needed", "需要批准", "FULL"],
 ];
 
 export const MAIN_I18N_GAPS = [
