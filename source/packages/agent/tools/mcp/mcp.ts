@@ -344,6 +344,11 @@ async function runSmartModeMcpPreflight(
       return undefined;
     }
     const blockReason = result.result.value.blockReason ?? SMART_MODE_MCP_BLOCK_REASON;
+    // Standing grants ride the classifier result: without the proposed rule the
+    // approval card cannot offer a reusable "Always allow" for connected services.
+    const proposedAllowRule = result.result.value.proposedAllowRule === undefined
+      ? undefined
+      : result.result.value.proposedAllowRule.trim();
     const targetForApproval: SmartModeApprovalTarget = {
       serverIdentifier: args.serverIdentifier,
       serverName: args.serverName,
@@ -352,6 +357,7 @@ async function runSmartModeMcpPreflight(
       mcpArguments: args.mcpArguments,
       blockReason,
       ...(args.description !== undefined ? { description: args.description } : {}),
+      ...(proposedAllowRule !== undefined && proposedAllowRule.length > 0 ? { proposedAllowRule } : {}),
     };
     if (options.smartModeApprovalProvider === undefined && args.requestSmartModeApproval) {
       const parentBlockReason = args.smartModeBlockReason !== undefined && args.smartModeBlockReason.trim().length > 0

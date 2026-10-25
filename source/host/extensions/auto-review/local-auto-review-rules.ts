@@ -3,13 +3,20 @@ import type { JsonValue } from "@bufbuild/protobuf";
 import type { SmartModeClassifierArgs } from "../../../packages/proto/generated/agent/v1/smart_mode_classifier_exec_pb.js";
 import { redactSandAutoReviewInlineSecrets } from "../../../shared/sand-auto-review-redact.js";
 
-const RULE_PREFIX = "Always allow exact local command [local-shell:v1:";
-const RULE_KEY = /^Always allow exact local command \[local-shell:v1:([a-f0-9]{64})\]/;
+const SHELL_RULE_PREFIX = "Always allow exact local command [local-shell:v1:";
+const MCP_RULE_PREFIX = "Always allow connected service tool [local-mcp:v1:";
+// Both rule kinds carry a kind-tagged digest in the bracketed tag; a saved rule only
+// satisfies an expected rule when kind and digest both match.
+const RULE_KEY = /^Always allow (?:exact local command|connected service tool) \[(local-shell|local-mcp):v1:([a-f0-9]{64})\]/;
 
 function canonical(value: JsonValue): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
   return "{" + Object.keys(value).sort().map(key => JSON.stringify(key) + ":" + canonical(value[key] ?? null)).join(",") + "}";
+}
+
+function compactRuleText(value: string, max: number): string {
+  return redactSandAutoReviewInlineSecrets(value).replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 export function localShellAllowRule(args: SmartModeClassifierArgs): string | undefined {
@@ -36,8 +43,28 @@ export function localShellAllowRule(args: SmartModeClassifierArgs): string | und
   };
   const key = createHash("sha256").update(canonical(binding)).digest("hex");
   const location = surface === "isolated_box" ? "Bot computer" : "your computer";
-  const summary = redactSandAutoReviewInlineSecrets(target.command).replace(/\s+/g, " ").trim().slice(0,220);
-  return RULE_PREFIX + key + "] on " + location + ": " + summary;
+  const summary = compactRuleText(target.command, 220);
+  return SHELL_RULE_PREFIX + key + "] on " + location + ": " + summary;
+}
+
+// Connected-service (MCP) standing grant, scoped to one server identity + tool name.
+// Call arguments are deliberately excluded from the binding: a tool's arguments change
+// between calls, and persisting them would freeze one payload into the allow list.
+export function localMcpAllowRule(args: SmartModeClassifierArgs): string | undefined {
+  if (args.target?.action !== "mcp") return undefined;
+  const target = args.target.arguments?.toJson();
+  if (target === null || typeof target !== "object" || Array.isArray(target)) return undefined;
+  const server = target.server;
+  const serverRecord = server !== null && typeof server === "object" && !Array.isArray(server) ? server : null;
+  const identifier = typeof serverRecord?.identifier === "string" ? serverRecord.identifier.trim() : "";
+  const name = typeof serverRecord?.name === "string" ? serverRecord.name.trim() : "";
+  const tool = typeof target.tool_name === "string" ? target.tool_name.trim() : "";
+  const identity = identifier || name;
+  if (identity.length === 0 || tool.length === 0) return undefined;
+  const binding: JsonValue = { server: identity, tool };
+  const key = createHash("sha256").update(canonical(binding)).digest("hex");
+  const label = name || identity;
+  return MCP_RULE_PREFIX + key + "]: Use " + compactRuleText(label, 160) + " tool " + compactRuleText(tool, 160);
 }
 
 export function isIsolatedBoxShellTarget(args: SmartModeClassifierArgs): boolean {
@@ -48,8 +75,10 @@ export function isIsolatedBoxShellTarget(args: SmartModeClassifierArgs): boolean
 }
 
 export function matchesLocalAutoReviewRule(expected: string, candidate: string): boolean {
-  const key = RULE_KEY.exec(expected)?.[1];
-  return key !== undefined && RULE_KEY.exec(candidate)?.[1] === key;
+  const expectedKey = RULE_KEY.exec(expected);
+  if (expectedKey === null) return false;
+  const candidateKey = RULE_KEY.exec(candidate);
+  return candidateKey !== null && candidateKey[1] === expectedKey[1] && candidateKey[2] === expectedKey[2];
 }
 
 export function hasSavedAutoReviewRule(expected: string, saved: readonly string[]): boolean {

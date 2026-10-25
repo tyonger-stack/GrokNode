@@ -6,7 +6,7 @@ import {
   type SmartModeClassifierResult as SmartModeClassifierResultType,
 } from "../../../packages/proto/generated/agent/v1/smart_mode_classifier_exec_pb.js";
 import { DEFAULT_SAND_AUTO_REVIEW_INSTRUCTIONS, hasLocalDockerShellGrant, type SandAutoReviewInstructions } from "../../../shared/sand-auto-review-instructions.js";
-import { hasSavedAutoReviewRule, isIsolatedBoxShellTarget, localShellAllowRule } from "./local-auto-review-rules.js";
+import { hasSavedAutoReviewRule, isIsolatedBoxShellTarget, localMcpAllowRule, localShellAllowRule } from "./local-auto-review-rules.js";
 
 export const LOCAL_AUTO_REVIEW_BLOCK_REASON = "Local Auto-review requires your confirmation.";
 
@@ -15,7 +15,7 @@ export function createLocalSmartModeClassifierExecutor(readInstructions: () => S
 } {
   return {
     async execute(_ctx: unknown, args: SmartModeClassifierArgs): Promise<SmartModeClassifierResultType> {
-      const proposedAllowRule = localShellAllowRule(args);
+      const proposedAllowRule = localShellAllowRule(args) ?? localMcpAllowRule(args);
       const instructions = readInstructions();
       const allowed = instructions.blockInstructions.length === 0 && (
         (isIsolatedBoxShellTarget(args) && hasLocalDockerShellGrant(instructions))
