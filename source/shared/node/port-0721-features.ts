@@ -5,6 +5,7 @@ const LOCAL_FEATURES = new Set([
   "grok_bot_library_pins", "grok_bot_vault", "grok_bot_vault_cards", "grok_bot_vault_card_scan_on_device",
   "grok_bot_library_hover_cards",
   "grok_bot_memory_import",
+  "grok_bot_apple_apps",
   "sand_enable_pele_diagrams",
 ]);
 
