@@ -10,12 +10,16 @@ import {EXTRA_I18N_FILES,patchExtraFile} from '../scripts/lib/extra-i18n-patch.m
 import {RUNTIME_LINES} from '../scripts/lib/i18n-patch-engine.mjs';
 import {patchHandoffSource,patchConnectorHandoffStore,applyConnectorCardHandoff0758Patch} from '../scripts/lib/connector-card-handoff-0758-patch.mjs';
 
-const assets=new URL('../src/app/dist/renderer/assets/',import.meta.url);
-const shell=await readFile(new URL('index-UbX-y3il.js',assets),'utf8');
-const card=await readFile(new URL('connector-card-BOH-l7tH.js',assets),'utf8');
-const localized=patchExtraFile(card,EXTRA_I18N_FILES.find(x=>x.file==='connector-card-BOH-l7tH.js')).patched;
-const patchedShell=patchConnectorHandoffStore(shell);
-const patchedCard=patchHandoffSource(localized);
+// The pinned 0.18 chunks. gitignored, so they only exist after `npm run bootstrap`.
+const assetsRoot=path.resolve(import.meta.dirname,'../src/app/dist/renderer/assets');
+const shell=await readFile(path.join(assetsRoot,'index-UbX-y3il.js'),'utf8').catch(()=>null);
+const card=await readFile(path.join(assetsRoot,'connector-card-BOH-l7tH.js'),'utf8').catch(()=>null);
+const bundleSkip=shell==null||card==null
+  ?'src/app/dist is gitignored and only exists after npm run bootstrap; pinned-bundle assertions skipped.'
+  :false;
+const localized=card==null?null:patchExtraFile(card,EXTRA_I18N_FILES.find(x=>x.file==='connector-card-BOH-l7tH.js')).patched;
+const patchedShell=shell==null?null:patchConnectorHandoffStore(shell);
+const patchedCard=localized==null?null:patchHandoffSource(localized);
 const ast=source=>parse(source,{ecmaVersion:'latest',sourceType:'module'});
 const declaration=(source,name)=>{const node=ast(source).body.find(node=>node.id?.name===name);assert.ok(node,name+' is missing');return source.slice(node.start,node.end)};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -32,7 +36,7 @@ function makeStore(openExternal) {
 }
 const input={connector:'github',displayName:'GitHub',authorizationUrl:'https://example.test/oauth?state=secret'};
 
-test('browser-open rejection emits openFailed with the original authorization URL',async()=>{
+test('browser-open rejection emits openFailed with the original authorization URL',{skip:bundleSkip},async()=>{
   const {store,timers}=makeStore(async()=>{throw new Error('OS refused the browser')});
   let updates=0;store.subscribe(()=>updates++);
   store.begin(input);assert.equal(store.get('github').status,'waiting');await tick();
@@ -41,7 +45,7 @@ test('browser-open rejection emits openFailed with the original authorization UR
   assert.equal(timers[0].cancelled,true);assert.equal(updates,2);
 });
 
-test('late rejection cannot overwrite a newer reopen or replacement attempt',async()=>{
+test('late rejection cannot overwrite a newer reopen or replacement attempt',{skip:bundleSkip},async()=>{
   for(const replace of [false,true]){
     const pending=[];const {store}=makeStore(()=>new Promise((resolve,reject)=>pending.push({resolve,reject})));
     store.begin(input);
@@ -52,14 +56,14 @@ test('late rejection cannot overwrite a newer reopen or replacement attempt',asy
   }
 });
 
-test('resolved connectors and reset ignore old browser errors',async()=>{
+test('resolved connectors and reset ignore old browser errors',{skip:bundleSkip},async()=>{
   const pending=[];const {store}=makeStore(()=>new Promise((resolve,reject)=>pending.push({resolve,reject})));
   store.begin(input);store.clearResolved([{serverIdentifier:'github',name:'GitHub'}]);
   pending[0].reject(new Error('late'));await tick();assert.equal(store.get('github'),undefined);
   store.reset();store.begin(input);store.reset();pending[1].reject(new Error('after reset'));await tick();assert.equal(store.getSnapshot().size,0);
 });
 
-test('staggered browser-open errors are scoped to the correct connector',async()=>{
+test('staggered browser-open errors are scoped to the correct connector',{skip:bundleSkip},async()=>{
   const pending=[];const {store,timers}=makeStore(()=>new Promise((resolve,reject)=>pending.push({resolve,reject})));
   store.begin(input);store.begin({...input,connector:'gmail'});
   timers.find(timer=>timer.ms===900).fn();
@@ -68,14 +72,14 @@ test('staggered browser-open errors are scoped to the correct connector',async()
   pending[1].resolve();
 });
 
-test('success remains waiting until callback or timeout and reopens the original URL',async()=>{
+test('success remains waiting until callback or timeout and reopens the original URL',{skip:bundleSkip},async()=>{
   const opened=[];const {store,timers}=makeStore(async url=>opened.push(url));
   store.begin(input);await tick();assert.equal(store.get('github').status,'waiting');
   store.reopen('github');await tick();assert.deepEqual(opened,[input.authorizationUrl,input.authorizationUrl]);
   timers.at(-1).fn();assert.equal(store.get('github').status,'timedOut');
 });
 
-test('real localized card and shell both parse; missing/duplicate anchors fail closed',()=>{
+test('real localized card and shell both parse; missing/duplicate anchors fail closed',{skip:bundleSkip},()=>{
   ast(patchedCard);ast(patchedShell);
   assert.throws(()=>patchHandoffSource(card),/requires extra-i18n/);
   assert.throws(()=>patchHandoffSource(patchedCard),/already patched/);
@@ -84,7 +88,7 @@ test('real localized card and shell both parse; missing/duplicate anchors fail c
   assert.match(patchedCard,/signInUrl:z\.authorizationUrl/);assert.match(patchedCard,/signInUrl:ee\.authorizationUrl/);
 });
 
-test('the staged patch writes both real chunks and provenance',async()=>{
+test('the staged patch writes both real chunks and provenance',{skip:bundleSkip},async()=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'connector-0758-'));
   try{
     const directory=path.join(root,'dist/renderer/assets');await mkdir(directory,{recursive:true});
@@ -101,7 +105,7 @@ const dom=new Window();globalThis.window=dom;globalThis.document=dom.document;
 globalThis.HTMLElement=dom.HTMLElement;globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 const React=await import('react');const jsx=await import('react/jsx-runtime');const {createRoot}=await import('react-dom/client');
 
-test('rendered official handoff uses the existing clipboard hook, not retry, in English and Chinese',async()=>{
+test('rendered official handoff uses the existing clipboard hook, not retry, in English and Chinese',{skip:bundleSkip},async()=>{
   const copied=[];let rejectCopy=false;
   const navigator={clipboard:{writeText:async value=>{if(rejectCopy)throw new Error('denied');copied.push(value)}}};
   let locale='en';const context={

@@ -11,6 +11,9 @@ import {applyOriginalRendererComputerUpdate} from '../scripts/lib/computer-updat
 
 const root=path.resolve(import.meta.dirname,'..');const temporary=await mkdtemp(path.join(root,'node_modules/.cache/computer-schedule-'));
 test.after(()=>rm(temporary,{recursive:true,force:true}));
+// The pinned 0.18 main chunk. gitignored, so it only exists after `npm run bootstrap`.
+const bundle=await readFile(path.join(root,'src/app/dist/renderer/assets/index-UbX-y3il.js'),'utf8').catch(()=>null);
+const bundleSkip=bundle==null?'src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped.':false;
 const outfile=path.join(temporary,'scheduler.cjs');await build({entryPoints:[path.join(root,'source/electron-main/box/computer-upgrade-scheduler.ts')],outfile,bundle:true,platform:'node',format:'cjs',packages:'external',logLevel:'silent'});
 const {ComputerUpgradeScheduler,COMPUTER_UPGRADE_GRACE_MS}=createRequire(import.meta.url)(outfile);
 let serial=0;
@@ -71,8 +74,8 @@ test('corrupt state fails closed rather than executing or silently clearing it',
   assert.throws(()=>new ComputerUpgradeScheduler(f.options).start());assert.equal(await readFile(f.options.filename,'utf8'),'not-json');
 });
 
-test('the real pinned computer renderer accepts a localized schedule action and parses',async()=>{
-  const source=await readFile(path.join(root,'src/app/dist/renderer/assets/index-UbX-y3il.js'),'utf8');
+test('the real pinned computer renderer accepts a localized schedule action and parses',{skip:bundleSkip},async()=>{
+  const source=bundle;
   // Use the actual existing computer pass, not a synthetic substitute for its anchors.
   const stage=path.join(temporary,'stage');const{mkdir}=await import('node:fs/promises');await mkdir(path.join(stage,'dist/renderer/assets'),{recursive:true});
   const file=path.join(stage,'dist/renderer/assets/index-UbX-y3il.js');await writeFile(file,source);
