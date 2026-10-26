@@ -19,7 +19,15 @@ type McpRuntimeDeps = Parameters<typeof createMcpRuntime<DesktopMcpManagerFacade
 async function syncLocalMcpServers(context: ProductionServiceContext): Promise<void> {
   const set = context.coordinatorLegs.legs.setHostSettings;
   if (set == null) throw new Error("Local MCP settings cannot reach the VM.");
-  await set({ localMcpServers: context.settings.settingsStore.getLocalMcpServers() });
+  // The plugin attribution has to travel with the servers: the in-box host renders the installed
+  // list, and upstream's `rt()` only folds a connector under its catalog plugin when the row
+  // carries `pluginId` AND the plugin appears in the effective-plugin list. Without the attribution
+  // the box shows bare connector rows and the installed count reads 0 even though the desktop
+  // knows the full plugin set.
+  await set({
+    localMcpServers: context.settings.settingsStore.getLocalMcpServers(),
+    localMcpPluginAttribution: context.settings.settingsStore.getLocalMcpPluginAttribution(),
+  });
 }
 
 function createLocalHttpRequest(context: ProductionServiceContext): LocalHttpRequest {

@@ -1,0 +1,116 @@
+/* Official Grok Bot 0.75.8 styling for the info-pane routine surface.
+ *
+ * Source of the rules below: /Applications/Grok Bot.app (com.anysphere.sand) 0.75.8 →
+ * app.asar → dist/renderer/assets/index-CFSAhbDS.css
+ *   stylesheet sha256 f427579fa76c117aaea459e52ef2340b2bb674b8ed3e02d292bad87cdd671a43
+ *   app.asar sha256 7d6fe1a476e2c575c11429772959728333eb9d3d442f71f89bbd9c6f180dd779
+ * Reference analysis: /Users/Apple/Documents/grokbot/rea-grokbot-0758 (REA extract)
+ *
+ * Every rule in the first block is copied verbatim from that stylesheet. A stylix class
+ * name is the hash of its declarations, so a class the 0.18 stylesheet already carries
+ * resolves to the same declarations and is reused as-is; only the 30
+ * classes 0.18 lacks are copied here:
+ *   sand-1lziwak sand-1tlft3r sand-5fd6op sand-7cl8nr sand-1ybvw9k sand-c8icb0 sand-w8bs97 sand-14gdtuo sand-t1q3vd sand-mzvs34 sand-11hyl0l sand-yri2b sand-1c1uobl sand-qxvkua sand-gxxoiu sand-1firant sand-46jg8d sand-19phtnz sand-1cgqir sand-1moagsb sand-jhkic0 sand-7qiiw0 sand-2hifos sand-9p6ekw sand-aoy8p5 sand-fwqdrz sand-19jy9ex sand-1g6zli8 sand-1q1osl5 ui-vxqr21
+ *
+ * The second block carries official 0.75.8's dark-theme token values, scoped to the
+ * right-hand info pane. Official defines these on :root; the reconstruction keeps the
+ * 0.18 token set for the rest of the app, so the values are applied where the official
+ * right-hand pane uses them. Values are the official dark-theme values read from the
+ * running official app (0.75.8), not from the light-theme :root block of its stylesheet.
+ * The --cursor-* text tokens are the ones official 0.75.8 injects at runtime: they are
+ * absent from its stylesheet, so they can only be read off the running official app.
+ *
+ * The third block is official 0.75.8's global form-control reset, verbatim, re-scoped to
+ * the right-hand pane. Official declares it as
+ *   :where(button,input,select,textarea){font-family:inherit;font-size:var(--sand-font-size-sm);
+ *   font-weight:inherit;line-height:var(--sand-line-height-sm);letter-spacing:var(--sand-letter-spacing-sm);
+ *   font-feature-settings:inherit}
+ * Official applies it globally; 0.18 does not ship it at all, so every button in the
+ * reconstruction falls back to the UA font (Arial 13.3333px, weight 400) while the official
+ * right-hand pane resolves to the app font at weight 420. Keeping the official rule verbatim
+ * inside :where() preserves its zero specificity, so stylix class rules still win exactly as
+ * they do upstream. The fourth block restores the same inheritance for the one 0.18-only
+ * rule that outranks official's zero-specificity reset (see inline comment there).
+ */
+
+.ui-vxqr21{font-weight:var(--cursor-font-weight-normal)}
+.sand-5fd6op:not(#\#):not(#\#){border-color:var(--sand-border-tertiary-translucent)}
+.sand-1cgqir:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-accent-primary)}
+.sand-7qiiw0:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-luminous)}
+.sand-fwqdrz:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary)}
+.sand-qxvkua:not(#\#):not(#\#):not(#\#){box-shadow:inset 0 0 0 .5px var(--sand-border-quaternary-translucent)}
+.sand-gxxoiu:not(#\#):not(#\#):not(#\#){font-size:0}
+.sand-9p6ekw:not(#\#):not(#\#):not(#\#){inset-inline-start:14px}
+.sand-aoy8p5:not(#\#):not(#\#):not(#\#){inset-inline-start:2px}
+.sand-c8icb0:not(#\#):not(#\#):not(#\#){isolation:isolate}
+.sand-14gdtuo:not(#\#):not(#\#):not(#\#){letter-spacing:var(--sand-letter-spacing-sm)}
+.sand-w8bs97:not(#\#):not(#\#):not(#\#){line-height:var(--sand-line-height-sm)}
+.sand-1lziwak:not(#\#):not(#\#):not(#\#){margin-inline-start:0}
+.sand-yri2b:not(#\#):not(#\#):not(#\#){padding-inline-end:0}
+.sand-1tlft3r:not(#\#):not(#\#):not(#\#){padding-inline-end:var(--cursor-spacing-1)}
+.sand-t1q3vd:not(#\#):not(#\#):not(#\#){padding-inline-end:var(--cursor-spacing-3)}
+.sand-1c1uobl:not(#\#):not(#\#):not(#\#){padding-inline-start:0}
+.sand-mzvs34:not(#\#):not(#\#):not(#\#){padding-inline-start:8px}
+.sand-1firant:not(#\#):not(#\#):not(#\#){transition-duration:.12s}
+.sand-2hifos:not(#\#):not(#\#):not(#\#){transition-property:inset-inline-start}
+.sand-1moagsb:hover:not(:disabled):not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-accent-primary-hover)}
+.sand-19jy9ex:hover:not(:disabled):not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary-hover)}
+.sand-jhkic0:disabled:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-accent-primary-disabled)}
+.sand-1g6zli8:disabled:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary-disabled)}
+.sand-1q1osl5:disabled:not(#\#):not(#\#):not(#\#){color:color-mix(in srgb,var(--sand-text-on-primary) 30%,transparent)}
+.sand-11hyl0l:hover:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary)}
+.sand-19phtnz:not(#\#):not(#\#):not(#\#):not(#\#){max-height:20px}
+.sand-46jg8d:not(#\#):not(#\#):not(#\#):not(#\#){min-width:32px}
+.sand-7cl8nr:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):after{border-radius:8px}
+.sand-1ybvw9k:focus-visible:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):after{box-shadow:inset 0 0 0 2px var(--sand-border-focus-primary)}
+
+/* Official 0.75.8 dark-theme token values, scoped to the right-hand info pane. */
+.sand-info-pane__inner:not(#\#):not(#\#){
+  --sand-bg-accent-primary:#116dd2;
+  --sand-bg-accent-primary-hover:#1784fb;
+  --sand-bg-accent-primary-disabled:#116dd226;
+  --sand-bg-luminous:#f5f5f5;
+  --sand-bg-elevated:#1f1f1f;
+  --sand-text-primary:#f5f5f5;
+  --sand-text-secondary:#f5f5f5a8;
+  --sand-text-tertiary:#f5f5f58a;
+  --sand-text-on-color:#f5f5f5;
+  --sand-fill-control-checked:#116dd2;
+  --sand-border-tertiary-translucent:#f5f5f50f;
+  --sand-border-quaternary-translucent:#f5f5f50a;
+  --sand-border-focus-primary:transparent;
+  --sand-letter-spacing-sm:0em;
+  --sand-line-height-sm:18px;
+  --sand-font-size-sm:13px;
+  /* Official 0.75.8 injects these text tokens at runtime, not from its stylesheet:
+     the running official app resolves --cursor-text-primary/secondary/tertiary to
+     #f5f5f5 / #f5f5f5a8 / #f5f5f58a and --cursor-font-weight-normal to 420, while
+     0.18 ships #fcfcfc / #fcfcfc99 / #fcfcfc66 and an unset (hence 400) weight.
+     The routine name and schedule resolve through these, so they are ported as-is. */
+  --cursor-base:oklch(0.97 0 0);
+  --cursor-text-primary:#f5f5f5;
+  --cursor-text-secondary:#f5f5f5a8;
+  --cursor-text-tertiary:#f5f5f58a;
+  --cursor-font-weight-normal:420;
+  --sand-bg-secondary:#f5f5f50a;
+  --sand-bg-secondary-hover:#f5f5f514;
+  --sand-bg-secondary-disabled:#f5f5f505;
+  /* Official 0.75.8 resolves --sand-shadow-control to #f5f5f500 at runtime; 0.18 ships
+     #00000000. The routine switch knob renders 0 1px 3px 0 var(--sand-shadow-control),
+     so the two apps compute different (equally transparent) shadow colours. */
+  --sand-shadow-control:#f5f5f500;
+}
+
+/* Official 0.75.8 global form-control reset, verbatim, re-scoped to the right-hand pane.
+   The declarations are copied character for character from official's stylesheet; only the
+   :where() ancestor is added so the rule stays inside the pane that official renders
+   420-weight / app-font controls in. */
+:where(.sand-info-pane__inner) :where(button,input,select,textarea){font-family:inherit;font-size:var(--sand-font-size-sm);font-weight:inherit;line-height:var(--sand-line-height-sm);letter-spacing:var(--sand-letter-spacing-sm);font-feature-settings:inherit}
+
+/* 0.18 ships a runtime-injected <style id="sand-info-pane-tabs-style"> with
+   `#sand-info-pane-tabs [role="tab"]{...font-weight:400...}` — specificity (1,1,0), so it
+   outranks official's zero-specificity reset and pins the tab strip to 400. Official 0.75.8
+   has no such rule: its tab strip carries stylix classes and resolves 420 by inheritance
+   from the pane. Restoring inheritance here reproduces official's computed value without
+   touching the 0.18-only tab strip's own layout declarations. */
+.sand-info-pane__inner #sand-info-pane-tabs [role="tab"]{font-weight:inherit}

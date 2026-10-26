@@ -1,0 +1,444 @@
+{
+  "_source": "official Grok Bot 0.75.8 zh-Hans locale table",
+  "_artifact": "rea-grokbot-0758/app/dist/renderer/assets/chunk-core-DtHSUFHD.js (zh) and index.eager-common-F4Y1-gMW.js (en)",
+  "_capturedAt": "2026-10-26",
+  "_note": "`parts` are official's Chinese fragments in order; a plural or interpolated entry is split at its placeholders, and every fragment must appear in the string this build writes.",
+  "messages": {
+    "eQkgKV": {
+      "en": "Installed",
+      "zh": "已安装",
+      "parts": [
+        "已安装"
+      ]
+    },
+    "ZyWE2h": {
+      "en": "Nothing installed yet. Find plugins in the marketplace.",
+      "zh": "尚未安装任何插件。请在市场中查找插件。",
+      "parts": [
+        "尚未安装任何插件。请在市场中查找插件。"
+      ]
+    },
+    "cO9+2L": {
+      "en": "Disable",
+      "zh": "停用",
+      "parts": [
+        "停用"
+      ]
+    },
+    "t/YqKh": {
+      "en": "Remove",
+      "zh": "移除",
+      "parts": [
+        "移除"
+      ]
+    },
+    "fo0VXg": {
+      "en": "Uninstall",
+      "zh": "卸载",
+      "parts": [
+        "卸载"
+      ]
+    },
+    "JgMRiA": {
+      "en": "MCP Servers",
+      "zh": "MCP 服务器",
+      "parts": [
+        "MCP 服务器"
+      ]
+    },
+    "6YtxFj": {
+      "en": "Name",
+      "zh": "名称",
+      "parts": [
+        "名称"
+      ]
+    },
+    "9rG25a": {
+      "en": "Server URL",
+      "zh": "服务器 URL",
+      "parts": [
+        "服务器 URL"
+      ]
+    },
+    "VPpyHp": {
+      "en": "HTTP headers",
+      "zh": "HTTP 标头",
+      "parts": [
+        "HTTP 标头"
+      ]
+    },
+    "m16xKo": {
+      "en": "Add",
+      "zh": "添加",
+      "parts": [
+        "添加"
+      ]
+    },
+    "7sMeHQ": {
+      "en": "Key",
+      "zh": "键",
+      "parts": [
+        "键"
+      ]
+    },
+    "wMHvYH": {
+      "en": "Value",
+      "zh": "值",
+      "parts": [
+        "值"
+      ]
+    },
+    "tfDRzk": {
+      "en": "Save",
+      "zh": "保存",
+      "parts": [
+        "保存"
+      ]
+    },
+    "dEgA5A": {
+      "en": "Cancel",
+      "zh": "取消",
+      "parts": [
+        "取消"
+      ]
+    },
+    "Ra3OR9": {
+      "en": "The server name cannot be blank",
+      "zh": "服务器名称不能为空",
+      "parts": [
+        "服务器名称不能为空"
+      ]
+    },
+    "FGWsd4": {
+      "en": "Connection failed",
+      "zh": "连接失败",
+      "parts": [
+        "连接失败"
+      ]
+    },
+    "D2AZQg": {
+      "en": "Something went wrong. Try again.",
+      "zh": "出错了，请重试。",
+      "parts": [
+        "出错了，请重试。"
+      ]
+    },
+    "hp8OtS": {
+      "en": "Added",
+      "zh": "已添加",
+      "parts": [
+        "已添加"
+      ]
+    },
+    "cQpGeE": {
+      "en": "Connector",
+      "zh": "连接器",
+      "parts": [
+        "连接器"
+      ]
+    },
+    "Hc3Gxt": {
+      "en": "Plugin Setup",
+      "zh": "插件配置",
+      "parts": [
+        "插件配置"
+      ]
+    },
+    "xdA/+p": {
+      "en": "Tools",
+      "zh": "工具",
+      "parts": [
+        "工具"
+      ]
+    },
+    "bv4cFj": {
+      "en": "Transport",
+      "zh": "传输方式",
+      "parts": [
+        "传输方式"
+      ]
+    },
+    "sjVfrA": {
+      "en": "Command",
+      "zh": "命令",
+      "parts": [
+        "命令"
+      ]
+    },
+    "HMUxPu": {
+      "en": "View Source",
+      "zh": "查看源码",
+      "parts": [
+        "查看源码"
+      ]
+    },
+    "y1eoq1": {
+      "en": "Copy link",
+      "zh": "复制链接",
+      "parts": [
+        "复制链接"
+      ]
+    },
+    "6V3Ea3": {
+      "en": "Copied",
+      "zh": "已复制",
+      "parts": [
+        "已复制"
+      ]
+    },
+    "9sj0G8": {
+      "en": "Copy failed",
+      "zh": "复制失败",
+      "parts": [
+        "复制失败"
+      ]
+    },
+    "N2FcBE": {
+      "en": "Synced",
+      "zh": "已同步",
+      "parts": [
+        "已同步"
+      ]
+    },
+    "q1LJYo": {
+      "en": "Managed by your team",
+      "zh": "由你的团队管理",
+      "parts": [
+        "由你的团队管理"
+      ]
+    },
+    "MoPMW6": {
+      "en": "Added by your team",
+      "zh": "由你的团队添加",
+      "parts": [
+        "由你的团队添加"
+      ]
+    },
+    "kx0s+n": {
+      "en": "Results",
+      "zh": "结果",
+      "parts": [
+        "结果"
+      ]
+    },
+    "mLyVIn": {
+      "en": "No plugins match \\\\ ,[ ],",
+      "zh": "没有插件匹配“",
+      "parts": [
+        "没有插件匹配“"
+      ]
+    },
+    "PaQ3df": {
+      "en": "Enable",
+      "zh": "启用",
+      "parts": [
+        "启用"
+      ]
+    },
+    "h8AWBN": {
+      "en": "Connect apps",
+      "zh": "连接应用",
+      "parts": [
+        "连接应用"
+      ]
+    },
+    "E6HC8r": {
+      "en": "0 plural one # connected other # connected",
+      "zh": "已连接个",
+      "parts": [
+        "已连接",
+        "个"
+      ]
+    },
+    "glMsdy": {
+      "en": "Private skills",
+      "zh": "私有技能",
+      "parts": [
+        "私有技能"
+      ]
+    },
+    "Wy8KR2": {
+      "en": "0 plural one Show # plugin other Show all # plugins",
+      "zh": "显示全部个插件",
+      "parts": [
+        "显示全部",
+        "个插件"
+      ]
+    },
+    "+Pji+h": {
+      "en": "No installed plugins match \\\\ ,[ ],",
+      "zh": "没有已安装的插件匹配“",
+      "parts": [
+        "没有已安装的插件匹配“"
+      ]
+    },
+    "hvwZWn": {
+      "en": "No private skills match \\\\ ,[ ],",
+      "zh": "没有私有技能匹配“",
+      "parts": [
+        "没有私有技能匹配“"
+      ]
+    },
+    "RmL2Fy": {
+      "en": "Open a Bot to see its private skills",
+      "zh": "打开一个 Bot 以查看其私有技能",
+      "parts": [
+        "打开一个 Bot 以查看其私有技能"
+      ]
+    },
+    "d5N5Il": {
+      "en": "count plural one # connector other # connectors",
+      "zh": "个连接器",
+      "parts": [
+        "个连接器"
+      ]
+    },
+    "m+pG3Q": {
+      "en": "count plural one # skill other # skills",
+      "zh": "项技能",
+      "parts": [
+        "项技能"
+      ]
+    },
+    "MKRcMS": {
+      "en": "count plural one # command other # commands",
+      "zh": "个命令",
+      "parts": [
+        "个命令"
+      ]
+    },
+    "31tnaC": {
+      "en": "no supported contributions",
+      "zh": "无可用内容",
+      "parts": [
+        "无可用内容"
+      ]
+    },
+    "N6Pxr9": {
+      "en": "View all",
+      "zh": "查看全部",
+      "parts": [
+        "查看全部"
+      ]
+    },
+    "FkMol5": {
+      "en": "Featured",
+      "zh": "精选",
+      "parts": [
+        "精选"
+      ]
+    },
+    "Mo77P4": {
+      "en": "Infrastructure",
+      "zh": "基础设施",
+      "parts": [
+        "基础设施"
+      ]
+    },
+    "svH45G": {
+      "en": "Data & Analytics",
+      "zh": "数据与分析",
+      "parts": [
+        "数据与分析"
+      ]
+    },
+    "N42ane": {
+      "en": "Productivity",
+      "zh": "效率",
+      "parts": [
+        "效率"
+      ]
+    },
+    "H0ShEF": {
+      "en": "Payments",
+      "zh": "支付",
+      "parts": [
+        "支付"
+      ]
+    },
+    "byAjqm": {
+      "en": "Agent Orchestration",
+      "zh": "智能体编排",
+      "parts": [
+        "智能体编排"
+      ]
+    },
+    "Zty/IJ": {
+      "en": "Canvas",
+      "zh": "画布",
+      "parts": [
+        "画布"
+      ]
+    },
+    "IzFMeN": {
+      "en": "Inbox and Collaboration",
+      "zh": "收件箱与协作",
+      "parts": [
+        "收件箱与协作"
+      ]
+    },
+    "DbZMYM": {
+      "en": "Scheduling",
+      "zh": "日程安排",
+      "parts": [
+        "日程安排"
+      ]
+    },
+    "gDShYL": {
+      "en": "Documents and Files",
+      "zh": "文档与文件",
+      "parts": [
+        "文档与文件"
+      ]
+    },
+    "mUv9U4": {
+      "en": "Sales",
+      "zh": "销售",
+      "parts": [
+        "销售"
+      ]
+    },
+    "n+xLOH": {
+      "en": "Customer Support",
+      "zh": "客户支持",
+      "parts": [
+        "客户支持"
+      ]
+    },
+    "hxm6On": {
+      "en": "Finance and Legal",
+      "zh": "财务与法务",
+      "parts": [
+        "财务与法务"
+      ]
+    },
+    "bdztP2": {
+      "en": "Research",
+      "zh": "研究",
+      "parts": [
+        "研究"
+      ]
+    },
+    "f8fH8W": {
+      "en": "Design",
+      "zh": "设计",
+      "parts": [
+        "设计"
+      ]
+    },
+    "vo2a+a": {
+      "en": "Marketing",
+      "zh": "营销",
+      "parts": [
+        "营销"
+      ]
+    },
+    "P+nzjE": {
+      "en": "Password Managers",
+      "zh": "密码管理器",
+      "parts": [
+        "密码管理器"
+      ]
+    }
+  }
+}

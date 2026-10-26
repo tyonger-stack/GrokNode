@@ -49,6 +49,23 @@
  * @evidence official 0.66.0 catalog, captured 2026-10-05 over CDP, 404 entries, 11 taken
  * @evidence https://raw.githubusercontent.com/cursor/plugins/HEAD/.cursor-plugin/marketplace.json
  * @evidence raw.githubusercontent.com/cursor/plugins/HEAD/third_party/<name>/mcp.json (10/10 fetched)
+ *
+ * ## The six 0.75.8 additions
+ *
+ * Official 0.75.8's AUTHENTICATED catalog has 473 rows; the anonymous listing this build sees has
+ * 467. The six in between — Zoho CRM, Zoho Books, Zoho Desk, Workday, WhatsApp Business and Vibe
+ * Prospecting — are private-marketplace entries, captured from the logged-in official 0.75.8 build
+ * on 2026-10-26 (`window.desktop.main.getMcpCatalog({})`, 473 entries) and pinned here with the
+ * same treatment: `tests/fixtures/official-catalog-0758-missing-6.json` is the independent capture,
+ * and `tests/local-catalog-supplements.test.mjs` projects the pinned raw plugins and deep-compares
+ * against BOTH fixtures.
+ *
+ * Like `oh-my-claudecode`, none of the six has a public `mcp.json`
+ * (`raw.githubusercontent.com/cursor/plugins/HEAD/third_party/<name>/mcp.json` is 404 for all six,
+ * checked 2026-10-26), so they render but cannot be installed locally. The install attempt raises
+ * upstream's own `SandMcpConfigError("The plugin has no publicly readable MCP configuration for
+ * local installation.")` — deliberately NOT swallowed into a silent no-op. That is why the
+ * official-side count of installable pins stays 10 of 17.
  */
 
 import { marketplacePluginToView, type SandMarketplacePlugin } from "./mcp-marketplace.js";
@@ -264,6 +281,120 @@ export const LOCAL_CATALOG_SUPPLEMENTS: readonly SandMarketplacePlugin[] = [
     skills: [{"name": "ai-slop-cleaner", "description": "Clean AI-generated code slop with a regression-safe, deletion-first workflow and optional reviewer-only mode"}, {"name": "agent-doc-discipline", "description": "Writing-time discipline for documents agents consume (the five surfaces, specs, tickets, .omc/skills/) — every rule checkable and carrying a why, steps before reference, one meaning in one home, no restating what the environment already says. Mandatory at drydock seed generation "}, {"name": "architecture-survey", "description": "Periodic architecture survey — walks the module graph and reports ranked deepening candidates (shallow modules, hypothetical seams, logic behind the wrong seam). Survey, not rescue: it finds candidates and hands them to the captain; it never refactors on its own."}, {"name": "ask", "description": "Process-first advisor routing for Claude, Codex, Gemini, Antigravity, Grok, or Cursor via `omc ask`, with artifact capture and no raw CLI assembly"}, {"name": "intent", "description": "Shipyard's internal requirements intake for non-engineer contributors (support/ops) — turn a pasted chat log or verbal problem report into a five-section intent.md through numbered batch questioning with a completion gate, walk it through tracker review with harbor's four records"}, {"name": "ask-navigator", "description": "Shipyard's navigator — chart a foggy effort (destination unclear, questions not yet stateable) into a map of decision tickets on the repo's issue tracker, then work the frontier one ticket per session until the way is clear, and hand the collapsed decisions to /launch as a missio"}, {"name": "autopilot", "description": "Full autonomous execution from idea to working code"}, {"name": "autoresearch", "description": "Stateful single-mission improvement loop with strict evaluator contract, markdown decision logs, and max-runtime stop behavior"}, {"name": "cancel", "description": "Cancel any active OMC mode (autopilot, ralph, ultragoal, swarm, ultrapilot, pipeline, team) and clean up retired legacy state"}, {"name": "configure-notifications", "description": "Configure notification integrations (Telegram, Discord, Slack) via natural language"}, {"name": "debug", "description": "Diagnose the current OMC session or repo state using logs, traces, state, and focused reproduction"}, {"name": "deep-interview", "description": "Socratic deep interview with mathematical ambiguity gating before explicit execution approval"}, {"name": "deepinit", "description": "Deep codebase initialization with hierarchical AGENTS.md documentation"}, {"name": "diagram", "description": "Use the smallest visual when prose must carry structure—control flow, call depth, module ownership, or change shape: pseudocode, call tree, component/file tree, Mermaid diagram, or diff. Skip it when prose already answers the question."}, {"name": "drydock", "description": "Lay the keel of the shipyard harness in any repo — the 4-pillar shared environment (Context, Rules, Tools, Standards) across 5 surfaces (CLAUDE.md, skills, design-system, mcp/cli, shared context) so that every human and agent inherits the same design language and anyone can ship."}, {"name": "execute", "description": "Carry an approved task through to working, verified code"}, {"name": "external-context", "description": "Invoke parallel document-specialist agents for external web searches and documentation lookup"}, {"name": "graph", "description": "Deterministic orchestration graph runtime - declarative DAG pipelines with journal-based crash recovery"}, {"name": "harbor", "description": "Harbor intake for external work — the captain only handles unresolved decisions. Sweeps incoming issues and PRs, verifies every claim before disposition, reuses every decision already made, and hands the maintainer a docket whose pending items each carry one question with options"}, {"name": "hud", "description": "Configure HUD display options (layout, presets, display elements)"}, {"name": "launch", "description": "Shipyard's governed delivery pipeline — converge the mission, synthesize a durable spec, decompose vertical-slice tickets with blocking edges, run the frontier in parallel via team, close with verification, and report with a full decision log. Two entry gates — the yard gate (dry"}, {"name": "loft", "description": "Loft the shape before cutting steel — answer a design question that prose cannot settle by building a throwaway artifact: a pure logic module in a clickable shell, or structurally different UI variants behind one route. The captain reacts to the artifact; the answer folds into th"}, {"name": "map", "description": "The yard's skill map — which skill owns which job, in delivery-loop order. Use when something needs doing but not which of the shipped skills owns it; the map routes, it never executes."}, {"name": "minimal-code-discipline", "description": "YAGNI-ladder coding discipline for writing changes — existence-first, reuse before writing, dependency ladder, shortest correct diff, with non-negotiables that must never be minimized away"}, {"name": "minimal-prose-discipline", "description": "Writing-time discipline for the prose an agent speaks to a human (replies, reports, pointers): a protected core never rewritten (code, commands, paths, errors, negators, numbers), filler dies, no narration, auto-clarity where terse misleads"}, {"name": "omc-doctor", "description": "Diagnose and fix oh-my-claudecode installation issues"}, {"name": "omc-setup", "description": "Install or refresh oh-my-claudecode for plugin, npm, and local-dev setups from the canonical setup flow"}, {"name": "omc-plan", "description": "Strategic planning with optional interview workflow"}, {"name": "pr", "description": "Draft a PR body from OMC's paper trail — the smallest visual that proves the change, evidence consumed from the verify protocol (never re-collected), reversibility from the ADR test on the diff, glossary language throughout."}, {"name": "project-session-manager", "description": "Worktree-first dev environment manager for issues, PRs, and features with optional tmux sessions"}, {"name": "ralph", "description": "Self-referential loop until task completion with configurable verification reviewer"}, {"name": "ralplan", "description": "Consensus planning entrypoint that auto-gates vague ralph/autopilot/team requests before execution"}, {"name": "refit", "description": "Cross-session environment retrospective driven by OMC's own instrumentation — trace timelines, friction reports, logs, and plan notepads. Every finding lands on the surface that owns the fix (deterministic check, steering volume, tooling, or information access); nothing is writte"}, {"name": "release", "description": "Generic release assistant — analyzes repo release rules, caches them in .omc/RELEASE_RULE.md, then guides the release"}, {"name": "remember", "description": "Review reusable project knowledge and decide what belongs in project memory, notepad, or durable docs"}, {"name": "research", "description": "Investigate an open question and return grounded, sourced findings"}, {"name": "omc-review", "description": "Evaluate finished work for defects, risk, and simplification before it ships"}, {"name": "self-improve", "description": "Autonomous evolutionary code improvement engine with tournament selection"}, {"name": "skill", "description": "Manage local skills - list, add, remove, search, edit, setup wizard"}, {"name": "skillify", "description": "Turn a repeatable workflow from the current session into a reusable OMC skill draft"}, {"name": "tdd", "description": "Test-first at pre-agreed seams — one test, one implementation, tracer-bullet red/green; independent expected values; substitutions only at the seam's boundary class; launch Phase 4 reference."}, {"name": "team", "description": "N coordinated agents on shared task list using Claude Code implicit agent teams"}, {"name": "trace", "description": "Evidence-driven tracing lane that orchestrates competing tracer hypotheses in Claude built-in team mode"}, {"name": "ultragoal", "description": "Durable multi-goal workflow that persists plan/ledger artifacts under .omc/ultragoal and prints Claude /goal handoff text for the active session"}, {"name": "verify", "description": "Verify that a change really works before you claim completion"}, {"name": "visual-verdict", "description": "Structured visual QA verdict for screenshot-to-reference comparisons"}, {"name": "wiki", "description": "LLM Wiki — persistent markdown knowledge base that compounds across sessions (Karpathy model)"}],
     variableFields: [],
     marketplace: {"name": "omc", "displayName": "omc", "ownership": "user"},
+  },
+  {
+    pluginId: "76674741",
+    name: "zoho-crm",
+    pluginName: "zoho-crm",
+    displayName: "Zoho CRM",
+    description: "Work with leads, contacts, accounts, deals, and other Zoho CRM records.",
+    category: "MCP",
+    categoryKey: undefined,
+    categoryKeys: [],
+    logoUrl: "https://cursor-cdn.com/plugin-logos/production/9e376b7b2bd1889b.png",
+    websiteUrl: "https://cursor.com/",
+    repositoryUrl: "https://github.com/cursor/plugins",
+    homepage: undefined,
+    sourceUrls: [],
+    connectors: [],
+    skills: [],
+    variableFields: [],
+    publisher: {"name": "cursor", "displayName": "Cursor", "isUserOwned": false},
+  },
+  {
+    pluginId: "75770130",
+    name: "whatsapp-business",
+    pluginName: "whatsapp-business",
+    displayName: "WhatsApp Business",
+    description: "Send messages and manage templates, contacts, and phone numbers in WhatsApp Business.",
+    category: "MCP",
+    categoryKey: undefined,
+    categoryKeys: [],
+    logoUrl: "https://cursor-cdn.com/plugin-logos/production/d356b7ae1a0949c3.png",
+    websiteUrl: "https://cursor.com/",
+    repositoryUrl: "https://github.com/cursor/plugins",
+    homepage: undefined,
+    sourceUrls: [],
+    connectors: [],
+    skills: [],
+    variableFields: [{"key": "WHATSAPP_BUSINESS_ACCOUNT_ID", "label": "WhatsApp Business Account ID", "type": "string", "placeholder": "WHATSAPP_BUSINESS_ACCOUNT_ID", "isRequired": true, "isSecret": false, "hint": "Shown next to your account name in WhatsApp Manager."}, {"key": "WHATSAPP_BUSINESS_ACCESS_TOKEN", "label": "Access token", "type": "string", "placeholder": "WHATSAPP_BUSINESS_ACCESS_TOKEN", "isRequired": true, "isSecret": true, "hint": "A system user token with the whatsapp_business_messaging and whatsapp_business_management permissions."}, {"key": "WHATSAPP_BUSINESS_PHONE_NUMBER_ID", "label": "Phone number ID", "type": "string", "placeholder": "WHATSAPP_BUSINESS_PHONE_NUMBER_ID", "isRequired": true, "isSecret": false, "hint": "The long numeric ID under Account tools > Phone numbers in WhatsApp Manager, not the phone number itself."}],
+    publisher: {"name": "cursor", "displayName": "Cursor", "isUserOwned": false},
+  },
+  {
+    pluginId: "72277412",
+    name: "vibe-prospecting",
+    pluginName: "vibe-prospecting",
+    displayName: "Vibe Prospecting",
+    description: "Find company & contact data. Build lead lists, research prospects, identify talent. 150M+ companies, 800M+ professionals, 50+ data sources.",
+    category: "Sales",
+    categoryKey: "SALES",
+    categoryKeys: ["SALES"],
+    logoUrl: "https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/uploads/explorium-logo-1-YLBo2dQI6HvycIseeSlImbp5d6hKAx.png",
+    websiteUrl: "https://www.explorium.ai/",
+    repositoryUrl: "https://github.com/explorium-ai/vibeprospecting-cursor-plugin",
+    homepage: undefined,
+    sourceUrls: [],
+    connectors: [],
+    skills: [],
+    variableFields: [],
+    publisher: {"name": "explorium", "displayName": "Explorium", "isUserOwned": false},
+  },
+  {
+    pluginId: "76674739",
+    name: "zoho-books",
+    pluginName: "zoho-books",
+    displayName: "Zoho Books",
+    description: "Work with contacts, invoices, estimates, and items in Zoho Books.",
+    category: "MCP",
+    categoryKey: undefined,
+    categoryKeys: [],
+    logoUrl: "https://cursor-cdn.com/plugin-logos/production/f19abe218e709893.png",
+    websiteUrl: "https://cursor.com/",
+    repositoryUrl: "https://github.com/cursor/plugins",
+    homepage: undefined,
+    sourceUrls: [],
+    connectors: [],
+    skills: [],
+    variableFields: [],
+    publisher: {"name": "cursor", "displayName": "Cursor", "isUserOwned": false},
+  },
+  {
+    pluginId: "76674742",
+    name: "zoho-desk",
+    pluginName: "zoho-desk",
+    displayName: "Zoho Desk",
+    description: "Work with tickets, contacts, tasks, and knowledge base articles in Zoho Desk.",
+    category: "MCP",
+    categoryKey: undefined,
+    categoryKeys: [],
+    logoUrl: "https://cursor-cdn.com/plugin-logos/production/92ddbc738eaecdba.png",
+    websiteUrl: "https://cursor.com/",
+    repositoryUrl: "https://github.com/cursor/plugins",
+    homepage: undefined,
+    sourceUrls: [],
+    connectors: [],
+    skills: [],
+    variableFields: [],
+    publisher: {"name": "cursor", "displayName": "Cursor", "isUserOwned": false},
+  },
+  {
+    pluginId: "72336719",
+    name: "workday",
+    pluginName: "workday",
+    displayName: "Workday",
+    description: "Look up workers, organizations, time off, payroll, and recruiting data in Workday.",
+    category: "MCP",
+    categoryKey: undefined,
+    categoryKeys: [],
+    logoUrl: "https://cursor-cdn.com/plugin-logos/production/eac4f1e4ad089935.png",
+    websiteUrl: "https://cursor.com/",
+    repositoryUrl: "https://github.com/cursor/plugins",
+    homepage: undefined,
+    sourceUrls: [],
+    connectors: [],
+    skills: [],
+    variableFields: [{"key": "CLIENT_ID", "label": "Client ID", "type": "string", "placeholder": "CLIENT_ID", "isRequired": true, "isSecret": false}, {"key": "CLIENT_SECRET", "label": "Client secret", "type": "string", "placeholder": "CLIENT_SECRET", "isRequired": true, "isSecret": true}, {"key": "REST_API_BASE_URL", "label": "REST API base URL", "type": "string", "placeholder": "REST_API_BASE_URL", "isRequired": true, "isSecret": false}, {"key": "TENANT", "label": "Tenant", "type": "string", "placeholder": "TENANT", "isRequired": true, "isSecret": false}, {"key": "AUTHORIZATION_BASE_URL", "label": "Authorization base URL", "type": "string", "placeholder": "AUTHORIZATION_BASE_URL", "isRequired": true, "isSecret": false}, {"key": "TOKEN_ENDPOINT", "label": "Token endpoint", "type": "string", "placeholder": "TOKEN_ENDPOINT", "isRequired": true, "isSecret": true}],
+    publisher: {"name": "cursor", "displayName": "Cursor", "isUserOwned": false},
   },
 ];
 

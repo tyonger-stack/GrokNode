@@ -631,16 +631,16 @@ test("every rail class resolves in 0.18 or is lifted", () => {
 
 test("the rail row opens the same surface the pill opens", () => {
   // In rail state the pill is unmounted (`Hn ? null : <s0n/>` in 0.18, `_t ? <lA/> : null` in 0.66),
-  // so clicking it would be a no-op. Both entries therefore route through `openMarketplace`, which
-  // opens the 0.66 marketplace.
+  // so clicking it would be a no-op. The rail row therefore opens upstream's own plugins dialog
+  // directly, through the global that `scripts/lib/upstream-plugins-dialog-patch.mjs` publishes
+  // from upstream's own `uSe()` — the same dialog the pill's React onClick opens.
   //
-  // This used to fall back to dispatching upstream's `sand.openTools` chord (mod+shift+m) to reach
-  // `Rme.open(Uf.plugins())`. That path is deliberately gone: it would open 0.18's own plugins
-  // dialog — the same 市场/Yours-tabbed ancestor of this surface — instead of the 0.66 one the pill
-  // now shows, so the rail row and the pill would land on different dialogs.
+  // It used to route through `openMarketplace`, which opened the hand-written 0.66-era replica.
+  // That replica is a rewrite of the surface rather than a port of it; upstream's own dialog is
+  // the component official 0.75.8 ships, and it is now the live marketplace.
   const body = code.match(/function openPluginsFromRail\([\s\S]*?\n\}/);
   assert.ok(body != null, "openPluginsFromRail is missing");
-  assert.match(body[0], /openMarketplace\(\)/, "the rail row must open the marketplace directly");
+  assert.match(body[0], /openUpstreamPlugins\(\)/, "the rail row must open upstream's own plugins dialog");
   assert.ok(
     !body[0].includes("dispatchOpenPluginsCommand"),
     "the rail row must not dispatch the upstream chord any more",
@@ -649,9 +649,14 @@ test("the rail row opens the same surface the pill opens", () => {
     !code.includes("dispatchOpenPluginsCommand()};"),
     "nothing may still route the chord as a marketplace entry point",
   );
-  const open = code.match(/function openMarketplace\([\s\S]*?\n\}/);
-  assert.ok(open != null, "openMarketplace is missing");
-  assert.match(open[0], /marketplaceController\.open\(\)/);
+  const open = code.match(/function openUpstreamPlugins\([\s\S]*?\n\}/);
+  assert.ok(open != null, "openUpstreamPlugins is missing");
+  assert.match(open[0], /__sandOpenUpstreamPlugins/);
+  // And the local replica stays reachable as a fallback, so the rail row is never dead.
+  assert.match(open[0], /openMarketplace\(\)/, "the opener must fall back to the local marketplace");
+  const fallback = code.match(/function openMarketplace\([\s\S]*?\n\}/);
+  assert.ok(fallback != null, "openMarketplace is missing");
+  assert.match(fallback[0], /marketplaceController\.open\(\)/);
 });
 
 test("the marketplace controller is created once, at module scope", () => {

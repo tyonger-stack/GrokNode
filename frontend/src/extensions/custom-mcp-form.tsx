@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { CUSTOM_MCP_FORM_WORDING, officialWording } from "../i18n/official-marketplace-copy";
 
 export interface CustomMcpHeaderDraft {
   readonly key: string;
@@ -35,49 +36,78 @@ export interface CustomMcpFormCopy {
   readonly genericError: string;
 }
 
+/**
+ * Official 0.75.8's message id for every ported field; `"no-official-counterpart"` marks the
+ * fields official has no message for, which keep their English text.
+ */
 export const CUSTOM_MCP_FORM_COPY_IDS: Record<keyof CustomMcpFormCopy, string> = {
-  title: "chunk-custom-mcp-form",
+  title: "JgMRiA",
   nameLabel: "6YtxFj",
-  urlLabel: "chunk-custom-mcp-form",
-  urlHint: "chunk-custom-mcp-form",
-  headersLabel: "chunk-custom-mcp-form",
-  addHeader: "chunk-custom-mcp-form",
+  urlLabel: "9rG25a",
+  urlHint: "no-official-counterpart",
+  headersLabel: "VPpyHp",
+  addHeader: "m16xKo",
   removeHeader: "t/YqKh",
   save: "tfDRzk",
   cancel: "dEgA5A",
   removeServer: "t/YqKh",
-  testConnection: "chunk-custom-mcp-form",
-  testing: "chunk-custom-mcp-form",
-  testOk: "chunk-custom-mcp-form",
-  testFailed: "chunk-custom-mcp-form",
-  requiredName: "chunk-custom-mcp-form",
-  invalidUrl: "chunk-custom-mcp-form",
-  nonHttpUrl: "chunk-custom-mcp-form",
-  credentialsInUrl: "chunk-custom-mcp-form",
+  testConnection: "no-official-counterpart",
+  testing: "no-official-counterpart",
+  testOk: "no-official-counterpart",
+  testFailed: "FGWsd4",
+  requiredName: "Ra3OR9",
+  invalidUrl: "no-official-counterpart",
+  nonHttpUrl: "no-official-counterpart",
+  credentialsInUrl: "no-official-counterpart",
   genericError: "D2AZQg",
 };
 
+/**
+ * Official 0.75.8's wording. The English side is official's too; the Chinese side is resolved at
+ * render time through upstream's own locale runtime. The fields official has no message for keep
+ * their English text rather than getting invented Chinese — see
+ * `frontend/src/i18n/official-marketplace-copy.ts`.
+ */
 export const DEFAULT_CUSTOM_MCP_FORM_COPY: CustomMcpFormCopy = {
-  title: "Custom MCP server",
-  nameLabel: "Name",
-  urlLabel: "Server URL",
+  title: CUSTOM_MCP_FORM_WORDING.title.en,
+  nameLabel: CUSTOM_MCP_FORM_WORDING.nameLabel.en,
+  urlLabel: CUSTOM_MCP_FORM_WORDING.urlLabel.en,
   urlHint: "https://example.com/mcp",
-  headersLabel: "Headers",
-  addHeader: "Add header",
-  removeHeader: "Remove header",
-  save: "Save",
-  cancel: "Cancel",
-  removeServer: "Remove",
+  headersLabel: CUSTOM_MCP_FORM_WORDING.headersLabel.en,
+  addHeader: CUSTOM_MCP_FORM_WORDING.addHeader.en,
+  removeHeader: CUSTOM_MCP_FORM_WORDING.removeHeader.en,
+  save: CUSTOM_MCP_FORM_WORDING.save.en,
+  cancel: CUSTOM_MCP_FORM_WORDING.cancel.en,
+  removeServer: CUSTOM_MCP_FORM_WORDING.removeServer.en,
   testConnection: "Test connection",
   testing: "Testing…",
   testOk: "Connection works.",
-  testFailed: "Connection failed.",
-  requiredName: "Give the server a name.",
+  testFailed: CUSTOM_MCP_FORM_WORDING.testFailed.en,
+  requiredName: CUSTOM_MCP_FORM_WORDING.requiredName.en,
   invalidUrl: "That is not a valid URL. Enter the server's full https endpoint.",
   nonHttpUrl: "The server URL must be http(s). Grok Bot only connects remote http/sse MCP servers.",
   credentialsInUrl: "Don't put credentials in the server URL — pass them as headers instead.",
-  genericError: "Something went wrong. Try again.",
+  genericError: CUSTOM_MCP_FORM_WORDING.genericError.en,
 };
+
+export function customMcpFormCopy(override?: Partial<CustomMcpFormCopy>): CustomMcpFormCopy {
+  return {
+    ...DEFAULT_CUSTOM_MCP_FORM_COPY,
+    title: officialWording(CUSTOM_MCP_FORM_WORDING.title),
+    nameLabel: officialWording(CUSTOM_MCP_FORM_WORDING.nameLabel),
+    urlLabel: officialWording(CUSTOM_MCP_FORM_WORDING.urlLabel),
+    headersLabel: officialWording(CUSTOM_MCP_FORM_WORDING.headersLabel),
+    addHeader: officialWording(CUSTOM_MCP_FORM_WORDING.addHeader),
+    removeHeader: officialWording(CUSTOM_MCP_FORM_WORDING.removeHeader),
+    save: officialWording(CUSTOM_MCP_FORM_WORDING.save),
+    cancel: officialWording(CUSTOM_MCP_FORM_WORDING.cancel),
+    removeServer: officialWording(CUSTOM_MCP_FORM_WORDING.removeServer),
+    testFailed: officialWording(CUSTOM_MCP_FORM_WORDING.testFailed),
+    requiredName: officialWording(CUSTOM_MCP_FORM_WORDING.requiredName),
+    genericError: officialWording(CUSTOM_MCP_FORM_WORDING.genericError),
+    ...override,
+  };
+}
 
 export type CustomMcpDraftError = "required-name" | "invalid-url" | "non-http-url" | "credentials-in-url";
 
@@ -131,7 +161,7 @@ export function CustomMcpForm(props: {
   readonly onCancel: () => void;
   readonly onRemove?: () => void;
 }): ReactNode {
-  const copy: CustomMcpFormCopy = { ...DEFAULT_CUSTOM_MCP_FORM_COPY, ...props.copy };
+  const copy: CustomMcpFormCopy = customMcpFormCopy(props.copy);
   const [draft, setDraft] = useState<CustomMcpServerDraft>(props.initial ?? EMPTY_CUSTOM_MCP_DRAFT);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const error = validateCustomMcpDraft(draft);
@@ -157,8 +187,8 @@ export function CustomMcpForm(props: {
         <span>{copy.headersLabel}</span>
         {draft.headers.map((header, index) => (
           <div className="sand-custom-mcp-header-row" key={index}>
-            <input aria-label="Header name" disabled={props.disabled} onChange={(event) => setHeader(index, { key: event.target.value })} placeholder="Authorization" value={header.key} />
-            <input aria-label="Header value" disabled={props.disabled} onChange={(event) => setHeader(index, { value: event.target.value })} placeholder="Bearer …" value={header.value} />
+            <input aria-label={officialWording(CUSTOM_MCP_FORM_WORDING.headerKeyLabel)} disabled={props.disabled} onChange={(event) => setHeader(index, { key: event.target.value })} placeholder="Authorization" value={header.key} />
+            <input aria-label={officialWording(CUSTOM_MCP_FORM_WORDING.headerValueLabel)} disabled={props.disabled} onChange={(event) => setHeader(index, { value: event.target.value })} placeholder="Bearer …" value={header.value} />
             <button aria-label={copy.removeHeader} disabled={props.disabled} onClick={() => setDraft((current) => ({ ...current, headers: current.headers.filter((_, at) => at !== index) }))} type="button">×</button>
           </div>
         ))}

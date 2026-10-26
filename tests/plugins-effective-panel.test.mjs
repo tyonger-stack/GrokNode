@@ -44,9 +44,9 @@ test('team-required plugins offer no remove action while user plugins do', async
 test('disabled plugins are badged and an empty list explains itself', async () => {
   await render({ plugins, onOpenPlugin: () => {} });
   const off = host.querySelector('[data-plugin-id="old"]');
-  assert.match(off.textContent, /Off/);
+  assert.match(off.textContent, /Disabled/);
   await render({ plugins: [], onOpenPlugin: () => {} });
-  assert.match(host.textContent, /No plugins in effect/);
+  assert.match(host.textContent, /Nothing installed yet/);
 });
 
 test.after(async () => {

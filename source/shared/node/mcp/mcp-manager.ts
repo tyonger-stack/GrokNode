@@ -24,6 +24,11 @@ import { SandMcpListingSummaries } from "./mcp-listing-summaries.js";
 import { validateMcpServerId } from "./mcp-server-id.js";
 import { parseServerConfig, validateServerName } from "./mcp-validation.js";
 import { reportMcpHostEdgeFailure } from "./mcp-diagnostics.js";
+import {
+  reconcileLocalPluginAttribution,
+  toEffectivePluginRecords,
+  type CatalogPluginView,
+} from "./local-mcp-plugin-attribution.js";
 const EMPTY_SETTINGS: any = {
   scopeToAccount() {},
   migrateMcpCustomInstructionToServerId() {},
@@ -36,8 +41,15 @@ const EMPTY_SETTINGS: any = {
   setMcpCustomInstructionByServerId() {},
   deleteMcpCustomInstructionByServerId() {},
 };
+/** True when the reconciled attribution adds nothing to what was already recorded. */
+function sameAttribution(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+  const leftKeys = Object.keys(left);
+  if (leftKeys.length !== Object.keys(right).length) return false;
+  return leftKeys.every((key) => JSON.stringify(left[key]) === JSON.stringify(right[key]));
+}
 export class SandMcpManager {
   private settingsStore: any;
+  private lastCatalogToken: any;
   private boxRuntime: any;
   private readonly backendMcpExec: any;
   private readonly definitionSource: SandMcpDefinitionSource;
@@ -108,6 +120,8 @@ export class SandMcpManager {
       localOnly: this.localOnly,
       getLocalMcpServers: () => this.settingsStore.getLocalMcpServers?.() ?? {},
       setLocalMcpServers: (servers) => this.settingsStore.setLocalMcpServers?.(servers),
+      getLocalMcpPluginAttribution: () => this.settingsStore.getLocalMcpPluginAttribution?.() ?? {},
+      setLocalMcpPluginAttribution: (attribution) => this.settingsStore.setLocalMcpPluginAttribution?.(attribution),
       configureLocalOAuth: (args) => this.backendMcpExec.configureClient(args),
     });
     this.slots = new SandMcpAccountSlotLifecycle({
@@ -132,7 +146,8 @@ export class SandMcpManager {
     });
   }
   private localDisplayConfig(): any {
-    const servers = Object.entries(this.settingsStore.getLocalMcpServers?.() ?? {}).sort(([left], [right]) => left.localeCompare(right)).map(([name, config], index) => ({ id: String(index + 1), name, serverIdentifier: name, config, isTeamServer: false, disabledByTeamAdminPolicy: false }));
+    const attribution = this.settingsStore.getLocalMcpPluginAttribution?.() ?? {};
+    const servers = Object.entries(this.settingsStore.getLocalMcpServers?.() ?? {}).sort(([left], [right]) => left.localeCompare(right)).map(([name, config], index) => ({ id: String(index + 1), name, serverIdentifier: name, config, isTeamServer: false, disabledByTeamAdminPolicy: false, ...(attribution[name]?.pluginId == null ? {} : { pluginId: attribution[name].pluginId }) }));
     return { cacheScope: "local", servers };
   }
   private loadAccountServers(): Promise<any> {
@@ -320,6 +335,7 @@ export class SandMcpManager {
     return this.reloadServers();
   }
   getCatalog(token: any, options?: any) {
+    this.lastCatalogToken = token;
     return this.catalog.getCatalog(token, options);
   }
   resolvePluginLogo(url: string) {
@@ -413,9 +429,33 @@ export class SandMcpManager {
         };
   }
   listEffectivePlugins() {
-    return this.localOnly || this.effectivePluginsProvider == null
+    if (this.localOnly) return this.localEffectivePlugins();
+    return this.effectivePluginsProvider == null
       ? Promise.resolve([])
       : this.effectivePluginsProvider();
+  }
+  /**
+   * The locally installed plugins, in upstream 0.75.8's `getEffectivePlugins()` shape.
+   *
+   * Official reads this from the Anysphere account; Grok Node has no account credential (the
+   * desktop account service is the local-only stub), so the same record set is reconstructed from
+   * the local install attribution. Upstream's own `rt()` needs these records — plus a matching
+   * `server.pluginId` — before it folds a connector under its plugin row, which is what makes the
+   * marketplace show "N connectors · N skills" per installed plugin instead of a flat connector
+   * list. See `mcp/local-mcp-plugin-attribution.ts`.
+   */
+  private async localEffectivePlugins(): Promise<unknown[]> {
+    const servers = this.settingsStore.getLocalMcpServers?.() ?? {};
+    const recorded = this.settingsStore.getLocalMcpPluginAttribution?.() ?? {};
+    let views: readonly CatalogPluginView[] = [];
+    try {
+      views = (await this.catalog.getCatalog(this.lastCatalogToken)) as readonly CatalogPluginView[];
+    } catch {
+      views = [];
+    }
+    const merged = reconcileLocalPluginAttribution(Object.keys(servers), recorded, views);
+    if (!sameAttribution(recorded, merged)) this.settingsStore.setLocalMcpPluginAttribution?.(merged);
+    return toEffectivePluginRecords(merged);
   }
   async uninstallPlugin(raw: string) {
     const id = validateMarketplacePluginId(raw),

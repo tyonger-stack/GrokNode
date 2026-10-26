@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { EffectivePlugin } from "../../../contracts/desktop-bridge";
+import { EFFECTIVE_PLUGINS_PANEL_WORDING, officialWording } from "../../../../i18n/official-marketplace-copy";
 import { pluginInstallMode, pluginTeamPolicyActions, pluginTeamPolicyLabel } from "./model";
 
 export interface EffectivePluginsPanelCopy {
@@ -10,13 +11,30 @@ export interface EffectivePluginsPanelCopy {
   readonly uninstallAction: string;
 }
 
+/**
+ * Official 0.75.8's wording for this panel — the English side is official's too
+ * ("Installed", not the 0.66-era "Plugins in effect"). The Chinese side is resolved at
+ * render time through upstream's own locale runtime, so the language preference still
+ * switches it. See `frontend/src/i18n/official-marketplace-copy.ts` for the message ids.
+ */
 export const DEFAULT_EFFECTIVE_PLUGINS_PANEL_COPY: EffectivePluginsPanelCopy = {
-  title: "Plugins in effect",
-  emptyList: "No plugins in effect.",
-  disabledBadge: "Off",
-  removeAction: "Remove",
-  uninstallAction: "Uninstall",
+  title: EFFECTIVE_PLUGINS_PANEL_WORDING.title.en,
+  emptyList: EFFECTIVE_PLUGINS_PANEL_WORDING.emptyList.en,
+  disabledBadge: EFFECTIVE_PLUGINS_PANEL_WORDING.disabledBadge.en,
+  removeAction: EFFECTIVE_PLUGINS_PANEL_WORDING.removeAction.en,
+  uninstallAction: EFFECTIVE_PLUGINS_PANEL_WORDING.uninstallAction.en,
 };
+
+export function effectivePluginsPanelCopy(override?: Partial<EffectivePluginsPanelCopy>): EffectivePluginsPanelCopy {
+  return {
+    title: officialWording(EFFECTIVE_PLUGINS_PANEL_WORDING.title),
+    emptyList: officialWording(EFFECTIVE_PLUGINS_PANEL_WORDING.emptyList),
+    disabledBadge: officialWording(EFFECTIVE_PLUGINS_PANEL_WORDING.disabledBadge),
+    removeAction: officialWording(EFFECTIVE_PLUGINS_PANEL_WORDING.removeAction),
+    uninstallAction: officialWording(EFFECTIVE_PLUGINS_PANEL_WORDING.uninstallAction),
+    ...override,
+  };
+}
 
 export function EffectivePluginsPanel(props: {
   readonly plugins: readonly EffectivePlugin[];
@@ -24,7 +42,7 @@ export function EffectivePluginsPanel(props: {
   readonly onOpenPlugin?: (pluginId: string) => void;
   readonly onRemove?: (pluginId: string) => void;
 }): ReactNode {
-  const copy: EffectivePluginsPanelCopy = { ...DEFAULT_EFFECTIVE_PLUGINS_PANEL_COPY, ...props.copy };
+  const copy: EffectivePluginsPanelCopy = effectivePluginsPanelCopy(props.copy);
   return (
     <section className="sand-effective-plugins-panel" aria-label={copy.title}>
       <h2 className="sand-effective-plugins-title">{copy.title}</h2>

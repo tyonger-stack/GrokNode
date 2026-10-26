@@ -6,6 +6,7 @@ import { buildWebhookCredentialRendererExtension } from "./webhook-credential-re
 import { buildInfoPaneTabsRendererExtension, patchNativeInfoPaneTabs } from "./info-pane-tabs-renderer-extension.mjs";
 import { buildLibraryHostBundle, patchOriginalLibraryHost } from "./library-host-renderer-patch.mjs";
 import { patchAutoReviewSettingsOpener, patchOriginalAutoReviewApproval } from "./auto-review-renderer-patch.mjs";
+import { patchUpstreamPluginsDialogOpener } from "./upstream-plugins-dialog-patch.mjs";
 import { patchOriginalRoutineSurfaces } from "./routine-surfaces-renderer-patch.mjs";
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -284,7 +285,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
     transformsByFile.set(candidate.name, entry);
   };
   for (const [role, candidate, transform] of [
-    ["registry", registryCandidates[0], (source) => patchOriginalLibraryHost(patchAutoReviewSettingsOpener(patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source)))), libraryHostBundle)],
+    ["registry", registryCandidates[0], (source) => patchUpstreamPluginsDialogOpener(patchOriginalLibraryHost(patchAutoReviewSettingsOpener(patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(patchOriginalSettingsRegistry(source)))), libraryHostBundle))],
     ["panel", panelCandidates[0], patchOriginalSettingsPanel],
     ["approval", approvalCandidate, patchOriginalAutoReviewApproval],
   ]) {

@@ -10,7 +10,7 @@ const bundlePath = path.resolve(import.meta.dirname, "../src/app/dist/renderer/a
 const bundle = await readFile(bundlePath, "utf8").catch(() => null);
 const bundleSkip = bundle == null ? "src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped." : false;
 
-const INJECTED_DEPENDENCIES = ["Emt", "Oie", "_s", "Fe", "re", "iJt", "lr", "rJt", "S2", "Hlt", "Qs", "fr", "vt", "Dr", "uhe", "Ar", "m3", "Ut", "_2n"];
+const INJECTED_DEPENDENCIES = ["Emt", "Fe", "re", "iJt", "lr", "rJt", "S2", "Qs", "fr", "vt", "Dr", "uhe", "Ar", "m3", "Ut", "_2n"];
 
 function isDefined(source, id) {
   const escaped = id.replace(/[$]/g, "\\$");
@@ -20,9 +20,11 @@ function isDefined(source, id) {
 test("routine surfaces patch applies once to the pinned 0.18 chunk and stays parseable", { skip: bundleSkip }, () => {
   const patched = patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(bundle));
   assert.doesNotThrow(() => parse(patched, { ecmaVersion: "latest", sourceType: "module" }));
-  assert.equal(patched.split("function RRoutineRow(").length - 1, 1);
+  assert.equal(patched.split("function RRtOfficialRow(").length - 1, 1);
+  assert.equal(patched.split("function RRtOfficialSwitch(").length - 1, 1);
+  assert.equal(patched.split("function RRtOfficialList(").length - 1, 1);
   assert.equal(patched.split("function RRoutineDetail(").length - 1, 1);
-  assert.match(patched, /k=v=>p\.jsx\(RRoutineRow,\{agentId:t,automation:v,onOpen:r\},v\.id\)/);
+  assert.match(patched, /k=v=>p\.jsx\(RRtOfficialRow,\{agentId:t,automation:v,onOpen:r\},v\.id\)/);
   assert.match(patched, /p\.jsx\(RRoutineSurface,\{agentId:t\.id,automation:V,/);
   assert.doesNotMatch(patched, /rowClassName:"sand-routine__row"/, "the upstream row renderer is replaced, not duplicated");
   for (const id of INJECTED_DEPENDENCIES) assert.ok(isDefined(patched, id), id + " must be defined in the chunk the components are injected into");

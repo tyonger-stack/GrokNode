@@ -1,0 +1,12 @@
+/* Official Grok Bot 0.75.8 dialog geometry, lifted byte-for-byte from the official stylesheet.
+ * Source: rea-grokbot-0758/app/dist/renderer/assets/index-CFSAhbDS.css
+ * These five rules are the only official dialog/layout classes that upstream 0.18's
+ * stylesheet does not already define. The behavioural difference they carry is the dialog
+ * WIDTH: 0.18 ships `sand-1gys7z3` = width:min(1e3px, calc(100vw - 40px)) (1000px), while
+ * official 0.75.8 ships `sand-h6vr4k` = width:min(800px,100vw - 40px). The height rule is
+ * equivalent on both sides (700px vs 700px). */
+.sand-h6vr4k:not(#\#):not(#\#):not(#\#):not(#\#){width:min(800px,100vw - 40px)}
+.sand-1a2e76q:has([data-overlay-footprint=custom-connector]):not(#\#):not(#\#):not(#\#):not(#\#){width:min(529px,100vw - 32px)}
+.sand-1gy1zxj:not(#\#):not(#\#):not(#\#):not(#\#){max-width:calc(100vw - 32px)}
+.sand-xrbq2n:not(#\#):not(#\#):not(#\#){transition-property:width}
+.sand-z03ioa:not(#\#):not(#\#):not(#\#):not(#\#){height:min(700px,100vh - 96px)}

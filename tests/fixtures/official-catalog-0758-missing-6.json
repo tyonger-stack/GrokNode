@@ -1,0 +1,209 @@
+{
+  "_note": "Official 0.75.8 catalog entries captured 2026-10-26 over CDP from the LOGGED-IN official 0.75.8 build (window.desktop.main.getMcpCatalog({})). These six are withheld from the ANONYMOUS listing the local-only build sees, so they are pinned the same way the eleven 0.66 entries are. Independent evidence, not derived from the pinned supplements.",
+  "_source": "/Applications/Grok Bot.app (0.75.8), 473 entries total, 6 taken",
+  "entries": [
+    {
+      "id": "76674741",
+      "name": "zoho-crm",
+      "pluginName": "zoho-crm",
+      "displayName": "Zoho CRM",
+      "description": "Work with leads, contacts, accounts, deals, and other Zoho CRM records.",
+      "category": "MCP",
+      "repositoryUrl": "https://github.com/cursor/plugins",
+      "websiteUrl": "https://cursor.com/",
+      "iconUrl": "https://cursor-cdn.com/plugin-logos/production/9e376b7b2bd1889b.png",
+      "connectors": [],
+      "skills": [],
+      "isPublicListed": true,
+      "publisher": {
+        "name": "cursor",
+        "displayName": "Cursor",
+        "isUserOwned": false
+      },
+      "popularityRank": 376
+    },
+    {
+      "id": "75770130",
+      "name": "whatsapp-business",
+      "pluginName": "whatsapp-business",
+      "displayName": "WhatsApp Business",
+      "description": "Send messages and manage templates, contacts, and phone numbers in WhatsApp Business.",
+      "category": "MCP",
+      "repositoryUrl": "https://github.com/cursor/plugins",
+      "websiteUrl": "https://cursor.com/",
+      "iconUrl": "https://cursor-cdn.com/plugin-logos/production/d356b7ae1a0949c3.png",
+      "connectors": [],
+      "skills": [],
+      "fields": [
+        {
+          "key": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+          "label": "WhatsApp Business Account ID",
+          "type": "string",
+          "placeholder": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+          "isRequired": true,
+          "isSecret": false,
+          "hint": "Shown next to your account name in WhatsApp Manager."
+        },
+        {
+          "key": "WHATSAPP_BUSINESS_ACCESS_TOKEN",
+          "label": "Access token",
+          "type": "string",
+          "placeholder": "WHATSAPP_BUSINESS_ACCESS_TOKEN",
+          "isRequired": true,
+          "isSecret": true,
+          "hint": "A system user token with the whatsapp_business_messaging and whatsapp_business_management permissions."
+        },
+        {
+          "key": "WHATSAPP_BUSINESS_PHONE_NUMBER_ID",
+          "label": "Phone number ID",
+          "type": "string",
+          "placeholder": "WHATSAPP_BUSINESS_PHONE_NUMBER_ID",
+          "isRequired": true,
+          "isSecret": false,
+          "hint": "The long numeric ID under Account tools > Phone numbers in WhatsApp Manager, not the phone number itself."
+        }
+      ],
+      "isPublicListed": true,
+      "publisher": {
+        "name": "cursor",
+        "displayName": "Cursor",
+        "isUserOwned": false
+      },
+      "popularityRank": 377
+    },
+    {
+      "id": "72277412",
+      "name": "vibe-prospecting",
+      "pluginName": "vibe-prospecting",
+      "displayName": "Vibe Prospecting",
+      "description": "Find company & contact data. Build lead lists, research prospects, identify talent. 150M+ companies, 800M+ professionals, 50+ data sources.",
+      "category": "Sales",
+      "repositoryUrl": "https://github.com/explorium-ai/vibeprospecting-cursor-plugin",
+      "websiteUrl": "https://www.explorium.ai/",
+      "iconUrl": "https://ptht05hbb1ssoooe.public.blob.vercel-storage.com/assets/uploads/explorium-logo-1-YLBo2dQI6HvycIseeSlImbp5d6hKAx.png",
+      "connectors": [],
+      "skills": [],
+      "categoryKey": "SALES",
+      "categoryKeys": [
+        "SALES"
+      ],
+      "isPublicListed": true,
+      "publisher": {
+        "name": "explorium",
+        "displayName": "Explorium",
+        "isUserOwned": false
+      },
+      "popularityRank": 390
+    },
+    {
+      "id": "76674739",
+      "name": "zoho-books",
+      "pluginName": "zoho-books",
+      "displayName": "Zoho Books",
+      "description": "Work with contacts, invoices, estimates, and items in Zoho Books.",
+      "category": "MCP",
+      "repositoryUrl": "https://github.com/cursor/plugins",
+      "websiteUrl": "https://cursor.com/",
+      "iconUrl": "https://cursor-cdn.com/plugin-logos/production/f19abe218e709893.png",
+      "connectors": [],
+      "skills": [],
+      "isPublicListed": true,
+      "publisher": {
+        "name": "cursor",
+        "displayName": "Cursor",
+        "isUserOwned": false
+      },
+      "popularityRank": 397
+    },
+    {
+      "id": "76674742",
+      "name": "zoho-desk",
+      "pluginName": "zoho-desk",
+      "displayName": "Zoho Desk",
+      "description": "Work with tickets, contacts, tasks, and knowledge base articles in Zoho Desk.",
+      "category": "MCP",
+      "repositoryUrl": "https://github.com/cursor/plugins",
+      "websiteUrl": "https://cursor.com/",
+      "iconUrl": "https://cursor-cdn.com/plugin-logos/production/92ddbc738eaecdba.png",
+      "connectors": [],
+      "skills": [],
+      "isPublicListed": true,
+      "publisher": {
+        "name": "cursor",
+        "displayName": "Cursor",
+        "isUserOwned": false
+      },
+      "popularityRank": 438
+    },
+    {
+      "id": "72336719",
+      "name": "workday",
+      "pluginName": "workday",
+      "displayName": "Workday",
+      "description": "Look up workers, organizations, time off, payroll, and recruiting data in Workday.",
+      "category": "MCP",
+      "repositoryUrl": "https://github.com/cursor/plugins",
+      "websiteUrl": "https://cursor.com/",
+      "iconUrl": "https://cursor-cdn.com/plugin-logos/production/eac4f1e4ad089935.png",
+      "connectors": [],
+      "skills": [],
+      "fields": [
+        {
+          "key": "CLIENT_ID",
+          "label": "Client ID",
+          "type": "string",
+          "placeholder": "CLIENT_ID",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "key": "CLIENT_SECRET",
+          "label": "Client secret",
+          "type": "string",
+          "placeholder": "CLIENT_SECRET",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "key": "REST_API_BASE_URL",
+          "label": "REST API base URL",
+          "type": "string",
+          "placeholder": "REST_API_BASE_URL",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "key": "TENANT",
+          "label": "Tenant",
+          "type": "string",
+          "placeholder": "TENANT",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "key": "AUTHORIZATION_BASE_URL",
+          "label": "Authorization base URL",
+          "type": "string",
+          "placeholder": "AUTHORIZATION_BASE_URL",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "key": "TOKEN_ENDPOINT",
+          "label": "Token endpoint",
+          "type": "string",
+          "placeholder": "TOKEN_ENDPOINT",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ],
+      "isPublicListed": true,
+      "publisher": {
+        "name": "cursor",
+        "displayName": "Cursor",
+        "isUserOwned": false
+      },
+      "popularityRank": 445
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import { isSandAgentModelSelection, type SandAgentModelSelection } from "../../a
 import { emptySandInferenceRouterUsage, isSandInferenceProvider, type SandInferenceProvider, type SandInferenceRouterUsage } from "../../inference-router.js";
 import { DEFAULT_SAND_BOX_RUNTIME, isSandBoxRuntime, type SandBoxRuntime } from "../../box-runtime.js";
 import { parseMcpServerConfig, type McpServerConfig } from "../mcp/mcp-display-runtime.js";
+import { normalizeLocalMcpPluginAttribution, type LocalMcpPluginAttribution } from "../mcp/local-mcp-plugin-attribution.js";
 import { validateServerName } from "../mcp/mcp-validation.js";
 import { normalizeOpenRouterChannelStatus, type OpenRouterChannelStatus } from "../../openrouter-channel-status.js";
 import { normalizeOpenRouterReasoningEffort, type OpenRouterReasoningEffort } from "../openrouter-proxy.js";
@@ -60,6 +61,15 @@ export interface SandStoredSettings {
   webhookListenerPort?: number;
   openRouterChatStatus?: OpenRouterChannelStatus;
   localMcpServers?: Record<string, McpServerConfig>;
+  /**
+   * Which marketplace plugin each locally installed MCP server came from.
+   *
+   * Official 0.75.8 carries this on the account (`getMcpState()` rows have `pluginId`), so a
+   * connector is displayed grouped under its plugin. Grok Node installs into local settings and
+   * has no account credential, so the attribution is persisted here instead — see
+   * `mcp/local-mcp-plugin-attribution.ts` for the renderer contract it exists to satisfy.
+   */
+  localMcpPluginAttribution?: Record<string, LocalMcpPluginAttribution>;
   boxRuntime?: SandBoxRuntime;
   mcpCustomInstructionsAccountScope?: string; pinnedAgentIds?: string[]; sidebarSections?: SidebarSection[];
   /**
@@ -170,6 +180,7 @@ function parseSettings(value: unknown): SandStoredSettings | null {
   const chatStatus = normalizeOpenRouterChannelStatus(raw.openRouterChatStatus);
   if (chatStatus != null) result.openRouterChatStatus = chatStatus;
   result.localMcpServers = normalizeLocalMcpServers(raw.localMcpServers);
+  result.localMcpPluginAttribution = normalizeLocalMcpPluginAttribution(raw.localMcpPluginAttribution);
   if (isSandBoxRuntime(raw.boxRuntime)) result.boxRuntime = raw.boxRuntime;
   if (typeof raw.inferenceRouterUsage === "object" && raw.inferenceRouterUsage != null && !Array.isArray(raw.inferenceRouterUsage)) {
     const usage = emptySandInferenceRouterUsage();
@@ -286,6 +297,8 @@ export class SandSettingsStore {
   getOpenRouterModel(): string | undefined { return this.load().openRouterModel; }
   getLocalMcpServers(): Record<string, McpServerConfig> { return this.load().localMcpServers ?? {}; }
   setLocalMcpServers(servers: Record<string, McpServerConfig>): void { this.update((s) => ({ ...s, localMcpServers: { ...servers } })); }
+  getLocalMcpPluginAttribution(): Record<string, LocalMcpPluginAttribution> { return this.load().localMcpPluginAttribution ?? {}; }
+  setLocalMcpPluginAttribution(attribution: Record<string, LocalMcpPluginAttribution>): void { this.update((s) => ({ ...s, localMcpPluginAttribution: { ...attribution } })); }
   setOpenRouterModel(value?: string): void { this.update((s) => { const { openRouterModel: _old, ...rest } = s; const trimmed = value?.trim(); return trimmed ? { ...rest, openRouterModel: trimmed } : rest; }); }
   getOpenRouterAgentModels(): StringMap { return { ...(this.load().openRouterAgentModels ?? {}) }; }
   getOpenRouterAgentModel(agentId: string): string | undefined { return this.load().openRouterAgentModels?.[agentId.trim()]; }

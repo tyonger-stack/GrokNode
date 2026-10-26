@@ -80,8 +80,8 @@ test("settings and plugins bundles mount the recovered hosts on the chunk React"
   ]);
   assert.doesNotMatch(settingsBundle, /Choose file|New card/);
   assert.match(settingsBundle, /\(de,a\);$/);
-  assert.match(pluginsBundle, /Plugins in effect/);
-  assert.match(pluginsBundle, /Custom MCP servers/);
+  assert.match(pluginsBundle, /Installed/);
+  assert.match(pluginsBundle, /MCP Servers/);
   assert.match(pluginsBundle, /\(C,t\);$/);
   assert.doesNotMatch(settingsBundle, /node_modules\/react/);
   assert.doesNotMatch(pluginsBundle, /createRoot\(/);
@@ -91,8 +91,8 @@ test("settings and plugins bundles mount the recovered hosts on the chunk React"
   await React.act(async () => { settings.root.unmount(); });
 
   const plugins = await renderPack(pluginsBundle, "RPort0750Plugins", { C: React, t: jsxRuntime });
-  assert.ok(plugins.host.querySelector("[aria-label='Plugins in effect']"));
-  assert.ok(plugins.host.querySelector("[aria-label='Custom MCP servers']"));
+  assert.ok(plugins.host.querySelector("[aria-label='Installed']"));
+  assert.ok(plugins.host.querySelector("[aria-label='MCP Servers']"));
   await React.act(async () => { plugins.root.unmount(); });
 });
 

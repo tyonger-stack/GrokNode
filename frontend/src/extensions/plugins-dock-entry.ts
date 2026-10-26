@@ -606,38 +606,33 @@ function openMarketplace(): void {
   void marketplaceController.open();
 }
 
-/** Routes the pill to the 0.66 marketplace instead of 0.18's own plugins dialog.
+/** Opens upstream 0.18's own plugins dialog — the same component official 0.75.8 ships.
  *
- *  The pill IS an upstream React node — 0.18's `sand-agents-sidebar__plugins` button with our
- *  classes on it, and its `onClick` is `() => Rme.open(Uf.plugins())`. Leaving that in place would
- *  open 0.18's dialog (`aria-label="插件"`, 市场/Yours tabs) underneath the 0.66 surface, so the
- *  click has to be taken before React sees it.
+ *  The upstream opener is published on a global by `scripts/lib/upstream-plugins-dialog-patch.mjs`,
+ *  which rewrites upstream's own `function uSe(){Rme.open(Uf.plugins())}` into
+ *  `function uSe(){...}globalThis.__sandOpenUpstreamPlugins=uSe;`. Calling that global is upstream
+ *  behaviour, not a re-implementation of it.
  *
- *  React 18 binds its listeners on the root container, and the root listens during the BUBBLE
- *  phase. A capture-phase listener on the button therefore runs first, and `stopPropagation()`
- *  there prevents the event from ever bubbling to the root — the React handler never runs. The
- *  listener is registered on the pill itself (not on the sidebar) so it is scoped to the one
- *  control, and it is guarded by a marker class so re-running `ensureButtonSurface` cannot stack
- *  duplicates. */
-function interceptPillClick(): void {
-  const button = document.querySelector<HTMLButtonElement>(BUTTON_SELECTOR);
-  if (button == null || button.classList.contains("sand-plugins-dock-no-upstream-click")) return;
-  button.classList.add("sand-plugins-dock-no-upstream-click");
-  button.addEventListener(
-    "click",
-    (event) => {
-      event.stopPropagation();
-      event.preventDefault();
-      openMarketplace();
-    },
-    // Capture on the target: this fires during the capture phase, before the event can bubble to
-    // the React root.
-    { capture: true },
-  );
+ *  The 0.66 marketplace stays reachable as a fallback for the case where the global is missing
+ *  (an upstream build that renames the anchor would fail packaging long before this runs, so the
+ *  fallback is a safety net rather than a second live surface). */
+function openUpstreamPlugins(): void {
+  const opener = (globalThis as unknown as { __sandOpenUpstreamPlugins?: () => void }).__sandOpenUpstreamPlugins;
+  if (typeof opener === "function") {
+    opener();
+    return;
+  }
+  openMarketplace();
 }
 
+/** Routes the rail row to upstream 0.18's own plugins dialog.
+ *
+ *  The rail row is a node this build injects — upstream mounts nothing there — so it cannot rely
+ *  on upstream's React `onClick`. It calls the global that
+ *  `scripts/lib/upstream-plugins-dialog-patch.mjs` publishes from upstream's own
+ *  `uSe()` instead. */
 function openPluginsFromRail(): void {
-  openMarketplace();
+  openUpstreamPlugins();
 }
 
 function buildRailButton(): HTMLButtonElement {
@@ -818,7 +813,6 @@ function scheduleRefresh(): void {
 function install(): void {
   ensureStyles();
   ensureButtonSurface();
-  interceptPillClick();
   syncRailButton();
   scheduleRefresh();
   footerAdapter = installFooterAdapter(document);
@@ -850,13 +844,10 @@ function install(): void {
         if (node.matches(BUTTON_SELECTOR) || node.querySelector(BUTTON_SELECTOR) != null) {
           ensureStyles();
           ensureButtonSurface();
-          // The pill is an upstream React node: React can unmount and remount it (sidebar collapse,
-          // agent switch, settings re-render), and a remount produces a brand-new element with no
-          // listener. Attaching only once — at install time — left the pill wired to 0.18's own
-          // `Rme.open(Uf.plugins())` whenever the first pass ran before the sidebar mounted, which
-          // is the common case: `install()` fires on DOMContentLoaded, long before the agents list
-          // has rendered. Both must run on every remount.
-          interceptPillClick();
+          // The pill is an upstream React node, and upstream's own `onClick` opens upstream's own
+          // plugins dialog (`Rme.open(Uf.plugins())`) — the same surface official 0.75.8 ships, one
+          // generation earlier. Nothing is intercepted any more: the upstream dialog IS the
+          // marketplace now, so the pill keeps upstream's behaviour untouched.
           syncRailButton();
           scheduleRefresh();
           return;

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -62,6 +62,8 @@ import { applyRecipientPicker0755Patch } from "./lib/recipient-picker-0755-patch
 import { applyGroupAuthor0755Patch } from "./lib/group-author-0755-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
+import { applyOriginalRendererMarketplaceOfficialWording } from "./lib/marketplace-official-wording-patch.mjs";
+import { applyMarketplaceDialog0758Css } from "./lib/marketplace-dialog-0758-css-patch.mjs";
 import { applyUpdatePillCopy0755Patch } from "./lib/update-pill-copy-0755-patch.mjs";
 import { applyTeachGateRestorePatch } from "./lib/teach-gate-restore-patch.mjs";
 import { applyGrokMainAgentGatePatch } from "./lib/grok-main-agent-gate-patch.mjs";
@@ -78,6 +80,7 @@ import { applyComputerControlRendererPatch } from './lib/computer-control-render
 import { applyShapePickerPatch } from "./lib/shape-picker-patch.mjs";
 import { applyOriginalRendererConversationComputerCard } from "./lib/conversation-computer-card-renderer-patch.mjs";
 import { applyOriginalRendererAppLinkCards } from "./lib/app-link-card-renderer-patch.mjs";
+import { applyOriginalRendererRoutineSurface0758Css } from "./lib/routine-surface-0758-css-patch.mjs";
 import { applyOriginalRendererServerPortCards } from "./lib/server-port-cards-renderer-patch.mjs";
 import { applyOriginalRendererWaitingOnResults } from "./lib/waiting-on-results-renderer-patch.mjs";
 import { applyOriginalRendererViewUnread } from "./lib/view-unread-renderer-patch.mjs";
@@ -424,6 +427,9 @@ export async function buildFidelityReconstructedAsar({
   await applyComputerControlRendererPatch({ stageRoot });
   await applyOriginalRendererConversationComputerCard({ appRoot: stageRoot });
   await applyOriginalRendererAppLinkCards({ stageRoot });
+  // Official 0.75.8 routine surface: the class lists the routine patch renders with,
+  // plus official's dark-theme token values scoped to the right-hand info pane.
+  await applyOriginalRendererRoutineSurface0758Css({ stageRoot });
   await applyOriginalRendererServerPortCards({ stageRoot });
   // 0.71.2 View → "View Unread": MAIN chunk roster filter + menu event subscribe. No RLocT.
   // Must precede i18n only so later passes see a stable chunk; anchors do not overlap them.
@@ -463,6 +469,13 @@ export async function buildFidelityReconstructedAsar({
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
+  // Official 0.75.8's marketplace wording, ported onto upstream 0.18's own plugins chunk.
+  // MUST run after the three i18n passes: two of its anchors are the POST-i18n text
+  // ("Plugins" → 插件, "Private" → 私密), and the patch rewrites them in place.
+  await applyOriginalRendererMarketplaceOfficialWording({ stageRoot });
+  // Official 0.75.8's plugins-dialog geometry: the five stylix rules upstream 0.18's stylesheet
+  // does not define (the dialog WIDTH is the only behavioural difference — 800px vs 1000px).
+  await applyMarketplaceDialog0758Css({ stageRoot });
   await applyMessageCopy0753Patch({ stageRoot });
   // The 0.18 renderer already has the footer update pill and Update-ready
   // modal; port the official 0.75.5 copy now that RLocT exists.
@@ -501,6 +514,13 @@ export async function buildFidelityReconstructedAsar({
   await applyGroupAuthor0755Patch({ stageRoot });
   await applyVaultSettingsRenderer0721({ stageRoot });
   await overlayAuditMetadata(clean, { stageRoot });
+  // Fail-closed: the official 0.75.8 routine-surface CSS must survive every later pass.
+  {
+    const assetsDir = path.join(stageRoot, 'dist/renderer/assets');
+    const cssFile = (await readdir(assetsDir)).find(name => /^index-.*\.css$/.test(name));
+    const css = await readFile(path.join(assetsDir, cssFile), 'utf8');
+    if (!css.includes('.sand-info-pane__inner')) throw new Error('Routine surface official CSS was lost from the staged stylesheet');
+  }
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);
   console.log(`Fail-closed composition audit embedded: ${compositionAuditPath} (${sha256(await readFile(clean.compositionAuditPath))})`);

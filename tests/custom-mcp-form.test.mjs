@@ -49,7 +49,7 @@ test('form blocks save until name and url validate, then submits the draft', asy
 test('headers can be added and the test hook reports progress', async () => {
   await render({ onSubmit: () => {}, onTest: () => {}, testState: 'testing' });
   assert.match(host.textContent, /Testing/);
-  const add = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Add header');
+  const add = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Add');
   await ui.act(async () => add.click());
   assert.equal(host.querySelectorAll('.sand-custom-mcp-header-row').length, 1);
   await render({ onSubmit: () => {}, testState: 'failed', testMessage: 'boom' });

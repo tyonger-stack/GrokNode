@@ -1,4 +1,4 @@
-export interface PluginVariableField { key: string; label: string; placeholder: string; isRequired: boolean; isSecret: boolean; defaultValue?: string; hint?: string }
+export interface PluginVariableField { key: string; label: string; placeholder: string; isRequired: boolean; isSecret: boolean; defaultValue?: string; hint?: string; /** Upstream's declared value type ("string", …). Optional: `pluginVariablesSchemaToFields` does not emit it. */ type?: string }
 const SECRET_NAME_PATTERN = /TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL/, ACRONYMS = new Set(["url", "uri", "api", "id", "ssl", "tls", "http", "https", "db", "aws", "gcp"]);
 export function humanizeVariableName(name: string): string { return name.split("_").filter(Boolean).map((word) => ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.toLowerCase().slice(1)).join(" "); }
 const asRecord = (value: unknown): Record<string, unknown> | undefined => value != null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;

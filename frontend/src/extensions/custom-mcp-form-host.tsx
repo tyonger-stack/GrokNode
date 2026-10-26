@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   CustomMcpForm,
   customMcpConfigJson,
+  customMcpFormCopy,
   type CustomMcpFormCopy,
   type CustomMcpServerDraft,
 } from "./custom-mcp-form";
@@ -61,8 +62,9 @@ export function CustomMcpFormHost(props: {
       setSubmitError(error instanceof Error ? error.message : String(error));
     }
   }, [props, reload]);
+  const copy = customMcpFormCopy(props.copy);
   return (
-    <section className="sand-custom-mcp" aria-label="Custom MCP servers">
+    <section className="sand-custom-mcp" aria-label={copy.title}>
       <CustomMcpForm copy={props.copy} disabled={props.disabled} onCancel={() => {}} onSubmit={(draft) => { void submit(draft); }} submitError={submitError} />
       {servers == null ? null : servers.length === 0 ? null : (
         <ul className="sand-custom-mcp-servers">
@@ -72,11 +74,11 @@ export function CustomMcpFormHost(props: {
               <span className="sand-custom-mcp-server-status">{server.status}</span>
               {confirmingRemove === server.id ? (
                 <span>
-                  <button onClick={() => { setConfirmingRemove(null); void remove(server.id); }} type="button">Remove</button>
-                  <button onClick={() => setConfirmingRemove(null)} type="button">Cancel</button>
+                  <button onClick={() => { setConfirmingRemove(null); void remove(server.id); }} type="button">{copy.removeServer}</button>
+                  <button onClick={() => setConfirmingRemove(null)} type="button">{copy.cancel}</button>
                 </span>
               ) : (
-                <button disabled={props.disabled} onClick={() => setConfirmingRemove(server.id)} type="button">Remove</button>
+                <button disabled={props.disabled} onClick={() => setConfirmingRemove(server.id)} type="button">{copy.removeServer}</button>
               )}
             </li>
           ))}

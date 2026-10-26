@@ -48,57 +48,83 @@ function cssName() {
  * Click routing
  * ------------------------------------------------------------------ */
 
-test("the pill opens the 0.66 marketplace, not 0.18's own plugins dialog", () => {
-  // Upstream 0.18 wires the pill to `Rme.open(Uf.plugins())`, which opens the `aria-label="插件"`
-  // dialog behind 市场/Yours tabs. Leaving that in place stacks two dialogs.
+test("the marketplace surface is upstream's own plugins dialog", () => {
+  // Upstream 0.18 wires the pill to `Rme.open(Uf.plugins())`, which opens upstream's own
+  // "连接应用" dialog — the same component official 0.75.8 ships, one generation earlier.
+  //
+  // This build used to suppress that click and open a hand-written 0.66-era replica instead.
+  // The replica is a rewrite of the surface rather than a port of it, and it is what made
+  // Grok Node's marketplace look and behave unlike official. The upstream dialog is the
+  // marketplace now; the local replica stays reachable only as a fallback.
   assert.match(DOCK, /import \{ createMarketplaceController \} from "\.\/marketplace\/index\.js"/);
   assert.match(DOCK, /function openMarketplace\(\): void \{\s*void marketplaceController\.open\(\);/);
-  // The rail row routes through the same function rather than the mod+shift+M chord.
+  // The rail row routes through upstream's own published opener, not through the replica and
+  // not through the mod+shift+M chord.
   assert.match(
     DOCK,
-    /function openPluginsFromRail\(\): void \{\s*openMarketplace\(\);/,
-    "the rail entry must not fall back to dispatching the upstream chord",
+    /function openPluginsFromRail\(\): void \{\s*openUpstreamPlugins\(\);/,
+    "the rail entry must reach upstream's own plugins dialog",
   );
 });
 
-test("the upstream React click is suppressed in the capture phase", () => {
-  // React 18 binds on the root container and listens during BUBBLE. A capture listener on the
-  // button that stops propagation prevents the React handler from ever running.
-  assert.match(DOCK, /button\.addEventListener\(\s*"click",[\s\S]{0,400}?\{ capture: true \},/);
-  assert.match(DOCK, /event\.stopPropagation\(\);/);
-  assert.match(DOCK, /event\.preventDefault\(\);/);
-});
-
-test("the click interceptor cannot be stacked onto the pill twice", () => {
-  // ensureButtonSurface() runs on every sidebar mutation; without a marker each pass would add
-  // another listener. Same class of bug as the rail-row duplication this file already guards.
-  assert.match(DOCK, /sand-plugins-dock-no-upstream-click/);
-  assert.match(
+test("the pill opens upstream 0.18's own plugins dialog — no interception", () => {
+  // Upstream 0.18 wires the pill to `Rme.open(Uf.plugins())`, which opens upstream's own
+  // "连接应用" dialog — the same component official 0.75.8 ships, one generation earlier.
+  //
+  // This build used to SUPPRESS that click with a capture-phase interceptor and open a
+  // hand-written 0.66-era replica instead. The replica is a rewrite of the surface rather than a
+  // port of it, and it is what made Grok Node's marketplace look and behave unlike official.
+  // Nothing is intercepted any more: the upstream dialog IS the marketplace.
+  assert.doesNotMatch(
     DOCK,
-    /if \(button == null \|\| button\.classList\.contains\("sand-plugins-dock-no-upstream-click"\)\) return;/,
+    /sand-plugins-dock-no-upstream-click/,
+    "no capture-phase marker may remain — upstream's click must reach React untouched",
+  );
+  assert.doesNotMatch(DOCK, /event\.stopPropagation\(\);/, "the pill click must not be swallowed");
+  assert.doesNotMatch(DOCK, /event\.preventDefault\(\);/, "the pill click must not be swallowed");
+  assert.doesNotMatch(
+    DOCK,
+    /addEventListener\(\s*"click",[\s\S]{0,400}?\{ capture: true \},/,
+    "no capture-phase click listener may remain on the pill",
   );
 });
 
-test("the interceptor is re-attached on every pill remount, not only at install time", () => {
-  // Regression: `install()` runs on DOMContentLoaded, long before the agents sidebar has rendered,
-  // so the pill usually does not exist yet. Attaching there only left the pill wired to 0.18's
-  // `Rme.open(Uf.plugins())` and 0.18's own dialog opened on click. React remounts the pill on
-  // sidebar collapse, agent switch and settings re-render, each producing a fresh element, so the
-  // attach has to ride along with every `ensureButtonSurface()` pass.
+test("the rail row opens upstream's own dialog through the published opener", () => {
+  // The rail row is a node this build injects — upstream mounts nothing there — so it cannot rely
+  // on upstream's React `onClick`. It calls the global that
+  // `scripts/lib/upstream-plugins-dialog-patch.mjs` publishes from upstream's own
+  // `function uSe(){Rme.open(Uf.plugins())}`.
+  assert.match(
+    DOCK,
+    /function openPluginsFromRail\(\): void \{\s*openUpstreamPlugins\(\);/,
+    "the rail entry must reach upstream's own opener",
+  );
+  assert.match(
+    DOCK,
+    /__sandOpenUpstreamPlugins\?: \(\) => void/,
+    "the rail entry must read the opener the renderer patch publishes",
+  );
+  // And the fallback must still exist: if the global is missing the rail button must not be dead.
+  assert.match(
+    DOCK,
+    /if \(typeof opener === "function"\) \{[\s\S]{0,200}?openMarketplace\(\);/,
+    "the rail entry must fall back to the local marketplace when the global is absent",
+  );
+});
+
+test("the pill keeps upstream's own React onClick on every remount", () => {
+  // Regression shape: `install()` runs on DOMContentLoaded, long before the agents sidebar has
+  // rendered, and React remounts the pill on sidebar collapse, agent switch and settings
+  // re-render. The pill must never be rewired by this extension — there is no listener to
+  // re-attach, so the remount branch only re-applies the label and the logo fan-out.
   const observer = DOCK.slice(DOCK.indexOf("const observer = new MutationObserver"));
   const branch = observer.slice(observer.indexOf("node.matches(BUTTON_SELECTOR)"));
-  // The branch is a whole `if` body; slice to its closing brace so an explanatory comment sitting
-  // between the two calls cannot push the assertion out of range.
   const body = branch.slice(0, branch.indexOf("}\n"));
-  assert.match(
-    body,
-    /interceptPillClick\(\)/,
-    "the pill-remount branch must re-attach the interceptor",
-  );
+  assert.doesNotMatch(body, /addEventListener\(/, "the pill must not gain a click listener");
   assert.match(body, /ensureButtonSurface\(\)/);
   const install = DOCK.match(/function install\(\): void \{[\s\S]*?\n\}/);
   assert.ok(install != null, "install() is missing");
-  assert.match(install[0], /interceptPillClick\(\)/);
+  assert.doesNotMatch(install[0], /addEventListener\(\s*"click"/, "install() must not intercept the pill");
 });
 
 /* ------------------------------------------------------------------ *

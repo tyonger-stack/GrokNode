@@ -28,7 +28,11 @@ const read = (...p) => readFileSync(path.join(repoRoot, ...p), "utf8");
  */
 
 const FIXTURE = JSON.parse(read("tests", "fixtures", "official-catalog-11.json"));
-const CAPTURED = FIXTURE.entries;
+// Six more entries the ANONYMOUS listing withholds, captured from the logged-in official 0.75.8
+// build. Same pin, same reason: official's authenticated catalog has 473 rows, the anonymous
+// listing this build sees has 467, and the six in between are exactly these.
+const FIXTURE_0758 = JSON.parse(read("tests", "fixtures", "official-catalog-0758-missing-6.json"));
+const CAPTURED = [...FIXTURE.entries, ...FIXTURE_0758.entries];
 
 async function loadEntry(entry, outName) {
   const outfile = path.join(repoRoot, "node_modules", ".cache", outName);
@@ -60,9 +64,9 @@ const MKT = await loadEntry(
 const { LOCAL_CATALOG_SUPPLEMENTS, mergeLocalCatalogSupplements } = SUPP;
 const { marketplacePluginToView, toRawGithubUrl } = MKT;
 
-test("the pin carries exactly the 11 entries the official build returned", () => {
-  assert.equal(LOCAL_CATALOG_SUPPLEMENTS.length, 11);
-  assert.equal(CAPTURED.length, 11);
+test("the pin carries exactly the 17 entries the official builds returned", () => {
+  assert.equal(LOCAL_CATALOG_SUPPLEMENTS.length, 17);
+  assert.equal(CAPTURED.length, 17);
   // Ids are the strongest link to upstream: the parity script independently reports these as the
   // missing ones, so a match means we pinned the right things.
   const pinned = LOCAL_CATALOG_SUPPLEMENTS.map((p) => p.pluginId).sort();
@@ -88,6 +92,10 @@ test("every pinned entry projects to the view official actually rendered", () =>
   // Beyond key-set normalisation, two field-level differences are permitted and each is checked
   // explicitly rather than excluded from comparison:
   //  - the official bridge carries `isPublicListed`, which upstream's projector never emits;
+  //  - the official 0.75.8 bridge also carries `popularityRank`, a 0.75.8-only view field the
+  //    0.18-era projector has no slot for. Popularity is not lost by dropping it here: in this
+  //    build popularity arrives through the separate `mcp.teamPopularity` bridge call, and the
+  //    renderer reads it from there rather than from the catalog row.
   //  - `pluginName` USED to sit in this same exemption list and no longer does. It is a real field
   //    of the official view (present on all 404 live entries) that our projector used to drop, and
   //    the renderer's vendor-override probe reads it BEFORE `name` — so excluding it hid a genuine
@@ -104,7 +112,7 @@ test("every pinned entry projects to the view official actually rendered", () =>
   //    `null` to store, so it pins as `undefined` / `[]`. That is functionally identical for
   //    bucketing: `sectionKeyOf` reads the key list, and an empty list matches no bucket exactly as
   //    an absent key does.
-  const BRIDGE_ONLY = ["isPublicListed"];
+  const BRIDGE_ONLY = ["isPublicListed", "popularityRank"];
 
   for (const captured of CAPTURED) {
     const supplement = LOCAL_CATALOG_SUPPLEMENTS.find((p) => p.pluginId === captured.id);
@@ -199,15 +207,23 @@ test("toPlugin reads the plugin's own name for pluginName, not the MCP server ha
   assert.match(src, /pluginName: plugin\.pluginName,/);
 });
 
-test("10 of 11 install for real; the 11th is pinned-but-uninstallable and says so", () => {
+test("10 of 17 install for real; the other 7 are pinned-but-uninstallable and say so", () => {
   const installable = LOCAL_CATALOG_SUPPLEMENTS.filter((p) => p.sourceUrls.length > 0);
   const notInstallable = LOCAL_CATALOG_SUPPLEMENTS.filter((p) => p.sourceUrls.length === 0);
 
   assert.equal(installable.length, 10, "ten entries carry a public MCP config");
   assert.deepEqual(
     notInstallable.map((p) => p.displayName),
-    ["oh-my-claudecode"],
-    "the one without a public repo is the private-marketplace entry — name it, don't let it drift",
+    [
+      "oh-my-claudecode",
+      "Zoho CRM",
+      "WhatsApp Business",
+      "Vibe Prospecting",
+      "Zoho Books",
+      "Zoho Desk",
+      "Workday",
+    ],
+    "the ones without a public repo are the private-marketplace entries — name them, don't let them drift",
   );
 
   // Each sourceUrl must be one `toRawGithubUrl` can turn into a fetchable raw URL, and it must
@@ -226,24 +242,24 @@ test("10 of 11 install for real; the 11th is pinned-but-uninstallable and says s
 
 test("the pin never shadows a server entry — it heals instead of duplicating", () => {
   const serverViews = LOCAL_CATALOG_SUPPLEMENTS.map((p) => marketplacePluginToView(p));
-  // Simulate the account gate opening: the server returns all 11 itself.
+  // Simulate the account gate opening: the server returns all 17 itself.
   const merged = mergeLocalCatalogSupplements(serverViews);
   assert.equal(merged.plugins.length, 0, "nothing is added when the server already has them");
-  assert.equal(merged.views.length, 11, "and no duplicates appear");
+  assert.equal(merged.views.length, 17, "and no duplicates appear");
 
-  // Partial overlap: one server entry among eleven supplements.
+  // Partial overlap: one server entry among seventeen supplements.
   const partial = mergeLocalCatalogSupplements(serverViews.slice(0, 1));
-  assert.equal(partial.plugins.length, 10, "only the genuinely absent ones are added");
-  assert.equal(partial.views.length, 11, "total stays at eleven, no duplicate id");
+  assert.equal(partial.plugins.length, 16, "only the genuinely absent ones are added");
+  assert.equal(partial.views.length, 17, "total stays at seventeen, no duplicate id");
 
-  // Empty server response: all eleven are added.
-  assert.equal(mergeLocalCatalogSupplements([]).plugins.length, 11);
+  // Empty server response: all seventeen are added.
+  assert.equal(mergeLocalCatalogSupplements([]).plugins.length, 17);
 });
 
 test("the merge is additive only — it must never drop what the server returned", () => {
   const serverOnly = [{ id: "1", displayName: "Local-only entry" }];
   const merged = mergeLocalCatalogSupplements(serverOnly);
-  assert.equal(merged.views.length, 12);
+  assert.equal(merged.views.length, 18);
   assert.equal(merged.views[0].displayName, "Local-only entry", "server entry stays put");
   assert.ok(
     merged.views.every((v, i, a) => a.findIndex((x) => x.id === v.id) === i),

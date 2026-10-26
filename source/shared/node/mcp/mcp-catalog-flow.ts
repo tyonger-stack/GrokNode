@@ -7,6 +7,8 @@ import { GMAIL_LOCAL_OAUTH_FIELDS, GMAIL_MCP_URL } from "./local-http-gmail.js";
 import { CALENDAR_LOCAL_OAUTH_FIELDS, CALENDAR_MCP_URL } from "./local-http-calendar.js";
 import { mergeLocalCatalogSupplements } from "./local-catalog-supplements.js";
 import { parseMcpServerConfig, type McpServerConfig } from "./mcp-display-runtime.js";
+import type { LocalMcpPluginAttribution } from "./local-mcp-plugin-attribution.js";
+import { reconcileLocalPluginAttribution, type CatalogPluginView } from "./local-mcp-plugin-attribution.js";
 export class SandMcpCatalogFlow {
   private readonly catalog = new Map<string, SandMarketplacePlugin>();
   private viewsCache: {
@@ -25,6 +27,8 @@ export class SandMcpCatalogFlow {
       localOnly?: boolean;
       getLocalMcpServers?: () => Record<string, McpServerConfig>;
       setLocalMcpServers?: (servers: Record<string, McpServerConfig>) => void;
+      getLocalMcpPluginAttribution?: () => Record<string, LocalMcpPluginAttribution>;
+      setLocalMcpPluginAttribution?: (attribution: Record<string, LocalMcpPluginAttribution>) => void;
       configureLocalOAuth?: (args: { serverUrl: string; clientId: string; clientSecret: string }) => Promise<void>;
       bestEffortToken?(token: unknown): Promise<unknown>;
       fetchMarketplace?(
@@ -55,6 +59,7 @@ export class SandMcpCatalogFlow {
     const substitute = (config: McpServerConfig): McpServerConfig => "command" in config ? { command: replace(config.command), ...(config.args == null ? {} : { args: config.args.map(replace) }), ...(config.env == null ? {} : { env: Object.fromEntries(Object.entries(config.env).map(([key, value]) => [key, replace(value)])) }) } : { url: replace(config.url), ...(config.type == null ? {} : { type: config.type }), ...(config.headers == null ? {} : { headers: Object.fromEntries(Object.entries(config.headers).map(([key, value]) => [key, replace(value)])) }) };
     const current = this.core.getLocalMcpServers();
     this.core.setLocalMcpServers({ ...current, ...Object.fromEntries(Object.entries(servers).map(([name, config]) => [plugin.displayName + ":" + name, substitute(config)])) });
+    this.recordLocalPluginAttribution(plugin, Object.keys(servers));
     // Google's hosted MCP servers (Gmail, Google Calendar) need the user's own OAuth client before
     // the first connect; the same GOOGLE_CLIENT_ID/SECRET pair works for both.
     for (const serverUrl of [GMAIL_MCP_URL, CALENDAR_MCP_URL]) {
@@ -63,6 +68,22 @@ export class SandMcpCatalogFlow {
       await this.core.configureLocalOAuth({ serverUrl, clientId: values.GOOGLE_CLIENT_ID ?? "", clientSecret: values.GOOGLE_CLIENT_SECRET ?? "" });
     }
     return this.core.reloadServers();
+  }
+  /**
+   * Persists which marketplace plugin each freshly installed local server came from.
+   *
+   * Without this, upstream's `rt()` cannot fold a connector under its plugin: it requires
+   * `server.pluginId === catalogEntry.id` plus an installed `effectivePlugins` record, so the
+   * marketplace renders one row per connector and never shows the per-plugin
+   * "N connectors · N skills" subtitle. See `mcp/local-mcp-plugin-attribution.ts`.
+   */
+  private recordLocalPluginAttribution(plugin: SandMarketplacePlugin, serverNames: readonly string[]): void {
+    if (this.core.getLocalMcpPluginAttribution == null || this.core.setLocalMcpPluginAttribution == null) return;
+    const attribution = { ...this.core.getLocalMcpPluginAttribution() };
+    for (const name of serverNames) {
+      attribution[`${plugin.displayName}:${name}`] = { pluginId: plugin.pluginId, name: plugin.pluginName, displayName: plugin.displayName, mcpServerNames: [name] };
+    }
+    this.core.setLocalMcpPluginAttribution(attribution);
   }
   async getCatalog(
     getAccessToken: unknown,
@@ -111,12 +132,28 @@ export class SandMcpCatalogFlow {
     const merged = mergeLocalCatalogSupplements(serverViews);
     for (const plugin of merged.plugins) this.catalog.set(plugin.pluginId, plugin);
     const views = merged.views.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    this.reconcileLocalPluginAttribution(views);
     this.viewsCache = {
       views,
       atMs: this.core.now?.() ?? Date.now(),
       includesPrivateMarketplaces: listing.includesPrivateMarketplaces,
     };
     return views;
+  }
+  /**
+   * Attributes local servers that were installed before the attribution was recorded.
+   *
+   * The catalog is the only place that knows which plugin published which connector, so the
+   * catalog load is where a backfill can happen. It is written back so later reads stay cheap and
+   * so the marketplace renders the grouped plugin rows on its first render.
+   */
+  private reconcileLocalPluginAttribution(views: readonly CatalogPluginView[]): void {
+    if (this.core.getLocalMcpPluginAttribution == null || this.core.setLocalMcpPluginAttribution == null) return;
+    const servers = this.core.getLocalMcpServers?.() ?? {};
+    const recorded = this.core.getLocalMcpPluginAttribution();
+    const merged = reconcileLocalPluginAttribution(Object.keys(servers), recorded, views);
+    if (Object.keys(merged).length === Object.keys(recorded).length && Object.keys(recorded).every((key) => JSON.stringify(recorded[key]) === JSON.stringify(merged[key]))) return;
+    this.core.setLocalMcpPluginAttribution(merged);
   }
   async resolvePluginLogo(url: string): Promise<unknown> {
     if (this.core.resolveLogo != null) return await this.core.resolveLogo(url);

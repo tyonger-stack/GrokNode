@@ -27,7 +27,7 @@ async function render(props) {
 test('user plugins uninstall and the custom MCP form is mounted', async () => {
   const removed = [];
   await render({ plugins, mcp, onRemovePlugin: (id) => { removed.push(id); } });
-  assert.match(host.textContent, /Custom MCP server/);
+  assert.match(host.textContent, /MCP Servers/);
   const userRow = host.querySelector('[data-plugin-id="linear"]');
   const uninstall = [...userRow.querySelectorAll('button')].find((button) => button.textContent === 'Uninstall');
   assert.ok(uninstall);
