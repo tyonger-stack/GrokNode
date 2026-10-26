@@ -283,7 +283,11 @@ test("scheduler snapshots only when the predicate admits", async () => {
   assert.ok(commitsBefore >= 1, "at least one save completed while admitted");
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(fake.calls.filter((call) => call[0] === "commit").length, commitsBefore, "no new commits once the chain has drained and the scheduler is disposed");
-  await rm(directory, { recursive: true, force: true });
+  // The scheduler exposes dispose() but no drain promise, so the in-flight save can
+  // still land files in `directory` while it is being removed. Node's rimraf treats
+  // ENOTEMPTY as retryable, so give the removal a real budget instead of failing
+  // the run when the suite is under load.
+  await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 // Guard (same convention as tests/local-docker-host-identity.test.mjs): the

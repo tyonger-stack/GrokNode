@@ -5,7 +5,10 @@ import { createHash } from "node:crypto";
 import { McpResult } from "../../../packages/proto/generated/agent/v1/mcp_exec_pb.js";
 import { LocalHttpCredentials } from "./local-http-credentials.js";
 import { LocalHttpOAuth } from "./local-http-oauth.js";
-import { createLocalHttpClient, localMcpFetch, localMcpToolResult, type HttpMcpConfig, LOCAL_HTTP_TIMEOUT_MS } from "./local-http-client.js";
+import { createLocalHttpClient, localMcpFetch, localMcpToolResult, type HttpMcpConfig, LOCAL_HTTP_TIMEOUT_MS, LOCAL_HTTP_ELICITATION_TIMEOUT_MS, type LocalMcpElicitationHandler } from "./local-http-client.js";
+import type { McpElicitationApprover } from "../../mcp-elicitation.js";
+import type { Context } from "../../../packages/context/core.js";
+import { withToolExecutionTimeoutSuspended } from "../../../packages/agent/tools/tool-timeout-suspension.js";
 import { GMAIL_MCP_URL, GMAIL_MCP_SCOPE } from "./local-http-gmail.js";
 import { CALENDAR_MCP_URL, CALENDAR_MCP_SCOPES } from "./local-http-calendar.js";
 import type { McpServerConfig } from "./mcp-display-runtime.js";
@@ -26,7 +29,7 @@ const accountKey = z.string().min(1).max(64);
 export const localHttpRequestSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("configure"), serverUrl: z.enum([GMAIL_MCP_URL, CALENDAR_MCP_URL]), clientId: z.string().min(1).max(512), clientSecret: z.string().min(1).max(2048) }),
   z.object({ operation: z.literal("list"), identifiers: z.array(z.string()).max(100) }),
-  z.object({ operation: z.literal("execute"), serverIdentifier: z.string(), toolName: z.string(), args: z.record(z.unknown()) }),
+  z.object({ operation: z.literal("execute"), serverIdentifier: z.string(), toolName: z.string(), args: z.record(z.unknown()), agentId: z.string().min(1).max(200).optional() }),
   z.object({ operation: z.literal("authenticate"), serverId: z.string(), accountKey, oauthRedirectUri: z.literal(MCP_OAUTH_LOOPBACK_CALLBACK_URL), forceReauth: z.boolean().optional() }),
   z.object({ operation: z.literal("complete"), stateId: z.string().min(1), code: z.string().min(1) }),
   z.object({ operation: z.literal("validate"), targets: z.array(z.object({ serverUrl: z.string(), accountKey })).max(100) }),
@@ -50,7 +53,9 @@ export class LocalHttpMcpExec {
   readonly credentials: LocalHttpCredentials;
   private readonly pending = new Map<string, PendingAuth>();
   private readonly work = new Map<string, Promise<unknown>>();
-  constructor(private readonly options: { readonly getServers: () => Record<string, McpServerConfig>; readonly credentialDirectory: string }) {
+  private readonly active = new Set<Connection>();
+  private disposed = false;
+  constructor(private readonly options: { readonly getServers: () => Record<string, McpServerConfig>; readonly credentialDirectory: string; readonly requestElicitation?: McpElicitationApprover }) {
     this.credentials = new LocalHttpCredentials(options.credentialDirectory);
   }
   private rows(): Row[] {
@@ -62,11 +67,20 @@ export class LocalHttpMcpExec {
     if (row == null) throw new SandMcpConfigError("Local HTTP MCP server is not configured.");
     return row;
   }
-  private connection(row: Row, interactive = false): Connection {
-    return createLocalHttpClient(row.config, new LocalHttpOAuth({ serverUrl: row.config.url, credentials: this.credentials, interactive }));
+  private connection(row: Row, interactive = false, elicitation?: LocalMcpElicitationHandler): Connection {
+    if (this.disposed) throw new SandMcpConfigError("The MCP client has stopped.");
+    const connection = createLocalHttpClient(row.config, new LocalHttpOAuth({ serverUrl: row.config.url, credentials: this.credentials, interactive }), elicitation);
+    const close = connection.close;
+    connection.close = async () => { this.active.delete(connection); await close(); };
+    this.active.add(connection);
+    return connection;
   }
   private async serial<T>(url: string, operation: () => Promise<T>): Promise<T> {
-    const next = (this.work.get(url) ?? Promise.resolve()).catch(() => undefined).then(operation);
+    if (this.disposed) throw new SandMcpConfigError("The MCP client has stopped.");
+    const next = (this.work.get(url) ?? Promise.resolve()).catch(() => undefined).then(() => {
+      if (this.disposed) throw new SandMcpConfigError("The MCP client has stopped.");
+      return operation();
+    });
     this.work.set(url, next);
     try { return await next; } finally { if (this.work.get(url) === next) this.work.delete(url); }
   }
@@ -94,15 +108,25 @@ export class LocalHttpMcpExec {
       } finally { await connection.close(); }
     })));
   }
-  async executeTool(args: { readonly serverIdentifier: string; readonly toolName: string; readonly args: unknown }): Promise<McpResult> {
+  async executeTool(args: { readonly serverIdentifier: string; readonly toolName: string; readonly args: unknown; readonly agentId?: string | undefined; readonly signal?: AbortSignal | undefined; readonly context?: Context | undefined }): Promise<McpResult> {
+    if (args.signal?.aborted) return generatedMcpResultFactory.error("The MCP request was cancelled.");
     const row = this.rows().find(item => item.name === args.serverIdentifier);
     if (row == null) return generatedMcpResultFactory.error("Local HTTP MCP server is not configured.");
     return this.serial(row.config.url, async () => {
-      const connection = this.connection(row);
+      if (args.signal?.aborted) return generatedMcpResultFactory.error("The MCP request was cancelled.");
+      const approve = this.options.requestElicitation;
+      const agentId = args.agentId;
+      const elicitation: LocalMcpElicitationHandler | undefined = approve === undefined || agentId === undefined || agentId.length === 0 ? undefined : async (params, signal) => {
+        const approvalSignal = args.signal === undefined ? signal : AbortSignal.any([signal, args.signal]);
+        const ask = () => approve({ agentId, toolName: args.toolName, serverDisplayName: row.name, message: params.message, signal: approvalSignal });
+        const action = await (args.context === undefined ? ask() : withToolExecutionTimeoutSuspended(args.context, ask));
+        return action === "accept" ? { action, content: {} } : { action };
+      };
+      const connection = this.connection(row, false, elicitation);
       try {
         const parameters = z.record(z.unknown()).parse(args.args ?? {});
         await connection.connect();
-        const result = await connection.client.callTool({ name: args.toolName, arguments: parameters }, CallToolResultSchema, { timeout: LOCAL_HTTP_TIMEOUT_MS });
+        const result = await connection.client.callTool({ name: args.toolName, arguments: parameters }, CallToolResultSchema, { timeout: elicitation === undefined ? LOCAL_HTTP_TIMEOUT_MS : LOCAL_HTTP_ELICITATION_TIMEOUT_MS, ...(args.signal === undefined ? {} : { signal: args.signal }) });
         return localMcpToolResult(CallToolResultSchema.parse(result));
       } catch (error) { return generatedMcpResultFactory.error(localHttpFailure(error)); }
       finally { await connection.close(); }
@@ -187,8 +211,9 @@ export class LocalHttpMcpExec {
     }
   }
   async dispose(): Promise<void> {
+    this.disposed = true;
     const pending = [...this.pending.values()]; this.pending.clear();
-    await Promise.all(pending.map(item => item.connection.close()));
+    await Promise.allSettled([...new Set([...this.active, ...pending.map(item => item.connection)])].map(connection => connection.close()));
     await Promise.allSettled(this.work.values());
   }
 }

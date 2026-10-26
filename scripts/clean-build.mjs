@@ -52,6 +52,9 @@ import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patc
 import { applyHardwareAccelerationSettingsPatch } from "./lib/hardware-acceleration-settings-patch.mjs";
 import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs";
 import { applySettingsUpdate0753Patch } from "./lib/settings-update-0753-patch.mjs";
+import { applyConnectorCardHandoff0758Patch } from "./lib/connector-card-handoff-0758-patch.mjs";
+import { applyMcpElicitation0758Patch } from "./lib/mcp-elicitation-0758-patch.mjs";
+import { applyComputerUpgradeSchedule0758Patch } from "./lib/computer-upgrade-schedule-0758-patch.mjs";
 import { applyMessageCopy0753Patch } from "./lib/message-copy-0753-patch.mjs";
 import { applyReplyComposer0753Patch } from "./lib/reply-composer-0753-patch.mjs";
 import { applyReplyTarget0753Patch } from "./lib/reply-target-0753-patch.mjs";
@@ -475,6 +478,9 @@ export async function buildFidelityReconstructedAsar({
   await applyOriginalRendererSettingsI18n({ stageRoot });
   await applyOriginalRendererMainI18n({ stageRoot });
   await applyOriginalRendererExtraI18n({ stageRoot });
+  // Handoff labels and the existing clipboard hook require the localized chunks.
+  await applyConnectorCardHandoff0758Patch({ stageRoot });
+  await applyMcpElicitation0758Patch({ stageRoot });
   // Official 0.75.8's marketplace wording, ported onto upstream 0.18's own plugins chunk.
   // MUST run after the three i18n passes: two of its anchors are the POST-i18n text
   // ("Plugins" → 插件, "Private" → 私密), and the patch rewrites them in place.
@@ -498,6 +504,7 @@ export async function buildFidelityReconstructedAsar({
   // card over the 0.18 update pane. Uses the settings kit and RLocT runtime
   // already present; run after all i18n and settings-row passes.
   await applySettingsUpdate0753Patch({ stageRoot });
+  await applyComputerUpgradeSchedule0758Patch({ stageRoot });
   // Last among the chunk-mutating passes: the flip touches one gate-fallback token in the
   // renderer chunk and the host bundle's bundled FLAGS default, neither of which the i18n
   // passes read or write. It must land before the packaging audit snapshots the stage.

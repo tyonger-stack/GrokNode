@@ -101,6 +101,20 @@ export const LIBRARY_CSS_SCOPES = Object.freeze([
   ".sand-media-viewer",
 ]);
 
+/**
+ * The one and only order the library host's injected stylesheet uses. See the sort in
+ * `buildLibraryHostBundle` for why a table (and not a partial comparator over esbuild's
+ * non-deterministic arrival order) is required.
+ */
+export const LIBRARY_CSS_ORDER = Object.freeze([
+  "library-list.css",
+  "canvas-stage.css",
+  "file-stage.css",
+  "document-stage.css",
+  "media-viewer.css",
+  "visualization-upstream.css",
+]);
+
 export function assertLibraryCssScope(cssText) {
   const source = String(cssText).replace(/\/\*[\s\S]*?\*\//g, "");
   for (const block of source.split("}")) {
@@ -212,13 +226,29 @@ export async function buildLibraryHostBundle() {
     }
     assertLibraryCssScope(entry.text);
   }
+  // The injected stylesheet must have ONE deterministic order.
+  //
+  // esbuild resolves `onLoad` hooks in parallel, so the order in which the CSS files arrive in
+  // `css` varies between builds. The previous comparator only pinned two pairs (file-stage before
+  // document-stage, stage-icon-button last) and left every other pair to the arrival order, so
+  // the emitted stylesheet — and therefore the cascade — could differ from build to build. That
+  // made `tests/library-host-patch.test.mjs`'s order assertion fail roughly one run in six
+  // (2026-10-26). A partial comparator over an unstable input order is not an order at all.
+  //
+  // The table below is the whole order: file-stage before document-stage (the file viewer's own
+  // rules must not be overridden by the document stage), the media viewer after both, and the
+  // shared stage-icon-button last so it wins on specificity-free ties. Files that are not in the
+  // table sort by name, before the stage button.
   const cssText = [...css].sort((left, right) => {
-    const leftName = path.basename(left.filePath);
-    const rightName = path.basename(right.filePath);
-    if (leftName === "file-stage.css" && rightName === "document-stage.css") return -1;
-    if (leftName === "document-stage.css" && rightName === "file-stage.css") return 1;
-    const rank = (entry) => path.basename(entry.filePath) === "stage-icon-button.css" ? 1 : 0;
-    return rank(left) - rank(right);
+    const rank = (entry) => {
+      const name = path.basename(entry.filePath);
+      const index = LIBRARY_CSS_ORDER.indexOf(name);
+      if (index >= 0) return index;
+      return name === "stage-icon-button.css" ? LIBRARY_CSS_ORDER.length + 1 : LIBRARY_CSS_ORDER.length;
+    };
+    const difference = rank(left) - rank(right);
+    if (difference !== 0) return difference;
+    return path.basename(left.filePath).localeCompare(path.basename(right.filePath));
   }).map((entry) => entry.text).join("\n");
   const style = css.length === 0 ? "" : `
 ;(()=>{if(typeof document==="undefined"||document.getElementById("sand-library-host-style"))return;const style=document.createElement("style");style.id="sand-library-host-style";style.textContent=${JSON.stringify(cssText)};document.head.append(style);})();

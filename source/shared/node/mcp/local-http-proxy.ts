@@ -11,7 +11,7 @@ export function createLocalHttpMcpProxy(call: LocalHttpRequest) {
   return {
     async configureClient(args: { readonly serverUrl: string; readonly clientId: string; readonly clientSecret: string }): Promise<void> { await call({ ...args, operation: "configure" }); },
     async listTools(identifiers: readonly string[]) { return z.array(serverSchema).parse(await call({ operation: "list", identifiers })); },
-    async executeTool(args: { readonly serverIdentifier: string; readonly toolName: string; readonly args: unknown }) { return McpResult.fromJsonString(JSON.stringify(await call({ ...args, operation: "execute" }))); },
+    async executeTool(args: { readonly serverIdentifier: string; readonly toolName: string; readonly args: unknown; readonly agentId?: string }) { return McpResult.fromJsonString(JSON.stringify(await call({ ...args, operation: "execute" }))); },
     async checkAuthStatus(args: { readonly serverId: string | number; readonly accountKey: string; readonly oauthRedirectUri: string; readonly forceReauth?: boolean }) { return authSchema.parse(await call({ ...args, serverId: String(args.serverId), operation: "authenticate" })); },
     async completeOAuth(args: { readonly stateId: string; readonly code: string }): Promise<void> { await call({ ...args, operation: "complete" }); },
     async validateTokens(targets: readonly { serverUrl: string; accountKey: string }[]) { return tokenStatusSchema.parse(await call({ operation: "validate", targets })); },

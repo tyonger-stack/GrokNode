@@ -72,13 +72,19 @@
     "index-BlqerJhg.js": {
       "sourcePath": "src/app/dist/renderer/assets/index-BlqerJhg.js",
       "sourceSha256": "2c67b8d60a116718cdfbc198c357885b87dfbd92e6a40800dfab91af7b6172fb",
-      "fixtureSha256": "5a80da7d6d807d8b58aa84ac2c26e545a47eeeebc3e9ca92f25f2c960a8c9a15",
+      "fixtureSha256": "f363df46e30bba770fec9a18d211120cd49a7bd52a8021dff203e529fcf802e7",
       "nodes": [
         {
           "type": "FunctionDeclaration",
           "start": 21186,
           "end": 22159,
           "sha256": "0dd210eea946fa88d6ad845717a6f4b9a23b0b894350792b9d93cc3a65d59a2a"
+        },
+        {
+          "type": "FunctionDeclaration",
+          "start": 24732,
+          "end": 30233,
+          "sha256": "209ec07d954ae9b9ba14c03a1b96484d5ba9fb8a151fe2b6c32cef66ab9dd0b6"
         },
         {
           "type": "FunctionDeclaration",

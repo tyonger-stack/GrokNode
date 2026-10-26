@@ -2,7 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { FetchLike, Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { ElicitRequestSchema, type CallToolResult, type ElicitRequest, type ElicitResult } from "@modelcontextprotocol/sdk/types.js";
 import { Struct } from "@bufbuild/protobuf";
 import { McpImageContent, McpResult, McpSuccess, McpToolResultContentItem } from "../../../packages/proto/generated/agent/v1/mcp_exec_pb.js";
 import { generatedMcpResultFactory } from "./mcp-result-factory.js";
@@ -12,18 +12,21 @@ import { SandMcpConfigError } from "./mcp-config-error.js";
 
 export type HttpMcpConfig = Extract<McpServerConfig, { url: string }>;
 export const LOCAL_HTTP_TIMEOUT_MS = 30_000;
+export const LOCAL_HTTP_ELICITATION_TIMEOUT_MS = 10 * 60_000;
+export type LocalMcpElicitationHandler = (request: ElicitRequest["params"], signal: AbortSignal) => Promise<ElicitResult>;
 
 // No retries here: a timed-out tool call may already have changed external data.
-export const localMcpFetch: FetchLike = async (input, init) => {
+async function localMcpFetchWithin(input: Parameters<FetchLike>[0], init: Parameters<FetchLike>[1], timeoutMs: number) {
   const url = new URL(input instanceof Request ? input.url : input.toString());
   if (url.username || url.password || (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)))) {
     throw new SandMcpConfigError("MCP connections require HTTPS (HTTP is allowed for localhost).");
   }
   const response = await fetch(input, { ...init, redirect: "error", signal: AbortSignal.any([
-    AbortSignal.timeout(LOCAL_HTTP_TIMEOUT_MS), ...(init?.signal == null ? [] : [init.signal]),
+    AbortSignal.timeout(timeoutMs), ...(init?.signal == null ? [] : [init.signal]),
   ]) });
   return repairGoogleHostedMcpStatus(url, response);
-};
+}
+export const localMcpFetch: FetchLike = (input, init) => localMcpFetchWithin(input, init, LOCAL_HTTP_TIMEOUT_MS);
 
 // Google's hosted MCP gateways (gmailmcp/calendarmcp/….googleapis.com, observed 2026-10-25 on
 // calendarmcp) answer tools/list and tool calls with HTTP 403 while the body carries a VALID
@@ -40,9 +43,17 @@ async function repairGoogleHostedMcpStatus(url: URL, response: Response): Promis
   return new Response(body, { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" } });
 }
 
-export function createLocalHttpClient(config: HttpMcpConfig, provider: LocalHttpOAuth) {
-  const client = new Client({ name: "grok-node", version: "0.18.0" });
-  const options = { authProvider: provider, fetch: localMcpFetch, requestInit: { headers: config.headers ?? {} } };
+export function createLocalHttpClient(config: HttpMcpConfig, provider: LocalHttpOAuth, elicitation?: LocalMcpElicitationHandler) {
+  const closed = new AbortController();
+  const client = new Client({ name: "grok-node", version: "0.18.0" }, { capabilities: elicitation === undefined ? {} : { elicitation: { form: {} } } });
+  if (elicitation !== undefined) client.setRequestHandler(ElicitRequestSchema, async (request, extra) => {
+    const params = request.params;
+    if (params.mode === "url" || Object.keys(params.requestedSchema.properties).length !== 0 || (params.requestedSchema.required?.length ?? 0) !== 0 || params.message.length > 16000) return { action: "decline" };
+    const signal = AbortSignal.any([extra.signal, closed.signal]);
+    if (signal.aborted) return { action: "cancel" };
+    return elicitation(params, signal);
+  });
+  const options = { authProvider: provider, fetch: elicitation === undefined ? localMcpFetch : (input: Parameters<FetchLike>[0], init: Parameters<FetchLike>[1]) => localMcpFetchWithin(input, init, LOCAL_HTTP_ELICITATION_TIMEOUT_MS), requestInit: { headers: config.headers ?? {} } };
   const transport = config.type === "sse"
     ? new SSEClientTransport(new URL(config.url), options)
     : new StreamableHTTPClientTransport(new URL(config.url), options);
@@ -50,13 +61,13 @@ export function createLocalHttpClient(config: HttpMcpConfig, provider: LocalHttp
     start: () => transport.start(), send: (message, options) => transport instanceof StreamableHTTPClientTransport ? transport.send(message, options) : transport.send(message), close: () => transport.close(),
     setProtocolVersion: version => { if (transport instanceof StreamableHTTPClientTransport) transport.setProtocolVersion(version); },
   };
-  transport.onclose = () => wire.onclose?.();
+  transport.onclose = () => { closed.abort(); wire.onclose?.(); };
   transport.onerror = error => wire.onerror?.(error);
   transport.onmessage = message => wire.onmessage?.(message);
   return {
     client, transport, provider,
-    connect: () => client.connect(wire, { timeout: LOCAL_HTTP_TIMEOUT_MS }),
-    close: () => transport.close(),
+    connect: () => { if (closed.signal.aborted) throw new SandMcpConfigError("The MCP client has stopped."); return client.connect(wire, { timeout: LOCAL_HTTP_TIMEOUT_MS }); },
+    close: () => { closed.abort(); return client.close(); },
   };
 }
 

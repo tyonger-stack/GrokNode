@@ -277,6 +277,10 @@ export function createDesktopPreloadBridge(options: {
     foreverBox: {
       forceRecreate: () => edge("forceRecreateComputer"),
       update: (id: string, force = false) => edge("updateComputer", { id, force }),
+      getUpgradeSchedule: () => edge("getComputerUpgradeSchedule"),
+      scheduleUpgrade: (scheduledAtMs: number) => edge("scheduleComputerUpgrade", { scheduledAtMs }),
+      rescheduleUpgrade: (scheduledAtMs: number) => edge("rescheduleComputerUpgrade", { scheduledAtMs }),
+      cancelUpgrade: (dismissTerminalOutcome = false) => edge("cancelComputerUpgrade", { dismissTerminalOutcome }),
       onVncUserPresence: (listener: (value: boolean) => void) => subscribe("vnc-user-presence", ({ isPresent }) => listener(isPresent)),
       onDevBoxPullProgress: (listener: (payload: unknown) => void) => subscribe("dev-box-pull-progress", listener),
       egressTunnel: {

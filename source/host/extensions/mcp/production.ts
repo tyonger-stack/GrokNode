@@ -1,4 +1,5 @@
 import type { HostExtensionContext } from "../../../internal/host-extensions.js";
+import type { AutoReviewService } from "../auto-review/auto-review-service.js";
 import {
   createRealPollingPolicy
 } from "../../../internal/scheduling.js";
@@ -37,6 +38,7 @@ export interface McpProductionAuth {
 }
 
 interface McpProductionDeps {
+  "auto-review": Pick<AutoReviewService, "requestMcpElicitation">;
   auth: McpProductionAuth;
   experiments: { isSparsePluginClonesEnabled(): boolean };
   "forever-box": { readonly box: CapableBox };
@@ -89,6 +91,7 @@ export function createMcpProductionExtras(
     createService(pluginSkills) {
       const service: McpHostService = createMcpService({
         localOnly: true,
+        requestElicitation: request => context.deps["auto-review"].requestMcpElicitation(request),
         auth,
         foreverBox: context.deps["forever-box"],
         settings: context.deps.settings,

@@ -26,6 +26,7 @@ import { toJsonArgs } from "./mcp-validation.js";
 import { notifyLibraryMcpResult } from "../../library/mcp-result-hook.js";
 import { classifyConnectorFailure } from "../../../packages/agent/tools/mcp/mcp-connector-failure.js";
 import { createConnectorRateLimitWaiter } from "../../../packages/agent/tools/mcp/mcp-connector-rate-limits.js";
+import type { Context } from "../../../packages/context/core.js";
 
 export const MCP_TOOLS_CACHE_TTL_MS = 24 * 60 * 60 * 1_000;
 export const TOOLS_DISCOVERY_DEADLINE_MS = 120_000;
@@ -429,6 +430,7 @@ export function createMcpToolsDiscovery(
   async function executeToolRaw(
     args: any,
     auditIdentity: any,
+    ctx: unknown,
   ): Promise<McpResultLike> {
     if (await isHttpProvider(args.providerIdentifier)) {
       const result = await core.backendMcpExec.executeTool({
@@ -437,6 +439,8 @@ export function createMcpToolsDiscovery(
         args: toJsonArgs(args.args),
         toolCallId: args.toolCallId,
         agentId: auditIdentity?.agentId,
+        ...(core.localOnly === true ? { signal: abortSignalOf(ctx) } : {}),
+        ...(core.localOnly === true && ctx != null && typeof ctx === "object" && "get" in ctx && typeof ctx.get === "function" ? { context: ctx as Context } : {}),
       });
       reportFirstCall(args.providerIdentifier, result.result.case !== "error");
       return result;
@@ -543,7 +547,7 @@ export function createMcpToolsDiscovery(
       await connectorRateLimitWaiter.wait(args.providerIdentifier, abortSignalOf(_ctx));
       let raw: McpResultLike;
       try {
-        raw = await executeToolRaw(args, auditIdentity);
+        raw = await executeToolRaw(args, auditIdentity, _ctx);
       } catch (error) {
         return resultFactory.error(
           `MCP execution failed for "${args.toolName}" on "${args.providerIdentifier}": ${errorMessage(error)}`,
