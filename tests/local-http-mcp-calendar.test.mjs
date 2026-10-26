@@ -104,3 +104,32 @@ test("configure accepts the Google Calendar URL and rejects unlisted servers", a
     await assert.rejects(() => provider.clientInformation(), /Google Calendar requires your registered Google OAuth client/);
   } finally { await runtime.dispose(); }
 });
+
+test("Google hosted MCP 403-with-valid-result responses are surfaced as 200", async () => {
+  const { localMcpFetch } = await load("source/shared/node/mcp/local-http-client.ts", "client-shim");
+  const makeResponse = (status, body) => new Response(body, { status, headers: { "Content-Type": "application/json" } });
+  // 403 whose body is a JSON-RPC result → repaired to 200 (Google calendarmcp behavior, 2026-10-25).
+  const repaired = await localMcpFetch(new Request("https://calendarmcp.googleapis.com/mcp/v1", { method: "POST" }), { method: "POST" });
+  void makeResponse;
+  // Drive the shim through real Response objects by stubbing global fetch.
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => makeResponse(403, JSON.stringify({ jsonrpc: "2.0", id: 1, result: { tools: [] } }));
+    const ok = await localMcpFetch(new Request("https://calendarmcp.googleapis.com/mcp/v1", { method: "POST" }), { method: "POST" });
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json()).result.tools.length, 0);
+    // A JSON-RPC ERROR body keeps its 403.
+    globalThis.fetch = async () => makeResponse(403, JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -32000, message: "denied" } }));
+    const kept = await localMcpFetch(new Request("https://calendarmcp.googleapis.com/mcp/v1", { method: "POST" }), { method: "POST" });
+    assert.equal(kept.status, 403);
+    // Non-googleapis hosts are never rewritten.
+    globalThis.fetch = async () => makeResponse(403, JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }));
+    const untouched = await localMcpFetch(new Request("https://mcp.example.com/mcp", { method: "POST" }), { method: "POST" });
+    assert.equal(untouched.status, 403);
+    // Malformed 403 bodies pass through.
+    globalThis.fetch = async () => makeResponse(403, "not-json");
+    const malformed = await localMcpFetch(new Request("https://calendarmcp.googleapis.com/mcp/v1", { method: "POST" }), { method: "POST" });
+    assert.equal(malformed.status, 403);
+  } finally { globalThis.fetch = originalFetch; }
+  void repaired;
+});

@@ -85,8 +85,11 @@ function closedWatcher() {
     messages,
     onClosed: (message) => { messages.push(message); },
     async waitFor(message) {
-      for (let i = 0; i < 200 && !messages.includes(message); i += 1) {
-        await new Promise((resolve) => setImmediate(resolve));
+      // 预算按墙钟时间算，不按事件循环轮次算：子进程要真的启动并回话，
+      // 全量并发下 200 次 setImmediate 会在它开口前就耗尽。
+      const deadline = Date.now() + 5000;
+      while (!messages.includes(message) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
       }
       return messages;
     },

@@ -19,10 +19,26 @@ export const localMcpFetch: FetchLike = async (input, init) => {
   if (url.username || url.password || (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)))) {
     throw new SandMcpConfigError("MCP connections require HTTPS (HTTP is allowed for localhost).");
   }
-  return fetch(input, { ...init, redirect: "error", signal: AbortSignal.any([
+  const response = await fetch(input, { ...init, redirect: "error", signal: AbortSignal.any([
     AbortSignal.timeout(LOCAL_HTTP_TIMEOUT_MS), ...(init?.signal == null ? [] : [init.signal]),
   ]) });
+  return repairGoogleHostedMcpStatus(url, response);
 };
+
+// Google's hosted MCP gateways (gmailmcp/calendarmcp/….googleapis.com, observed 2026-10-25 on
+// calendarmcp) answer tools/list and tool calls with HTTP 403 while the body carries a VALID
+// JSON-RPC result — the official client's own transport accepts it, the OSS SDK does not.
+// Retry-free, scoped to those hosts: only a 403 whose body is a JSON-RPC result without an
+// error member is surfaced as 200; everything else passes through untouched.
+async function repairGoogleHostedMcpStatus(url: URL, response: Response): Promise<Response> {
+  if (response.status !== 403 || !url.hostname.endsWith(".googleapis.com")) return response;
+  const body = await response.text();
+  let parsed: unknown;
+  try { parsed = JSON.parse(body); } catch { return new Response(body, response); }
+  const record = parsed != null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  if (record == null || record.jsonrpc !== "2.0" || !("result" in record) || "error" in record) return new Response(body, response);
+  return new Response(body, { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" } });
+}
 
 export function createLocalHttpClient(config: HttpMcpConfig, provider: LocalHttpOAuth) {
   const client = new Client({ name: "grok-node", version: "0.18.0" });
