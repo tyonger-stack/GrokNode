@@ -4,6 +4,7 @@ import { buildPluginsDockRendererExtension } from "./plugins-dock-renderer-exten
 import { patchAccountFooter0753 } from "./account-footer-0753-patch.mjs";
 import { buildWebhookCredentialRendererExtension } from "./webhook-credential-renderer-extension.mjs";
 import { buildInfoPaneTabsRendererExtension, patchNativeInfoPaneTabs } from "./info-pane-tabs-renderer-extension.mjs";
+import { buildAgentsListFadeRendererExtension } from "./agents-list-fade-renderer-extension.mjs";
 import { buildLibraryHostBundle, patchOriginalLibraryHost } from "./library-host-renderer-patch.mjs";
 import { patchAutoReviewSettingsOpener, patchOriginalAutoReviewApproval } from "./auto-review-renderer-patch.mjs";
 import { patchUpstreamPluginsDialogOpener } from "./upstream-plugins-dialog-patch.mjs";
@@ -269,6 +270,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const pluginsDockExtension = await buildPluginsDockRendererExtension();
   const webhookCredentialExtension = await buildWebhookCredentialRendererExtension();
   const infoPaneTabsExtension = await buildInfoPaneTabsRendererExtension();
+  const agentsListFadeExtension = await buildAgentsListFadeRendererExtension();
   const libraryHostBundle = await buildLibraryHostBundle();
   const approvalName = "view-QqBtBG74.js";
   const approvalTarget = path.join(assetsRoot, approvalName);
@@ -294,7 +296,7 @@ export async function applyOriginalRendererRouterPatch({ stageRoot }) {
   const changes = [];
   for (const { candidate, roles, transforms } of transformsByFile.values()) {
     const isRegistry = roles.includes("registry");
-    const registryExtensions = isRegistry ? "\n;" + [botTemplateExtension, channelStatusExtension, pluginsDockExtension, webhookCredentialExtension, infoPaneTabsExtension].join("\n;") : "";
+    const registryExtensions = isRegistry ? "\n;" + [botTemplateExtension, channelStatusExtension, pluginsDockExtension, webhookCredentialExtension, infoPaneTabsExtension, agentsListFadeExtension].join("\n;") : "";
     let patched = candidate.source;
     let aboutVersionDialectUsed = null;
     for (const transform of transforms) patched = transform(patched);
