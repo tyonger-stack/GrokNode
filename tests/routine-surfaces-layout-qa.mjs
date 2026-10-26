@@ -85,14 +85,19 @@ const geometry=await win.webContents.executeJavaScript('window.measure()');
 const screenshot=path.join(out,'R12-'+version+'-'+width+'-'+locale+'-'+name+'.png');
 if(['zero','one','multiple','loading'].includes(name))fs.writeFileSync(screenshot,(await win.webContents.capturePage()).toPNG());
 results.push({version,width,locale,name,geometry,screenshot:fs.existsSync(screenshot)?screenshot:null});
-if(['zero','one'].includes(name)){await win.webContents.executeJavaScript('window.clickCreate()');await win.webContents.executeJavaScript('new Promise(r=>requestAnimationFrame(r))');assert.equal((await win.webContents.executeJavaScript('window.measure()')).editor,'new');}
+if(['zero','one'].includes(name)){const pre=await win.webContents.executeJavaScript('window.measure()');if(pre.button){await win.webContents.executeJavaScript('window.clickCreate()');await win.webContents.executeJavaScript('new Promise(r=>requestAnimationFrame(r))');assert.equal((await win.webContents.executeJavaScript('window.measure()')).editor,'new');}}
 if(name==='one'){await win.webContents.executeJavaScript('window.renderScenario('+JSON.stringify(state)+','+JSON.stringify(locale)+');');await win.webContents.executeJavaScript('window.clickRow()');await win.webContents.executeJavaScript('new Promise(r=>requestAnimationFrame(r))');assert.equal((await win.webContents.executeJavaScript('window.measure()')).editor,'qa-0');}
 }
 }
 fs.writeFileSync(path.join(out,'R12-geometry.json'),JSON.stringify({results,errors},null,2));assert.deepEqual(errors,[]);
 if(!process.env.R12_MEASURE_ONLY){
 for(const r of results.filter(x=>x.version==='after')){const before=results.find(x=>x.version==='before'&&x.width===r.width&&x.locale===r.locale&&x.name===r.name);const one=results.find(x=>x.version==='after'&&x.width===r.width&&x.locale===r.locale&&x.name==='one');
-if(['zero','empty','loadingEmpty','failedEmpty'].includes(r.name)){assert.ok(Math.abs(r.geometry.section.height-one.geometry.section.height)<=2,JSON.stringify(r));assert.ok(Math.abs(r.geometry.library.top-one.geometry.library.top)<=2);assert.equal(r.geometry.overflow,false);const g=r.geometry;assert.ok(g.empty.height>0&&g.button.height>0);assert.ok(g.empty.top>=g.section.top&&g.button.bottom<=g.section.bottom+1);assert.ok(g.empty.right<=g.section.right+1&&g.button.right<=g.section.right+1);assert.ok(g.empty.bottom<=g.button.top+1);}
+if(['zero','empty','loadingEmpty','failedEmpty'].includes(r.name)){assert.ok(Math.abs(r.geometry.section.height-one.geometry.section.height)<=2,JSON.stringify(r));assert.ok(Math.abs(r.geometry.library.top-one.geometry.library.top)<=2);assert.equal(r.geometry.overflow,false);const g=r.geometry;assert.ok(g.empty.height>0&&g.empty.top>=g.section.top&&g.empty.right<=g.section.right+1);
+// The create button existed in the baseline patch and was removed with the official
+// 0.75.8 empty-state port (chat-only creation): a present button keeps the old
+// containment checks, an absent one must measure null.
+if(g.button)assert.ok(g.button.height>0&&g.button.bottom<=g.section.bottom+1&&g.button.right<=g.section.right+1&&g.empty.bottom<=g.button.top+1);
+else assert.equal(g.button,null,JSON.stringify(r));}
 else {assert.deepEqual(r.geometry,before.geometry,'unchanged '+r.name+' '+r.width+' '+r.locale);}
 }}
 console.log(JSON.stringify({pass:true,measureOnly:!!process.env.R12_MEASURE_ONLY,scenarios:results.length,errors}));
