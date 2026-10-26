@@ -419,6 +419,48 @@ keep their English text and are listed explicitly in `UNPORTED_CUSTOM_MCP_FIELDS
 against `tests/fixtures/official-0758-marketplace-wording.json`, a capture of official 0.75.8's own
 zh-Hans locale entries, so a typo or an invented translation fails the build.
 
+### 5.4 The two replica panels' styling
+
+The two panels of §5.3 also rendered **raw HTML**: browser-default headings (19.5px/700), a
+bulleted `<ul>`, default `<input>` boxes and default `<button>`s, inside an otherwise native
+dialog (reported with a screenshot on 2026-10-26). Their class names were used by the components
+but **defined nowhere** — the 0.66-era replica styled its own layout, and the two panels were
+never part of it.
+
+The fix gives them **upstream 0.18's own recipes**, taken from the same surface (and verified to
+resolve to a rule in the shipped stylesheet):
+
+| element | recipe | source |
+| --- | --- | --- |
+| card / column | `sand-9f619 sand-78zum5 sand-dt5ytf sand-ou54vl` | upstream's plugin-setup form (`Di`) |
+| field row / label | `sand-9f619 sand-78zum5 sand-dt5ytf sand-1jnr06f`, `sand-9f619 sand-4z9k3i sand-d4r4e8 sand-12oo3zp sand-1rhlpx6 sand-1wd3ewq` | upstream's plugin-setup form |
+| text input (+ invalid) | `sand-plugin-setup__input`'s two variants (`sand-yerb3` = the red border) | upstream's plugin-setup form |
+| inline error | `… sand-fifm61 sand-1d3mw78 sand-pmgbkh` (12px, red) | upstream's plugin-setup form |
+| action row | `… sand-13a6bvl sand-167g77z` (right-aligned) | upstream's plugin-setup form |
+| two-column grid | `sand-rvj5dj sand-nby9oq sand-fex06f sand-1dbijih sand-3ct3a4` | upstream's plugin grid |
+| plugin row + its button | `li.sand-plugins-row …` / `button.sand-plugins-row__open …` | captured live from the running app |
+| small button | the 身份验证 / 添加 button's recipe | captured live from the running app |
+
+Two details the screenshot forced out:
+
+* The name button needs the **full** row-button recipe, not just the row geometry: a `<button>`
+  that only wraps a short label is only as wide as that label, so the browser's default grey
+  background showed up as a grey chip behind every plugin name. The recipe resets it
+  (`sand-c342km` border-width 0, `sand-ng3xce` border-style none, `sand-jbqb8w` background
+  transparent).
+* The name button must **not** grow (`flex-grow:1`): upstream's row button grows because the
+  trailing action is a *sibling* of the button, and in a two-column grid a growing button pushed
+  卸载 to the far edge of its cell — right next to the next column's name. `ROW_OPEN_COMPACT` is
+  the same recipe without the three flex classes.
+
+The panel also dropped its own `已安装` heading: the dialog's own section title sits directly
+above it, so a second one read as a duplicate (the `aria-label` still names the panel).
+
+`tests/marketplace-panel-styles.test.mjs` guards this: every class the recipes use must resolve to
+a rule in the shipped 0.18 stylesheet — a stylix class name is the hash of its declarations, so a
+class that exists in one build and not in another is a *no-op*, and the panel would be raw HTML
+again with every other test still green.
+
 ## 6. Known deltas that remain
 1. **Category chip row vs. tab bar.** Official 0.75.8's browse page shows a horizontal chip row
    (`已连接 24 个 / Bot 模板 / 全部 / 密码管理器 / …`) and reaches the manage view by clicking

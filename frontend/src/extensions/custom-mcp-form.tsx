@@ -1,5 +1,21 @@
 import { useState, type ReactNode } from "react";
 import { CUSTOM_MCP_FORM_WORDING, officialWording } from "../i18n/official-marketplace-copy";
+import {
+  BUTTON_SECONDARY,
+  GRID,
+  GRID_SPAN,
+  ROW,
+  ROW_NAME,
+  SECTION_TITLE,
+  SETUP_ACTIONS,
+  SETUP_CARD,
+  SETUP_ERROR,
+  SETUP_FIELD_COLUMN,
+  SETUP_FIELD_ROW,
+  SETUP_INPUT,
+  SETUP_INPUT_INVALID,
+  SETUP_LABEL,
+} from "../recovered/features/plugins/overlay/marketplace-recipes";
 
 export interface CustomMcpHeaderDraft {
   readonly key: string;
@@ -173,42 +189,92 @@ export function CustomMcpForm(props: {
   };
   const saveDisabled = props.disabled === true || error != null;
   return (
-    <div className="sand-custom-mcp-form">
-      <h2 className="sand-custom-mcp-form-title">{copy.title}</h2>
-      <label className="sand-custom-mcp-field">
-        <span>{copy.nameLabel}</span>
-        <input aria-label={copy.nameLabel} disabled={props.disabled} name="customMcpName" onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} value={draft.name} />
-      </label>
-      <label className="sand-custom-mcp-field">
-        <span>{copy.urlLabel}</span>
-        <input aria-label={copy.urlLabel} disabled={props.disabled} inputMode="url" name="customMcpUrl" onChange={(event) => setDraft((current) => ({ ...current, url: event.target.value }))} placeholder={copy.urlHint} value={draft.url} />
-      </label>
-      <div className="sand-custom-mcp-headers">
-        <span>{copy.headersLabel}</span>
-        {draft.headers.map((header, index) => (
-          <div className="sand-custom-mcp-header-row" key={index}>
-            <input aria-label={officialWording(CUSTOM_MCP_FORM_WORDING.headerKeyLabel)} disabled={props.disabled} onChange={(event) => setHeader(index, { key: event.target.value })} placeholder="Authorization" value={header.key} />
-            <input aria-label={officialWording(CUSTOM_MCP_FORM_WORDING.headerValueLabel)} disabled={props.disabled} onChange={(event) => setHeader(index, { value: event.target.value })} placeholder="Bearer …" value={header.value} />
-            <button aria-label={copy.removeHeader} disabled={props.disabled} onClick={() => setDraft((current) => ({ ...current, headers: current.headers.filter((_, at) => at !== index) }))} type="button">×</button>
-          </div>
-        ))}
-        <button disabled={props.disabled} onClick={() => setDraft((current) => ({ ...current, headers: [...current.headers, { key: "", value: "" }] }))} type="button">{copy.addHeader}</button>
+    // The markup follows upstream 0.18's own plugin-setup form: a card, a column of labelled
+    // fields, an inline error line and a right-aligned action row. The recipes are upstream's,
+    // not hand-written — see `marketplace-recipes.ts`.
+    <div className={`sand-custom-mcp-form ${SETUP_FIELD_COLUMN}`}>
+      <h2 className={`sand-custom-mcp-form-title ${SECTION_TITLE}`}>{copy.title}</h2>
+      <div className={`sand-custom-mcp-fields ${GRID}`}>
+        <div className={`sand-custom-mcp-field ${SETUP_FIELD_ROW}`}>
+          <label className={`sand-custom-mcp-label ${SETUP_LABEL}`} htmlFor="customMcpName">{copy.nameLabel}</label>
+          <input
+            aria-invalid={error === "required-name" ? true : undefined}
+            className={`sand-custom-mcp-input ${error === "required-name" ? SETUP_INPUT_INVALID : SETUP_INPUT}`}
+            disabled={props.disabled}
+            id="customMcpName"
+            name="customMcpName"
+            onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+            value={draft.name}
+          />
+        </div>
+        <div className={`sand-custom-mcp-field ${SETUP_FIELD_ROW}`}>
+          <label className={`sand-custom-mcp-label ${SETUP_LABEL}`} htmlFor="customMcpUrl">{copy.urlLabel}</label>
+          <input
+            aria-invalid={error === "invalid-url" || error === "non-http-url" || error === "credentials-in-url" ? true : undefined}
+            className={`sand-custom-mcp-input ${error === "invalid-url" || error === "non-http-url" || error === "credentials-in-url" ? SETUP_INPUT_INVALID : SETUP_INPUT}`}
+            disabled={props.disabled}
+            id="customMcpUrl"
+            inputMode="url"
+            name="customMcpUrl"
+            onChange={(event) => setDraft((current) => ({ ...current, url: event.target.value }))}
+            placeholder={copy.urlHint}
+            value={draft.url}
+          />
+        </div>
+        <div className={`sand-custom-mcp-headers ${GRID_SPAN} ${SETUP_FIELD_ROW}`}>
+          <span className={`sand-custom-mcp-label ${SETUP_LABEL}`}>{copy.headersLabel}</span>
+          {draft.headers.map((header, index) => (
+            <div className={`sand-custom-mcp-header-row ${ROW}`} key={index}>
+              <input
+                aria-label={officialWording(CUSTOM_MCP_FORM_WORDING.headerKeyLabel)}
+                className={`sand-custom-mcp-header-key ${SETUP_INPUT}`}
+                disabled={props.disabled}
+                onChange={(event) => setHeader(index, { key: event.target.value })}
+                placeholder="Authorization"
+                value={header.key}
+              />
+              <input
+                aria-label={officialWording(CUSTOM_MCP_FORM_WORDING.headerValueLabel)}
+                className={`sand-custom-mcp-header-value ${SETUP_INPUT}`}
+                disabled={props.disabled}
+                onChange={(event) => setHeader(index, { value: event.target.value })}
+                placeholder="Bearer …"
+                value={header.value}
+              />
+              <button
+                aria-label={copy.removeHeader}
+                className={`sand-custom-mcp-remove-header ${BUTTON_SECONDARY}`}
+                disabled={props.disabled}
+                onClick={() => setDraft((current) => ({ ...current, headers: current.headers.filter((_, at) => at !== index) }))}
+                type="button"
+              >×</button>
+            </div>
+          ))}
+        </div>
+        <div className={`sand-custom-mcp-add-row ${GRID_SPAN} ${SETUP_ACTIONS}`}>
+          <button
+            className={`sand-custom-mcp-add ${BUTTON_SECONDARY}`}
+            disabled={props.disabled}
+            onClick={() => setDraft((current) => ({ ...current, headers: [...current.headers, { key: "", value: "" }] }))}
+            type="button"
+          >{copy.addHeader}</button>
+        </div>
       </div>
-      {error == null ? null : <p className="sand-custom-mcp-error" role="alert">{customMcpDraftErrorMessage(copy, error)}</p>}
-      {props.testState === "testing" ? <p className="sand-custom-mcp-status" role="status">{copy.testing}</p> : null}
-      {props.testState === "ok" ? <p className="sand-custom-mcp-status" role="status">{copy.testOk}</p> : null}
-      {props.testState === "failed" ? <p className="sand-custom-mcp-error" role="alert">{props.testMessage ?? copy.testFailed}</p> : null}
-      {props.submitError == null || props.submitError === "" ? null : <p className="sand-custom-mcp-error" role="alert">{props.submitError}</p>}
-      <div className="sand-custom-mcp-form-actions">
-        {props.onTest == null ? null : <button disabled={props.disabled || props.testState === "testing"} onClick={props.onTest} type="button">{copy.testConnection}</button>}
-        <button disabled={saveDisabled} onClick={() => props.onSubmit(draft)} type="button">{copy.save}</button>
-        <button onClick={props.onCancel} type="button">{copy.cancel}</button>
+      {error == null ? null : <p className={`sand-custom-mcp-error ${SETUP_ERROR}`} role="alert">{customMcpDraftErrorMessage(copy, error)}</p>}
+      {props.testState === "testing" ? <p className={`sand-custom-mcp-status ${ROW_NAME}`} role="status">{copy.testing}</p> : null}
+      {props.testState === "ok" ? <p className={`sand-custom-mcp-status ${ROW_NAME}`} role="status">{copy.testOk}</p> : null}
+      {props.testState === "failed" ? <p className={`sand-custom-mcp-error ${SETUP_ERROR}`} role="alert">{props.testMessage ?? copy.testFailed}</p> : null}
+      {props.submitError == null || props.submitError === "" ? null : <p className={`sand-custom-mcp-error ${SETUP_ERROR}`} role="alert">{props.submitError}</p>}
+      <div className={`sand-custom-mcp-form-actions ${SETUP_ACTIONS}`}>
+        {props.onTest == null ? null : <button className={`sand-custom-mcp-test ${BUTTON_SECONDARY}`} disabled={props.disabled || props.testState === "testing"} onClick={props.onTest} type="button">{copy.testConnection}</button>}
+        <button className={`sand-custom-mcp-save ${BUTTON_SECONDARY}`} disabled={saveDisabled} onClick={() => props.onSubmit(draft)} type="button">{copy.save}</button>
+        <button className={`sand-custom-mcp-cancel ${BUTTON_SECONDARY}`} onClick={props.onCancel} type="button">{copy.cancel}</button>
         {props.onRemove == null ? null : confirmingRemove
           ? <span className="sand-custom-mcp-remove-confirm">
-            <button onClick={() => { setConfirmingRemove(false); props.onRemove?.(); }} type="button">{copy.removeServer}</button>
-            <button onClick={() => setConfirmingRemove(false)} type="button">{copy.cancel}</button>
+            <button className={`sand-custom-mcp-remove ${BUTTON_SECONDARY}`} onClick={() => { setConfirmingRemove(false); props.onRemove?.(); }} type="button">{copy.removeServer}</button>
+            <button className={`sand-custom-mcp-cancel ${BUTTON_SECONDARY}`} onClick={() => setConfirmingRemove(false)} type="button">{copy.cancel}</button>
           </span>
-          : <button onClick={() => setConfirmingRemove(true)} type="button">{copy.removeServer}</button>}
+          : <button className={`sand-custom-mcp-remove ${BUTTON_SECONDARY}`} onClick={() => setConfirmingRemove(true)} type="button">{copy.removeServer}</button>}
       </div>
     </div>
   );
