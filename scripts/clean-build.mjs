@@ -67,6 +67,8 @@ import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
 import { applyOriginalRendererMarketplaceOfficialWording } from "./lib/marketplace-official-wording-patch.mjs";
 import { applyMarketplaceDialog0758Css } from "./lib/marketplace-dialog-0758-css-patch.mjs";
+import { applyMarketplaceBrowseChrome0758 } from "./lib/marketplace-browse-chrome-0758-patch.mjs";
+import { applyMarketplaceBrowseChrome0758Css } from "./lib/marketplace-browse-chrome-0758-css-patch.mjs";
 import { applyUpdatePillCopy0755Patch } from "./lib/update-pill-copy-0755-patch.mjs";
 import { applyTeachGateRestorePatch } from "./lib/teach-gate-restore-patch.mjs";
 import { applyGrokMainAgentGatePatch } from "./lib/grok-main-agent-gate-patch.mjs";
@@ -488,6 +490,13 @@ export async function buildFidelityReconstructedAsar({
   // Official 0.75.8's plugins-dialog geometry: the five stylix rules upstream 0.18's stylesheet
   // does not define (the dialog WIDTH is the only behavioural difference — 800px vs 1000px).
   await applyMarketplaceDialog0758Css({ stageRoot });
+  // Official 0.75.8's browse-page chrome: the category chip row and the "connected apps" entry
+  // that replace 0.18's segmented control, plus official's search placeholder.
+  // MUST run after the wording patch: its anchors are the POST-wording text (the segmented
+  // control carries the wording patch's "已连接 N 个" label).
+  await applyMarketplaceBrowseChrome0758({ stageRoot });
+  // The three chip rules upstream 0.18's stylesheet does not define (official's own, lifted).
+  await applyMarketplaceBrowseChrome0758Css({ stageRoot });
   await applyMessageCopy0753Patch({ stageRoot });
   // The 0.18 renderer already has the footer update pill and Update-ready
   // modal; port the official 0.75.5 copy now that RLocT exists.

@@ -439,6 +439,76 @@
       "parts": [
         "密码管理器"
       ]
+    },
+    "hZotg6": {
+      "en": "Communication",
+      "zh": "通信",
+      "parts": [
+        "通信"
+      ]
+    },
+    "EWPtMO": {
+      "en": "Code",
+      "zh": "代码",
+      "parts": [
+        "代码"
+      ]
+    },
+    "HKH+W+": {
+      "en": "Data",
+      "zh": "数据",
+      "parts": [
+        "数据"
+      ]
+    },
+    "8V6XO3": {
+      "en": "Finance",
+      "zh": "财务",
+      "parts": [
+        "财务"
+      ]
+    },
+    "XYLcNv": {
+      "en": "Support",
+      "zh": "支持",
+      "parts": [
+        "支持"
+      ]
+    },
+    "N40H+G": {
+      "en": "All",
+      "zh": "全部",
+      "parts": [
+        "全部"
+      ]
+    },
+    "2FYpfJ": {
+      "en": "More",
+      "zh": "更多",
+      "parts": [
+        "更多"
+      ]
+    },
+    "jj4zKl": {
+      "en": "Plugin categories",
+      "zh": "插件分类",
+      "parts": [
+        "插件分类"
+      ]
+    },
+    "8zPg/f": {
+      "en": "More categories",
+      "zh": "更多类别",
+      "parts": [
+        "更多类别"
+      ]
+    },
+    "ApxUA3": {
+      "en": "Search across apps and skills",
+      "zh": "在应用和技能中搜索",
+      "parts": [
+        "在应用和技能中搜索"
+      ]
     }
   }
 }

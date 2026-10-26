@@ -461,15 +461,53 @@ a rule in the shipped 0.18 stylesheet — a stylix class name is the hash of its
 class that exists in one build and not in another is a *no-op*, and the panel would be raw HTML
 again with every other test still green.
 
+### 5.5 Official's browse-page chrome (the chip row and the connected-apps entry)
+
+The biggest remaining difference from official 0.75.8 was the **chrome** of the browse page
+(screenshot, 2026-10-26):
+
+| | official 0.75.8 | 0.18 before this port |
+| --- | --- | --- |
+| header right | icon stack + `已连接 25 个` + `›` | — |
+| toolbar | wide search `在应用和技能中搜索` | narrow `搜索插件` on the right |
+| page nav | chip row `全部 / 密码管理器 / 效率 / 通信 / 设计 / 代码 / 更多` | segmented control `市场 / 已连接 N 个` |
+
+`scripts/lib/marketplace-browse-chrome-0758-patch.mjs` ports official's own components into
+0.18's plugins view:
+
+* **the chip row** — official's `Pi` component (`chunk-view-Bl5Kz6YC.js`), with official's class
+  recipes (`Ni.chip` / `Ni.chipSelected` / the group recipe) and official's `Oe.body2` typography
+  recipe. The chips are the categories official shows: the 全部 chip, the first five, and a 更多
+  dropdown with the rest. Selecting one **filters the browse sections by category**, exactly like
+  official — the filter is applied to the items the marketplace page already receives
+  (`Pl(Q,m).filter(...)`), so no data path changes.
+* **the connected-apps entry** — official's `fa` component: the overlapping logo stack (up to
+  four), `已连接 N 个`, and a chevron. It replaces 0.18's segmented control and opens the installed
+  view, which is what official's entry does.
+* **the search placeholder** — official's `ApxUA3` `在应用和技能中搜索` / "Search across apps and
+  skills".
+
+The category model is official's own (`chunk-marketplace-browse-model-DZZc6njJ.js`): the canonical
+chip order, the upstream-category-key → chip mapping, and each chip's official message id. The
+class recipes are official's too; the six that 0.18's stylesheet does not ship are lifted
+byte-for-byte from official's own stylesheet
+(`scripts/lib/marketplace-browse-chrome-0758-official.css`).
+
+`tests/marketplace-browse-chrome-0758.test.mjs` guards it: every anchor is replaced exactly once,
+the injected source parses on its own, every Chinese string is matched against the captured
+official locale, and every class resolves in the shipped stylesheet.
+
 ## 6. Known deltas that remain
-1. **Category chip row vs. tab bar.** Official 0.75.8's browse page shows a horizontal chip row
-   (`已连接 24 个 / Bot 模板 / 全部 / 密码管理器 / …`) and reaches the manage view by clicking
-   `已连接 24 个`; upstream 0.18 uses a two-item segmented control (`市场` / `已连接 N 个`) to
-   switch between the two views. The two views are equivalent in content, and the installed-apps
-   entry now carries official's count, but the *navigation furniture* is 0.18's. Porting the chip
-   row means porting official's `vs` page container — 164 functions / 146 KB across 25 chunks —
-   which also drags in a `PluginsShellProvider` React context that 0.18 does not have. That is
-   recorded as the remaining visual delta rather than faked.
+1. **The unified homepage's first section and the Bot-templates button.** Official 0.75.8's browse
+   page opens with a **为你推荐** section and carries a **Bot 模板 ↗** button next to the search
+   field. Both belong to official's *unified homepage* model (the `deriveMarketplaceBrowseModel`
+   entry, which ranks entries by team popularity and by the user's category affinity, and the
+   `marketplaceHomepageLogoUrls` loader). 0.18 has no such model, and reproducing the ranking
+   without official's affinity and team-popularity inputs would be an invention rather than a port —
+   so this build keeps 0.18's own first section (精选) and no Bot-templates button, and the chip row
+   (§5.5) filters the categories it does have. Official's own chip labels, the connected-apps
+   entry and the search placeholder are ported; what is left is the *data model* behind the first
+   section.
 2. **Dialog geometry.** Official 0.75.8's dialog uses newer stylix recipes
    (`sand-h6vr4k / sand-1a2e76q / sand-1gy1zxj / sand-xrbq2n / sand-z03ioa`); four of those class
    names are absent from 0.18's stylesheet. `scripts/lib/marketplace-dialog-0758-css-patch.mjs`

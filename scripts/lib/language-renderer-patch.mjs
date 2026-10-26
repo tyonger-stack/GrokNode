@@ -89,14 +89,42 @@ export function patchOriginalLanguagePanel(source) {
 
 export async function applyOriginalRendererLanguagePatch({ stageRoot }) {
   const assetsRoot = path.join(stageRoot, "dist", "renderer", "assets");
+  const already = [];
   const candidates = [];
   for (const name of await readdir(assetsRoot)) {
     if (!name.endsWith(".js")) continue;
     const target = path.join(assetsRoot, name);
     const source = await readFile(target, "utf8");
+    // Idempotent like hardware-acceleration: a prior successful apply (or a
+    // leftover stage) already owns the Sa `r` slot — do not fail-closed.
+    if (source.includes("function RLangSection(){") && (source.includes(SA_SLOT_AFTER) || source.includes("a.jsx(RLangSection,{})"))) {
+      already.push({ name, target, source });
+      continue;
+    }
     if (source.includes(PA_ANCHOR) && source.includes(SA_SLOT_BEFORE)) {
       candidates.push({ name, target, source });
     }
+  }
+  if (candidates.length === 0 && already.length === 1) {
+    const candidate = already[0];
+    console.log(`Language settings: skipped (already-present in ${candidate.name})`);
+    const record = {
+      schemaVersion: 1,
+      mode: "original-renderer-language-extension",
+      applied: false,
+      reason: "already-present",
+      chunks: [{
+        role: "panel",
+        path: `dist/renderer/assets/${candidate.name}`,
+        original: { bytes: Buffer.byteLength(candidate.source), sha256: sha256(candidate.source) },
+        patched: { bytes: Buffer.byteLength(candidate.source), sha256: sha256(candidate.source) },
+      }],
+      features: ["settings-general-language"],
+      transformations: ["language-section-insertion", "sa-slot-language-render"],
+    };
+    const provenancePath = path.join(stageRoot, "dist", "renderer-language-extension.json");
+    await writeFile(provenancePath, `${JSON.stringify(record, null, 2)}\n`);
+    return { ...record, provenancePath, provenanceBytes: (await stat(provenancePath)).size };
   }
   if (candidates.length !== 1) {
     throw new Error(`Expected one original Settings panel chunk for Language patch, found ${candidates.length}.`);
