@@ -56,7 +56,13 @@ test("main-i18n patch appends prelude and branches every pair literal", async ()
   for (const row of catalogApplied) assert.ok(row.hits >= 1, "0.61.0 catalog pair must hit: " + row.en);
   assert.equal(localApplied.length, MAIN_I18N_LOCAL_PAIRS.length);
   for (const row of localApplied) assert.ok(row.hits >= 1, "0.18-only pair must hit: " + row.en);
-  assert.ok(patched.includes('(RLocT("Create Routine","创建例行任务"))'));
+  // "Create Routine" and the 0.18 empty-state description were retired from
+  // MAIN_I18N_LOCAL_PAIRS: routine-surfaces-renderer-patch.mjs removed both anchor
+  // sites (official 0.75.8 has no create entry; the empty state now carries the
+  // ZJmAzX copy inside that patch), so a zero-hit row would fail applyPair closed.
+  assert.ok(!patched.includes('RLocT("Create Routine"'), "the Create Routine pair must be gone with its removed anchor");
+  assert.ok(!patched.includes('RLocT("Routines are recurring tasks this agent'), "the 0.18 empty-state description pair must be gone");
+  assert.ok(patched.includes('(RLocT("Agent settings","智能体设置"))'), "the neighboring 0.18-only pair still branches");
   assert.equal(anchored.length, 16 + MAIN_I18N_LOCAL_ANCHORED.length, "all whole-block anchors must apply");
   assert.ok(patched.includes('(RLocT("Getting ready","正在准备"))'), "boot state catalog first element must branch to +6Ex1c wording");
   assert.ok(patched.includes('(RLocT("Couldn\'t cancel your message. Try again.","无法取消你的消息。请重试。"))'), "cancel failure toast must branch to 8gi/JY wording");

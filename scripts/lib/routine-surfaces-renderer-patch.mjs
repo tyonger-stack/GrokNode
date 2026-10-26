@@ -14,21 +14,41 @@ const ROW_MAP_AFTER = "k=v=>p.jsx(RRtOfficialRow,{agentId:t,automation:v,onOpen:
 // Official 0.75.8 renders the routine section heading as one flex row that carries the
 // typography itself (13px / 18px / letter-spacing-sm / --sand-text-secondary) and indents
 // the label by 12px, so the label sits 12px inside the card that follows it. 0.18 renders
-// the heading with its own 16px white classes. Only the class list is ported: the
-// "Create Routine" action stays, and 0.18's `sand-1qughib` (justify-content: space-between)
-// is kept so that action keeps its place at the far edge — official 0.75.8 has no action
-// in this heading, so there is no official layout to copy for it.
+// the heading with its own 16px white classes. Only the class list is ported: official
+// 0.75.8 has no action in this heading either, so 0.18's `+` action is removed with the
+// class swap (the ported `sand-1qughib` space-between stays in the list and is inert once
+// the heading has a single remaining child).
 const HEADING_BEFORE = 'p.jsxs("div",{className:"sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-mix8c7",children:[p.jsx("span",{className:re("sand-info-pane__section-heading",Fe(FUe.sectionHeading,Us.medium).className),id:ye,children:"Routines"})';
 const HEADING_AFTER = 'p.jsxs("div",{className:"sand-11wthnw sand-w8bs97 sand-14gdtuo sand-78zum5 sand-6s0dn4 sand-11twubx sand-t1q3vd sand-8fiw5y sand-1o0liin sand-1qughib",children:[p.jsx("span",{className:"sand-info-pane__section-heading",id:ye,children:"Routines"})';
+// The `+` action is the last element of the heading div's children array; nulling the
+// expression leaves [label, null] and drops the two "Create Routine" literals it carries
+// (tooltip content + aria-label). With the empty-state button below, these are all three
+// occurrences of the literal in the chunk, so no i18n pair can anchor to it afterwards.
+const HEADING_ACTION_BEFORE = 'p.jsx(yo,{content:"Create Routine",children:p.jsx(fr,{"aria-label":"Create Routine",className:"sand-info-pane__section-heading-action","data-routine-row":"new",icon:"plus",onClick:xe,size:"sm",style:FUe.sectionHeadingAction})})';
+const HEADING_ACTION_AFTER = "null";
 const EDITOR_MOUNT_BEFORE = "p.jsx(_2n,{agentId:t.id,automation:V,";
 const EDITOR_MOUNT_AFTER = "p.jsx(RRoutineSurface,{agentId:t.id,automation:V,";
 const EMPTY_SECTION_BEFORE = '1:{className:"sand-78zum5 sand-dt5ytf sand-17d4w8g sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-2lwn1j"}}[!!Cmt(x)<<0].className';
 const EMPTY_SECTION_AFTER = '1:{className:"sand-78zum5 sand-dt5ytf sand-17d4w8g"}}[!!Cmt(x)<<0].className';
 const EMPTY_ROOT_BEFORE = 'v={className:"sand-78zum5 sand-dt5ytf sand-6s0dn4 sand-l56j7k sand-1v2ro7d sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-yamay9 sand-1l90r2v"},e[10]=v';
 const EMPTY_ROOT_AFTER = 'v={className:"sand-78zum5 sand-dt5ytf sand-6s0dn4 sand-l56j7k"},e[10]=v';
+// Official 0.75.8's empty state is localized copy only (message id ZJmAzX): what routines
+// are, plus "ask it in chat to set one up". Official has no create affordance anywhere in
+// the routine section — creation is chat-only, handled host-side by the agent's state tool
+// (writeAutomation -> automationRuntime.createAgentAutomation), a path this renderer patch
+// does not touch. The 0.18 empty state is re-pointed at the official copy, and both 0.18
+// UI create entries (the empty-state button here and the heading `+` above) are removed.
+const EMPTY_COPY_BEFORE = 'children:"Routines are recurring tasks this agent runs on a schedule."';
+const EMPTY_COPY_AFTER = 'children:RRtLoc("Routines are recurring tasks this Bot runs on a schedule. Ask it in chat to set one up.","例行任务是此 Bot 按计划重复运行的任务。请在聊天中让它设置一个。")';
+// The button's memo-cache ternary (`let x;e[12]!==i?(x=p.jsx(Qs,...,"Create Routine"),...)
+// :x=e[13]`) collapses to `x=null`: no Qs invocation, no literal, and the mount's cache
+// below keeps comparing against the now-stable null.
+const CREATE_BUTTON_BEFORE = 'e[12]!==i?(x=p.jsx(Qs,{"data-routine-row":"new",onClick:i,style:Moe.createButton,variant:"secondary",children:"Create Routine"}),e[12]=i,e[13]=x):x=e[13]';
+const CREATE_BUTTON_AFTER = "x=null";
 const EMPTY_MOUNT_BEFORE = 'N=p.jsxs("div",{className:v.className,children:[b,x]})';
-// Native single-row section: 18px heading + 6px gap + 2 × 18px text + 2 × 6px row padding.
-const EMPTY_MOUNT_AFTER = 'N=p.jsxs("div",{className:v.className,style:{minHeight:72,flex:"none",gap:3},children:[b,x]})';
+// Copy-only mount: official shows the copy alone (~two 18px lines at pane width), so the
+// button row's height budget goes and minHeight drops from 72 to 60 with a single child.
+const EMPTY_MOUNT_AFTER = 'N=p.jsx("div",{className:v.className,style:{minHeight:60,flex:"none"},children:b})';
 
 const COMPONENT_SOURCE = String.raw`
 // Official 0.75.8 class lists for the info-pane routine surface, read off the running
@@ -83,8 +103,11 @@ export function patchOriginalRoutineSurfaces(source) {
   patched = replaceExactlyOnce(patched, LIST_COMPONENT_BEFORE, LIST_COMPONENT_AFTER, "routine list card");
   patched = replaceExactlyOnce(patched, ROW_MAP_BEFORE, ROW_MAP_AFTER, "routine list row switch");
   patched = replaceExactlyOnce(patched, HEADING_BEFORE, HEADING_AFTER, "routine section heading");
+  patched = replaceExactlyOnce(patched, HEADING_ACTION_BEFORE, HEADING_ACTION_AFTER, "routine heading create action");
   patched = replaceExactlyOnce(patched, EMPTY_SECTION_BEFORE, EMPTY_SECTION_AFTER, "known-empty routine overview wrapper");
   patched = replaceExactlyOnce(patched, EMPTY_ROOT_BEFORE, EMPTY_ROOT_AFTER, "known-empty routine root");
+  patched = replaceExactlyOnce(patched, EMPTY_COPY_BEFORE, EMPTY_COPY_AFTER, "known-empty routine copy");
+  patched = replaceExactlyOnce(patched, CREATE_BUTTON_BEFORE, CREATE_BUTTON_AFTER, "known-empty routine create button");
   patched = replaceExactlyOnce(patched, EMPTY_MOUNT_BEFORE, EMPTY_MOUNT_AFTER, "known-empty routine height");
   return replaceExactlyOnce(patched, EDITOR_MOUNT_BEFORE, EDITOR_MOUNT_AFTER, "routine detail surface");
 }

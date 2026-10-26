@@ -44,10 +44,23 @@ test("known-empty routines retain the one-row height without growing the overvie
     assert.ok(node, name);
     return source.slice(node.start, node.end);
   };
-  assert.ok(get(patched, "K2n").includes('style:{minHeight:72,flex:"none",gap:3}'));
+  assert.ok(get(patched, "K2n").includes('N=p.jsx("div",{className:v.className,style:{minHeight:60,flex:"none"},children:b})'), "the empty state is a single-child copy-only mount");
   assert.ok(!get(patched, "K2n").includes('sand-yamay9 sand-1l90r2v'));
   assert.ok(get(patched, "p3n").includes('1:{className:"sand-78zum5 sand-dt5ytf sand-17d4w8g"}}[!!Cmt(x)<<0].className'));
   for (const name of ["Cmt", "c2", "_2n"]) assert.equal(get(patched, name), get(bundle, name), `${name} eligibility/editor is unchanged`);
+});
+
+test("known-empty routine state is official 0.75.8 copy with no UI create entry", { skip: bundleSkip }, () => {
+  const patched = patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(bundle));
+  assert.doesNotThrow(() => parse(patched, { ecmaVersion: "latest", sourceType: "module" }));
+  assert.equal(
+    patched.split('RRtLoc("Routines are recurring tasks this Bot runs on a schedule. Ask it in chat to set one up.","例行任务是此 Bot 按计划重复运行的任务。请在聊天中让它设置一个。")').length - 1,
+    1,
+    "the official ZJmAzX empty-state copy is injected exactly once",
+  );
+  assert.ok(!patched.includes('children:"Routines are recurring tasks this agent runs on a schedule."'), "the 0.18 empty-state literal is gone");
+  assert.ok(!patched.includes("Create Routine"), "no create-entry literal survives (button children, heading tooltip, aria-label)");
+  assert.ok(!patched.includes('p.jsx(yo,{content:"Create Routine"'), "the heading + action expression is removed");
 });
 
 test("routine detail keeps 0.59 copy, the webhook card gate, and the create path on the upstream editor", () => {

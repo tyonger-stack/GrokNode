@@ -706,13 +706,15 @@ export const MAIN_I18N_061_PAIRS = [
 // replaced that control with 0.61.0's "View conversation details" (message id
 // +fxiY8, already in MAIN_I18N_PAIRS above). applyPair is fail-closed on a zero-anchor
 // pair, so the dead row had to go rather than stay.
+// Retired: "Create Routine" and "Routines are recurring tasks this agent runs on a
+// schedule." — routine-surfaces-renderer-patch.mjs removed both anchor sites (official
+// 0.75.8 has no create entry; the empty state now renders the ZJmAzX copy via RRtLoc in
+// that patch), so zero-anchor rows would fail applyPair closed.
 export const MAIN_I18N_LOCAL_PAIRS = [
   ["Booting up the computer", "正在启动电脑", "FULL"],
   // Official 0.71.2 pwcnuW (chunk-computer-screen-preview Es starting): sidebar wake copy.
   ["Waking…", "正在唤醒…", "FULL"],
   ["Agent settings", "智能体设置", "PROP"],
-  ["Create Routine", "创建例行任务", "PROP"],
-  ["Routines are recurring tasks this agent runs on a schedule.", "例行任务是这个智能体按计划重复执行的任务。", "PROP"],
   ["Search...", "搜索...", "PANEL"],
   ["Reply…", "回复…", "PANEL"],
   ["Reply to attachment…", "回复附件…", "PANEL"],
