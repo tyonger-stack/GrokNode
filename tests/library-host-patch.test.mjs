@@ -49,6 +49,23 @@ test("library CSS order matches the shipped renderer", async () => {
   );
 });
 
+test("the injected library stylesheet is byte-identical across builds", async () => {
+  // esbuild resolves `onLoad` hooks in parallel, so the order in which the CSS files reach the
+  // collector varies between builds. The emitted stylesheet must not (2026-10-26: the order
+  // assertion above failed roughly one run in six, because the sort only pinned two pairs and
+  // left the rest to the arrival order).
+  const emitted = [];
+  for (let index = 0; index < 4; index += 1) {
+    const bundle = await buildLibraryHostBundle();
+    const encoded = bundle.match(/style\.textContent=("(?:\\.|[^"])*")/)?.[1];
+    assert.ok(encoded, "library host style text is missing");
+    emitted.push(JSON.parse(encoded));
+  }
+  for (const css of emitted) {
+    assert.equal(css, emitted[0], "the library stylesheet must not depend on esbuild's arrival order");
+  }
+});
+
 test("emitted host bundle initializes with the existing React runtime", async () => {
   const bundle = await buildLibraryHostBundle();
   const context = { S: React, p: jsxRuntime, Wr: ReactDOM, console, setTimeout, clearTimeout, TextEncoder, TextDecoder, URL };
