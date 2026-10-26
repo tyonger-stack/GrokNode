@@ -191,6 +191,9 @@ present in Grok Node.**
 | --- | --- | --- | --- |
 | entries | 473 | 467 | **473** |
 
+(The listing is live upstream data, so it grows: the 2026-10-26 rebuild measured **474** — the six
+pinned entries are still there, upstream published one more.)
+
 The six in between — `Zoho CRM` (76674741), `WhatsApp Business` (75770130),
 `Vibe Prospecting` (72277412), `Zoho Books` (76674739), `Zoho Desk` (76674742),
 `Workday` (72336719) — are private-marketplace entries the anonymous listing withholds. They are
