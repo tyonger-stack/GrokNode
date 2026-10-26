@@ -81,6 +81,7 @@ import { applyShapePickerPatch } from "./lib/shape-picker-patch.mjs";
 import { applyOriginalRendererConversationComputerCard } from "./lib/conversation-computer-card-renderer-patch.mjs";
 import { applyOriginalRendererAppLinkCards } from "./lib/app-link-card-renderer-patch.mjs";
 import { applyOriginalRendererRoutineSurface0758Css } from "./lib/routine-surface-0758-css-patch.mjs";
+import { applyOriginalRendererAppColumns0758Css } from "./lib/app-columns-0758-css-patch.mjs";
 import { applyOriginalRendererServerPortCards } from "./lib/server-port-cards-renderer-patch.mjs";
 import { applyOriginalRendererWaitingOnResults } from "./lib/waiting-on-results-renderer-patch.mjs";
 import { applyOriginalRendererViewUnread } from "./lib/view-unread-renderer-patch.mjs";
@@ -430,6 +431,11 @@ export async function buildFidelityReconstructedAsar({
   // Official 0.75.8 routine surface: the class lists the routine patch renders with,
   // plus official's dark-theme token values scoped to the right-hand info pane.
   await applyOriginalRendererRoutineSurface0758Css({ stageRoot });
+  // Official 0.75.8 column chrome: middle-column background (--sand-bg-chrome #121212
+  // dark), left-rail background (--sand-bg-sidebar #0e0e0e dark) and the chat toolbar's
+  // top scrim gradient. Appended bytes only; must survive every later pass like the
+  // routine-surface CSS above.
+  await applyOriginalRendererAppColumns0758Css({ stageRoot });
   await applyOriginalRendererServerPortCards({ stageRoot });
   // 0.71.2 View → "View Unread": MAIN chunk roster filter + menu event subscribe. No RLocT.
   // Must precede i18n only so later passes see a stable chunk; anchors do not overlap them.
@@ -520,6 +526,11 @@ export async function buildFidelityReconstructedAsar({
     const cssFile = (await readdir(assetsDir)).find(name => /^index-.*\.css$/.test(name));
     const css = await readFile(path.join(assetsDir, cssFile), 'utf8');
     if (!css.includes('.sand-info-pane__inner')) throw new Error('Routine surface official CSS was lost from the staged stylesheet');
+    // Fail-closed: the official 0.75.8 column chrome (shell/rail backgrounds + chat
+    // toolbar scrim) must survive every later pass too.
+    if (!css.includes('main.sand-chat header.sand-toolbar')) {
+      throw new Error('App-columns official CSS was lost from the staged stylesheet');
+    }
   }
   await packStagedAppWithIntegrity({ stageRoot, archivePath, unpackedRoot });
   console.log(`Fidelity hybrid ASAR ready: ${archivePath}`);

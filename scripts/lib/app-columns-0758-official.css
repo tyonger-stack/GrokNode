@@ -1,0 +1,88 @@
+/* Official Grok Bot 0.75.8 column chrome: the middle-column background, the left-rail
+ * background, and the chat toolbar's top scrim.
+ *
+ * Source app: /Applications/Grok Bot.app (com.anysphere.sand) 0.75.8
+ *   app.asar sha256 7d6fe1a476e2c575c11429772959728333eb9d3d442f71f89bbd9c6f180dd779
+ *   renderer stylesheet dist/renderer/assets/index-CFSAhbDS.css
+ * Reference analysis: /Users/Apple/Documents/grokbot/rea-grokbot-0758 (REA extract)
+ *
+ * What official does, element by element (read off the running official app 2026-10-26
+ * over CDP, viewport 864x1024, dark theme):
+ *
+ *   Shell .sand-shell (display:grid; 88px 456px 320px) paints the middle column —
+ *   main.sand-chat and its transcript scroll area are transparent over it — via class
+ *   sand-1qj4qm9:
+ *     .sand-1qj4qm9:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-chrome)}
+ *   computed rgb(18,18,18). Official's runtime <style id="sand-cursor-theme"> (dark,
+ *   html[data-theme=cursor-dark]) defines:
+ *     --sand-bg-chrome:#121212;
+ *     --sand-bg-pane:#161616;
+ *     --sand-bg-sidebar:#0e0e0e;
+ *     --cursor-bg-editor:var(--sand-bg-pane);
+ *     --cursor-bg-chrome:var(--sand-bg-chrome);
+ *
+ *   Left rail aside.sand-agents-sidebar paints itself via class sand-1p3z83a:
+ *     .sand-1p3z83a:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-sidebar)}
+ *   computed rgb(14,14,14) — darker than the middle column.
+ *
+ *   Chat toolbar header.sand-toolbar ([88,0,456,60], absolute, top:0, z-index:3 via
+ *   sand-zkaem6) carries class sand-1z0swcc:
+ *     .sand-1z0swcc:not(#\#):not(#\#):not(#\#){background-image:linear-gradient(to bottom, var(--sand-bg-chrome), transparent)}
+ *   This is the scrim behind the toolbar that the transcript scrolls under — the
+ *   "faint black overlay" at the top of official's middle column.
+ *
+ * What the pinned 0.18 baseline does instead (verified in its pristine stylesheet, 7162
+ * rules): the shell paints itself with
+ *   .sand-1ua6jya:not(#\#):not(#\#):not(#\#){background-color:var(--cursor-bg-editor)}
+ * which the 0.18 runtime theme resolves through --sand-bg-base to #070707 (dark), and
+ * the rail with
+ *   .sand-1ys0zz1:not(#\#):not(#\#):not(#\#){background-color:var(--cursor-bg-chrome)}
+ * which resolves through --sand-bg-subtle to #111111 (dark) — LIGHTER than the middle
+ * column, the reverse of official's relationship. The toolbar ships no background at
+ * all. The three official token names have zero references in the 0.18 stylesheet, so
+ * defining them here cannot wake any dormant 0.18 rule.
+ *
+ * The port: define the three official tokens under the same [data-theme] attribute the
+ * 0.18 runtime theme installer sets on <html> (cursor-dark / cursor-light), then
+ * repaint the shell, the rail and the chat toolbar with them. Dark values are the
+ * running official app's runtime values quoted above; light values are official's
+ * static :root set (--sand-bg-pane:#fff;--sand-bg-chrome:#fcfcfc;--sand-bg-sidebar:#f5f5f5).
+ * The gradient declaration is copied verbatim from official's stylesheet.
+ *
+ * Cascade: the shell and rail selectors below carry one more :not(#\#) than the 0.18
+ * rules they must beat ((4,1,0) vs (3,1,0)), so they win on specificity regardless of
+ * stylesheet order; no 0.18 rule with a .sand-shell/.sand-agents-sidebar/.sand-toolbar
+ * selector paints a background, and no background-color rule in the baseline exceeds
+ * seven :not(#\#) pseudo-ids — none of them matches these elements. The right-hand
+ * info pane keeps its own runtime-scoped definitions of the same tokens with identical
+ * values (frontend/src/extensions/info-pane-tabs-entry.ts), so nothing inside the pane
+ * changes. If the theme attribute is not set (upstream installer not yet run), none of
+ * these rules match and the 0.18 painting keeps applying.
+ */
+
+[data-theme=cursor-dark]{
+  --sand-bg-chrome:#121212;
+  --sand-bg-pane:#161616;
+  --sand-bg-sidebar:#0e0e0e;
+}
+
+[data-theme=cursor-light]{
+  --sand-bg-chrome:#fcfcfc;
+  --sand-bg-pane:#fff;
+  --sand-bg-sidebar:#f5f5f5;
+}
+
+/* Middle column: official's shell background (sand-1qj4qm9 → var(--sand-bg-chrome)).
+   Beats the 0.18 sand-1ua6jya rule (3 :not(#\#)) by one pseudo-id. */
+.sand-shell:not(#\#):not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-chrome)}
+
+/* Left rail: official's rail background (sand-1p3z83a → var(--sand-bg-sidebar)).
+   Beats the 0.18 sand-1ys0zz1 rule (3 :not(#\#)) by one pseudo-id. */
+.sand-agents-sidebar:not(#\#):not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-sidebar)}
+
+/* Chat toolbar scrim — official's middle-column-top overlay (sand-1z0swcc).
+   The declaration is copied verbatim from official 0.75.8's stylesheet; the selector
+   targets the pinned 0.18 toolbar element, which carries no background-image of its
+   own. main.sand-chat holds exactly one header.sand-toolbar (verified live in both
+   apps). */
+main.sand-chat header.sand-toolbar:not(#\#):not(#\#):not(#\#):not(#\#){background-image:linear-gradient(to bottom, var(--sand-bg-chrome), transparent)}
