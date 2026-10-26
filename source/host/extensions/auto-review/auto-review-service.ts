@@ -3,6 +3,8 @@ import { SAND_AUTO_REVIEW_STALE, SAND_AUTO_REVIEW_STALE_MESSAGE } from "../../..
 import { resolveSandAutoReviewModes, SandAutoReviewController, type SandAutoReviewEvent, type SandAutoReviewMode, type SandAutoReviewResolution } from "../../runner/sand-auto-review.js";
 import { SAND_AUTO_REVIEW_AWAITING_TAB_ID, SandAutoReviewAwaitingBridge, type SandAutoReviewAwaitingSink } from "./sand-auto-review-awaiting.js";
 import { hasSavedAutoReviewRule } from "./local-auto-review-rules.js";
+import type { McpElicitationApprovalRequest, McpElicitationSummary } from "../../../shared/mcp-elicitation.js";
+import { fingerprintSandAutoReviewTarget } from "../../runner/sand-auto-review.js";
 
 export function parseLocalAutoReviewMode(value: unknown): SandAutoReviewMode | undefined { return value === "off" || value === "shadow" || value === "enforce" ? value : undefined; }
 export const SETTLED_APPROVAL_MEMORY = 256;
@@ -22,12 +24,15 @@ export interface AutoReviewServiceDeps<Classifier = unknown, Auth = unknown> {
 }
 
 export class AutoReviewService<Classifier = unknown, Auth = unknown> {
+  readonly #runnerControllers = new Map<string, SandAutoReviewController>();
   readonly #now: () => number; readonly #pendingControllers = new Map<SandAutoReviewController, () => void>(); readonly #settledApprovalIds = new Set<string>(); readonly #awaitingBridge: SandAutoReviewAwaitingBridge;
   constructor(readonly deps: AutoReviewServiceDeps<Classifier, Auth>) { this.#now = deps.now ?? Date.now; this.#awaitingBridge = new SandAutoReviewAwaitingBridge(deps.awaitingSink, this.#now); }
 
   bindRunner(options: { readonly agentId: string; readonly approvalsResolvable?: boolean; readonly onUpdate: AutoReviewUpdateSink }) {
     const getAutoReviewModes = () => this.#resolveModes();
     const autoReviewController = new SandAutoReviewController({ agentId: options.agentId, hostGeneration: this.deps.hostGeneration, ...(options.approvalsResolvable === undefined ? {} : { approvalsResolvable: options.approvalsResolvable }), now: this.#now, onDisplayRecheckFailed: (report) => this.deps.telemetry.reportAutoReviewDisplayRecheckFailed({ conversationId: report.agentId }) });
+    this.#runnerControllers.get(options.agentId)?.expire("session_end");
+    this.#runnerControllers.set(options.agentId, autoReviewController);
     let unsubscribe = () => {};
     unsubscribe = autoReviewController.subscribe((event) => { if (event.type === "created") this.#pendingControllers.set(autoReviewController, unsubscribe); if (event.type === "resolved") this.#rememberSettled(event.approval.id); this.#awaitingBridge.handleEvent(event); this.#handleApprovalEvent(options.onUpdate, event); if (event.type !== "created" && autoReviewController.getPendingApprovals().length === 0) this.#pendingControllers.delete(autoReviewController); });
     return { autoReviewController, autoReviewModes: getAutoReviewModes(), getAutoReviewModes, autoReviewClassifierExecutor: this.deps.createClassifierExecutor(this.deps.auth), getAutoReviewInstructions: () => this.deps.settings.getAutoReviewInstructions() };
@@ -38,6 +43,7 @@ export class AutoReviewService<Classifier = unknown, Auth = unknown> {
     const owner = this.#ownerOf(args.requestId);
     const pending = owner?.getPendingApprovals().find(approval => approval.id === args.requestId);
     if (pending !== undefined && pending.agentId !== args.agentId) throw new Error(SAND_AUTO_REVIEW_STALE_MESSAGE);
+    if (pending?.summaryCopy?.kind === "mcp_elicitation" && args.resolution === "always") throw new Error("MCP confirmation is valid for this request only.");
     if (pending !== undefined && args.resolution === "always") {
       const instructions = this.deps.settings.getAutoReviewInstructions();
       const standingGrantSaved = pending.surface === "box_shell"
@@ -53,9 +59,28 @@ export class AutoReviewService<Classifier = unknown, Auth = unknown> {
     throw new Error(`${SAND_AUTO_REVIEW_STALE}: ${SAND_AUTO_REVIEW_STALE_MESSAGE}`);
   }
 
+  async requestMcpElicitation(request: McpElicitationApprovalRequest): Promise<"accept" | "decline" | "cancel"> {
+    const controller = this.#runnerControllers.get(request.agentId);
+    if (controller === undefined || request.signal.aborted) return "cancel";
+    const summaryCopy: McpElicitationSummary = { kind: "mcp_elicitation", params: { message: request.message, serverDisplayName: request.serverDisplayName, toolName: request.toolName } };
+    let denied = false;
+    const unsubscribe = controller.subscribe(event => { if (event.approval.summaryCopy === summaryCopy && event.type === "resolved" && event.approval.status === "denied") denied = true; });
+    try {
+      const decision = await controller.requestApproval({
+        agentId: request.agentId, surface: "mcp", signal: request.signal,
+        fingerprint: fingerprintSandAutoReviewTarget({ server: request.serverDisplayName, tool: request.toolName, message: request.message }),
+        reason: "The MCP server requested a confirmation. Only allow it if you recognize this request.",
+        summary: `${request.serverDisplayName} needs your confirmation`,
+        summaryCopy,
+      });
+      if (request.signal.aborted) return "cancel";
+      return decision.approved ? "accept" : denied ? "decline" : "cancel";
+    } finally { unsubscribe(); }
+  }
+
   expirePendingApprovals(): void { for (const [controller] of [...this.#pendingControllers]) controller.expire("session_end"); }
   agentIdsWithPendingApprovals(): string[] { const ids = new Set<string>(); for (const [controller] of this.#pendingControllers) { const pending = controller.getPendingApprovals(); if (pending.length === 0) continue; ids.add(controller.agentId); for (const approval of pending) ids.add(approval.agentId); } return [...ids]; }
-  stop(): void { const pending = [...this.#pendingControllers]; this.expirePendingApprovals(); for (const [, unsubscribe] of pending) unsubscribe(); this.#pendingControllers.clear(); }
+  stop(): void { const pending = [...this.#pendingControllers]; this.expirePendingApprovals(); for (const [, unsubscribe] of pending) unsubscribe(); this.#pendingControllers.clear(); this.#runnerControllers.clear(); }
   pendingAwaitingState(agentId: string) { return this.#awaitingBridge.pendingAwaitingState(agentId); }
   async sweepStaleAwaitingBadges(listAgentIds: () => Promise<readonly string[]>, ifSinceBefore: number): Promise<void> { try { for (const agentId of await listAgentIds()) this.deps.awaitingSink.clearForTab(agentId, SAND_AUTO_REVIEW_AWAITING_TAB_ID, { ifSinceBefore }); } catch {} }
   #ownerOf(requestId: string): SandAutoReviewController | undefined { for (const [controller] of this.#pendingControllers) if (controller.getPendingApprovals().some((approval) => approval.id === requestId)) return controller; return undefined; }
@@ -67,7 +92,7 @@ export class AutoReviewService<Classifier = unknown, Auth = unknown> {
   }
   #handleApprovalEvent(onUpdate: AutoReviewUpdateSink, event: SandAutoReviewEvent): void {
     const approval = event.approval; this.deps.telemetry.reportAutoReviewApproval({ eventType: event.type, conversationId: approval.agentId, approvalId: approval.id, surface: approval.surface, status: approval.status, ageMs: this.#now() - approval.createdAtMs, ...(approval.expiresAtMs === undefined ? {} : { ttlMs: approval.expiresAtMs - approval.createdAtMs }), ...(event.type === "expired" ? { cause: event.cause } : {}) });
-    if (event.type === "created") { onUpdate({ type: "send-message", message: { type: "auto-review-approval", approval: { requestId: approval.id, surface: approval.surface, summary: approval.summary, reason: approval.reason, status: "pending", ...(approval.command === undefined ? {} : { command: approval.command }), ...(approval.proposedRule === undefined ? {} : { proposedRule: approval.proposedRule }) } }, timestampMs: this.#now() }); return; }
+    if (event.type === "created") { onUpdate({ type: "send-message", message: { type: "auto-review-approval", approval: { requestId: approval.id, surface: approval.surface, summary: approval.summary, ...(approval.summaryCopy === undefined ? {} : { summaryCopy: approval.summaryCopy }), reason: approval.reason, status: "pending", ...(approval.command === undefined ? {} : { command: approval.command }), ...(approval.proposedRule === undefined ? {} : { proposedRule: approval.proposedRule }) } }, timestampMs: this.#now() }); return; }
     onUpdate({ type: "auto-review-status", requestId: approval.id, status: event.type === "expired" || approval.status === "pending" ? "expired" : approval.status, ...(event.type === "expired" ? { cause: event.cause } : {}) });
   }
 }

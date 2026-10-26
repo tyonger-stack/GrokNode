@@ -25,6 +25,7 @@ import type { Local0721Backends } from "./local-backends-0721.js";
 import type { Desktop0721 } from "../shared/desktop-0721.js";
 import { z } from "zod";
 import type { ComputerPreviewController } from "./computer-sleep.js";
+import type { ComputerUpgradeScheduler } from "./box/computer-upgrade-scheduler.js";
 import {
   currentHardwareAccelerationSetting,
   getHardwareAccelerationEnabledAtLaunch,
@@ -93,6 +94,7 @@ export interface MainEdgeDeps {
   readonly delay?: (milliseconds: number) => Promise<void>;
   readonly detectTimeZone?: () => string | null | undefined;
   readonly computerPreview?: ComputerPreviewController;
+  readonly computerUpgrade?: ComputerUpgradeScheduler;
   /** Boolean returned by AF() at process start (0.71.2 `hardwareAccelerationEnabledAtLaunch`). */
   readonly hardwareAccelerationEnabledAtLaunch?: boolean;
   readonly getGpuFeatureStatus?: () => HardwareAccelerationGpuFeatureStatus;
@@ -173,7 +175,17 @@ function parseAgentModel(value: unknown, requireNonWhitespaceId: boolean): { mod
 
 export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
   const computerPreview = deps.computerPreview ?? createComputerPreviewController();
+  const computerUpgrade = () => { if (deps.computerUpgrade === undefined) throw new Error("Computer update scheduling is unavailable."); return deps.computerUpgrade; };
+  const retireScheduledUpgrade = () => {
+    const schedule = deps.computerUpgrade?.get().schedule;
+    if (schedule?.state === "running") throw new Error("The computer update has already started.");
+    if (schedule?.state === "scheduled") deps.computerUpgrade?.cancel(false);
+  };
   const handlers: HandlerMap = {
+    getComputerUpgradeSchedule: () => computerUpgrade().get(),
+    scheduleComputerUpgrade: raw => computerUpgrade().schedule(raw),
+    rescheduleComputerUpgrade: raw => computerUpgrade().schedule(raw, true),
+    cancelComputerUpgrade: raw => computerUpgrade().cancel(z.object({ dismissTerminalOutcome: z.boolean() }).strict().parse(raw).dismissTerminalOutcome),
     getUpdateStatus: () => invoke(updateService(deps), "getStatus"),
     checkForUpdates: () => invoke(updateService(deps), "checkForUpdates", { trigger: "explicit" }),
     setUpdateTrack: (raw) => { const { track } = req(raw); const service = updateService(deps); return track === null ? invoke(service, "setTrackOverride", null) : isSandUpdateTrack(track) ? invoke(service, "setTrackOverride", track) : invoke(service, "getStatus"); },
@@ -552,14 +564,14 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     },
     getBoxMigrationStatus: () => invoke(deps.boxRecovery, "readBoxMigrationStatus"),
     forceReconnectGateway: () => { invoke(deps.boxRecovery, "restartCoordinator"); },
-    forceRecreateComputer: () => invoke(deps.boxRecovery, "forceRecreateComputer"),
+    forceRecreateComputer: () => { retireScheduledUpgrade(); return invoke(deps.boxRecovery, "forceRecreateComputer"); },
     // Restored 2026-10-02: the in-box agent reference docs direct users here as
     // the data-preserving recovery action for a wedged box. Safe under the
     // current architecture — the local-docker connector's recreate is a plain
     // container restart (same pinned digest, same bind-mounted host); the
     // updateForeverBox fallback below is unreachable while connector.recreate
     // exists (dev/remote setups only).
-    updateComputer: async (raw) => { const { id } = req(raw); invariant(typeof id === "string", "A computer update names the agent by its string id."); const force = req(raw).force === true; const result = req(await Promise.resolve(invoke(deps.boxRecovery, "recreateComputer", { preserveData: true, force }))); if (result.status !== "dev-fallback") return result; await Promise.resolve(invoke(deps.boxRecovery, "updateForeverBox", { id, force })); return { status: "dev-fallback-finished" }; },
+    updateComputer: async (raw) => { const { id } = req(raw); invariant(typeof id === "string", "A computer update names the agent by its string id."); retireScheduledUpgrade(); const force = req(raw).force === true; const result = req(await Promise.resolve(invoke(deps.boxRecovery, "recreateComputer", { preserveData: true, force }))); if (result.status !== "dev-fallback") return result; await Promise.resolve(invoke(deps.boxRecovery, "updateForeverBox", { id, force })); return { status: "dev-fallback-finished" }; },
 
     getWindowState: () => invoke(deps.windowChrome, "getWindowState"), minimizeWindow: () => { invoke(deps.windowChrome, "minimize"); }, toggleMaximizeWindow: () => { invoke(deps.windowChrome, "toggleMaximize"); }, closeWindow: () => { invoke(deps.windowChrome, "close"); },
     setTitleBarOverlayTone: (raw) => { invoke(deps.windowChrome, "setTitleBarOverlayTone", req(raw).isOverlayTone === true); },

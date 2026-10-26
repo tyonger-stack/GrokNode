@@ -13,6 +13,9 @@ import { createElectronProductionIpcMainBinding, type ElectronProductionIpcMainS
 import { requireFunction, requireObject } from "./provider-guards.js";
 import { prepareDesktop0721, readDesktop0721 } from "../desktop-runtime-0721.js";
 import { getLocal0721Backends } from "../local-backends-0721.js";
+import { dirname, join } from "node:path";
+import { ComputerUpgradeScheduler } from "../box/computer-upgrade-scheduler.js";
+import type { RecreateResult } from "../box/box-recreate-commands.js";
 
 type ExistingMainRpcCoreDeps = Pick<MainEdgeWiringDeps,
   "settingsStore"
@@ -337,11 +340,26 @@ export function createProductionMainRpcAdapter(
     create(context): MainEdge & Partial<ProductionDisposable> {
       const supplied = requireObject(ports.resolveDeps(context), "mainRpc.resolveDeps.result");
       const resolved = { ...createExistingMainRpcCoreDeps(context, supplied), ...supplied };
+      const settingsPath = resolved.settingsStore.settingsPath;
+      const scheduler = resolved.computerUpgrade ?? (typeof settingsPath === "string" ? new ComputerUpgradeScheduler({
+        filename: join(dirname(settingsPath), "computer-upgrade-schedule.json"),
+        perform: async () => {
+          const recreate = resolved.boxRecovery.recreateComputer;
+          if (typeof recreate !== "function") throw new Error("The local computer update is unavailable.");
+          return await Reflect.apply(recreate, resolved.boxRecovery, [{ preserveData: true, force: false }]) as RecreateResult;
+        },
+      }) : undefined);
+      if (scheduler !== undefined) resolved.computerUpgrade = scheduler;
       const deps = validateMainRpcDeps(withGeneratedMainRpc(resolved));
       ports.beforeServe?.(context, deps);
       const edge = serveMainEdge(deps);
       requireObject(edge as object | null, "mainRpc.edge");
       requireFunction((edge as { emit?: (...args: never[]) => unknown }).emit, "mainRpc.edge.emit");
+      if (scheduler !== undefined) {
+        try { scheduler.start(); } catch (error) { console.error("Could not restore the computer update schedule:", error); }
+        const previousDispose = (edge as Partial<ProductionDisposable>).dispose;
+        Object.assign(edge as MainEdge, { dispose() { scheduler.stop(); return previousDispose?.call(edge); } });
+      }
       return edge as MainEdge & Partial<ProductionDisposable>;
     },
   };

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { McpElicitationSummary } from "../../shared/mcp-elicitation.js";
 
 export const SAND_AUTO_REVIEW_APPROVAL_TTL_MS = 10 * 60 * 1_000;
 export const SAND_AUTO_REVIEW_MAX_PENDING_PER_AGENT = 4;
@@ -27,6 +28,7 @@ export interface SandAutoReviewApproval {
   readonly fingerprint: string;
   readonly reason: string;
   readonly summary: string;
+  readonly summaryCopy?: McpElicitationSummary;
   readonly command?: string;
   readonly proposedRule?: string;
   readonly userMessageEpoch: number;
@@ -46,6 +48,7 @@ export interface SandAutoReviewRequest {
   readonly fingerprint: string;
   readonly reason: string;
   readonly summary: string;
+  readonly summaryCopy?: McpElicitationSummary;
   readonly command?: string;
   readonly proposedRule?: string;
   readonly expiryPolicy?: SandAutoReviewExpiryPolicy;
@@ -123,6 +126,7 @@ export class SandAutoReviewController {
     const approval: SandAutoReviewApproval = {
       id: this.options.randomId?.() ?? randomUUID(), agentId, surface: request.surface, fingerprint: request.fingerprint,
       reason: sanitize(request.reason, "This action requires your approval.", 500), summary: sanitize(request.summary, "Sensitive action", 500),
+      ...(request.summaryCopy === undefined ? {} : { summaryCopy: request.summaryCopy }),
       ...(command === undefined ? {} : { command }), ...(proposedRule === undefined ? {} : { proposedRule }),
       userMessageEpoch: this.#userMessageEpoch, hostGeneration: this.options.hostGeneration, createdAtMs,
       ...(expiryPolicy === "ttl" ? { expiresAtMs: createdAtMs + this.#approvalTtlMs } : {}), status: "pending"

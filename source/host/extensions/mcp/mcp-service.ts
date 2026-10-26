@@ -30,6 +30,7 @@ import { LocalHttpMcpExec } from "../../../shared/node/mcp/local-http-exec.js";
 import { normalizeLocalMcpServers } from "../../../shared/node/settings/sand-settings-store.js";
 import { getSandRootDir } from "../../host-paths.js";
 import { join } from "node:path";
+import type { McpElicitationApprover } from "../../../shared/mcp-elicitation.js";
 
 export interface McpServerSummary { id: string; name: string; serverIdentifier: string; accountKey: string; pluginId?: string | null; isTeamServer: boolean; status: string; statusDetail?: string; transport: string; toolCount: number; disabledToolCount?: number; customInstructions: string }
 export interface CatalogField { key: string; label: string; hint: string; isRequired?: boolean; isSecret?: boolean }
@@ -169,6 +170,7 @@ export function createHostMcp(deps: CreateHostMcpOptions): McpHostPort {
 export interface McpHostPort { dispose(): void | Promise<void>; listBoxServers(ids: readonly string[], options?: { kickOnly?: boolean }): Promise<Array<{ serverIdentifier: string; status: string; statusDetail?: string; toolCount: number }>>; noteAuthCompletedElsewhere(serverId: string, accountKey: string): void; setSettingsStore?(settings: unknown): void; setBoxMcpExec?(exec: unknown): void; mcp: unknown; management: unknown }
 export interface McpHostServiceDeps {
   localOnly?: boolean;
+  requestElicitation?: McpElicitationApprover;
   auth: {
     getAccessToken(args: { backendUrl: string }): Promise<string>;
     getMachineId(): Promise<string>;
@@ -199,6 +201,7 @@ export class McpHostService {
       }) as unknown as AccountMcpClient,
     };
     this.localHttpMcp = deps.localOnly ? new LocalHttpMcpExec({
+      ...(deps.requestElicitation === undefined ? {} : { requestElicitation: deps.requestElicitation }),
       credentialDirectory: join(getSandRootDir(), "local-mcp-credentials"),
       getServers: () => {
         const settings = deps.settings;
