@@ -39,6 +39,7 @@ import type { AgentProfileForRunner } from "./runner/sand-agent-runner.js";
 import type {
   AutomationRecord,
   AutomationReview,
+  EmailInboxValidation,
   WorkflowRecord,
 } from "./runner/tools/sand-state-tool.js";
 import { buildContextToolDependencies } from "./runner/tools/context-tools.js";
@@ -1991,6 +1992,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
         extensions.api("automations"),
         "isListenerPlatformConnected",
       );
+      const validateEmailInboxes = method(
+        extensions.api("automations"),
+        "validateEmailInboxes",
+      );
       const reviewAutomationWrite: NonNullable<
         ProductionTurnHostDependencies["state"]
       >["reviewAutomationWrite"] =
@@ -2111,6 +2116,10 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
               : {}),
             parseTrigger: parseStoredTrigger,
             ...(reviewAutomationWrite === undefined ? {} : { reviewAutomationWrite }),
+            ...(validateEmailInboxes === undefined ? {} : {
+              validateEmailInboxes: (inboxes: readonly string[]) =>
+                validateEmailInboxes(inboxes) as Promise<EmailInboxValidation>,
+            }),
             ...(onListenerRoutineSaved === undefined ? {} : { onListenerRoutineSaved }),
           };
 

@@ -1,5 +1,5 @@
 import type { PollingPolicy } from "../../../internal/scheduling.js";
-import { triggerListeners, type AutomationTrigger, type EventTrigger } from "../../../shared/automations.js";
+import { triggerEventTriggers, type AutomationTrigger, type EventTrigger } from "../../../shared/automations.js";
 import { triggerMatchesEvent } from "../../automations/automation-trigger.js";
 
 export interface TriggerSourceStatus { state: string; detail?: string; scopeIssues?: readonly unknown[] }
@@ -14,7 +14,7 @@ export class SandTriggerHub {
   async stop(): Promise<void> { this.isStopped = true; this.timer?.dispose(); this.timer = undefined; await this.reconcileChain; const started = [...this.startedKinds]; this.startedKinds.clear(); await Promise.all(started.map(async (kind) => { try { await this.sources.get(kind)?.stop(); } catch {} })); }
   async reconcileNow(): Promise<void> { await this.reconcile(); }
   getSourceStatuses(): Map<string, TriggerSourceStatus> { return new Map([...this.sources].map(([kind, source]) => [kind, source.getStatus()])); }
-  async desiredListenersByKind(): Promise<Map<string, EventTrigger[]>> { const byKind = new Map<string, EventTrigger[]>(); for (const { agentId, automation } of await this.deps.listAutomations()) { if (!automation.isEnabled || !(this.deps.shouldScheduleLocally?.(agentId, automation) ?? true)) continue; for (const listener of triggerListeners(automation.trigger)) { const bucket = byKind.get(listener.type) ?? []; bucket.push(listener); byKind.set(listener.type, bucket); } } return byKind; }
+  async desiredListenersByKind(): Promise<Map<string, EventTrigger[]>> { const byKind = new Map<string, EventTrigger[]>(); for (const { agentId, automation } of await this.deps.listAutomations()) { if (!automation.isEnabled || !(this.deps.shouldScheduleLocally?.(agentId, automation) ?? true)) continue; for (const listener of triggerEventTriggers(automation.trigger)) { const bucket = byKind.get(listener.type) ?? []; bucket.push(listener); byKind.set(listener.type, bucket); } } return byKind; }
   private reconcile(): Promise<void> { this.pendingPasses += 1; const pass = this.reconcileChain.then(async () => this.reconcilePass()); this.reconcileChain = pass.catch(() => {}).finally(() => { this.pendingPasses -= 1; }); return pass; }
   private async reconcilePass(): Promise<void> { if (this.isStopped) return; this.deps.onReconcile?.(); const desired = await this.deps.isReady() ? await this.desiredListenersByKind() : new Map<string, EventTrigger[]>(); if (this.isStopped) return; for (const [kind, source] of this.sources) { const listeners = desired.get(kind) ?? []; if (listeners.length) { source.setListeners(listeners); if (!this.startedKinds.has(kind)) { this.startedKinds.add(kind); try { await source.start((event) => this.acceptEvent(event)); } catch { this.startedKinds.delete(kind); } } } else if (this.startedKinds.has(kind)) { this.startedKinds.delete(kind); try { await source.stop(); } catch {} } } }
   acceptEvent(event: Record<string, unknown>): boolean { if (this.isStopped) return false; void this.handleEvent(event); return true; }

@@ -315,7 +315,7 @@ export interface ProductionTurnHostDependencies {
   readonly state?: Pick<
     SandStateDependencies,
     "state" | "automationStore" | "workflowStore" | "parseTrigger"
-    | "reviewAutomationWrite" | "onListenerRoutineSaved"
+    | "reviewAutomationWrite" | "validateEmailInboxes" | "onListenerRoutineSaved"
   > & { readonly state: SandStateWriter };
   readonly mcpManagement?: McpManagementDependencies;
   readonly cloudAgent?: {

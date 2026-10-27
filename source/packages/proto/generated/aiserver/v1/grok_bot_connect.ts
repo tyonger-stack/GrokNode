@@ -6,6 +6,10 @@
  */
 import { MethodKind } from "@bufbuild/protobuf";
 import { EnsureSandBoxRequest, EnsureSandBoxResponse, EnsureSandBoxWindowRequest, RecreateSandBoxRequest, RecreateSandBoxResponse, ForceRecreateSandBoxRequest, AdminRecreateSandBoxRequest, AdminForceRecreateSandBoxRequest, PresignSandBoxStoreWritesRequest, PresignSandBoxStoreWritesResponse, CompleteSandBoxStoreMultipartWritesRequest, CompleteSandBoxStoreMultipartWritesResponse, AbortSandBoxStoreMultipartWritesRequest, AbortSandBoxStoreMultipartWritesResponse, PresignSandBoxStoreReadsRequest, PresignSandBoxStoreReadsResponse, StatSandBoxStoreObjectRequest, StatSandBoxStoreObjectResponse, ListSandBoxStoreObjectsRequest, ListSandBoxStoreObjectsResponse, AdminSandBoxStoreStatusRequest, AdminSandBoxStoreStatusResponse, AdminUpdateSandBoxHostRequest, AdminUpdateSandBoxHostResponse, AdminSandBoxHostStatusRequest, AdminSandBoxHostStatusResponse, AdminSnapshotSandBoxStoreRequest, AdminSnapshotSandBoxStoreResponse, AdminHibernateSandBoxRequest, AdminHibernateSandBoxResponse, AdminListSandAgentsRequest, AdminListSandAgentsResponse, AdminGetSandAgentTranscriptPageRequest, AdminGetSandAgentTranscriptPageResponse, WatchSandBoxMigrationRequest, SandBoxMigrationEvent, AdminWatchSandBoxMigrationRequest, GetSandBoxRunStateRequest, GetSandBoxRunStateResponse, ListSandBoxesRequest, ListSandBoxesResponse, NotifySandAgentTurnFinishedRequest, NotifySandAgentTurnFinishedResponse, ListSandSetupManifestsRequest, ListSandSetupManifestsResponse, ListTeamSandSetupManifestsRequest, ListTeamSandSetupManifestsResponse, SaveTeamSandSetupManifestRequest, SaveTeamSandSetupManifestResponse, DeleteTeamSandSetupManifestRequest, DeleteTeamSandSetupManifestResponse, ListTeamMemberSandBoxesRequest, ListTeamMemberSandBoxesResponse, KillTeamMemberSandBoxRequest, KillTeamMemberSandBoxResponse } from "./sand_box_pb.js";
+// Grok Node extension (not part of the recovered 0.18 artifact region): the Bot
+// email inbox RPCs of official 0.75.8, so a client built with
+// createSandCursorBackendClient(GrokBotService, ...) exposes them too.
+import { CreateGrokBotEmailInboxRequest, CreateGrokBotEmailInboxResponse, ListGrokBotEmailInboxesRequest, ListGrokBotEmailInboxesResponse, DeleteGrokBotEmailInboxRequest, DeleteGrokBotEmailInboxResponse, CheckGrokBotEmailAddressAvailabilityRequest, CheckGrokBotEmailAddressAvailabilityResponse, SearchGrokBotEmailThreadsRequest, SearchGrokBotEmailThreadsResponse } from "./grok_bot_email_pb.js";
 
 var GrokBotService = {
   typeName: "aiserver.v1.GrokBotService",
@@ -278,6 +282,38 @@ var GrokBotService = {
       name: "KillTeamMemberSandBox",
       I: KillTeamMemberSandBoxRequest,
       O: KillTeamMemberSandBoxResponse,
+      kind: MethodKind.Unary
+    },
+    // Bot email inbox methods (official 0.75.8; Grok Node extension of the
+    // reconstructed 0.18 service — see grok_bot_email_pb.ts for the evidence).
+    createGrokBotEmailInbox: {
+      name: "CreateGrokBotEmailInbox",
+      I: CreateGrokBotEmailInboxRequest,
+      O: CreateGrokBotEmailInboxResponse,
+      kind: MethodKind.Unary
+    },
+    listGrokBotEmailInboxes: {
+      name: "ListGrokBotEmailInboxes",
+      I: ListGrokBotEmailInboxesRequest,
+      O: ListGrokBotEmailInboxesResponse,
+      kind: MethodKind.Unary
+    },
+    deleteGrokBotEmailInbox: {
+      name: "DeleteGrokBotEmailInbox",
+      I: DeleteGrokBotEmailInboxRequest,
+      O: DeleteGrokBotEmailInboxResponse,
+      kind: MethodKind.Unary
+    },
+    checkGrokBotEmailAddressAvailability: {
+      name: "CheckGrokBotEmailAddressAvailability",
+      I: CheckGrokBotEmailAddressAvailabilityRequest,
+      O: CheckGrokBotEmailAddressAvailabilityResponse,
+      kind: MethodKind.Unary
+    },
+    searchGrokBotEmailThreads: {
+      name: "SearchGrokBotEmailThreads",
+      I: SearchGrokBotEmailThreadsRequest,
+      O: SearchGrokBotEmailThreadsResponse,
       kind: MethodKind.Unary
     }
   }
