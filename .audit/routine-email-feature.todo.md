@@ -61,7 +61,25 @@
 
 ## 5. 执行记录
 - [x] 取证（上文）
-- [ ] delegate 实现（分支 feat/routine-email-trigger）
-- [ ] review + 测试
-- [ ] 打包部署 + 实机验证
-- [ ] 提交推送
+- [x] delegate 实现（分支 feat/routine-email-trigger，4 提交：0c06e39 契约+文案 / 66a6f60 proto+轮询 / 8094fcb 渲染 / 3883bd1 测试）
+- [x] review + 测试（逐 diff 审过；自跑 email 10/10、renderer 6/6、webhook+parity 26/26、listener mapping 绿、tsc 双绿；
+      delegate 报告全量 npm test 2585 pass / 0 fail / 29 skip；字节锚零改动已 diff 复核）
+- [x] 打包部署 + 实机验证（2026-10-27，见 §6）
+- [x] 提交推送
+
+## 6. 实机验证实录（2026-10-27）
+- 打包：package-macos.mjs 三守卫关闭 + sidecar env；产物 asar 内 102 个 renderer chunk 逐个 node --check 全过；
+  RRtEmailLine/RRtEmailCard/官方 zh 文案/mail 图标均在产物 chunk 内。部署 ditto → /Applications，9224 启动。
+- 聊天创建（computer-use + CDP）：对主 bot 发「创建例行任务…email 触发…guaer@mail.grokbot.com」→
+  agent 调 writeAutomation → 存量 automation.json trigger 逐字节 `{"type":"email","inbox":"guaer@mail.grokbot.com"}`；
+  保存时校验走了**降级警告路径**（当时 host 推理凭据续期中），警告文案被 agent 原样转述——设计行为验证通过。
+- 行渲染：详情面板例行任务列表出现第三行「新邮件提醒 — 当 guaer@mail.grokbot.com 收到邮件时」，
+  与用户官方 0.75.8 截图逐字一致（GBt5+H zh）。
+- 详情渲染：指令 / 何时运行（「当 guaer@mail.grokbot.com 收到邮件时」）/ Email 卡（Address 字段
+  值 guaer@mail.grokbot.com + 「当有邮件到达此地址时，此 Bot 会被唤醒。」）/ 暂停·测试·编辑·删除。
+- 轮询源：容器 /tmp/sand-host.log 实测 60s 一拍在跑；当前因环境级后端不可达
+  （privacy-mode lookup ConnectError → api2.cursor.sh，代理环境；同门禁也卡既有 Slack/GitHub relay）
+  处于设计内 error+backoff 态；连通恢复后自动转 listening 并在新邮件时触发（messageId 去重、仅 INBOUND、
+  from 名单过滤均有单测覆盖）。
+- 遗留观察（非本功能缺陷）：杀 app 后 host 推理凭据需「box 重新配发」才能续上；电脑（沙箱）闲置会休眠，
+  休眠期间发出的聊天消息不派发 turn，唤醒后需重发。
