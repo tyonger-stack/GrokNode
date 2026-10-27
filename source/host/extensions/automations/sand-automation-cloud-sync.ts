@@ -31,6 +31,7 @@ import {
   isGithubCiEventKind,
   triggerCronSchedules,
   triggerEventTriggers,
+  triggerHasEmailMember,
   triggerHasWebhookMember,
   triggerListeners,
   type AutomationTrigger,
@@ -54,7 +55,10 @@ export interface ScheduledCloudAutomation {
 }
 
 export function isServerSchedulable(automation: { readonly trigger: AutomationTrigger }): boolean {
-  if (triggerHasWebhookMember(automation.trigger)) return false;
+  // Email listeners stay local like webhook ones: Grok Node wakes them by polling
+  // the official read-only email RPCs (email-inbox-source), and the reconstructed
+  // 0.18 cloud Trigger proto has no email member to express them.
+  if (triggerHasWebhookMember(automation.trigger) || triggerHasEmailMember(automation.trigger)) return false;
   return !triggerListeners(automation.trigger).some(
     (listener) => listener.type === "slack" && listener.channel.startsWith("@"),
   );
@@ -210,6 +214,10 @@ function listenerTriggers(listener: EventTrigger): BackendCloudTrigger[] {
       return emojis.length === 0 ? [slackTrigger(listener)] : emojis.map((emoji) => slackTrigger(listener, emoji));
     }
     case "github": return [...githubNonCiTriggers(listener), ...githubCiTriggers(listener)];
+    case "email":
+      // Unreachable in practice: cloudTriggers refuses triggers with email members
+      // before listeners are projected; email wakes are produced locally.
+      return [];
     case "microsoftTeams":
     case "linear":
     case "sentry":
@@ -291,7 +299,7 @@ function listenerCloudTriggers(listeners: readonly EventTrigger[]): BackendCloud
 }
 
 export function cloudTriggers(trigger: AutomationTrigger, timeZone?: string | undefined): BackendCloudTrigger[] | null {
-  if (triggerHasWebhookMember(trigger)) return null;
+  if (triggerHasWebhookMember(trigger) || triggerHasEmailMember(trigger)) return null;
   if (triggerListeners(trigger).some((listener) => listener.type === "slack" && listener.channel.startsWith("@"))) return null;
   return [
     ...triggerCronSchedules(trigger).map((schedule) => cronCloudTrigger({ schedule, timeZone })),

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GITHUB_EVENT_KINDS, LINEAR_EVENT_CASES, PAGERDUTY_EVENT_CASES, SENTRY_EVENT_CASES } from "../../../shared/automations.js";
+import { GITHUB_EVENT_KINDS, LINEAR_EVENT_CASES, PAGERDUTY_EVENT_CASES, SENTRY_EVENT_CASES, storedTriggerEmailInboxes } from "../../../shared/automations.js";
 import { GROK_BOT_MARK_COLORS, GROK_BOT_MARK_SHAPES } from "../../../shared/agents/grok-bot-mark.js";
 import { slugifyWorkflowName } from "../../../shared/workflow-model.js";
 import { stateWriteOk, type StateWriteResult } from "../agent-state.js";
@@ -45,6 +45,8 @@ export const TARGETS = Object.keys(OPERATIONS) as SandStateTarget[];
 export const ACTIONS = [...new Set(Object.values(OPERATIONS).flatMap((actions) => Object.keys(actions)))] as SandStateAction[];
 
 export type StoredTrigger = Readonly<Record<string, unknown>>;
+/** Email-inbox save-time validation: ok:false blocks the save (reason surfaces to the agent); ok:true saves, with a warning note when the account state could not be confirmed. */
+export type EmailInboxValidation = { readonly ok: true; readonly warning?: string } | { readonly ok: false; readonly reason: string };
 export interface SandStateUpdate {
   readonly target: SandStateTarget;
   readonly action: SandStateAction;
@@ -127,15 +129,21 @@ const pagerdutyTriggerSchema = z.object({
   event: z.object({ case: z.enum(PAGERDUTY_EVENT_CASES).describe("Which PagerDuty incident event fires the routine.") }).describe("The PagerDuty event to watch."),
   serviceIds: z.array(z.string()).optional().describe("Optional service ID filter. Empty or absent means any PagerDuty service."),
 });
-const triggerMemberSchema = z.discriminatedUnion("type", [cronTriggerSchema, webhookTriggerSchema, slackTriggerSchema, githubTriggerSchema, microsoftTeamsTriggerSchema, linearTriggerSchema, sentryTriggerSchema, pagerdutyTriggerSchema]);
+const emailTriggerSchema = z.object({
+  type: z.literal("email"),
+  inbox: z.string().trim().min(5).regex(/^[^@\s]+@[^@\s]+$/, "a Bot email address like name@mail.grokbot.com").describe("The Bot's own email address (created in the official app's settings), e.g. \"name@mail.grokbot.com\". Fires when mail arrives at it."),
+  from: z.array(z.string().trim().min(5)).optional().describe('Sender email addresses that may fire it ("a@corp.com"). Matching is case-insensitive; absent or empty means any sender.'),
+  requireAuthPass: z.boolean().optional().describe("When false, mail from unauthenticated senders also fires it. Default true. This is display/storage only — it never widens who fires the routine here."),
+}).describe("Fires when email arrives at the Bot's own inbox address. Only create one when the user already has a Bot email address — ask in chat which address it is; saving fails for an address the account doesn't own.");
+const triggerMemberSchema = z.discriminatedUnion("type", [cronTriggerSchema, webhookTriggerSchema, slackTriggerSchema, githubTriggerSchema, microsoftTeamsTriggerSchema, linearTriggerSchema, sentryTriggerSchema, pagerdutyTriggerSchema, emailTriggerSchema]);
 const triggerSchema = z.union([
   z.discriminatedUnion("type", [
     cronTriggerSchema, webhookTriggerSchema, slackTriggerSchema, githubTriggerSchema, microsoftTeamsTriggerSchema,
-    linearTriggerSchema, sentryTriggerSchema, pagerdutyTriggerSchema,
+    linearTriggerSchema, sentryTriggerSchema, pagerdutyTriggerSchema, emailTriggerSchema,
     z.object({ type: z.literal("group"), listeners: z.array(triggerMemberSchema).min(1).describe("Any one of these fires the same prompt; cron members and listeners mix freely.") }),
   ]),
   z.array(triggerMemberSchema).min(1).describe("Bare-array shorthand for the group form: any one member fires the prompt."),
-]).describe("What fires the routine. Prefer an event listener (Slack, GitHub, Microsoft Teams, Linear, Sentry, PagerDuty) over polling on a cron when the event you care about is one of the listed shapes; a webhook trigger fires when its URL is called. Never pass both this and the schedule argument.");
+]).describe("What fires the routine. Prefer an event listener (Slack, GitHub, Microsoft Teams, Linear, Sentry, PagerDuty, email) over polling on a cron when the event you care about is one of the listed shapes; a webhook trigger fires when its URL is called. Never pass both this and the schedule argument.");
 
 export const sandUpdateStateParameters = z.object({
   target: z.enum(TARGETS as [SandStateTarget, ...SandStateTarget[]]).describe("Which part of your own state to change."),
@@ -210,6 +218,7 @@ export interface SandStateDependencies {
   readonly automationStore?: { list(): readonly AutomationRecord[] };
   readonly workflowStore?: { list(): readonly WorkflowRecord[] };
   readonly parseTrigger?: (trigger: StoredTrigger | readonly StoredTrigger[]) => StoredTrigger | null;
+  readonly validateEmailInboxes?: (inboxes: readonly string[]) => Promise<EmailInboxValidation>;
   readonly reviewAutomationWrite?: (review: AutomationReview, toolCallId?: string) => Promise<{ readonly allowed: boolean; readonly reason: string } | undefined>;
   readonly onListenerRoutineSaved?: (trigger: StoredTrigger) => Promise<string | undefined>;
   readonly assertNoPendingAutoReviewApproval?: () => void;
@@ -232,7 +241,7 @@ export function resolveTrigger(args: SandStateUpdate, deps: SandStateDependencie
     const parsed = deps.parseTrigger === undefined
       ? fallbackTrigger
       : deps.parseTrigger(args.trigger);
-    if (parsed == null) throw new SandToolInputError(`that trigger isn't usable \u2014 check the channel, repo (one concrete "owner/name"), event names, the ciBranch a ci-passed/ci-failed listener needs, and the tenantId plus at least one team id a microsoftTeams trigger needs.`);
+    if (parsed == null) throw new SandToolInputError(`that trigger isn't usable \u2014 check the channel, repo (one concrete "owner/name"), event names, the ciBranch a ci-passed/ci-failed listener needs, the tenantId plus at least one team id a microsoftTeams trigger needs, and the Bot email address (with an @) an email trigger needs.`);
     return parsed;
   }
   return need(fallback, "schedule' or 'trigger", args);
@@ -258,6 +267,13 @@ async function writeAutomation(args: SandStateUpdate, deps: SandStateDependencie
     trigger: resolveTrigger(args, deps, existing?.trigger),
     ...(args.enabled != null ? { isEnabled: args.enabled } : isUpdate ? {} : { isEnabled: true }),
   };
+  const emailInboxes = storedTriggerEmailInboxes(spec.trigger);
+  let emailWarning: string | undefined;
+  if (emailInboxes.length > 0 && deps.validateEmailInboxes != null) {
+    const validation = await deps.validateEmailInboxes(emailInboxes);
+    if (!validation.ok) return { ok: false, reason: validation.reason };
+    emailWarning = validation.warning;
+  }
   const review = await deps.reviewAutomationWrite?.({
     operation: isUpdate ? "update" : "create",
     ...(id == null ? {} : { id }), spec, referencedWorkflows: referencedWorkflows(spec.prompt, deps),
@@ -265,8 +281,10 @@ async function writeAutomation(args: SandStateUpdate, deps: SandStateDependencie
   if (review != null && !review.allowed) return { ok: false, reason: review.reason };
   const outcome = id == null ? await deps.state.createAutomation({ spec }) : await deps.state.updateAutomation({ id, spec });
   if (!outcome.ok) return outcome;
+  const notes: string[] = emailWarning == null ? [] : [emailWarning];
   const note = await deps.onListenerRoutineSaved?.(spec.trigger);
-  return note == null ? outcome : stateWriteOk(`${outcome.detail}\n${note}`);
+  if (note != null) notes.push(note);
+  return notes.length === 0 ? outcome : stateWriteOk(`${outcome.detail}\n${notes.join("\n")}`);
 }
 
 async function writeWorkflow(args: SandStateUpdate, deps: SandStateDependencies): Promise<Outcome> {
