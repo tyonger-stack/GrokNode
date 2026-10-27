@@ -73,3 +73,29 @@ test("routine detail keeps 0.59 copy, the webhook card gate, and the create path
     assert.match(source, /getAutomationWebhookCredential\?\.\(t,id\)/, "credentials are fetched per agent and routine");
   });
 });
+
+test("email trigger lines use the official 0.75.8 copy with a mail icon, and only email lines match", () => {
+  return readFile(path.resolve(import.meta.dirname, "../scripts/lib/routine-surfaces-renderer-patch.mjs"), "utf8").then((source) => {
+    assert.ok(source.includes("/^when email arrives at (\\S+?)(, including unauthenticated senders)?$/i"), "the injected email regex carries the official wording, case-insensitive for describeTrigger's lowercased group segments");
+    assert.match(source, /mail\?p\.jsx\(uhe,\{title:"Email",children:p\.jsx\(RRtEmailCard,\{trigger:s\.trigger\}\)\},"email"\):null/, "the Email card section follows the Webhook card for email-triggered routines");
+    assert.match(source, /label:RRtLoc\("Address","地址"\)/, "the inbox address is a copy field");
+    assert.match(source, /This Bot wakes when mail arrives at this address\./, "the local-only explanation note is present");
+    // Behavioral check: evaluate the injected helpers exactly as they ship.
+    const helpers = source.slice(source.indexOf("function RRtLoc("), source.indexOf("function RRtSummary("));
+    const { RRtTriggerLines } = new Function("RLocT", helpers + "\nreturn { RRtTriggerLines };")(undefined);
+    const en = RRtTriggerLines({ triggerDescription: "When email arrives at bot@mail.grokbot.com" });
+    assert.deepEqual(en, [{ icon: "mail", text: "When email arrives at bot@mail.grokbot.com" }]);
+    const unauthenticated = RRtTriggerLines({ triggerDescription: "When email arrives at bot@mail.grokbot.com, including unauthenticated senders" });
+    assert.deepEqual(unauthenticated, [{ icon: "mail", text: "When email arrives at bot@mail.grokbot.com, including unauthenticated senders" }]);
+    // A group's non-first segment arrives lowercased and must still match.
+    const group = RRtTriggerLines({ triggerDescription: "Every day at 9:00 AM or when email arrives at bot@mail.grokbot.com" });
+    assert.deepEqual(group, [{ icon: "clock", text: "Every day at 9:00 AM" }, { icon: "mail", text: "When email arrives at bot@mail.grokbot.com" }]);
+    // Non-email descriptions keep the clock icon.
+    assert.deepEqual(RRtTriggerLines({ triggerDescription: "Every day at 9:00 AM" }), [{ icon: "clock", text: "Every day at 9:00 AM" }]);
+    assert.deepEqual(RRtTriggerLines({ triggerDescription: "when its webhook URL is called" }), [{ icon: "globe", text: "When a webhook fires" }]);
+    // In the zh locale the official zh copy is emitted.
+    const zh = new Function("RLocT", helpers + "\nreturn { RRtTriggerLines };")((enText, zhText) => zhText);
+    assert.deepEqual(zh.RRtTriggerLines({ triggerDescription: "When email arrives at bot@mail.grokbot.com" }), [{ icon: "mail", text: "当 bot@mail.grokbot.com 收到邮件时" }]);
+    assert.deepEqual(zh.RRtTriggerLines({ triggerDescription: "when email arrives at bot@mail.grokbot.com, including unauthenticated senders" }), [{ icon: "mail", text: "当 bot@mail.grokbot.com 收到邮件时（包括未经验证的发件人）" }]);
+  });
+});
