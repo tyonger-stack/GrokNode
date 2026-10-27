@@ -58,7 +58,27 @@ Section B（独立 Section ⇒ 渲染出分隔线）：
 
 ## 5. 执行记录
 - [x] 取证（上文）
-- [ ] delegate 实现（分支 feat/routine-row-context-menu）
-- [ ] review + 测试
-- [ ] 打包部署 + 实机右键验证
-- [ ] 提交推送
+- [x] delegate 实现（feat/routine-row-context-menu：96a8302 菜单 + c948bf5 暂停态行文案 URAE3q）
+- [x] review + 测试（逐 diff 审过；锚零改动；21/21 绿 + tsc 绿；产物 102 chunk node --check 全过）
+- [x] 打包部署 + 实机右键验证（2026-10-27，见 §6）
+- [x] 提交推送
+
+## 6. 实机验证实录（2026-10-27）
+- **菜单打开**：行上 dispatchEvent(contextmenu) → `[role=menu][aria-label=例行任务操作]` 弹出，覆盖在例行任务列表上（与官方截图同构）。
+- **五项/四项**：webhook 例行（微信下旨入口）= 暂停(pause)/测试(flask)/编辑(pencil)/**Webhook(globe)**/删除(trash) 五项，与用户官方截图一致；
+  cron 例行 = 四项（Webhook 按官方条件正确缺席）。两个 role=group 节，删除节红字红图标，节间分隔线渲染（截图确认）。
+- **行为**：Webhook 项 → 打开详情并把焦点落在 Webhook 卡 POST 到 输入框（真实 URL 值）；
+  编辑项 → 聊天框注入「编辑你的例行任务：微信下旨入口」（官方 hsz5he 逐字）；
+  暂停/恢复 → 与行尾开关同乐观态翻转，暂停后行描述显示「已暂停」（官方 URAE3q，c948bf5 增量）；
+  Escape 关菜单；左键行仍开详情（Trigger 不劫持 click，无回归）。验证动过的例行任务均已恢复原启用态。
+- **合成事件注**：菜单项 onSelect 对 dispatchEvent(click) 不响应（Base UI 指针/键盘事件），用 focus()+Enter 键盘路径驱动——真实鼠标点击不受影响。
+
+## 7. 顺带记录（非本任务缺陷）
+- **打包偶发竞态**：同树连续第二次 package 曾报「MCP elicitation … requires the Auto-review approval pass first」——
+  现场是 stage 里 view-QqBtBG74.js 缺 RArRuleNotice 而 registry chunk 已带新菜单（router pass 确已跑）。
+  bisect：同代码重跑即绿（delegate 版/修改版各复验一次成功）。判为 overlay 拷贝与补丁 pass 的偶发竞态，重跑即好；
+  根因在 overlayCleanDistribution 调度，未修，记录在案。
+- **CDP 多页坑**：沙箱连上后 /json/list 会出现第二个 page（noVNC 预览 dc****:4），拿错 target 会查到空 root——
+  认 title "Grok Bot" 的那个。
+- **窗口隐藏 ⇒ pane 内容卸载**：窗口最小化/隐藏后 DOM 里例行任务行/详情按钮全消失（sM 的 isPaneHidden 逻辑），
+  AX 树却还看得到残留按钮——CDP 与 AX 矛盾时先想窗口可见性。
