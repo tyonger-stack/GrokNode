@@ -148,5 +148,7 @@ test("routine row context menu wraps the row in Menu Trigger/Content with the of
     assert.match(row, /style:\{color:"var\(--cursor-text-red,#e5484d\)"\}/, "the delete label span uses the inline danger color");
     // The switch keeps sharing the same optimistic toggle as the menu item.
     assert.match(row, /p\.jsx\(RRtOfficialSwitch,\{checked:on,label:\(on\?RRtLoc\("Pause ","暂停"\):RRtLoc\("Resume ","恢复"\)\)\+v\.name,onToggle:toggle\}\)/);
+    // Official lM replaces the row's schedule line with URAE3q ("Paused" / 已暂停) while paused.
+    assert.match(row, /children:on\?RRtSummary\(v\):RRtLoc\("Paused","已暂停"\)/);
   });
 });
