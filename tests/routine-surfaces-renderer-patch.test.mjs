@@ -10,7 +10,7 @@ const bundlePath = path.resolve(import.meta.dirname, "../src/app/dist/renderer/a
 const bundle = await readFile(bundlePath, "utf8").catch(() => null);
 const bundleSkip = bundle == null ? "src/app/dist is gitignored and only exists after npm run bootstrap; bundle assertions skipped." : false;
 
-const INJECTED_DEPENDENCIES = ["Emt", "Fe", "re", "iJt", "lr", "rJt", "S2", "Qs", "fr", "vt", "Dr", "uhe", "Ar", "m3", "Ut", "_2n"];
+const INJECTED_DEPENDENCIES = ["Emt", "Fe", "re", "iJt", "lr", "rJt", "S2", "Qs", "fr", "vt", "Dr", "uhe", "Ar", "m3", "Ut", "_2n", "no", "It"];
 
 function isDefined(source, id) {
   const escaped = id.replace(/[$]/g, "\\$");
@@ -21,6 +21,7 @@ test("routine surfaces patch applies once to the pinned 0.18 chunk and stays par
   const patched = patchOriginalRoutineSurfaces(patchOriginalWebhookTriggerFormGuard(bundle));
   assert.doesNotThrow(() => parse(patched, { ecmaVersion: "latest", sourceType: "module" }));
   assert.equal(patched.split("function RRtOfficialRow(").length - 1, 1);
+  assert.equal(patched.split("function RRtRowMenu(").length - 1, 1);
   assert.equal(patched.split("function RRtOfficialSwitch(").length - 1, 1);
   assert.equal(patched.split("function RRtOfficialList(").length - 1, 1);
   assert.equal(patched.split("function RRoutineDetail(").length - 1, 1);
@@ -97,5 +98,55 @@ test("email trigger lines use the official 0.75.8 copy with a mail icon, and onl
     const zh = new Function("RLocT", helpers + "\nreturn { RRtTriggerLines };")((enText, zhText) => zhText);
     assert.deepEqual(zh.RRtTriggerLines({ triggerDescription: "When email arrives at bot@mail.grokbot.com" }), [{ icon: "mail", text: "当 bot@mail.grokbot.com 收到邮件时" }]);
     assert.deepEqual(zh.RRtTriggerLines({ triggerDescription: "when email arrives at bot@mail.grokbot.com, including unauthenticated senders" }), [{ icon: "mail", text: "当 bot@mail.grokbot.com 收到邮件时（包括未经验证的发件人）" }]);
+  });
+});
+
+test("routine row context menu wraps the row in Menu Trigger/Content with the official 0.75.8 items", () => {
+  return readFile(path.resolve(import.meta.dirname, "../scripts/lib/routine-surfaces-renderer-patch.mjs"), "utf8").then((source) => {
+    const row = source.slice(source.indexOf("function RRtRowMenu("));
+    // Menu shell: the row group stays the data-automation-row element and becomes the
+    // Trigger child; the Content carries only the official aria-label (zDSFmP, both
+    // sides read off the official 0.75.8 eager-app chunk and locale table).
+    assert.match(row, /function RRtRowMenu\(\{label,sections,children\}\)\{return p\.jsxs\(no,\{children:\[p\.jsx\(no\.Trigger,\{children:children\}\),p\.jsx\(no\.Content,\{"aria-label":label,children:sections\}\)\]\}\)\}/);
+    assert.match(row, /p\.jsx\(RRtRowMenu,\{label:RRtLoc\("Routine actions","例行任务操作"\),sections:sections,children:p\.jsxs\("div",\{className:RRtOfficial\.group,role:"group",tabIndex:0,"aria-labelledby":ids\+"-name "\+ids\+"-schedule","data-automation-row":v\.id,onClick:open,onKeyDown:keys/);
+    // Item order must be the official M$e order: pause/resume, test, edit, webhook, then
+    // the delete section with its divider.
+    const order = [
+      'name:on?"pause":"play"',
+      'name:"flask"',
+      'name:"pencil"',
+      'name:"globe"',
+      'color:"red",name:"trash"',
+    ];
+    let cursor = row.indexOf("function RRtOfficialRow(");
+    for (const literal of order) {
+      const at = row.indexOf(literal, cursor);
+      assert.ok(at > cursor, "menu item out of official order or missing: " + literal);
+      cursor = at;
+    }
+    // Section A items with official copy (IgrLD//v39wLo, NnH3pK/lziBgy, ePK91l, TRDppN).
+    assert.match(row, /children:on\?RRtLoc\("Pause","暂停"\):RRtLoc\("Resume","恢复"\)/);
+    assert.match(row, /children:running\?RRtLoc\("Running…","运行中…"\):RRtLoc\("Test","测试"\)/);
+    assert.match(row, /children:RRtLoc\("Edit","编辑"\)/);
+    assert.match(row, /hook\?p\.jsx\(It\.Item,\{leading:p\.jsx\(Dr,\{name:"globe",size:"base"\}\),onSelect:focusHook,children:"Webhook"\}\):null/);
+    assert.match(row, /p\.jsx\(It\.Section,\{children:\[p\.jsx\(It\.Item,/);
+    assert.match(row, /p\.jsx\(It\.Section,\{children:p\.jsx\(It\.Item,\{leading:p\.jsx\(Dr,\{color:"red",name:"trash",size:"base"\}\)/);
+    // Test disables on the same running predicate as the detail button, and the edit item
+    // seeds the composer with the official hsz5he prefix.
+    assert.match(row, /running=run\.isPending\|\|blocked\|\|v\.runs\?\.\[0\]\?\.status==="running"/);
+    assert.match(row, /RRtSeedComposer\(RRtLoc\("Edit your routine: ","编辑你的例行任务："\)\+v\.name\)\|\|open\(\)/);
+    // Webhook item opens the detail and focuses the webhook URL copy field.
+    assert.match(row, /document\.querySelector\('\[data-routine-detail\] input\[data-r-webhook-url\]'\)/);
+    assert.match(row, /el&&\(el\.focus\(\),el\.scrollIntoView\(\{block:"nearest"\}\)\)/);
+    assert.match(row, /inputProps:\{"data-r-webhook-url":""\}/, "the webhook card's URL copy field carries the focus hook");
+    assert.match(row, /function RRtCopyField\(\{label:l,value:v,placeholder:ph,tip:tip,inputProps:ip\}\)/);
+    assert.match(row, /p\.jsx\("input",\{\.\.\.ip,"aria-label":l/, "inputProps spreads ahead of the fixed attributes, so the default shape is unchanged");
+    // Delete keeps the detail page's S2 confirm copy verbatim.
+    assert.match(row, /confirm=S2\(\)/);
+    assert.match(row, /title:RRtLoc\("Delete “","删除“"\)\+v\.name\+"”"/);
+    assert.match(row, /destructive:!0,perform:async\(\)=>\{try\{return await ctl\.remove\(t,v\.id\),null\}catch\{return RRtLoc\("Deleting failed\. Check your connection and try again\.","删除失败。请检查网络连接后重试。"\)\}\}/);
+    assert.match(row, /style:\{color:"var\(--cursor-text-red,#e5484d\)"\}/, "the delete label span uses the inline danger color");
+    // The switch keeps sharing the same optimistic toggle as the menu item.
+    assert.match(row, /p\.jsx\(RRtOfficialSwitch,\{checked:on,label:\(on\?RRtLoc\("Pause ","暂停"\):RRtLoc\("Resume ","恢复"\)\)\+v\.name,onToggle:toggle\}\)/);
   });
 });
