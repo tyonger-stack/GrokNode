@@ -136,6 +136,28 @@ test("0.71.2 LCS diff marks only inserted tokens", () => {
   assert.ok(plain.every((s) => !s.isInserted));
 });
 
+test("0.77 分词器：点串不再成词、尾句点不标插入（chunk-sand-rule-text-diff 增量）", async t => {
+  const officialChunk = path.resolve(import.meta.dirname, "../../rea-grokbot-0770/app/dist/renderer/assets/chunk-sand-rule-text-diff-DZH51_ck.js");
+  const official = await readFile(officialChunk, "utf8").catch(error => { if (error.code === "ENOENT") return null; throw error; });
+  if (official == null) return t.skip("0.77.0 extract unavailable");
+  const officialRe = '/[^\\s,.]+(?:\\.[^\\s,.]+)*/g';
+  assert.ok(official.includes(`RArTokenRe=${officialRe}`) || official.includes(officialRe), "official tokenizer regex is as recorded");
+  const patchSource = await readFile(path.resolve(import.meta.dirname, "../scripts/lib/auto-review-renderer-patch.mjs"), "utf8");
+  assert.ok(patchSource.includes('"const RArTokenRe=/[^\\\\s,.]+(?:\\\\.[^\\\\s,.]+)*/g;"'), "emitted tokenizer regex matches the official 0.77 chunk");
+  // 判别性用例：尾句点。旧正则把 "example.com." 整体当 token，与 before 的
+  // "example.com" 不匹配 → 整段标插入；新正则句点不是 token，所有 after token
+  // 都能与 before 对上 → 什么都不标，句点落在未插入尾段。
+  const trailing = rArDiffSegments("trust example.com", "trust example.com.");
+  const inserted = trailing.filter((s) => s.isInserted).map((s) => s.text).join("");
+  assert.equal(inserted, "", "nothing is marked inserted once the trailing period stops tokenizing");
+  assert.ok(trailing.some((s) => !s.isInserted && s.text.endsWith(".")), "the period lands in an unmarked tail segment");
+  // 点分域名在两种正则下都保整（对齐性记录，非判别用例）
+  const domain = rArDiffSegments("trust example.com", "trust example.com always");
+  assert.ok(domain.some((s) => !s.isInserted && s.text.includes("example.com")), "dotted domain stays a matched token");
+  const domainInserted = domain.filter((s) => s.isInserted).map((s) => s.text).join("");
+  assert.equal(domainInserted, "always", "only the tail insertion is marked");
+});
+
 test("rArSumTranslate covers the host summary shapes without touching commands", () => {
   assert.equal(
     rArSumTranslate('Use Google Calendar:google-calendar tool list_events with {"startTime":"x"}'),

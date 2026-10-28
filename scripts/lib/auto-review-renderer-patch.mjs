@@ -117,8 +117,10 @@ const NOTICE_HELPERS = [
   "var k=RArKnownSum(s);",
   "return k===void 0?s:k;",
   "}",
-  // 0.71.2 G() — LCS token diff; inserted spans become <mark>.
-  "const RArTokenRe=/[^\\s,]+/g;",
+  // 0.71.2 G() — LCS token diff; inserted spans become <mark>. Tokenizer updated to the
+  // official 0.77 rule-diff chunk (chunk-sand-rule-text-diff, 1184 B): tokens exclude
+  // sentence periods and dotted sequences stay whole, so example.com never splits.
+  "const RArTokenRe=/[^\\s,.]+(?:\\.[^\\s,.]+)*/g;",
   "function RArDiffSegments(before,after){",
   "const a=before.match(RArTokenRe)??[],n=[...after.matchAll(RArTokenRe)],i=n.length+1,t=new Array((a.length+1)*i).fill(0),d=(s,l)=>t[s*i+l]??0;",
   "for(let s=a.length-1;s>=0;s--)for(let l=n.length-1;l>=0;l--)t[s*i+l]=a[s]===n[l]?.[0]?d(s+1,l+1)+1:Math.max(d(s+1,l),d(s,l+1));",
@@ -222,8 +224,8 @@ export function patchAutoReviewSettingsOpener(source) {
   return replaceOnce(source, SETTINGS_OPENER_BEFORE, SETTINGS_OPENER_AFTER);
 }
 
-/** Pure port of 0.71.2 `G({before,after})` for unit tests (same algorithm as NOTICE_HELPERS). */
-export function rArDiffSegments(before, after) {  const tokenRe = /[^\s,]+/g;
+/** Pure port of 0.71.2 `G({before,after})` (tokenizer per official 0.77) for unit tests. */
+export function rArDiffSegments(before, after) {  const tokenRe = /[^\s,.]+(?:\.[^\s,.]+)*/g;
   const a = before.match(tokenRe) ?? [];
   const n = [...after.matchAll(tokenRe)];
   const i = n.length + 1;
