@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -23,6 +24,10 @@ const RPC_TABLE_PATH = new URL("../source/shared/rpc/main.ts", import.meta.url).
 const SHARED_PATH = new URL("../source/shared/node/agent-memory-import.ts", import.meta.url).pathname;
 const CLEAN_BUILD_PATH = new URL("../scripts/clean-build.mjs", import.meta.url).pathname;
 const OFFICIAL_PROMPT_PATH = new URL("../../rea-grokbot-0770/import/export-prompt.txt", import.meta.url).pathname;
+// Sibling 0.77.0 snapshot evidence (rea-grokbot-0770/) is not checked out on CI runners.
+const officialPromptSkip = existsSync(OFFICIAL_PROMPT_PATH)
+  ? false
+  : "rea-grokbot-0770 snapshot evidence is not present on this machine";
 
 const mainEdge = await readFile(MAIN_EDGE_PATH, "utf8");
 const preload = await readFile(PRELOAD_PATH, "utf8");
@@ -62,7 +67,7 @@ test("提示词契约：官方 0.77.0 模型文本（可见行 + imported_memory
   assert.deepEqual(rich, { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: visible }] }] }, "richText is the official TipTap paragraph doc");
 });
 
-test("官方导出提示词逐字节对齐 0.77.0 产物（nhe 提取件）", async () => {
+test("官方导出提示词逐字节对齐 0.77.0 产物（nhe 提取件）", { skip: officialPromptSkip }, async () => {
   const mod = await loadShared();
   const official = (await readFile(OFFICIAL_PROMPT_PATH, "utf8")).replace(/\n$/, "");
   assert.equal(mod.IMPORT_MEMORY_EXPORT_PROMPT, official, "shared module must carry the verbatim official export prompt");
