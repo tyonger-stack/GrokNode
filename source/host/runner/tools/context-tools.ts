@@ -20,6 +20,57 @@ import type { VaultSessionSnapshot } from "../../../shared/vault.js";
 
 export const UPDATE_MEMORY_TOOL_NAME = "UpdateMemory";
 export const RECALL_MEMORY_TOOL_NAME = "RecallMemory";
+
+// 官方工具名（main-core.cjs @278859 GROK_BOT_TOOL_NAMES.MacDraftMail）；device-tool
+// 通道的 toolId 是 dispatch 表键 "mac_draft_mail"（apple-apps dispatch.ts）。
+export const MAC_DRAFT_MAIL_TOOL_NAME = "MacDraftMail";
+export const MAC_DRAFT_MAIL_TOOL_ID = "mac_draft_mail";
+
+export interface MacMailDraftRequest {
+  readonly to?: readonly string[];
+  readonly cc?: readonly string[];
+  readonly subject?: string;
+  readonly body: string;
+  readonly replyToId?: string;
+}
+
+export type MacMailDraftExecutor = (request: MacMailDraftRequest) => Promise<unknown>;
+
+export const macDraftMailParameters = z.object({
+  to: z.array(z.string().min(1)).optional(),
+  cc: z.array(z.string().min(1)).optional(),
+  subject: z.string().optional(),
+  body: z.string().min(1),
+  replyToId: z.string().optional(),
+});
+
+// 执行体独立导出（auto-review 纯函数范式）：参数校验与 subject 折叠逐字对齐
+// dispatchMailDraft（replyToId 与 to 都缺 → invalid；reply 分支丢弃 subject）。
+export async function macDraftMailExecute(deps: { readonly macDraftMail: MacMailDraftExecutor },
+  args: z.infer<typeof macDraftMailParameters>): Promise<string> {
+  if (args.replyToId === undefined && args.to === undefined) throw new SandToolInputError("a new email needs to");
+  const outcome = await deps.macDraftMail({
+    ...(args.to === undefined ? {} : { to: args.to }),
+    ...(args.cc === undefined ? {} : { cc: args.cc }),
+    ...(args.replyToId === undefined ? {} : { replyToId: args.replyToId }),
+    ...(args.replyToId === undefined && args.subject !== undefined ? { subject: args.subject } : {}),
+    body: args.body,
+  });
+  return renderMacDraftMailOutcome(outcome);
+}
+
+// daemon 的 ToolCallResult 形状：{status:"completed",value} | {status:"failed",error:{code,message}}。
+export function renderMacDraftMailOutcome(outcome: unknown): string {
+  if (typeof outcome === "object" && outcome !== null) {
+    const record = outcome as Record<string, unknown>;
+    if (record.status === "completed") return "Draft opened in the user's Mail app. It was not sent — the user sends it.";
+    if (record.status === "failed" && typeof record.error === "object" && record.error !== null) {
+      const error = record.error as Record<string, unknown>;
+      return `Mail draft failed (${String(error.code)}): ${String(error.message)}`;
+    }
+  }
+  return `Mail draft result: ${JSON.stringify(outcome)}`;
+}
 export const SEARCH_TRANSCRIPTS_TOOL_NAME = "SearchTranscripts";
 export const VAULT_LIST_TOOL_NAME = "vault_list";
 export const VAULT_GET_LOGIN_TOOL_NAME = "vault_get_login";
@@ -59,6 +110,7 @@ export interface ContextToolDependencies {
   readonly transcriptReader?: TranscriptReader;
   readonly agents?: () => readonly { readonly id: string; readonly name: string }[];
   readonly vault?: () => VaultSessionSnapshot | undefined;
+  readonly macDraftMail?: MacMailDraftExecutor;
 }
 
 interface OwnMemoryRecord {
@@ -281,5 +333,20 @@ export function createContextTools(deps: ContextToolDependencies) {
     }),
   ];
 
-  return [updateMemory, recallMemory, ...vaultTools, ...createTranscriptTools(deps)];
+  const macDraftMailTools = deps.macDraftMail === undefined ? [] : (() => {
+    const executor = deps.macDraftMail;
+    return [defineCommunicateTool(deps, {
+      id: "PLATFORM_ACTION",
+      name: MAC_DRAFT_MAIL_TOOL_NAME,
+      description: [
+        "Open a draft email in the user's Mail app on this Mac. The draft is never sent — the user reviews and sends it.",
+        "Provide either to (a new email with optional subject) or replyToId from mac_read_mail (a reply; subject is inherited).",
+      ].join("\n"),
+      parameters: macDraftMailParameters,
+      describeActivity: (args: z.infer<typeof macDraftMailParameters>) => ({ detail: args.subject ?? args.replyToId ?? "new draft" }),
+      execute: async (_ctx, args: z.infer<typeof macDraftMailParameters>) => macDraftMailExecute({ macDraftMail: executor }, args),
+    })];
+  })();
+
+  return [updateMemory, recallMemory, ...vaultTools, ...macDraftMailTools, ...createTranscriptTools(deps)];
 }

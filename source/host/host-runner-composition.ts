@@ -209,6 +209,8 @@ import type {
 } from "./runner/tools/sand-subagent-management-tools.js";
 import type { VaultSessionSnapshot } from "../shared/vault.js";
 import { canUseGrokBotVault } from "./runner/vault-session-access.js";
+import { canUseMacDraftMail } from "./runner/mac-mail-access.js";
+import { MAC_DRAFT_MAIL_TOOL_ID, type MacMailDraftRequest } from "./runner/tools/context-tools.js";
 import type {
   SubagentSession,
   SubagentRunOptions,
@@ -2677,6 +2679,19 @@ export function createHostRunnerComposition<Runner extends ProductionSessionBoun
                 return read?.() as VaultSessionSnapshot | undefined;
               },
             } : {}),
+            // Mac 邮件草稿（官方 GROK_BOT_TOOL_NAMES.MacDraftMail 的本地接线）：三层门
+            // （会话访问门 + grok_bot_apple_apps 门 + local-exec 权限门）各自 fail-closed。
+            ...(canUseMacDraftMail({ isSharedRoomTurn,
+              isSubagentRunner: (builtRunner as { readonly isSubagentRunner?: boolean } | undefined)?.isSubagentRunner,
+              agentId, sessionId: session.id })
+              && resolveLocal0721Feature("grok_bot_apple_apps") === true ? (() => {
+              const callDeviceTool = method(extensions.api("local-exec"), "callDeviceTool");
+              return typeof callDeviceTool === "function" ? {
+                macDraftMail: (request: MacMailDraftRequest) => callDeviceTool(
+                  { signal: new AbortController().signal, agentId: session.id },
+                  { toolId: MAC_DRAFT_MAIL_TOOL_ID, input: { ...request }, conversationId: session.id }),
+              } : {};
+            })() : {}),
             ownSource: () => {
               const store = session.agentStore;
               const blobs = method(store, "getBlobStore")?.();
