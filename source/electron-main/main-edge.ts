@@ -16,7 +16,7 @@ import { mergeOpenRouterChannelStatus, normalizeOpenRouterChannelStatus } from "
 import { decodeLibraryJson } from "../shared/library/json-bytes.js";
 import { getLocalDockerStatus, probeLocalDockerRelay, startLocalDockerBox, stopLocalDockerBox } from "./box/local-docker-host-connector.js";
 import { readAgentDataOverview, readAgentMemoryLog, readAgentWorkflowContent } from "./box/agent-data-reader.js";
-import { buildImportMemoryPrompt, IMPORT_MEMORY_MAX_CHARS } from "../shared/node/agent-memory-import.js";
+import { IMPORT_MEMORY_MAX_CHARS } from "../shared/node/agent-memory-import.js";
 import { GATEWAY_API_PREFIX, GATEWAY_AUTH_SCHEME } from "../shared/gateway-wire.js";
 import { setApplicationMenuUnreadFilterChecked } from "./application-menu.js";
 import { createComputerPreviewController } from "./computer-sleep.js";
@@ -382,21 +382,26 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
       return await readAgentWorkflowContent(slug);
     },
     importAgentMemory: async (raw) => {
-      const { agentId, text } = req(raw);
+      const { agentId, prompt, richText } = req(raw);
       invariant(typeof agentId === "string" && agentId.trim().length > 0, "Choose a Bot.");
-      invariant(typeof text === "string" && text.trim().length > 0, "Paste the memory snapshot first.");
-      invariant(typeof text === "string" && text.length <= IMPORT_MEMORY_MAX_CHARS, "The memory snapshot is too large.");
+      invariant(typeof prompt === "string" && prompt.trim().length > 0, "Paste the memory export first.");
+      invariant(typeof prompt === "string" && prompt.length <= IMPORT_MEMORY_MAX_CHARS, "The pasted export is too long.");
+      invariant(richText === undefined || typeof richText === "string", "Malformed rich text for the import turn.");
       const id = agentId.trim();
-      const snapshot = text as string;
-      // Dialog distillation (v1): deliver the snapshot as an ordinary user turn whose
-      // prompt tells the bot to distill durable facts via its UpdateMemory tool. No host
-      // or protocol change — this is the same /api/sendPrompt the chat composer uses.
-      const prompt = buildImportMemoryPrompt(snapshot);
+      // Official 0.77.0 parity: the renderer composes the turn (visible "Add these
+      // memories…" bubble via richText, export + distillation instructions inside the
+      // model prompt) and this edge forwards it over the same /api/sendPrompt the chat
+      // composer uses. Evidence: rea-grokbot-0770/IMPORT-0770.md §4.
       const connection = await startLocalDockerBox(String(Reflect.get(deps.settingsStore, "settingsPath")));
       const response = await fetch(`${connection.baseUrl}${GATEWAY_API_PREFIX}/sendPrompt`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `${GATEWAY_AUTH_SCHEME} ${connection.token}` },
-        body: JSON.stringify({ agentId: id, prompt, clientNonce: `memory-import-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}` }),
+        body: JSON.stringify({
+          agentId: id,
+          prompt,
+          ...(richText === undefined ? {} : { richText }),
+          clientNonce: `memory-import-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+        }),
         signal: AbortSignal.timeout(20_000),
       });
       if (!response.ok) {

@@ -483,7 +483,7 @@ export function createDesktopPreloadBridge(options: {
       getAgentDataOverview: (agentId: string) => edge("getAgentDataOverview", { agentId }),
       getAgentMemoryLog: (agentId: string, month: string) => edge("getAgentMemoryLog", { agentId, month }),
       getAgentWorkflowContent: (slug: string) => edge("getAgentWorkflowContent", { slug }),
-      importAgentMemory: (agentId: string, text: string) => edge("importAgentMemory", { agentId, text }),
+      importAgentMemory: (agentId: string, prompt: string, richText?: string) => edge("importAgentMemory", { agentId, prompt, ...(richText === undefined ? {} : { richText }) }),
       getOpenRouterBaseUrl: () => edge("getOpenRouterBaseUrl"),
       setOpenRouterBaseUrl: (baseUrl: string | null) => edge("setOpenRouterBaseUrl", { baseUrl }),
       getOpenRouterEffort: () => edge("getOpenRouterEffort"),

@@ -36,7 +36,7 @@ import {
   electronMainBindingProvenancePath,
 } from "./electron-main-production-activation.mjs";
 import { applyOriginalRendererRouterPatch } from "./lib/router-renderer-patch.mjs";
-import { applyOriginalRendererMemoryImport } from "./lib/agent-memory-import-renderer-patch.mjs";
+import { applyOriginalRendererMemoryImport0770 } from "./lib/memory-import-0770-renderer-patch.mjs";
 import { applyOriginalRendererLibraryStageClose } from "./lib/library-stage-close-renderer-patch.mjs";
 import { applyOriginalRendererSidebarTopBarSearch } from "./lib/sidebar-search-renderer-patch.mjs";
 import { applyOriginalRendererChatHeaderIdentity } from "./lib/chat-header-identity-renderer-patch.mjs";
@@ -344,11 +344,12 @@ export async function buildFidelityReconstructedAsar({
   const clean = await attachCompositionAudit(prepared);
   await overlayCleanDistribution(clean.outputRoot, { stageRoot, composition: clean.buildManifest.runtimeComposition });
   await applyOriginalRendererRouterPatch({ stageRoot });
-  // Settings → 记忆: Muse-style memory import (dialog distillation to the MAIN bot).
-  // Anchors on the router patch's OUTPUT (registry entry list + panel switch), so it must
+  // Settings → 通用 → 导入: official 0.77.0 memory import ("将记忆导入 Grok Bot"),
+  // replacing the v1 memory TAB (settings registry entry removed with its patch).
+  // Anchors on the router patch's OUTPUT (Sa children + component anchor), so it must
   // run immediately after it — and, like the router patch, before the i18n passes below
   // (its labels resolve through the RLocT runtime settings-i18n appends later).
-  await applyOriginalRendererMemoryImport({ stageRoot });
+  await applyOriginalRendererMemoryImport0770({ stageRoot });
   await applyOriginalRendererLibraryStageClose({ stageRoot });
   // Must run after the renderer extension (it patches the same chunk) and before the
   // i18n passes (its "Search" label is localised by main-i18n's existing pair).

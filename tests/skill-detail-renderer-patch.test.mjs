@@ -134,7 +134,7 @@ test("mutation controls move where 0.62.0 puts them", { skip: bundleSkip }, () =
   assert.match(hi, /rootStyle:RSkillDetailDeleteDanger,size:"sm",type:"button",variant:"secondary",children:\(RLocT\("Delete Skill","删除技能"\)\)/);
   // Save keeps its position relative to the form but becomes a footer action bar with
   // 0.62.0's top rule and 12/12/16 padding.
-  assert.match(hi, /className:RSkillDetailActionBar,style:\{paddingInlineEnd:"12px"\},children:t\.jsx\(ve,\{disabled:!T/);
+  assert.match(hi, /className:RSkillDetailActionBar\+" sand-pdmqnj",children:t\.jsx\(ve,\{disabled:!T/);
   assert.match(patched, /const RSkillDetailActionBar="[^"]*sand-t8cgyo sand-13fuv20 sand-s351rv"/);
   // The delete button stays hidden for managed and plugin skills, exactly as 0.18 did.
   assert.match(hi, /a!=null&&!w&&!g\?t\.jsx\(ve,\{"aria-busy":S/);
@@ -209,17 +209,22 @@ test("every class the ported pane relies on is defined by the pinned stylesheet"
   assert.throws(() => assertSkillDetailClassesResolve(sheets, ["sand-2lwn1j", "sand-not-in-the-pin"]), /missing from the pinned renderer stylesheet/);
 });
 
-test("the two 0.62.0-only declarations stay off the className strings", { skip: bundleSkip }, async () => {
+test("the remaining 0.62-only declaration stays off the className strings; the action bar rides the shipped class", { skip: bundleSkip }, async () => {
   const patched = patchOriginalSkillDetail(bundle);
   const sheets = await readPinnedStylesheets();
+  // sand-pdmqnj (action-bar padding-inline-end) is now shipped in the staged stylesheet
+  // via the memory-import-0770 official CSS append, so the port uses the class directly.
+  assert.ok(patched.includes('RSkillDetailActionBar+" sand-pdmqnj"'), "action bar rides the class");
+  assert.ok(!patched.includes('paddingInlineEnd:"12px"'), "the inline fallback is retired");
+  const importPatchSource = await readFile(path.resolve(import.meta.dirname, "../scripts/lib/memory-import-0770-renderer-patch.mjs"), "utf8");
+  assert.ok(importPatchSource.includes("sand-pdmqnj"), "the memory-import CSS append carries the rule into the staged stylesheet");
   for (const name of SKILL_DETAIL_UNSUPPORTED_CLASS_NAMES) {
     assert.ok(!new RegExp(`\\b${name}\\b`).test(patched), name + " must not be referenced by the ported chunk");
-    // 0.18 never shipped these rules; if a future stylesheet grows one, the inline
-    // fallbacks in the patch should be retired rather than silently duplicated.
+    // Rules still absent from the pinned stylesheet must stay off the class strings;
+    // their declarations ride inline styles instead.
     assert.ok(!new RegExp(`\\.${name}(?![\\w-])`).test(sheets), name + " unexpectedly exists in the pinned stylesheet");
   }
   assert.ok(patched.includes('style:{minHeight:"106px"}'));
-  assert.ok(patched.includes('style:{paddingInlineEnd:"12px"}'));
 });
 
 test("the skill detail port fails closed when an anchor is missing or already applied", { skip: bundleSkip }, () => {

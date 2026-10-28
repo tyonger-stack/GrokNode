@@ -56,12 +56,12 @@
 // port is a class swap rather than an invention. assertSkillDetailClassesResolve()
 // re-checks all of them at build time so a stylesheet change fails the build
 // instead of shipping an unstyled pane.
-//   * `sand-pdmqnj` (padding-inline-end: 12px, the action bar's right padding) and
+//   * `sand-pdmqnj` now ships in the staged stylesheet (memory-import-0770 append)
 //     `sand-jgen18` (min-height: 106px, the textarea floor) are the only two 0.62.0
 //     declarations 0.18 never shipped, so they ride the `style` prop, which React
 //     applies after the class sheet and therefore wins.
-//   * 0.62.0's `sand-14z9mp`/`sand-1lziwak` (margin-inline-end/start: 0) and
-//     `sand-f159sx`/`sand-mzvs34` (padding-inline-end/start: 8px) are the logical
+//   * `sand-1lziwak`/`sand-mzvs34` (logical margins/paddings) ship in the staged
+//     stylesheet via the memory-import-0770 append; this port does not use them.
 //     spellings of declarations 0.18 already carries as `sand-1yf7rl7`/`sand-j3b58b`
 //     and `sand-y13l1i`/`sand-163pfp`; the computed result is identical in the LTR
 //     UI, so the existing classes are left alone.
@@ -160,8 +160,8 @@ const FORM_GROUP_AFTER =
   + '(Ae=t.jsxs("div",{className:ee,children:[oe,fe,Se]}),'
   + "e[95]=oe,e[96]=fe,e[97]=Se,e[100]=Ae):Ae=e[100];";
 
-// 0.62.0 renders Save through `As.actions` + `As.actionsRich`; only the 12px
-// inline-end padding (`sand-pdmqnj`) has no 0.18 twin, so it rides `style`.
+// 0.62.0 renders Save through `As.actions` + `As.actionsRich`; the 12px inline-end
+// padding rides `sand-pdmqnj` (provided by the memory-import-0770 CSS append).
 const SAVE_ROW_BEFORE =
   "let Ce;e[85]!==T||e[86]!==M||e[87]!==g?"
   + '(Ce=g?null:t.jsx("div",{className:k("sand-9f619 sand-78zum5 sand-13a6bvl sand-167g77z"),children:'
@@ -169,7 +169,7 @@ const SAVE_ROW_BEFORE =
   + "e[85]=T,e[86]=M,e[87]=g,e[88]=Ce):Ce=e[88];";
 const SAVE_ROW_AFTER =
   "let Ce;e[85]!==T||e[86]!==M||e[87]!==g?"
-  + '(Ce=g?null:t.jsx("div",{className:RSkillDetailActionBar,style:{paddingInlineEnd:"12px"},children:'
+  + '(Ce=g?null:t.jsx("div",{className:RSkillDetailActionBar+" sand-pdmqnj",children:'
   + 't.jsx(ve,{disabled:!T,onClick:()=>{M()},size:"sm",type:"button",variant:"primary",children:"Save"})}),'
   + "e[85]=T,e[86]=M,e[87]=g,e[88]=Ce):Ce=e[88];";
 
@@ -234,11 +234,14 @@ export const SKILL_DETAIL_CLASS_NAMES = Object.freeze([
 
 // Classes 0.62.0 reaches for that 0.18 never shipped. They must stay out of the
 // className strings, because a class with no rule silently does nothing.
+// `sand-pdmqnj` (action-bar padding-inline-end: 12px) became available in the staged
+// stylesheet via the memory-import-0770 official CSS append; the skill port now uses
+// the class directly and only the textarea fallback below remains inline.
+// Only the textarea floor still rides an inline fallback; `sand-1lziwak` and
+// `sand-mzvs34` ship via the memory-import-0770 official CSS append and this port
+// never references them (nothing to retire or double-apply).
 export const SKILL_DETAIL_UNSUPPORTED_CLASS_NAMES = Object.freeze([
-  "sand-pdmqnj",
   "sand-jgen18",
-  "sand-1lziwak",
-  "sand-mzvs34",
 ]);
 
 function replaceExactlyOnce(source, before, after, label) {
@@ -345,7 +348,7 @@ export async function applyOriginalRendererSkillDetail({ stageRoot }) {
         validatedStyleClasses: SKILL_DETAIL_CLASS_NAMES,
         inlineStyleFallbacks: {
           "textarea min-height": "sand-jgen18 has no 0.18 twin; min-height:106px rides the style prop",
-          "action bar padding-inline-end": "sand-pdmqnj has no 0.18 twin; padding-inline-end:12px rides the style prop",
+          "action bar padding-inline-end": "retired: sand-pdmqnj ships via the memory-import-0770 official CSS append",
         },
       },
     ],
