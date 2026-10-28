@@ -253,6 +253,29 @@ test("batch imports retain input order and persist only settled valid rows", asy
   record("batch-and-malformed", { results: results.map((result) => result.kind), persisted: items.length });
 });
 
+test("batch imports refuse bare public-suffix sites via the 0.78.1 PSL check", async (t) => {
+  const modules = await loadModules();
+  const temporary = await import("node:fs/promises").then((fs) => fs.mkdtemp(path.join(os.tmpdir(), "vault-psl-")));
+  t.after(async () => import("node:fs/promises").then((fs) => fs.rm(temporary, { recursive: true, force: true })));
+  const storePath = path.join(temporary, "grok-bot-vault.json");
+  const vault = backendFor(modules, storePath);
+  const results = await vault.createGrokBotVaultLogins({
+    logins: [
+      { title: "Suffix", username: "suffix@example.test", notes: "", sites: ["com"], password: "suffix-password" },
+      { title: "Suffix two labels", username: "suffix2@example.test", notes: "", sites: ["https://co.uk"], password: "suffix2-password" },
+      { title: "Normal", username: "normal@example.test", notes: "", sites: ["example.com"], password: "normal-password" },
+      { title: "Internal", username: "internal@example.test", notes: "", sites: ["https://localhost:8080"], password: "internal-password" },
+    ],
+  });
+  assert.deepEqual(results.map((result) => result.kind), ["refused", "refused", "imported", "imported"]);
+  assert.equal(results[0].message, "invalid-website");
+  assert.equal(results[1].message, "invalid-website");
+  const items = await vault.listGrokBotVaultCredentials();
+  assert.equal(items.some((item) => item.username === "suffix@example.test"), false);
+  assert.equal(items.some((item) => item.username === "normal@example.test"), true);
+  assert.equal(items.some((item) => item.username === "internal@example.test"), true);
+});
+
 test("card updates and local native photo reads use bounded local bytes only", async (t) => {
   const modules = await loadModules();
   const temporary = await import("node:fs/promises").then((fs) => fs.mkdtemp(path.join(os.tmpdir(), "vault-card-")));

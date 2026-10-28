@@ -23,6 +23,7 @@ import { stageNodeTreeSitterRuntime } from "../build-tree-sitter-node.mjs";
 import { run } from "./process.mjs";
 import { stageVisualization0721 } from "./visualization-0721.mjs";
 import { stageVaultResources0721 } from "./vault-resources-0721.mjs";
+import { stageVaultSiteUrl0781 } from "./vault-resources-0781.mjs";
 import { stageComputerUseSidecar0721 } from "./computer-use-sidecar-0721.mjs";
 import { stageDesktopMount0721 } from "./desktop-mount-0721.mjs";
 import { generateDesktop0721Module, stageDesktop0721Resources } from "./desktop-0721.mjs";
@@ -245,6 +246,7 @@ async function buildRuntimeDistribution({ outputRoot, composition, rendererMode 
 
   await stageVisualization0721({ stageRoot: outputRoot });
   await stageVaultResources0721({ outputRoot });
+  await stageVaultSiteUrl0781({ outputRoot });
   await stageComputerUseSidecar0721({ outputRoot });
   await stageDesktopMount0721({ distRoot: path.resolve(outputRoot, "dist") });
   await generateDesktop0721Module({ outputFile: path.resolve(outputRoot, "dist/electron-main/desktop-0721/upstream.cjs") });

@@ -27,6 +27,7 @@ import {
   validateSecurityCode,
 } from "./upstream-vault-parsers.generated.mjs";
 import { parseRecognizedCard } from "./upstream-vault-parsers.generated.mjs";
+import { emptyParseResult, getDomain, siteHostname, suffixLookup } from "./upstream-vault-site-url.generated.mjs";
 
 const STORE_VERSION = 1;
 const ACCOUNT_SCOPE_PATTERN = /^[0-9a-f]{64}$/u;
@@ -302,6 +303,21 @@ function credentialOf(record: StoredVaultRecord): VaultCredential {
     } };
   }
   return common;
+}
+
+// 本地加固（官方 0.78.1 的 PSL 解析器只用于行显示域、不拒绝保存——见 generated 头部
+// provenance.behaviourChange）：主机名命中已知公共后缀（ICANN/私有 trie）且 registrable
+// domain 为空（如 example.com→ok、com/co.uk→拒、blogspot.com→拒）时随既有
+// invalid-website 词表拒绝；未知 TLD / 内部主机名（localhost 等）放行，对齐官方
+// we() 的完整主机名回退语义。
+function vaultSiteRefusalProblem(site: string): string | null {
+  const hostname = siteHostname(site);
+  if (hostname === null) return null;
+  const suffix = emptyParseResult();
+  suffixLookup(hostname, { allowIcannDomains: true, allowPrivateDomains: true }, suffix);
+  if (suffix.isIcann !== true && suffix.isPrivate !== true) return null;
+  if (getDomain(hostname, { allowPrivateDomains: true }) !== null) return null;
+  return "invalid-website";
 }
 
 function plannedResult(result: unknown): { readonly kind: "ready"; readonly login: VaultLoginValues } | {
@@ -699,6 +715,10 @@ export class LocalVaultBackend {
     const sites = input.sites;
     if (!Array.isArray(sites) || sites.length > 10 || sites.some((site) => typeof site !== "string" || site.length > 2048)) {
       throw new VaultInvalidArgumentError("Vault sites must contain at most 10 strings");
+    }
+    for (const site of sites) {
+      const problem = vaultSiteRefusalProblem(site);
+      if (problem !== null) return { kind: "invalid", message: problem };
     }
     if (typeof input.password !== "string" || new TextEncoder().encode(input.password).length > 4096) {
       throw new VaultInvalidArgumentError("Vault password must be a bounded string");
