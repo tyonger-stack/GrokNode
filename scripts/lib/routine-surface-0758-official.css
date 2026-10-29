@@ -64,11 +64,21 @@
 .sand-7cl8nr:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):after{border-radius:8px}
 .sand-1ybvw9k:focus-visible:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):after{box-shadow:inset 0 0 0 2px var(--sand-border-focus-primary)}
 
-/* Official 0.75.8 dark-theme token values, scoped to the right-hand info pane. */
+/* Official 0.75.8 dark-theme token values, scoped to the right-hand info pane. The
+   accent-primary trio is the one deliberate divergence: official 0.75.8 pinned its
+   dark accent (#116dd2 family) here, but official 0.78.1 resolves
+   --sand-bg-accent-primary* dynamically and its bot-tint layer (CO(hue) =
+   mi("accent", hue), applied to the Bot details pane by WMn under the same
+   强调色 gate as chat) overrides the trio, so the routine switch tracks the
+   Bot's color. This port's tint layer (RbcTint.info on the .sand-info-pane root,
+   bot-color-renderer-patch.mjs) already remaps 0.18's native --sand-fill-accent*
+   family the same way, so the switch tokens project onto that family - the same
+   projection the composer CTA uses. With tint off they fall back to 0.18's own
+   accent blues, and a gray/black Bot (or blue, which IS the accent) keeps them. */
 .sand-info-pane__inner:not(#\#):not(#\#){
-  --sand-bg-accent-primary:#116dd2;
-  --sand-bg-accent-primary-hover:#1784fb;
-  --sand-bg-accent-primary-disabled:#116dd226;
+  --sand-bg-accent-primary:var(--sand-fill-accent);
+  --sand-bg-accent-primary-hover:var(--sand-fill-accent-hover);
+  --sand-bg-accent-primary-disabled:var(--sand-fill-accent-disabled);
   --sand-bg-luminous:#f5f5f5;
   --sand-bg-elevated:#1f1f1f;
   --sand-text-primary:#f5f5f5;

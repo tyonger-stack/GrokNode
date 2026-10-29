@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { parse } from "acorn";
 import { patchOriginalRoutineSurfaces } from "../scripts/lib/routine-surfaces-renderer-patch.mjs";
+import { BOT_COLOR_HUE_SOURCE, buildBotColorTintTable, normalizeBotColorHue } from "../scripts/lib/bot-color-renderer-components.mjs";
 
 const bundlePath = path.resolve(import.meta.dirname, "../src/app/dist/renderer/assets/index-UbX-y3il.js");
 const bundle = await readFile(bundlePath, "utf8").catch(() => null);
@@ -59,7 +60,6 @@ test("the port stylesheet carries official's rules and dark-theme token values",
   assert.match(portCss, /\.sand-5fd6op:not\(#\\#\):not\(#\\#\)\{border-color:var\(--sand-border-tertiary-translucent\)\}/);
   assert.match(portCss, /\.sand-c8icb0:not\(#\\#\):not\(#\\#\):not\(#\\#\)\{isolation:isolate\}/);
   for (const [token, value] of [
-    ["--sand-bg-accent-primary", "#116dd2"],
     ["--sand-bg-luminous", "#f5f5f5"],
     ["--sand-bg-elevated", "#1f1f1f"],
     ["--sand-text-primary", "#f5f5f5"],
@@ -80,6 +80,33 @@ test("the port stylesheet carries official's rules and dark-theme token values",
   const selectors = [...portCss.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/^([^\s@][^{]*)\{/gm)].map((m) => m[1]);
   for (const selector of selectors) {
     assert.doesNotMatch(selector, /:root/, "official's tokens are not applied to the whole app: " + selector);
+  }
+});
+
+test("the routine switch accent projects onto the Bot color fill family", () => {
+  // Official 0.78.1's routine switch reads var(--sand-bg-accent-primary*) and its bot-tint
+  // layer overrides that trio on the Bot details pane (WMn -> CO(hue), under the same
+  // 强调色 gate as chat), so the switch tracks the Bot's color. The port projects the
+  // trio onto 0.18's native --sand-fill-accent* family, which RbcTint.info already
+  // remaps per Bot; a 0.75.8-style pinned hex here would shadow that inline override.
+  assert.ok(portCss.includes("--sand-bg-accent-primary:var(--sand-fill-accent)"), "the checked track projects onto the accent fill family");
+  assert.ok(portCss.includes("--sand-bg-accent-primary-hover:var(--sand-fill-accent-hover)"), "the hover state projects too");
+  assert.ok(portCss.includes("--sand-bg-accent-primary-disabled:var(--sand-fill-accent-disabled)"), "the disabled state projects too");
+  assert.doesNotMatch(portCss, /--sand-bg-accent-primary:#/, "the switch accent tokens carry no pinned color of their own");
+});
+
+test("every Bot hue remaps all three switch accent states", { skip: baseCss == null ? "0.18 stylesheet not present" : false }, () => {
+  for (const suffix of ["", "-hover", "-disabled"]) {
+    assert.ok(new RegExp(`--sand-fill-accent${suffix}:#`).test(baseCss), `0.18 defines the tint-off fallback --sand-fill-accent${suffix}`);
+  }
+  const tintTable = buildBotColorTintTable(baseCss);
+  for (const [paletteId, source] of Object.entries(BOT_COLOR_HUE_SOURCE)) {
+    if (source === "accent") continue; // blue IS the accent family; official keeps the default
+    const entry = tintTable[normalizeBotColorHue(paletteId)];
+    assert.ok(entry, `${paletteId} must be tintable`);
+    for (const suffix of ["", "-hover", "-disabled"]) {
+      assert.equal(entry[`--sand-fill-accent${suffix}`], `var(--sand-fill-${source}${suffix})`, `${paletteId} remaps --sand-fill-accent${suffix}`);
+    }
   }
 });
 
