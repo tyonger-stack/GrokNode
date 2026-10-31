@@ -1,0 +1,76 @@
+/* Official Grok Bot 0.78.1's theme tokens for the plugins-dialog subtree.
+ *
+ * ## Why
+ *
+ * The ported 0.78.1 rules consume design tokens:
+ *
+ *   .sand-fwqdrz  → background-color: var(--sand-bg-secondary)      (chip, unselected)
+ *   .sand-8rotk8  → background-color: var(--sand-bg-primary)       (chip, selected)
+ *   .sand-sa7k8x  → color: var(--sand-text-inverted)               (chip, selected label)
+ *   .sand-tyxrsu  → color: var(--sand-text-primary)                (section title)
+ *   .sand-fc7y3v  → font-size: var(--cursor-font-size-lg)           (section title)
+ *   .ui-f1vpex    → background-color: var(--cursor-bg-elevated)     (dialog surface)
+ *
+ * Official 0.78.1 resolves those tokens from its runtime theme palette, which is newer than the
+ * one upstream 0.18 ships: upstream's palette has no `--sand-bg-primary`, no `--sand-bg-secondary`,
+ * no `--sand-text-inverted` and an older `--sand-text-primary` (#fcfcfc vs official's #f5f5f5).
+ * An undefined token makes `var()` invalid at computed-value time, so the chip surfaces fall back
+ * to transparent and the labels inherit the surrounding colour.
+ *
+ * Official keeps TWO independent token families and they are NOT interchangeable: the `cursor-*`
+ * family (`:root,.ui-qruemj`) and the `sand-*` family (`:root,.sand-1hqobez`) carry different
+ * numbers — official's cursor font size is base 13px / lg 14px while its sand font size is
+ * base 14px / lg 15px. The ported rules read from both, so both are reproduced.
+ *
+ * Official defines its palette on `:root`; upstream 0.18's palette is a different, older token set
+ * and its own UI is calibrated against it. Following the same convention this repository already
+ * uses for the 0.75.8 info-pane and 0.75.3 composer ports, the official values are applied to the
+ * marketplace dialog subtree only, and the rest of the app keeps upstream 0.18's token set.
+ *
+ * ## Why the `--cursor-*` tokens are re-declared
+ *
+ * Upstream 0.18 forwards the whole `--cursor-*` family to `--sand-*` at `:root`:
+ *
+ *   --cursor-bg-elevated: var(--sand-bg-elevated)
+ *   --cursor-text-primary: var(--sand-text-primary)
+ *
+ * A custom property's `var()` is substituted where the property is DECLARED, so those are already
+ * computed against `:root`'s palette and inherit down unchanged — overriding `--sand-bg-elevated`
+ * on the dialog cannot reach them. Official 0.78.1 forwards the same way (its runtime stylesheet
+ * declares `--cursor-bg-elevated: var(--sand-bg-elevated)` and `--cursor-text-primary:
+ * var(--sand-text-primary)`), so the same forwarding is re-declared here, against the dialog's own
+ * `--sand-*` values. Official's mapping is reproduced exactly; only the values differ.
+ *
+ * ## Provenance of the values
+ *
+ * Dark values are read from the running official app's runtime theme stylesheet
+ * (`<style id="sand-cursor-theme">`, theme `cursor-dark`).
+ * Light values are read from official's own light palette block, `:root,.sand-1vbcnu7`, in
+ * `rea-grokbot-0781/app/dist/renderer/assets/index-Dh7EWA8t.css`.
+ *
+ * The typography metrics are theme-independent in official: its stylesheet declares the font sizes
+ * at `:root,.sand-1hqobez` and the line heights at `:root,.sand-i7i3ao`, outside any theme
+ * selector, so one value serves both themes. The same holds for the cursor font sizes, which
+ * official declares at `:root,.ui-qruemj` (xs 11px, sm 12px, base 13px, lg 14px) and which the
+ * running app confirms on the live dialog. Upstream 0.18 happens to declare the same four cursor
+ * font sizes, but they are declared here as well so the ported title rule does not depend on
+ * upstream's palette staying untouched.
+ *
+ * `--sand-bg-elevated-hover`, `--sand-bg-chrome`, `--sand-bg-sidebar` and `--sand-bg-luminous`
+ * are declared by official and by neither upstream 0.18 nor an earlier revision of this block.
+ * They are reproduced here with official's own values so a surface inside the dialog that reads
+ * them cannot fall back to an unset token.
+ *
+ * `--sand-border-focus-primary` is the one token where official's palette value and official's
+ * *rendered* value differ: official's `:root:not([data-sand-keyboard-nav])` rule forces it to
+ * `transparent!important` while keyboard navigation is off, and upstream 0.18 ships no such rule
+ * at all. That rule carries no tone selector, so the rendered value is `transparent` in both
+ * themes, and the rendered value is reproduced here.
+ *
+ * The four tokens official leaves undefined (`--sand-text-disabled`, `--sand-fill-ghost-hover`,
+ * `--sand-border-focus`, `--cursor-easing-default`) are reset to `initial`, which is the
+ * guaranteed-invalid value: upstream defines them, official does not, and a defined token would
+ * otherwise render where official renders nothing.
+ */
+.sand-plugins-dialog{--sand-bg-elevated:#fff;--sand-bg-elevated-hover:#f1f1f1;--sand-bg-chrome:#fcfcfc;--sand-bg-sidebar:#f5f5f5;--sand-bg-luminous:#fff;--sand-bg-primary:#1c1c1c;--sand-bg-primary-hover:#363636;--sand-bg-secondary:#1c1c1c0f;--sand-bg-secondary-hover:#1c1c1c1a;--sand-bg-hover:#1c1c1c0f;--sand-bg-pane:#fff;--sand-bg-accent-primary:#1680f3;--sand-text-primary:#1c1c1c;--sand-text-secondary:#1c1c1cad;--sand-text-tertiary:#1c1c1c8f;--sand-text-inverted:#fcfcfc;--sand-text-on-primary:#fff;--sand-text-accent-primary:#0b6dd3;--sand-text-green-primary:#00854a;--sand-icon-primary:#1c1c1ceb;--sand-icon-secondary:#1c1c1ca8;--sand-icon-tertiary:#1c1c1c85;--sand-icon-accent-primary:#1680f3;--sand-border-focus-primary:transparent;--sand-border-tertiary-translucent:#1c1c1c14;--sand-border-secondary-translucent:#1c1c1c1f;--sand-border-primary-translucent:#1c1c1c3d;--sand-font-size-xxs:11px;--sand-font-size-xs:12px;--sand-font-size-sm:13px;--sand-font-size-base:14px;--sand-font-size-lg:15px;--sand-font-size-xl:17px;--sand-font-size-xxl:22px;--sand-font-size-xxxl:26px;--sand-line-height-xxs:16px;--sand-line-height-xs:16px;--sand-line-height-sm:18px;--sand-line-height-base:20px;--sand-line-height-lg:22px;--sand-line-height-xl:24px;--sand-line-height-xxl:28px;--sand-letter-spacing-xxs:0.01em;--sand-letter-spacing-xs:0.01em;--sand-letter-spacing-sm:0.015em;--sand-letter-spacing-base:0.01em;--sand-letter-spacing-lg:0.01em;--sand-letter-spacing-xl:0.01em;--sand-letter-spacing-xxl:0.01em;--sand-font-weight-regular:425;--sand-font-weight-medium:500;--sand-font-weight-semibold:600;--sand-text-disabled:initial;--sand-fill-ghost-hover:initial;--sand-border-focus:initial;--cursor-easing-default:initial;--cursor-font-size-xs:11px;--cursor-font-size-sm:12px;--cursor-font-size-base:13px;--cursor-font-size-lg:14px;--cursor-bg-elevated:var(--sand-bg-elevated);--cursor-bg-editor:var(--sand-bg-pane);--cursor-bg-input:var(--sand-bg-elevated);--cursor-bg-secondary:var(--sand-bg-secondary-hover);--cursor-bg-tertiary:var(--sand-bg-secondary);--cursor-bg-quaternary:var(--sand-bg-secondary);--cursor-text-primary:var(--sand-text-primary);--cursor-text-secondary:var(--sand-text-secondary);--cursor-text-tertiary:var(--sand-text-tertiary);--cursor-text-invert:var(--sand-text-on-primary);--cursor-text-link:var(--sand-text-accent-primary);--cursor-icon-primary:var(--sand-icon-primary);--cursor-icon-secondary:var(--sand-icon-secondary);--cursor-icon-tertiary:var(--sand-icon-tertiary);--cursor-icon-accent-primary:var(--sand-icon-accent-primary);--cursor-accent-color:var(--sand-bg-accent-primary);--cursor-stroke-primary:var(--sand-border-primary-translucent);--cursor-stroke-secondary:var(--sand-border-secondary-translucent);--cursor-stroke-tertiary:var(--sand-border-tertiary-translucent);--cursor-stroke-focused:var(--sand-border-focus-primary);--cursor-font-weight-normal:var(--sand-font-weight-regular);--cursor-font-weight-regular:var(--sand-font-weight-regular)}
+html[data-theme="cursor-dark"] .sand-plugins-dialog{--sand-bg-elevated:#1f1f1f;--sand-bg-elevated-hover:#2c2c2c;--sand-bg-chrome:#121212;--sand-bg-sidebar:#0e0e0e;--sand-bg-luminous:#f5f5f5;--sand-bg-primary:#f5f5f5;--sand-bg-primary-hover:#dbdbdb;--sand-bg-secondary:#f5f5f50a;--sand-bg-secondary-hover:#f5f5f514;--sand-bg-hover:#f5f5f50f;--sand-bg-pane:#161616;--sand-bg-accent-primary:#116dd2;--sand-text-primary:#f5f5f5;--sand-text-secondary:#f5f5f5a8;--sand-text-tertiary:#f5f5f58a;--sand-text-inverted:#121212;--sand-text-on-primary:#f5f5f5;--sand-text-accent-primary:#4d9bff;--sand-text-green-primary:#00ba69;--sand-icon-primary:#f5f5f5e6;--sand-icon-secondary:#f5f5f5a3;--sand-icon-tertiary:#f5f5f580;--sand-icon-accent-primary:#116dd2;--sand-border-focus-primary:transparent;--sand-border-tertiary-translucent:#f5f5f50f;--sand-border-secondary-translucent:#f5f5f51a;--sand-border-primary-translucent:#f5f5f538}

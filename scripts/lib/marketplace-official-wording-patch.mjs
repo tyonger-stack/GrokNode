@@ -1,15 +1,24 @@
 /**
- * Official Grok Bot 0.75.8 wording for upstream 0.18's own plugins surface.
+ * Official Grok Bot's marketplace wording for upstream 0.18's own plugins surface.
  *
  * ## What this patches
  *
  * `view-B5Ug8wEm.js` is upstream 0.18's genuine "连接应用" implementation — the same component
- * official 0.75.8 ships, one generation earlier. This patch ports the *wording* of official
- * 0.75.8's version of that component onto upstream 0.18's code, so the surface reads exactly like
- * the official build instead of a mix of English and 0.18-era Chinese.
+ * official ships, one generation earlier. This patch ports the *wording* of official's version of
+ * that component onto upstream 0.18's code, so the surface reads exactly like the official build
+ * instead of a mix of English and 0.18-era Chinese.
  *
  * It does NOT re-implement the surface: every replacement is a literal swap inside upstream's own
  * code, anchored on an exact string that must occur exactly once.
+ *
+ * ## The 0.78.1 delta
+ *
+ * The dialog's class recipe is official 0.78.1's own, so the dialog measures 900×702 like the
+ * official build (upstream 0.18 ships 1000px, and 0.75.8 shipped 800px). The recipe's rules are
+ * lifted into the staged stylesheet by `marketplace-dialog-0781-css-patch.mjs`; the wording patch
+ * only swaps the class names the chunk applies.
+ *
+ * @evidence official 0.78.1 `chunk-view-KV06RTpF.js` @ 183139 — the dialog and layout recipes.
  *
  * ## Why it runs AFTER the i18n passes
  *
@@ -85,14 +94,14 @@ const REPLACEMENTS = [
   {
     label: "dialog shell class recipe",
     before: 'k("sand-plugins-dialog","sand-1gys7z3 sand-w7nakj sand-1717udv")',
-    after: 'k("sand-plugins-dialog","sand-h6vr4k sand-1a2e76q sand-1gy1zxj sand-1717udv sand-xrbq2n sand-1da2sx9 sand-5vqeur sand-1e6nqfh")',
-    official: "0.75.8 chunk-view Ms @ 162251",
+    after: 'k("sand-plugins-dialog","sand-1sdb7ul sand-tqtr64 sand-1eh7du3 sand-1717udv sand-xrbq2n sand-1j6au1h sand-pe8fed sand-1r6a6jf")',
+    official: "0.78.1 chunk-view-KV06RTpF.js @ 183139",
   },
   {
     label: "dialog layout class recipe",
     before: 'k("sand-plugins-layout","sand-9f619 sand-1n2onr6 sand-78zum5 sand-dt5ytf sand-1bwblxx sand-2lwn1j")',
-    after: 'k("sand-plugins-layout","sand--default-marker sand-9f619 sand-1n2onr6 sand-78zum5 sand-dt5ytf sand-z03ioa sand-2lwn1j sand-7giv3")',
-    official: "0.75.8 chunk-view Ms @ 162472",
+    after: 'k("sand-plugins-layout","sand--default-marker sand-9f619 sand-1n2onr6 sand-78zum5 sand-dt5ytf sand-xe7e0x sand-2lwn1j sand-7giv3")',
+    official: "0.78.1 chunk-view-KV06RTpF.js @ 183480",
   },
   {
     label: "installed-apps tab label",

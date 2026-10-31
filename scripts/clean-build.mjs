@@ -66,9 +66,12 @@ import { applyGroupAuthor0755Patch } from "./lib/group-author-0755-patch.mjs";
 import { applyOriginalRendererMainI18n } from "./lib/main-i18n-patch.mjs";
 import { applyOriginalRendererExtraI18n } from "./lib/extra-i18n-patch.mjs";
 import { applyOriginalRendererMarketplaceOfficialWording } from "./lib/marketplace-official-wording-patch.mjs";
-import { applyMarketplaceDialog0758Css } from "./lib/marketplace-dialog-0758-css-patch.mjs";
-import { applyMarketplaceBrowseChrome0758 } from "./lib/marketplace-browse-chrome-0758-patch.mjs";
-import { applyMarketplaceBrowseChrome0758Css } from "./lib/marketplace-browse-chrome-0758-css-patch.mjs";
+import { applyMarketplaceDialog0781Css } from "./lib/marketplace-dialog-0781-css-patch.mjs";
+import { applyMarketplaceDialog0781ThemeTokens } from "./lib/marketplace-dialog-0781-theme-tokens-css-patch.mjs";
+import { applyMarketplaceDialog0781Typography } from "./lib/marketplace-dialog-0781-typography-css-patch.mjs";
+import { applyMarketplaceDialog0781Layout } from "./lib/marketplace-dialog-0781-layout-css-patch.mjs";
+import { applyMarketplaceBrowseChrome0781 } from "./lib/marketplace-browse-chrome-0781-patch.mjs";
+import { applyMarketplaceBrowseChrome0781Css } from "./lib/marketplace-browse-chrome-0781-css-patch.mjs";
 import { applyUpdatePillCopy0755Patch } from "./lib/update-pill-copy-0755-patch.mjs";
 import { applyTeachGateRestorePatch } from "./lib/teach-gate-restore-patch.mjs";
 import { applyGrokMainAgentGatePatch } from "./lib/grok-main-agent-gate-patch.mjs";
@@ -488,16 +491,28 @@ export async function buildFidelityReconstructedAsar({
   // MUST run after the three i18n passes: two of its anchors are the POST-i18n text
   // ("Plugins" → 插件, "Private" → 私密), and the patch rewrites them in place.
   await applyOriginalRendererMarketplaceOfficialWording({ stageRoot });
-  // Official 0.75.8's plugins-dialog geometry: the five stylix rules upstream 0.18's stylesheet
-  // does not define (the dialog WIDTH is the only behavioural difference — 800px vs 1000px).
-  await applyMarketplaceDialog0758Css({ stageRoot });
-  // Official 0.75.8's browse-page chrome: the category chip row and the "connected apps" entry
-  // that replace 0.18's segmented control, plus official's search placeholder.
+  // Official 0.78.1's plugins-dialog geometry: the eight stylix rules upstream 0.18's stylesheet
+  // does not define (the dialog WIDTH is the behavioural difference — 900px vs 1000px).
+  await applyMarketplaceDialog0781Css({ stageRoot });
+  // Official 0.78.1's theme tokens for the dialog subtree. The ported chip rules consume
+  // --sand-bg-primary / --sand-bg-secondary / --sand-text-inverted; upstream 0.18's palette does
+  // not define them, so the chip surfaces degrade to transparent without this.
+  await applyMarketplaceDialog0781ThemeTokens({ stageRoot });
+  // Official 0.78.1's typography inside the dialog subtree: its global form-control reset and its
+  // regular weight (425). Upstream 0.18 has the reset only under .sand-info-pane__inner, so the
+  // dialog's buttons fall back to the browser's 400-weight system font.
+  await applyMarketplaceDialog0781Typography({ stageRoot });
+  // Official 0.78.1's header and toolbar rows: the connected-apps entry belongs to the header row,
+  // the search field takes its own row and the chip row the next one.
+  await applyMarketplaceDialog0781Layout({ stageRoot });
+  // Official 0.78.1's browse-page chrome: the chip taxonomy as the section taxonomy, the
+  // 为你推荐 section, the 查看全部 group action, the Bot-templates button and the connect action,
+  // plus the "connected apps" entry that replaces 0.18's segmented control.
   // MUST run after the wording patch: its anchors are the POST-wording text (the segmented
   // control carries the wording patch's "已连接 N 个" label).
-  await applyMarketplaceBrowseChrome0758({ stageRoot });
-  // The three chip rules upstream 0.18's stylesheet does not define (official's own, lifted).
-  await applyMarketplaceBrowseChrome0758Css({ stageRoot });
+  await applyMarketplaceBrowseChrome0781({ stageRoot });
+  // The 28 official 0.78.1 browse rules upstream 0.18's stylesheet does not define.
+  await applyMarketplaceBrowseChrome0781Css({ stageRoot });
   await applyMessageCopy0753Patch({ stageRoot });
   // The 0.18 renderer already has the footer update pill and Update-ready
   // modal; port the official 0.75.5 copy now that RLocT exists.

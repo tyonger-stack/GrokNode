@@ -1,0 +1,120 @@
+/* Official Grok Bot 0.78.1's header and toolbar layout inside the plugins dialog.
+ *
+ * Source app: /Applications/Grok Bot.app (com.anysphere.sand) 0.78.1
+ *   app.asar sha256 e8d5e10f94f8b52cd02f696599c8e6503420ad85ceed7b41a27bbff7bff22f4d
+ *   renderer stylesheet dist/renderer/assets/index-Dh7EWA8t.css
+ * Reference analysis: /Users/Apple/Documents/grokbot/rea-grokbot-0781 (REA extract)
+ *
+ * ## What official does, measured live over CDP on 2026-10-30 (dark theme, 900 px dialog)
+ *
+ * Official's dialog stacks three rows inside a pane that carries 32 px of horizontal padding:
+ *
+ *   row 1  the title row — 24 px tall, margin-bottom 18 px:
+ *           h2 连接应用, 17 px / 24 px / -.008em / 500, padding-inline 0 12 px, colour text-primary;
+ *           the connected-apps entry is position:absolute; top:50%; inset-inline-end:0;
+ *           transform:translateY(-50%) inside the row, so it is centred on the title band
+ *           (official measures the entry 129..157 against the title band 131..155);
+ *   row 2  the search row — 32 px tall, gap 8 px:
+ *           a search field that takes the free width (712 px) with padding 0 8 px 0 12 px, gap 6 px,
+ *           a 14 px magnifier and a 671 px input, then the Bot-templates button (114 px);
+ *   row 3  the chip row — 28 px tall, margin 0 -8 px so the chips bleed 8 px past the content.
+ *
+ * Upstream 0.18 puts the connected-apps entry, the search field, the Bot-templates button, the
+ * segmented control and the filter icon into ONE toolbar row, and its own title component
+ * (<header class="sand-settings-pane-header">) carries 32/6/32 px of padding of its own. The port
+ * inherited that: the title row's entry sat immediately right of the title instead of at the
+ * dialog's right inset, and the search field measured 208 px against official's 671 px.
+ *
+ * ## Cascade
+ *
+ * Upstream 0.18's stylix utility classes raise their own specificity with `:not(#\#)`
+ * pseudo-ids, so a class-only author rule LOSES to them:
+ *
+ *   .sand-1c4vz4f:not(#\#):not(#\#):not(#\#){flex-grow:0}   (the header and the toolbar row)
+ *   .sand-2lah0s:not(#\#):not(#\#):not(#\#){flex-shrink:0}
+ *   .sand-dl72j9:not(#\#):not(#\#):not(#\#){flex-basis:auto}
+ *   .sand-1miatn0:not(#\#):not(#\#):not(#\#):not(#\#){padding-top:32px}   (the title header)
+ *   .sand-1m2p0i2:not(#\#):not(#\#):not(#\#):not(#\#){padding-right:32px}
+ *   .sand-10b6aqq:not(#\#):not(#\#):not(#\#):not(#\#){padding-bottom:6px}
+ *   .sand-1tudf5h:not(#\#):not(#\#):not(#\#):not(#\#){padding-left:32px}
+ *
+ * Following the convention already used by scripts/lib/app-columns-0758-official.css, every rule
+ * below that has to beat one of those carries ONE MORE `:not(#\#)` pseudo-id than the rule it
+ * overrides, so it wins on specificity regardless of stylesheet order. The rules that override
+ * nothing (the wrapper, the h2, the entry) stay class-only and carry no pseudo-id.
+ *
+ * ## Scope
+ *
+ * Every selector is scoped to `.sand-plugins-dialog`, so nothing outside the marketplace dialog
+ * changes. `:root` is never redefined.
+ */
+
+/* Row 1 — official's title row.
+   The wrapper is the positioned box the entry is pinned into, exactly like official's
+   `div.sand-1n2onr6 sand-euugli sand-1c436fg` (position:relative). */
+.sand-plugins-dialog .sand-plugins-0781-header{position:relative}
+
+/* Upstream's title component keeps its own 32/6/32 px padding, which would make the row 62 px
+   tall and push the title 32 px in from the content edge. Official's row IS the title band:
+   24 px tall, title flush with the content edge. Beats the four 0.18 padding rules above
+   (4 :not(#\#) pseudo-ids each) by one pseudo-id. */
+.sand-plugins-dialog .sand-plugins-0781-header>header:not(#\#):not(#\#):not(#\#):not(#\#){padding:0}
+
+/* Official's title is a plain h2 with 32 px of pane padding on its left and 12 px on its right
+   (official: `sand-pdmqnj{padding-inline-end:12px}`). Upstream's h2 carries no padding rule, so a
+   class-only rule is enough here. The 32 px is official's pane padding, which upstream 0.18 does
+   not have — upstream puts it on the title component instead, and that padding is removed above. */
+.sand-plugins-dialog .sand-plugins-0781-header h2{padding-inline:32px 12px}
+
+/* Official's connected-apps entry, verbatim: position:absolute; top:50%; inset-inline-end:0;
+   transform:translateY(-50%), so it is centred on the title band.
+   Official's row is the pane's 32 px-inset content box, so the entry lands 32 px inside the
+   dialog's right edge; upstream 0.18's pane is flush, so the same 32 px is applied here. */
+.sand-plugins-dialog .sand-plugins-0781-header>.sand-plugins__installed-preview{position:absolute;top:50%;inset-inline-end:32px;transform:translateY(-50%)}
+
+/* Row 2 and row 3 — official stacks the search row and the chip row, each on its own line.
+   Upstream's toolbar row carries `flex-grow:0`, which is what kept it at 381 px and the search
+   field at 208 px. Beats .sand-1c4vz4f (3 :not(#\#) pseudo-ids) by one pseudo-id. */
+.sand-plugins-dialog .sand-plugins__bar>div:not(#\#):not(#\#):not(#\#):not(#\#){flex:1 1 100%}
+
+/* Upstream's toolbar does not wrap, so the search row and the chip row would share one line and
+   shrink each other. Official stacks them in a column. */
+.sand-plugins-dialog .sand-plugins__bar{flex-wrap:wrap}
+
+/* Official's toolbar column keeps a 12 px gap between the search row and the chip row; upstream's
+   toolbar carries 24 px. Beats .sand-1665zp3 (2 :not(#\#) pseudo-ids) by one pseudo-id. */
+.sand-plugins-dialog .sand-plugins__bar:not(#\#):not(#\#):not(#\#){gap:12px}
+
+/* Official's title row carries an 18 px margin-bottom, which is the gap between the title band
+   and the search row. Upstream's toolbar carries that gap as its own 22 px padding-top.
+   Beats .sand-1xy6bms (4 :not(#\#) pseudo-ids) with one more class. */
+.sand-plugins-dialog .sand-plugins__bar:not(#\#):not(#\#):not(#\#):not(#\#){padding-top:18px}
+
+/* Official's dialog reserves a band above the title: the title band starts 53 px below the
+   dialog's top edge, because official's dialog shell pads its content and the title is the first
+   row of the scrolled pane. Upstream 0.18's marketplace container starts at the dialog's top edge,
+   so the same band is reproduced here. The padding is on the container, not on the title row, so
+   the title row keeps official's 24 px height and the entry stays centred on the title band. */
+.sand-plugins-dialog .sand-plugins:not(#\#):not(#\#):not(#\#):not(#\#){padding-top:52px}
+
+/* Official's section list sits in a wrapper that pulls its sections 12 px past the pane's 32 px
+   padding, so official's sections start 21 px from the dialog's edge and measure 858 px in the
+   900 px dialog. Upstream 0.18's wrapper (`div.sand-plugins__marketplace`) carries no such margin
+   and upstream's stylesheet declares no rule for that class at all, so a class-only rule is
+   enough here — the same convention the wrapper, the h2 and the entry already use.
+   Official's own rule is `.sand-lhcdhu:not(#\#):not(#\#){margin-inline:-12px}`, and official's
+   wrapper also carries `sand-euugli` (min-width:0). */
+.sand-plugins-dialog .sand-plugins__marketplace{margin-inline:-12px;min-width:0}
+
+/* Official's search field takes the free width of the row, with 12 px of left padding, 8 px of
+   right padding and a 6 px gap before the input. Upstream's field carries `flex-grow:0` and a
+   tighter padding. Beats .sand-1c4vz4f (3 :not(#\#) pseudo-ids) by one pseudo-id. */
+.sand-plugins-dialog .sand-plugins__search:not(#\#):not(#\#):not(#\#):not(#\#){flex:1 1 auto;padding:0 8px 0 12px;gap:6px}
+
+/* Official's dialog has no filter icon in the marketplace view — its only icon-only button is the
+   dialog's close button, which is absolutely positioned outside this row. Upstream 0.18 keeps a
+   28 px filter button in the search row, and that button is what pushes the search field 28 px
+   short of official's width. It is hidden here so the search field matches official's 671 px.
+   The upstream filter menu itself is untouched; only its entry point is hidden.
+   Beats .sand-78zum5's `display:flex` (3 :not(#\#) pseudo-ids) by one pseudo-id. */
+.sand-plugins-dialog .sand-plugins__bar>div>button.sand-kit-icon-button:not(#\#):not(#\#):not(#\#):not(#\#){display:none}
