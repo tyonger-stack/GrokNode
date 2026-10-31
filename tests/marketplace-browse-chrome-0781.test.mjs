@@ -42,6 +42,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const read = (...parts) => readFileSync(path.join(repoRoot, ...parts), "utf8");
 
 const fixture = JSON.parse(read("tests", "fixtures", "official-0781-marketplace-wording.json"));
+const botMarkFrame = JSON.parse(read("tests", "fixtures", "official-0781-bot-mark-frame.json"));
+const nativeIconFrame = JSON.parse(read("tests", "fixtures", "official-0781-native-icons.json"));
 const officialCss = read("scripts", "lib", "marketplace-browse-chrome-0781-official.css");
 const dialogOfficialCss = read("scripts", "lib", "marketplace-dialog-0781-official.css");
 
@@ -84,12 +86,13 @@ const STYLIX_NOOP_CLASSES = [
   "sand-plugins__group",
   "sand-plugins__group-action",
   "sand-plugins__installed-preview",
+  "sand-tool-icon",
 ];
 
-/** Every class the port applies. */
+/** Every class the port applies — `var(--sand-…)` custom-property references are not classes. */
 function appliedClasses() {
   const classes = new Set();
-  for (const match of MARKETPLACE_BROWSE_CHROME_0781_INJECTED_SOURCE.matchAll(/sand-[a-z0-9+_-]+/g)) {
+  for (const match of MARKETPLACE_BROWSE_CHROME_0781_INJECTED_SOURCE.matchAll(/(?<!--)sand-[a-z0-9+_-]+/g)) {
     classes.add(match[0]);
   }
   return classes;
@@ -828,7 +831,7 @@ test("the declared upstream class list matches upstream 0.18's own stylesheet", 
   assert.deepEqual(uncovered, [], "these classes resolve nowhere in upstream 0.18 nor in the 0781 official CSS");
 });
 
-test("the section builder produces official's thirteen-section shape", () => {
+test("the section builder produces official's fourteen-section shape", () => {
   const { RM0781BuildSections, RM0781ChipRow, RM0781ChipsOf } = builder();
   const entries = catalog();
   const sections = RM0781BuildSections(entries, { isInstalled: () => false, locale: "en" });
@@ -836,10 +839,11 @@ test("the section builder produces official's thirteen-section shape", () => {
   assert.deepEqual(sections[0].label, ["Recommended for you", "为你推荐"]);
   assert.deepEqual(
     sections.map((section) => section.chipKey),
-    [null, "credentials", "productivity", "marketing", "support"],
-    "the chip buckets must follow official's chip order, and FEATURED must fall out",
+    [null, "credentials", "productivity", "marketing", "support", "team"],
+    "the chip buckets must follow official's chip order, FEATURED must fall out, and the team section closes the list",
   );
-  const byChip = Object.fromEntries(sections.filter((s) => s.chipKey).map((s) => [s.chipKey, s]));
+  assert.equal(sections[sections.length - 1].sectionKey, "team-plugins", "the team section is last, before any hero");
+  const byChip = Object.fromEntries(sections.filter((s) => s.chipKey && s.chipKey !== "team").map((s) => [s.chipKey, s]));
   assert.equal(byChip.credentials.hiddenCount, 0, "one entry is never truncated");
   assert.equal(byChip.productivity.hiddenCount, 8 - MARKETPLACE_0781_SECTION_LIMIT);
   assert.equal(byChip.marketing.hiddenCount, 0, "four entries are never truncated");
@@ -892,6 +896,53 @@ test("the recommended hero is appended at the end and keeps the chip selection",
   assert.ok(sections.length > 1, "the original sections stay in front of the hero");
 });
 
+test("the marketplace-published entries render official's team section after the chip sections", () => {
+  const { RM0781BuildSections } = builder();
+  const sections = RM0781BuildSections(catalog(), { isInstalled: () => false, locale: "en" });
+  const team = sections.find((section) => section.sectionKey === "team-plugins");
+  assert.ok(team, "official's 团队插件 section must render when the catalogue carries marketplace entries");
+  assert.deepEqual(team.label, ["Team plugins", "团队插件"], "official's own section title");
+  assert.deepEqual(
+    team.items.map((entry) => entry.id),
+    ["mp"],
+    "the team section holds exactly the marketplace-published entries",
+  );
+  assert.equal(team.hiddenCount, 0, "a small team list is not truncated");
+  const lastChip = sections.reduce(
+    (index, section, at) => (section.chipKey != null && section.sectionKey.startsWith("chip:") ? at : index),
+    -1,
+  );
+  assert.ok(sections.indexOf(team) > lastChip, "the team section follows the chip sections, official's own order");
+});
+
+test("the team section orders entries by teammate count, official's own sort", () => {
+  const { RM0781BuildSections } = builder();
+  const entries = [
+    { id: "t2", name: "B", displayName: "B", category: "MCP", categoryKey: "PRODUCTIVITY", marketplace: { name: "x" } },
+    { id: "t1", name: "A", displayName: "A", category: "MCP", categoryKey: "PRODUCTIVITY", marketplace: { name: "x" } },
+  ];
+  const sections = RM0781BuildSections(entries, {
+    isInstalled: () => false,
+    teamInstallCounts: { t1: 3, t2: 7 },
+    locale: "en",
+  });
+  const team = sections.find((section) => section.sectionKey === "team-plugins");
+  assert.deepEqual(
+    team.items.map((entry) => entry.id),
+    ["t2", "t1"],
+    "teammate count descending, displayName localeCompare as the tie-break",
+  );
+});
+
+test("a catalogue without marketplace entries renders no team section", () => {
+  const { RM0781BuildSections } = builder();
+  const sections = RM0781BuildSections(catalog().filter((entry) => entry.marketplace == null), {
+    isInstalled: () => false,
+    locale: "en",
+  });
+  assert.ok(!sections.some((section) => section.sectionKey === "team-plugins"));
+});
+
 test("the chip row lists official's chips and skips marketplace-published entries", () => {
   const { RM0781ChipRow, RM0781ChipsOf } = builder();
   const entries = catalog();
@@ -937,6 +988,34 @@ test("every replacement keeps its anchor's bracket balance", () => {
       `"${entry.label}" must not change the bracket balance of the code it replaces`,
     );
   }
+});
+
+test("the Bot-templates button carries official's idle mark frame as its first child", () => {
+  const patched = patchMarketplaceBrowseChrome0781(syntheticChunk());
+  assert.ok(patched.includes(botMarkFrame.pathD), "official's own mark path bytes must be embedded");
+  assert.ok(patched.includes(botMarkFrame.svgId), "official's own svg id");
+  assert.ok(patched.includes(botMarkFrame.viewBox), "official's own viewBox");
+  assert.ok(patched.includes(botMarkFrame.pathFill), "official's own ink fill");
+  assert.ok(patched.includes('fillRule:"evenodd"'), "official's own fill rule");
+  assert.ok(patched.includes('"data-grok-state":"idle"'), "official's idle state marker");
+  assert.ok(patched.includes('"data-paused":"true"'), "the button's mark is paused, exactly as official renders it");
+  const buttonSource = patched.slice(patched.indexOf("function RM0781BotTemplatesButton"));
+  const markAt = buttonSource.indexOf("t.jsx(RM0781BotMark,{})");
+  const labelAt = buttonSource.indexOf('RLocT("Bot templates","Bot 模板")');
+  assert.ok(markAt >= 0 && labelAt >= 0 && markAt < labelAt, "the mark precedes the label, official's own child order");
+});
+
+test("the native rows carry official's brand icons, not the first-letter chip", () => {
+  const patched = patchMarketplaceBrowseChrome0781(syntheticChunk());
+  assert.ok(patched.includes(nativeIconFrame.onepassword.pathD), "official's 1Password brand path bytes");
+  assert.ok(patched.includes(nativeIconFrame.onepassword.spanClass), "official's icon class recipe");
+  assert.ok(patched.includes("#303136"), "official's 1Password brand background");
+  assert.ok(patched.includes("var(--sand-bg-magenta-primary)"), "official's email background token");
+  assert.ok(patched.includes('name:"envelope"'), "official's email glyph");
+  assert.ok(
+    patched.includes("RM0781NativeIcon(s)??t.jsx(m,"),
+    "the row renders the native icon first and falls back to upstream's icon slot",
+  );
 });
 
 test("the patched upstream chunk parses", () => {

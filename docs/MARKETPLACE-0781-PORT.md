@@ -463,15 +463,18 @@ CDP port of their own (9245) so that a second session probing 9224 cannot answer
 
 | official item | why it is skipped |
 |---|---|
-| the 团队插件 section | it needs the cloud's `teamInstallCounts`. Grok Node has no team data, so official's team signal is always empty here. |
 | `countConnectedApps`'s lazy chunk | a separate official chunk for the connected-app count. Upstream 0.18 counts its installed plugins in the chunk itself. |
 | the `sand_connect_apps_collapse` remote config | an official remote-config flag for collapsing the connect-apps entry. Upstream 0.18 has no remote config surface for it. |
 | official's `eager-app` bundling refactor | official moved the plugins view into an eager bundle. This port keeps upstream 0.18's chunk and rewrites it in place; the port never rebuilds the renderer. |
 
 ## Known differences and the trade-offs behind them
 
-**The team signal is empty.** `teamInstallCounts` is `{}` in this build, so official's team branch
-never fires. Official's own ranking then depends entirely on the affinity signal.
+**The team signal is empty.** `teamInstallCounts` is `{}` in this build, so official's *ranking* team
+branch never fires and the ranking depends entirely on the affinity signal. The 团队插件 **section**
+is a different thing and it is carried: official's section lists the marketplace-published entries
+(`isPublicListed === true` in official's own catalogue model), and this reconstruction's catalogue
+carries the same field as `marketplace` — one live entry (`oh-my-claudecode`, id `71001007`) on both
+sides, measured over CDP on 2026-10-31.
 
 **Official's ranking can return nothing.** `y` only ever emits a team signal or an affinity
 signal, so a profile with nothing installed and no team data gets no recommendation at all — and
@@ -502,19 +505,22 @@ path untouched and only replaces the browse (unfiltered) sections.
 radix wrapper; the port uses upstream 0.18's `re` dropdown kit, which renders the same menu with
 upstream's own styling.
 
-**Upstream 0.18 has no `popularityRank`.** Official's tie-break reads that field first; upstream's
-catalog does not carry it, so the tie-break always falls through to the display name.
+**`popularityRank` is carried.** Official's tie-break reads `Plugin.popularity_rank` first and its
+catalogue sorts by it. Upstream 0.18's recovered proto closure ended at field 43, so the field was
+silently dropped on decode. The field is re-added to the recovered proto module as field 44 and
+threaded through the catalogue projection, so official's own tie-break order applies here.
 
 **The chip row's 更多 trigger.** Official's trigger shows the selected overflow chip's name when
 one is selected and 更多 otherwise, and `aria-pressed` follows the selection. The port reproduces
 both.
 
-**The password-manager section is empty here.** Official's catalogue contains password managers
-(1Password), so official shows a 密码管理器 section and puts that chip in the visible row. The
-reconstruction's catalogue has none: searching the dialog for `password` and for `1password`
-returns zero rows. The taxonomy itself is complete — the registry carries the `credentials` chip
-with official's own message id — so the section appears as soon as the data does. The visible chip
-row is the first five chips that have entries, so it shows 数据 where official shows 密码管理器.
+**The password-manager section now has its data.** Official's catalogue carries two entries the
+marketplace RPC never returns — 1Password and 邮箱 — which official merges into the catalogue in
+memory from its own client-side constants (`Zo=['onepassword','email']` and the `native:` id scheme
+in `index.eager-app-D1juOWZp.js`). This reconstruction's plugins view reads the host catalogue
+directly over the preload bridge, so those two entries are appended at the desktop manager's
+`getCatalog` exit instead, in `source/shared/node/mcp/mcp-native-entries.ts`. That is what makes the
+密码管理器 section exist here, and what puts 密码管理器 in the visible chip row where official has it.
 
 **The search field keeps upstream's input component.** Official's bar puts the search field on its own
 full-width row: official's field measures 712 px and its input 671 px in the measured window. The
@@ -551,9 +557,13 @@ kept as it is.
 recipe (a `--sand-bg-secondary` surface); upstream 0.18's button component has a different one. The
 port writes official's trailing markup into upstream's row and keeps upstream's button.
 
-**The section count follows the catalogue.** Official renders thirteen sections (为你推荐, twelve
-chips); the reconstruction renders eleven, because two of official's sections have no data here —
-密码管理器, which the catalogue lacks, and 团队插件, which needs the cloud's team install counts.
+**The section count matches.** Both apps render the same thirteen sections — 为你推荐, then the eleven
+official chips in official's own order (密码管理器, 效率, 通信, 设计, 代码, 数据, 销售, 营销, 财务,
+研究, 支持), then 团队插件. Measured over CDP on 2026-10-31 on both apps, with the same catalogue
+(488 entries here against 293 in official, the difference being 198 entries with no curated category
+that fall out of every chip bucket, plus official's two built-in cursor plugins). The earlier reading
+of "eleven sections here" was a measurement artifact: the catalogue loads asynchronously, and the
+reading was taken before it had arrived.
 
 ## The measured parity
 
@@ -570,12 +580,12 @@ started fresh for the comparison and both opened the marketplace list page.
 | connected-apps entry, inset from the right | 33 | 33 |
 | search row width | 834 | 834 |
 | chip row | 850×28 | 850×28 |
-| chip row items | 全部 / 效率 / 通信 / 设计 / 代码 / 数据 / 更多 | 全部 / 密码管理器 / 效率 / 通信 / 设计 / 代码 / 更多 |
+| chip row items | 全部 / 密码管理器 / 效率 / 通信 / 设计 / 代码 / 更多 | 全部 / 密码管理器 / 效率 / 通信 / 设计 / 代码 / 更多 |
 | section list, inset from the dialog's left edge | 21 | 21 |
 | section width | 858 | 858 |
 | section list wrapper margin | −12 px | −12 px |
 | section header to grid gap | 8 | 8 |
-| sections | 为你推荐 + 10 chips | 为你推荐 + 12 chips |
+| sections | 为你推荐 + 11 chips + 团队插件 | 为你推荐 + 11 chips + 团队插件 |
 | search field | 711×32 | 712×32 |
 | search input | 669×18 | 671×20 |
 | Bot-templates button | 115×32 | 114×32 |

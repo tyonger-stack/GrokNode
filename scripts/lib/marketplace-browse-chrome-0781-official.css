@@ -51,3 +51,8 @@
 .sand-w01apr:not(#\#):not(#\#):not(#\#){margin-inline-start:-6px}
 .sand-w8bs97:not(#\#):not(#\#):not(#\#){line-height:var(--sand-line-height-sm)}
 .sand-ymw2ht:not(#\#):not(#\#){border-radius:9999px}
+
+/* The native email icon's background token. Official 0.78.1 defines it once in its own :root
+ * theme block (--sand-bg-magenta-primary:#e52f8b); upstream 0.18 ships no magenta scale at
+ * all, so the port carries the definition itself — no collision is possible. */
+:root{--sand-bg-magenta-primary:#e52f8b}

@@ -48,6 +48,12 @@ export interface DesktopMcpManagerOptions {
    * 缺省透传 —— 缩放是显示增强，缺了不该让市场不可用。
    */
   readonly displaySizedLogo?: (url: string, fetchDataUrl: () => Promise<string | null>) => Promise<string | null>;
+  /**
+   * 官方 0.78.1 的 native 目录条目（1Password / 邮箱，见 `mcp-native-entries.ts`）。官方在
+   * renderer 的市场模型里内存合并这两条；本重建的插件视图直接读 host 目录，所以追加在
+   * 桌面管理器的 getCatalog 出口 —— 浏览、搜索、chip 行共用的唯一汇合点。缺省不追加。
+   */
+  readonly nativeCatalogEntries?: () => unknown[];
 }
 
 /** Artifact anchor: electron-main/main.cjs:497780, `async function createSandDesktopMcpManager(options)`. */
@@ -84,7 +90,7 @@ export async function createSandDesktopMcpManager(options: DesktopMcpManagerOpti
   return {
     listServers: () => manager.listServers(),
     listEffectivePlugins: () => manager.listEffectivePlugins(),
-    getCatalog: (getAccessToken) => manager.getCatalog(getAccessToken),
+    getCatalog: async (getAccessToken) => [...((await manager.getCatalog(getAccessToken)) as unknown[]), ...(options.nativeCatalogEntries?.() ?? [])],
     resolvePluginLogo: async (url) => {
       const fetchLogo = async () => (await manager.resolvePluginLogo(url)) as string | null;
       if (options.displaySizedLogo == null) return await fetchLogo();

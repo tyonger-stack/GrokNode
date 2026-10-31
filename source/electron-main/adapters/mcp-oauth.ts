@@ -13,8 +13,21 @@ import { cleanupLegacyMcpAuthCredentials } from "../../shared/node/mcp/mcp-auth-
 import { parseAllowedExternalUrl } from "../../shared/external-url-policy.js";
 import { reportDesktopEdgeFailure, reportDesktopEdgeFailureClass } from "../desktop-edge-failures.js";
 import { requireFunction, requireObject } from "./provider-guards.js";
+import { app } from "electron";
+import { fetchTeamPluginPopularity } from "../mcp/mcp-team-popularity.js";
+import { createDashboardClient } from "../../shared/node/marketplace/cursor-marketplace-client.js";
+import { officialNativeCatalogEntries } from "../../shared/node/mcp/mcp-native-entries.js";
 
 type McpRuntimeDeps = Parameters<typeof createMcpRuntime<DesktopMcpManagerFacade>>[0];
+
+/** The OS preferred languages, for the `follow-system` language preference. Degrades to none. */
+function safePreferredSystemLanguages(): string[] {
+  try {
+    return app.getPreferredSystemLanguages?.() ?? [];
+  } catch {
+    return [];
+  }
+}
 
 async function syncLocalMcpServers(context: ProductionServiceContext): Promise<void> {
   const set = context.coordinatorLegs.legs.setHostSettings;
@@ -98,7 +111,19 @@ export function createProductionMcpOAuthRootPortProvider(
           dispose: () => loopback.dispose(),
         };
       },
-      fetchTeamPopularity: async () => new Map(),
+      // 官方 0.78.1 的团队热度链路（main-app.cjs:1116）：getMe 取 teamId →
+      // getTeamPluginPopularity({teamId}) → Map(pluginId → memberInstallCount)。
+      // fetchTeamPluginPopularity 自带 catch→空表，未登录/无团队时与官方同样为空。
+      fetchTeamPopularity: () =>
+        fetchTeamPluginPopularity({
+          client: createDashboardClient(
+            async () => {
+              const auth = await context.requireAccount().getAuthService();
+              return await auth.peekAccessToken?.() ?? null;
+            },
+            async () => context.machineId,
+          ),
+        }),
       refreshMcp: async (options) => {
         await syncLocalMcpServers(context);
         const refreshMcp = context.coordinatorLegs.legs.refreshMcp;
@@ -148,6 +173,13 @@ export function createProductionMcpOAuthPorts(): ProductionMcpOAuthPorts {
           if (token == null) throw new Error("MCP manager requires an authenticated account.");
           return token;
         },
+        // 官方 0.78.1 的 native 目录条目（1Password/邮箱）：桌面层按当前语言偏好产出，
+        // 每次 getCatalog 调用重新解析，偏好切换后下一次目录读取即为新文案。
+        nativeCatalogEntries: () =>
+          officialNativeCatalogEntries({
+            preference: context.settings.settingsStore.getLanguagePreference(),
+            systemTags: safePreferredSystemLanguages(),
+          }),
       }),
       settingsStore: context.settings.settingsStore,
       pushBoxSecrets: () => context.secretsStores.pushBoxSecrets.push("account_scope"),

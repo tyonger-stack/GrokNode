@@ -71,6 +71,14 @@ export interface SandMarketplacePlugin {
     ownership: "team" | "user";
   };
   publisher?: { name: string; displayName: string; isUserOwned: boolean };
+  /**
+   * Official 0.78.1's `Plugin.popularity_rank` (proto field 44, optional int32). Official's
+   * `getCatalog` sorts views by it ascending with nulls last (`e1`, `main-app.cjs` :68 col 22121),
+   * and its browse model's 为你推荐 tie-break reads it first. The 0.18 wire closure ends at
+   * field 43, so Connect decoding silently dropped it until the field was re-added to the
+   * recovered proto module; without it every row order fell back to displayName alone.
+   */
+  popularityRank?: number;
 }
 export function marketplacePluginToView(plugin: SandMarketplacePlugin) {
   return {
@@ -100,6 +108,7 @@ export function marketplacePluginToView(plugin: SandMarketplacePlugin) {
     iconUrl: plugin.logoUrl,
     connectors: plugin.connectors,
     skills: plugin.skills,
+    popularityRank: plugin.popularityRank,
     ...(plugin.variableFields.length > 0
       ? { fields: plugin.variableFields }
       : {}),
@@ -244,6 +253,7 @@ function toPlugin(
       description: server.description ?? "",
     })),
     skills,
+    popularityRank: plugin.popularityRank ?? undefined,
     variableFields: pluginVariablesSchemaToFields(plugin.variables?.toJson()),
     ...(marketplace != null &&
     (marketplace.teamId != null || marketplace.userId != null)

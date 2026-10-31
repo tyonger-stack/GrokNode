@@ -54620,6 +54620,7 @@ var Plugin$Runtime = (() => class _Plugin extends Message<_Plugin> {
   declare lifecycleState: PluginLifecycleState;
   declare minClientVersions?: PluginMinClientVersions;
   declare publishedByUser: boolean;
+  declare popularityRank?: number;
   constructor(data?: PartialMessage<_Plugin>) {
     super();
     this.id = protoInt64.zero;
@@ -54768,7 +54769,8 @@ var Plugin: MessageType<Plugin> = Plugin$Runtime as unknown as MessageType<Plugi
     kind: "scalar",
     T: 8
     /* ScalarType.BOOL */
-  }
+  },
+  { no: 44, name: "popularity_rank", kind: "scalar", T: 5, opt: true },
 ]);
 var PluginMinClientVersions$Runtime = (() => class _PluginMinClientVersions extends Message<_PluginMinClientVersions> {
   declare cursor?: string;

@@ -131,7 +131,21 @@ export class SandMcpCatalogFlow {
     // that looks wired and is not. So a supplement is registered in both places.
     const merged = mergeLocalCatalogSupplements(serverViews);
     for (const plugin of merged.plugins) this.catalog.set(plugin.pluginId, plugin);
-    const views = merged.views.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    // Official 0.78.1's view order (`GY.getCatalog`): `e1` = popularityRank ascending with
+    // nulls last, then displayName.localeCompare as the tie-break (`main-app.cjs` :68 col 22121).
+    // The 0.18 proto closure carried no field 44, so this sort used to be displayName-only and
+    // every section's row order diverged from official's.
+    const views = merged.views.sort(
+      (a, b) =>
+        (a.popularityRank == null
+          ? b.popularityRank == null
+            ? 0
+            : 1
+          : b.popularityRank == null
+            ? -1
+            : a.popularityRank - b.popularityRank) ||
+        a.displayName.localeCompare(b.displayName),
+    );
     this.reconcileLocalPluginAttribution(views);
     this.viewsCache = {
       views,

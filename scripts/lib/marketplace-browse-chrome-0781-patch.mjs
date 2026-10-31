@@ -88,6 +88,17 @@ const BOT_MARK_FRAME = JSON.parse(
   readFileSync(new URL("../../tests/fixtures/official-0781-bot-mark-frame.json", import.meta.url), "utf8"),
 );
 
+/**
+ * Official 0.78.1's native-row icon frames, captured verbatim from the running official app
+ * (CDP 9333, 2026-10-31). Official resolves a native row's icon from its NAME through its own
+ * brand registry — `1password` renders the 1Password brand SVG on #303136, `email` renders the
+ * envelope glyph on the magenta token — never the first-letter chip that upstream 0.18 falls
+ * back to for an entry without `iconUrl`. The frames are the port's source of truth.
+ */
+const NATIVE_ICON_FRAME = JSON.parse(
+  readFileSync(new URL("../../tests/fixtures/official-0781-native-icons.json", import.meta.url), "utf8"),
+);
+
 /** The chunk this patch owns: upstream 0.18's plugins view. */
 export const MARKETPLACE_BROWSE_CHROME_CHUNK = "view-B5Ug8wEm.js";
 
@@ -401,6 +412,12 @@ const REPLACEMENTS = [
       "?t.jsx(dt,{label:RLocT(\"Connecting…\",\"正在连接…\")}):" +
       "t.jsx(RM0781ConnectButton,{disabled:i,name:w.displayName,onClick:()=>h(w)})",
   },
+  {
+    label: "row icon: official's native brand icons, not the first-letter fallback",
+    before: "t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
+    after:
+      "RM0781NativeIcon(s)??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
+  },
 ];
 
 /**
@@ -455,9 +472,33 @@ const INJECTED_SOURCE = normalizeJsxChildren([
   "}",
   "function RM0781NativeMarker(entry){",
   "  if(entry==null)return null;",
-  "  const native=entry.native;",
-  "  if(native==null)return null;",
-  "  return RM0781NativeMarkers.indexOf(native)>=0?native:null;",
+  "  // The browse page hands the rows raw catalogue views, but the marketplace dialog wraps each",
+  "  // view as {entry: view, name, ...}. Official's own resolution is name-driven either way:",
+  "  // `mo(n)` probes [pluginName, name] and `DD` maps 1password/email to the brand specs, so the",
+  "  // port accepts the marker from either shape and falls back to the same name probe.",
+  "  const raw=entry.entry??entry;",
+  "  const native=raw.native??entry.native;",
+  "  if(native!=null)return RM0781NativeMarkers.indexOf(native)>=0?native:null;",
+  "  for(const name of [raw.pluginName,raw.name,raw.displayName,entry.pluginName,entry.name,entry.displayName]){",
+  "    if(name==null)continue;",
+  "    const key=RM0781Lower(String(name).trim());",
+  "    if(key===\"onepassword\"||key===\"1password\")return \"onepassword\";",
+  "    if(key===\"email\")return \"email\";",
+  "  }",
+  "  return null;",
+  "}",
+  "const RM0781NativeIconClasses=" + JSON.stringify(NATIVE_ICON_FRAME.onepassword.spanClass) + ";",
+  "const RM0781OnePasswordPathD=" + JSON.stringify(NATIVE_ICON_FRAME.onepassword.pathD) + ";",
+  "function RM0781NativeIcon(entry){",
+  "  const marker=RM0781NativeMarker(entry);",
+  "  if(marker==null)return null;",
+  "  if(marker===\"onepassword\"){",
+  "    return t.jsx(\"span\",{\"aria-hidden\":\"true\",className:RM0781NativeIconClasses,style:{width:40,height:40,borderRadius:11,backgroundColor:\"#303136\",color:\"rgb(255, 255, 255)\"}},",
+  "      t.jsx(\"svg\",{fill:\"#ffffff\",height:22,role:\"img\",viewBox:\"0 0 24 24\",width:22},",
+  "        t.jsx(\"path\",{d:RM0781OnePasswordPathD})));",
+  "  }",
+  "  return t.jsx(\"span\",{\"aria-hidden\":\"true\",className:RM0781NativeIconClasses,style:{width:40,height:40,borderRadius:11,backgroundColor:\"var(--sand-bg-magenta-primary)\",color:\"rgb(255, 255, 255)\"}},",
+  "    t.jsx(ue,{name:\"envelope\",size:22}));",
   "}",
   "function RM0781ApplyLeading(items,leading){",
   "  if(leading.length===0)return items.slice();",
