@@ -6,6 +6,7 @@ import { LocalHttpCredentials } from "./local-http-credentials.js";
 import { SandMcpConfigError } from "./mcp-config-error.js";
 import { GMAIL_MCP_URL } from "./local-http-gmail.js";
 import { CALENDAR_MCP_URL } from "./local-http-calendar.js";
+import { SLACK_MCP_URL } from "./local-http-slack.js";
 
 export class LocalHttpOAuth implements OAuthClientProvider {
   readonly redirectUrl = MCP_OAUTH_LOOPBACK_CALLBACK_URL;
@@ -31,6 +32,7 @@ export class LocalHttpOAuth implements OAuthClientProvider {
     if (client == null && !this.options.interactive) throw new UnauthorizedError();
     if (client == null && this.options.serverUrl === GMAIL_MCP_URL) throw new SandMcpConfigError("Gmail requires your registered Google OAuth client. Add Gmail again in Marketplace and enter its client ID and secret.");
     if (client == null && this.options.serverUrl === CALENDAR_MCP_URL) throw new SandMcpConfigError("Google Calendar requires your registered Google OAuth client. Add Google Calendar again in Marketplace and enter its client ID and secret.");
+    if (client == null && this.options.serverUrl === SLACK_MCP_URL) throw new SandMcpConfigError("Slack requires your registered Slack app OAuth client. Uninstall Slack in Marketplace, then add it again and enter its client ID and secret (redirect URL http://localhost:8787/callback).");
     return client;
   }
   async saveClientInformation(client: OAuthClientInformationMixed): Promise<void> {

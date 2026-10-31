@@ -11,6 +11,7 @@ import type { Context } from "../../../packages/context/core.js";
 import { withToolExecutionTimeoutSuspended } from "../../../packages/agent/tools/tool-timeout-suspension.js";
 import { GMAIL_MCP_URL, GMAIL_MCP_SCOPE } from "./local-http-gmail.js";
 import { CALENDAR_MCP_URL, CALENDAR_MCP_SCOPES } from "./local-http-calendar.js";
+import { SLACK_MCP_URL, SLACK_MCP_SCOPES } from "./local-http-slack.js";
 import type { McpServerConfig } from "./mcp-display-runtime.js";
 import { SandMcpConfigError } from "./mcp-config-error.js";
 import { generatedMcpResultFactory } from "./mcp-result-factory.js";
@@ -21,13 +22,14 @@ import { MCP_OAUTH_LOOPBACK_CALLBACK_URL } from "./mcp-oauth-loopback.js";
 const GOOGLE_HOSTED_AUTH = new Map<string, string>([
   [GMAIL_MCP_URL, GMAIL_MCP_SCOPE],
   [CALENDAR_MCP_URL, CALENDAR_MCP_SCOPES.join(" ")],
+  [SLACK_MCP_URL, SLACK_MCP_SCOPES.join(" ")],
 ]);
 // Local connectors keep a single credential slot stored under "default"; any other account key is
 // a display-only label persisted alongside the credentials (see LocalHttpCredentials.label).
 const STORAGE_ACCOUNT_KEY = "default";
 const accountKey = z.string().min(1).max(64);
 export const localHttpRequestSchema = z.discriminatedUnion("operation", [
-  z.object({ operation: z.literal("configure"), serverUrl: z.enum([GMAIL_MCP_URL, CALENDAR_MCP_URL]), clientId: z.string().min(1).max(512), clientSecret: z.string().min(1).max(2048) }),
+  z.object({ operation: z.literal("configure"), serverUrl: z.enum([GMAIL_MCP_URL, CALENDAR_MCP_URL, SLACK_MCP_URL]), clientId: z.string().min(1).max(512), clientSecret: z.string().min(1).max(2048) }),
   z.object({ operation: z.literal("list"), identifiers: z.array(z.string()).max(100) }),
   z.object({ operation: z.literal("execute"), serverIdentifier: z.string(), toolName: z.string(), args: z.record(z.unknown()), agentId: z.string().min(1).max(200).optional() }),
   z.object({ operation: z.literal("authenticate"), serverId: z.string(), accountKey, oauthRedirectUri: z.literal(MCP_OAUTH_LOOPBACK_CALLBACK_URL), forceReauth: z.boolean().optional() }),
