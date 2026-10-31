@@ -1016,7 +1016,13 @@ test("the port carries official's native brand icons and renders them in the ico
     patched.includes(
       "RM0781NativeIcon(s)??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
     ),
-    "the icon slot renders the native icon first and falls back to upstream's own icon",
+    "the detail page's icon slot renders the native icon first and falls back to upstream's own icon",
+  );
+  assert.ok(
+    patched.includes(
+      "RM0781NativeIcon(w)??t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
+    ),
+    "the browse row's icon slot renders the native icon first, so the two native rows get their brand icon",
   );
 });
 

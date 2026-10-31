@@ -418,6 +418,15 @@ const REPLACEMENTS = [
     after:
       "RM0781NativeIcon(s)??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
   },
+  {
+    // The browse row's own icon slot. `w` is the row's catalogue view, so the native marker is on
+    // it; the slot renders upstream's first-letter ToolIcon when the entry has no logo, which is
+    // what the two native entries (1Password, 邮箱) used to get. Official draws their brand icon.
+    label: "browse row icon: official's native brand icons, not the first-letter fallback",
+    before: "t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
+    after:
+      "RM0781NativeIcon(w)??t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
+  },
 ];
 
 /**
