@@ -523,10 +523,10 @@ directly over the preload bridge, so those two entries are appended at the deskt
 密码管理器 section exist here, and what puts 密码管理器 in the visible chip row where official has it.
 
 **The search field keeps upstream's input component.** Official's bar puts the search field on its own
-full-width row: official's field measures 712 px and its input 671 px in the measured window. The
-port reproduces that row, so the reconstruction's field measures 735 px and its input 693 px — 23 px
-and 22 px wider, because official's Bot-templates button is 23 px wider (see below). The field's own
-component, its 14 px magnifier and its placeholder are upstream's.
+full-width row: official's field measures 712×32 px and its input 671×20 px in the measured window.
+The port reproduces that row, so the reconstruction's field measures 711×32 px and its input 669×18 px
+— 1 px and 2 px narrower. The field's own component, its 14 px magnifier and its placeholder are
+upstream's, and upstream's input is 18 px tall where official's is 20.
 
 **The connected-apps entry is narrower here.** Official's entry measures 172×28 because it shows the
 logo stack of the apps it has connected — 25 of them in the measured session. This build has none
@@ -546,6 +546,15 @@ data, not as a copied asset file — at the same 18×18 size, with the same path
 the same `sand-grok-bot-mark sand-1n2onr6` classes. On the build before the chip-selection dependency
 was added (see below) the mark had no size in the memoized toolbar and the button measured 91 px;
 after the fix it renders, and it renders the same in both apps.
+
+**The two native rows keep upstream's first-letter icon.** Official draws 1Password's brand icon (the
+keyhole on `#303136`) and 邮箱's envelope glyph, because official resolves native icons from its own
+brand registry. The port carries official's brand bytes and official's icon recipe and renders them
+in the detail page's icon slot — the slot this port owns. The browse row's icon slot is not in the
+patched chunk at all: it lives in upstream 0.18's shared `index-UbX-y3il.js`, and this port never
+rewrites that chunk, so those two rows still show upstream's first-letter chip ("1", "邮"). Measured
+on the deployed build: no brand path in the dialog and 62 first-letter chips, where official's
+1Password row carries the brand icon.
 
 **The plugin detail page is upstream's.** Clicking a card opens a detail view inside the same dialog.
 Official's shows a back arrow, the icon, the description, a connect button and an information table.
@@ -568,9 +577,12 @@ reading was taken before it had arrived.
 ## The measured parity
 
 Measured over CDP on 2026-10-31 against the **deployed** `/Applications/Grok Node.app` — the
-deployed asar and the built asar byte-identical, sha256 `99069a77…`, and still identical after the
+deployed asar and the built asar byte-identical, sha256 `560cc1ca…`, and still identical after the
 app had run — and against official 0.78.1 on port 9333. Both dialogs are 900 px wide. Both apps were
-started fresh for the comparison and both opened the marketplace list page.
+started fresh for the comparison and both opened the marketplace list page. The same comparison was
+then repeated through the desktop accessibility tree (a real click on 连接应用 in each app, then the
+AX headings and checkboxes read back), and both trees carry the same thirteen section headings and
+the same seven chip checkboxes.
 
 | measurement | ours | official 0.78.1 |
 |---|---|---|
@@ -586,6 +598,10 @@ started fresh for the comparison and both opened the marketplace list page.
 | section list wrapper margin | −12 px | −12 px |
 | section header to grid gap | 8 | 8 |
 | sections | 为你推荐 + 11 chips + 团队插件 | 为你推荐 + 11 chips + 团队插件 |
+| section headings, read from the AX tree | identical list | identical list |
+| native catalogue entries | 1Password, 邮箱 | 1Password, 邮箱 |
+| the marketplace-published entry | 71001007 / oh-my-claudecode | 71001007 / oh-my-claudecode |
+| catalogue entries | 488 | 293 |
 | search field | 711×32 | 712×32 |
 | search input | 669×18 | 671×20 |
 | Bot-templates button | 115×32 | 114×32 |
@@ -622,8 +638,8 @@ The regression test is `tests/marketplace-browse-chrome-0781.test.mjs`. It cover
 (exactly once), the injected source (parses on its own), every Chinese string (against the captured
 official fixture `tests/fixtures/official-0781-marketplace-wording.json`), every class (resolved in
 upstream 0.18's stylesheet or in this wave's official CSS), and the section builder's behaviour
-(the thirteen-section shape, the six-row preview, the group-action threshold, the selected chip's
-full list and the appended hero).
+(the fourteen-section shape, the team section, the six-row preview, the group-action threshold, the
+selected chip's full list and the appended hero).
 
 Two further guards bite on the defect that this wave's first cut shipped:
 
@@ -652,6 +668,16 @@ Two further guards bite on the defect that this wave's first cut shipped:
   to carry the same margin.
 * **the ported section carries official's gap, not upstream's zero gap** — it requires the ported
   section to use official's `sand-167g77z` and not upstream's `sand-xhr3t`.
+* **the marketplace-published entries render official's team section, and only those** — it asserts
+  the section's own title, that it holds exactly the marketplace-flagged entries, that it follows
+  the chip sections, that it orders them by teammate count, and that a catalogue without them
+  renders no team section at all.
+* **the Bot-templates button carries official's idle mark frame as its first child** — it asserts
+  official's own path bytes, svg id, viewBox, ink fill, fill rule, the idle and paused markers, and
+  the child order against the fixture captured from the running official app.
+* **the native rows carry official's brand icons** — it asserts official's own 1Password path bytes
+  and class recipe against the captured fixture, so a row can never fall back to the first-letter
+  chip.
 
 The class-resolution guard does **not** depend on `.build`. It bites on a runner that has no
 upstream payload at all, and it cross-checks its declared upstream class list against upstream
@@ -675,9 +701,16 @@ scripts/lib/marketplace-jsx-children.mjs                     the jsx-runtime chi
 scripts/lib/marketplace-official-wording-patch.mjs            the dialog class recipe (P1)
 scripts/clean-build.mjs                                       the chain
 frontend/src/i18n/official-marketplace-copy.ts                the connect wording (P5)
+source/shared/node/mcp/mcp-native-entries.ts                 official's native catalogue entries
+source/electron-main/mcp/desktop-mcp-manager.ts              appends them to the catalogue
+source/shared/node/mcp/mcp-marketplace.ts                     the catalogue projection
+source/packages/proto/generated/aiserver/v1/dashboard_pb.ts   popularity_rank (proto field 44)
 tests/marketplace-browse-chrome-0781.test.mjs                 the regression cover
+tests/marketplace-0781-host.test.mjs                         the host-side cover for the native entries
 tests/fixtures/official-0781-marketplace-wording.json         official's locale entries
 tests/fixtures/official-0781-marketplace-theme-tokens.json    official's palette for the dialog
+tests/fixtures/official-0781-bot-mark-frame.json               official's rendered Bot-templates mark frame
+tests/fixtures/official-0781-native-icons.json                official's 1Password and email brand icons
 ```
 
 The provenance JSON lands next to the staged renderer as

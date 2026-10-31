@@ -1005,7 +1005,7 @@ test("the Bot-templates button carries official's idle mark frame as its first c
   assert.ok(markAt >= 0 && labelAt >= 0 && markAt < labelAt, "the mark precedes the label, official's own child order");
 });
 
-test("the native rows carry official's brand icons, not the first-letter chip", () => {
+test("the port carries official's native brand icons and renders them in the icon slot it owns", () => {
   const patched = patchMarketplaceBrowseChrome0781(syntheticChunk());
   assert.ok(patched.includes(nativeIconFrame.onepassword.pathD), "official's 1Password brand path bytes");
   assert.ok(patched.includes(nativeIconFrame.onepassword.spanClass), "official's icon class recipe");
@@ -1013,8 +1013,10 @@ test("the native rows carry official's brand icons, not the first-letter chip", 
   assert.ok(patched.includes("var(--sand-bg-magenta-primary)"), "official's email background token");
   assert.ok(patched.includes('name:"envelope"'), "official's email glyph");
   assert.ok(
-    patched.includes("RM0781NativeIcon(s)??t.jsx(m,"),
-    "the row renders the native icon first and falls back to upstream's icon slot",
+    patched.includes(
+      "RM0781NativeIcon(s)??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
+    ),
+    "the icon slot renders the native icon first and falls back to upstream's own icon",
   );
 });
 
