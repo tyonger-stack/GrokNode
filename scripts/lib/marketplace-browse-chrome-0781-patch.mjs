@@ -474,7 +474,7 @@ const INJECTED_SOURCE = normalizeJsxChildren([
   "  if(entry==null)return null;",
   "  // The browse page hands the rows raw catalogue views, but the marketplace dialog wraps each",
   "  // view as {entry: view, name, ...}. Official's own resolution is name-driven either way:",
-  "  // `mo(n)` probes [pluginName, name] and `DD` maps 1password/email to the brand specs, so the",
+  "  // mo(n) probes [pluginName, name] and DD maps 1password/email to the brand specs, so the",
   "  // port accepts the marker from either shape and falls back to the same name probe.",
   "  const raw=entry.entry??entry;",
   "  const native=raw.native??entry.native;",
