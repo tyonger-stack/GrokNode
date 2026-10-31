@@ -17,10 +17,10 @@
 // The staged chunk is checked too when a build is present.
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse } from "acorn";
 import {
   MARKETPLACE_BROWSE_CHROME_0781_INJECTED_SOURCE,
@@ -713,6 +713,53 @@ test("the chip row's items are a dependency of the toolbar that renders it", () 
   const store = patched.match(/e\[57\]=Ts[^;]*e\[66\]=\$e/);
   assert.ok(store, "the toolbar's memo store must be present");
   assert.match(store[0], /\bwt\b/, "the toolbar's memo must store the marketplace items");
+});
+
+/**
+ * The chip row reads the selected chip for its own pressed state.
+ *
+ * The toolbar that renders it is memoized, so without the selected chip in the memo's dependency
+ * list the chip row keeps the state it had on the first render: the section list below switches
+ * to the chosen chip (it is rendered outside the memo) while the chip row keeps aria-pressed on
+ * 全部 and the unselected class. Official 0.78.1 moves the pressed state with the selection.
+ *
+ * Measured on the deployed build before this fix: clicking 效率 switched the sections to 效率 while
+ * aria-pressed stayed 全部=true, 效率=false.
+ */
+function assertChipSelectionDependency(patched) {
+  assert.ok(patched.includes("selectedKey:RM0781Chip"), "the chip row must read the selected chip");
+  const condition = patched.match(/e\[57\]!==Ts[^?]*\?/);
+  assert.ok(condition, "the toolbar's memo condition must be present");
+  assert.match(condition[0], /\bRM0781Chip\b/, "the toolbar's memo must depend on the selected chip");
+  const store = patched.match(/e\[57\]=Ts[^;]*e\[66\]=\$e/);
+  assert.ok(store, "the toolbar's memo store must be present");
+  assert.match(store[0], /\bRM0781Chip\b/, "the toolbar's memo must store the selected chip");
+}
+
+test("the chip row's selected chip is a dependency of the toolbar that renders it", () => {
+  assertChipSelectionDependency(patchMarketplaceBrowseChrome0781(syntheticChunk()));
+});
+
+test("mutations: dropping the selected chip dependency fails the chip row's guard", async () => {
+  // The mutant has to live inside the repo so the patch module's own relative imports resolve.
+  const original = path.join(repoRoot, "scripts/lib/marketplace-browse-chrome-0781-patch.mjs");
+  const source = readFileSync(original, "utf8");
+  const mutated = source
+    .replace("||e[903]!==RM0781Chip?", "?")
+    .replace("e[903]=RM0781Chip,", "");
+  assert.notEqual(mutated, source, "the mutation must apply");
+  const mutantFile = path.join(repoRoot, "scripts/lib/.mutant-0781-chip-selection.mjs");
+  writeFileSync(mutantFile, mutated);
+  try {
+    const mutant = await import(pathToFileURL(mutantFile).href);
+    const patched = mutant.patchMarketplaceBrowseChrome0781(syntheticChunk());
+    assert.throws(
+      () => assertChipSelectionDependency(patched),
+      "the guard must fail on a patch that drops the selected chip dependency",
+    );
+  } finally {
+    rmSync(mutantFile, { force: true });
+  }
 });
 
 test("every Chinese string the port writes is official's own", () => {

@@ -74,6 +74,19 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "acorn";
 import { normalizeJsxChildren } from "./marketplace-jsx-children.mjs";
+import { readFileSync } from "node:fs";
+
+/**
+ * Official 0.78.1's GrokBotMark idle frame, captured verbatim from the running official app
+ * (CDP 9333, 2026-10-31). Official renders the Bot-templates glyph as
+ * `jsx(dT, {color:"black", isPaused:true, sizePx:18})` — its motion-SVG runtime generates the
+ * blob at runtime, so the asar tree carries no path bytes. The frame is deterministic (measured
+ * across six mounts and three close-reopen rounds: byte-identical d) and static in the button
+ * surface (idle and paused before, during and after hover), so the captured bytes are the port.
+ */
+const BOT_MARK_FRAME = JSON.parse(
+  readFileSync(new URL("../../tests/fixtures/official-0781-bot-mark-frame.json", import.meta.url), "utf8"),
+);
 
 /** The chunk this patch owns: upstream 0.18's plugins view. */
 export const MARKETPLACE_BROWSE_CHROME_CHUNK = "view-B5Ug8wEm.js";
@@ -287,16 +300,23 @@ const REPLACEMENTS = [
     // first render — when the catalogue is still empty — and the chip row stays empty forever,
     // while the page below it (rendered outside the memo) shows every chip section. Measured on
     // the deployed build: 11 sections, zero chips.
-    label: "browse toolbar: the toolbar re-renders when the marketplace items change",
+    //
+    // The same memo also does not depend on the SELECTED chip, so the chip row's own selected
+    // state freezes on the first render: the list below switches to the chosen chip, but the chip
+    // row keeps aria-pressed on 全部 and the chip's own class. Measured on the deployed build:
+    // clicking 效率 switched the sections to 效率 while aria-pressed stayed 全部=true, 效率=false.
+    // Official 0.78.1 moves the pressed state with the selection (全部 1 -> 0, 效率 0 -> 1).
+    label: "browse toolbar: the toolbar re-renders when the marketplace items or the selected chip change",
     before:
       "e[57]!==Ts||e[58]!==w||e[59]!==G||e[60]!==a||e[61]!==W||e[62]!==m||e[63]!==Me||e[64]!==g||e[65]!==p?",
     after:
-      "e[57]!==Ts||e[58]!==w||e[59]!==G||e[60]!==a||e[61]!==W||e[62]!==m||e[63]!==Me||e[64]!==g||e[65]!==p||e[902]!==wt?",
+      "e[57]!==Ts||e[58]!==w||e[59]!==G||e[60]!==a||e[61]!==W||e[62]!==m||e[63]!==Me||e[64]!==g||e[65]!==p||e[902]!==wt||e[903]!==RM0781Chip?",
   },
   {
-    label: "browse toolbar: the toolbar memo stores the marketplace items",
+    label: "browse toolbar: the toolbar memo stores the marketplace items and the selected chip",
     before: "e[57]=Ts,e[58]=w,e[59]=G,e[60]=a,e[61]=W,e[62]=m,e[63]=Me,e[64]=g,e[65]=p,e[66]=$e",
-    after: "e[57]=Ts,e[58]=w,e[59]=G,e[60]=a,e[61]=W,e[62]=m,e[63]=Me,e[64]=g,e[65]=p,e[902]=wt,e[66]=$e",
+    after:
+      "e[57]=Ts,e[58]=w,e[59]=G,e[60]=a,e[61]=W,e[62]=m,e[63]=Me,e[64]=g,e[65]=p,e[902]=wt,e[903]=RM0781Chip,e[66]=$e",
   },
   {
     label: "browse toolbar: official's Bot-templates button",
@@ -334,7 +354,8 @@ const REPLACEMENTS = [
     after:
       "{items:s,query:a,isLoading:l,isBusy:i,isFilterActive:d,servers:r,installedByKey:o,effectivePluginsById:c," +
       "pendingAddKey:f,onAdd:h,onOpenPlugin:y,selectedChip:RM0781SelectedChip,onSelectChip:RM0781SelectChip," +
-      "recommendedHero:RM0781RecommendedHero,onShowRecommended:RM0781ShowRecommendedHero}=n",
+      "recommendedHero:RM0781RecommendedHero,onShowRecommended:RM0781ShowRecommendedHero}=n," +
+      "RM0781TeamCounts=za()",
   },
   {
     label: "browse sections are official's chip sections",
@@ -342,7 +363,8 @@ const REPLACEMENTS = [
     after:
       'const w=m?[{sectionKey:"results",category:RLocT("Results","结果"),items:s}]:' +
       "RM0781BuildSections(s,{selectedChip:RM0781SelectedChip,recommendedHero:RM0781RecommendedHero," +
-      "onShowRecommended:RM0781ShowRecommendedHero,isInstalled:e=>et(e,r,o,c).isInstalled,locale:RM0781Locale()});",
+      "onShowRecommended:RM0781ShowRecommendedHero,isInstalled:e=>et(e,r,o,c).isInstalled,locale:RM0781Locale()," +
+      "teamInstallCounts:RM0781TeamCounts});",
   },
   {
     label: "browse section list depends on the selected chip and the recommended hero",
@@ -520,6 +542,11 @@ const INJECTED_SOURCE = normalizeJsxChildren([
   "    sections.push(RM0781MakeSection(\"chip:\"+bucket.id,bucket.id,[chip.en,chip.zh],items,",
   "      items.length>RM0781SectionLimit?items.length-RM0781SectionLimit:0));",
   "  }",
+  "  const teamEntries=entries.filter(e=>e.marketplace!=null).sort((a,b)=>",
+  "    (teamInstallCounts[b.id]??0)-(teamInstallCounts[a.id]??0)||String(a.displayName==null?\"\":a.displayName).localeCompare(String(b.displayName==null?\"\":b.displayName),locale));",
+  "  if(teamEntries.length>0){",
+  "    sections.push(RM0781MakeSection(\"team-plugins\",\"team\",[\"Team plugins\",\"团队插件\"],teamEntries,0));",
+  "  }",
   "  if(options.recommendedHero===true){",
   "    sections.push(RM0781MakeSection(\"recommended-hero\",null,[\"Recommended for you\",\"为你推荐\"],recommended,0));",
   "  }",
@@ -619,8 +646,18 @@ const INJECTED_SOURCE = normalizeJsxChildren([
   "    [stack,t.jsx(\"span\",{className:RM0781CountClasses},label),t.jsx(ue,{name:\"chevron-right\",size:12})]);",
   "}",
   "const RM0781BotTemplatesClasses=\"sand-11wthnw sand-w8bs97 sand-14gdtuo sand-1k57tk5 sand-784prv sand-1t137rt sand-9v5kkp sand-1v39l1b sand-1y3gkto sand-jyslct sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-17d4w8g sand-2lah0s sand-10w6t97 sand-25sj25 sand-2vl965 sand-6dg3xy sand-1y0btm7 sand-5fd6op sand-ymw2ht sand-10e981r sand-1sygd3j sand-tyxrsu sand-jb2p0i sand-uxw1ft sand-1ypdohk\";",
+  "const RM0781BotMarkClasses=\"sand-grok-bot-mark sand-1n2onr6 sand-3nfvp2 sand-2lah0s\";",
+  "const RM0781BotMarkPathD=" + JSON.stringify(BOT_MARK_FRAME.pathD) + ";",
+  "function RM0781BotMark(){",
+  "  return t.jsx(\"span\",{\"aria-hidden\":\"true\",className:RM0781BotMarkClasses,\"data-grok-state\":\"idle\",\"data-paused\":\"true\",style:{width:18,height:18,\"--grok-bot-ink\":\"light-dark(#000000, #FFFFFF)\"}},",
+  "    t.jsx(\"span\",{\"aria-hidden\":\"true\",style:{display:\"inline-block\",position:\"relative\",flexShrink:0,width:18,height:18,lineHeight:0}},",
+  "      t.jsx(\"span\",{style:{position:\"absolute\",left:\"50%\",top:\"50%\",width:\"153.333%\",height:\"153.333%\",transform:\"translate(-50%, -50%)\",pointerEvents:\"none\"}},",
+  "        t.jsx(\"svg\",{height:\"100%\",id:\"motion-_r_im_\",viewBox:\"0 0 27.6 27.6\",width:\"100%\",xmlns:\"http://www.w3.org/2000/svg\"},",
+  "          t.jsx(\"path\",{d:RM0781BotMarkPathD,fill:\"var(--grok-bot-ink)\",fillRule:\"evenodd\"})))));",
+  "}",
   "function RM0781BotTemplatesButton(){",
   "  return t.jsxs(\"button\",{\"data-bot-templates-link\":\"\",className:RM0781BotTemplatesClasses,type:\"button\"},[",
+  "    t.jsx(RM0781BotMark,{}),",
   "    RLocT(\"Bot templates\",\"Bot 模板\"),",
   "    t.jsx(\"span\",{\"aria-hidden\":\"true\",className:RM0781KitIconClasses},t.jsx(ue,{name:\"arrow-right-up\",size:12})),",
   "  ]);",

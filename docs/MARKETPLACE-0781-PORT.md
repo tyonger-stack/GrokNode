@@ -398,6 +398,21 @@ The port adds the items to the memo's dependency list (`e[902]!==wt` in the cond
 them. The regression test asserts that the toolbar's memo depends on the items whenever the chip row
 reads them, and that guard was mutation-checked: with the dependency removed it fails.
 
+**The chip row's selected state was frozen for the same reason.** The memo also did not depend on the
+selected chip, so the chip row kept the state it had on the first render: the section list below
+switched to the chosen chip — it is rendered outside the memo — while the chip row itself kept
+`aria-pressed` on 全部 and the unselected class. Found by driving both apps through the GUI: in
+official, clicking 效率 moves the pressed state (全部 1 → 0, 效率 0 → 1); in the reconstruction, the
+list switched to 效率 while the chip row still showed 全部 selected, and clicking 效率 a second time
+did nothing, because the stale `selectedKey` made the toggle look like a first click.
+
+The port adds the selected chip to the same memo (`e[903]!==RM0781Chip` in the condition and
+`e[903]=RM0781Chip` in the store). Measured on the deployed build after the fix: clicking 效率 gives
+全部=false, 效率=true and the chip's own selected class; clicking 效率 again returns to 全部=true and
+the full list, and clicking 全部 is idempotent. The regression test asserts the dependency, and a
+second test mutates the patch (drops the dependency, keeps everything else) and asserts that the
+guard then fails — so the guard cannot rot into a no-op.
+
 **The content column.** Official's chip sections sit in a wrapper that pulls them 12 px past the
 pane's 32 px padding — official's own rule is `.sand-lhcdhu:not(#\#):not(#\#){margin-inline:-12px}` —
 so official's sections start 21 px from the dialog's edge and measure 858 px in the 900 px dialog.
@@ -519,11 +534,18 @@ the title band, the search row and the chip row stay put while the sections scro
 official's structure would mean moving upstream's shared settings-pane header into the scroll area,
 which the port does not do; it reproduces official's visible three-row geometry instead.
 
-**The Bot-templates button is narrower.** Official's button is 114 px and the reconstruction's is
-91 px. Official's button carries an 18×18 animated Grok-bot glyph before the label; that glyph is an
-inline SVG motion component, and upstream 0.18's own mark component is not exported from the
-registry chunk (its sprite ids are runtime-generated per agent), so the port renders the button
-without the glyph rather than with an empty slot. The button's padding and its arrow are upstream's.
+**The Bot-templates button is one pixel wider.** Official's button is 114 px and the reconstruction's is
+115 px. Both carry the same mark — the port rebuilds official's inline Grok-bot SVG as its own path
+data, not as a copied asset file — at the same 18×18 size, with the same path box (6, 6, 17, 17) and
+the same `sand-grok-bot-mark sand-1n2onr6` classes. On the build before the chip-selection dependency
+was added (see below) the mark had no size in the memoized toolbar and the button measured 91 px;
+after the fix it renders, and it renders the same in both apps.
+
+**The plugin detail page is upstream's.** Clicking a card opens a detail view inside the same dialog.
+Official's shows a back arrow, the icon, the description, a connect button and an information table.
+The reconstruction shows upstream 0.18's own detail view — the name, 查看源码, 添加, the description and
+the plugin's skills. The browse path is the ported surface; the detail view is upstream's component,
+kept as it is.
 
 **The connect action keeps upstream's button component.** Official renders it with its own button
 recipe (a `--sand-bg-secondary` surface); upstream 0.18's button component has a different one. The
@@ -536,8 +558,9 @@ chips); the reconstruction renders eleven, because two of official's sections ha
 ## The measured parity
 
 Measured over CDP on 2026-10-31 against the **deployed** `/Applications/Grok Node.app` — the
-deployed asar and the built asar byte-identical, sha256 `bf108c45…`, and still identical after the
-app had run — and against official 0.78.1 on port 9333. Both dialogs are 900 px wide.
+deployed asar and the built asar byte-identical, sha256 `99069a77…`, and still identical after the
+app had run — and against official 0.78.1 on port 9333. Both dialogs are 900 px wide. Both apps were
+started fresh for the comparison and both opened the marketplace list page.
 
 | measurement | ours | official 0.78.1 |
 |---|---|---|
@@ -553,13 +576,15 @@ app had run — and against official 0.78.1 on port 9333. Both dialogs are 900 p
 | section list wrapper margin | −12 px | −12 px |
 | section header to grid gap | 8 | 8 |
 | sections | 为你推荐 + 10 chips | 为你推荐 + 12 chips |
-| search field | 735×32 | 712×32 |
-| search input | 693×18 | 671×20 |
-| Bot-templates button | 91×32 | 114×32 |
+| search field | 711×32 | 712×32 |
+| search input | 669×18 | 671×20 |
+| Bot-templates button | 115×32 | 114×32 |
+| Bot-templates mark | 18×18, path box 6,6,17,17 | 18×18, path box 6,6,17,17 |
 | connected-apps entry | 94×24 | 172×28 |
 | icon-only buttons in the dialog | 1 (the close button) | 1 (the close button) |
 | dialog max-height | 728 px = 100vh − 32 px of a 760 px viewport | 825 px = 100vh − 32 px of an 857 px viewport |
 | title glyph, first lit image column | 116 | 115 |
+| chip selection, pressed state | moves with the selection | moves with the selection |
 
 Every remaining difference is accounted for under "Known differences" below.
 
