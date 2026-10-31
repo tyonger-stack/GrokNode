@@ -94,6 +94,11 @@ export interface SandStoredSettings {
    * `resolveHardwareAccelerationEnabled`.
    */
   hardwareAccelerationEnabled?: boolean;
+  /**
+   * Settings → General → spell check (0.78.1 `hzdQ0D`). Optional boolean; `undefined`
+   * means the Chromium default (enabled).
+   */
+  spellCheckEnabled?: boolean;
 }
 
 export function emptySettings(): SandStoredSettings {
@@ -210,6 +215,9 @@ function parseSettings(value: unknown): SandStoredSettings | null {
   // parseSettings whitelist: hardwareAccelerationEnabled must be read explicitly or it
   // is silently dropped on load (same trap as mainAgentId / botColorInChatEnabled).
   if (typeof raw.hardwareAccelerationEnabled === "boolean") result.hardwareAccelerationEnabled = raw.hardwareAccelerationEnabled;
+  // parseSettings whitelist: spellCheckEnabled must be read explicitly or it is
+  // silently dropped on load (same trap as mainAgentId / botColorInChatEnabled).
+  if (typeof raw.spellCheckEnabled === "boolean") result.spellCheckEnabled = raw.spellCheckEnabled;
   if (Array.isArray(raw.sidebarSections)) result.sidebarSections = SidebarSections.carryFolds({ sections: raw.sidebarSections.filter((entry): entry is SidebarSection => typeof entry === "object" && entry != null && typeof (entry as { id?: unknown }).id === "string" && typeof (entry as { name?: unknown }).name === "string" && Array.isArray((entry as { agentIds?: unknown }).agentIds)) });
   return result;
 }
@@ -362,6 +370,9 @@ export class SandSettingsStore {
   /** Hardware acceleration preference. Undefined follows the 0.71.2 platform default. */
   getHardwareAccelerationEnabled(): boolean | undefined { return this.load().hardwareAccelerationEnabled; }
   setHardwareAccelerationEnabled(value: boolean): void { this.update((s) => ({ ...s, hardwareAccelerationEnabled: value })); }
+  /** Spell-check preference (0.78.1 `hzdQ0D`). Undefined follows the Chromium default (enabled). */
+  getSpellCheckEnabled(): boolean { return this.load().spellCheckEnabled !== false; }
+  setSpellCheckEnabled(value: boolean): void { this.update((s) => ({ ...s, spellCheckEnabled: value })); }
   static storable(args: { sections: readonly SidebarSection[]; stored?: readonly SidebarSection[] }): SidebarSection[] { return SidebarSections.carryFolds(args).map((s) => ({ id: s.id, name: s.name, agentIds: [...s.agentIds], isCollapsed: s.isCollapsed ?? false })); }
   getSidebarSections(): SidebarSection[] | undefined { const stored = this.load().sidebarSections; return stored === undefined ? undefined : SidebarSections.carryFolds({ sections: stored }); }
   setSidebarSections(sections: readonly SidebarSection[]): void { this.update((s) => ({ ...s, sidebarSections: SandSettingsStore.storable(s.sidebarSections === undefined ? { sections } : { sections, stored: s.sidebarSections }) })); }

@@ -459,6 +459,11 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
         deps.startup.cancel();
         return;
       }
+      // 0.78.1 spell-check preference applies at the session level (Chromium spellchecker).
+      try {
+        const electron = require("electron") as { session?: { defaultSession?: { setSpellCheckerEnabled?: (enabled: boolean) => void } } };
+        electron.session?.defaultSession?.setSpellCheckerEnabled?.(new SandSettingsStore(settingsPath).getSpellCheckEnabled());
+      } catch { /* session API unavailable in this environment */ }
       deps.startup.markPhase("move_check");
       const moveDisposition = await deps.startup.runMoveCheck({
         hasPendingActivation: deps.deepLinks.hasPendingActivation,

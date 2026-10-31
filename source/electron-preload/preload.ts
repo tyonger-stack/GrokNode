@@ -532,6 +532,10 @@ export function createDesktopPreloadBridge(options: {
       getDesktopNotificationPermission: () => edge("getDesktopNotificationPermission"),
       requestDesktopNotificationPermission: () => edge("requestDesktopNotificationPermission"),
       openDesktopNotificationSettings: () => edge("openDesktopNotificationSettings"),
+      onNotificationSound: (listener: (payload: { sound?: string }) => void) =>
+        subscribe("notification-sound", (payload: unknown) => listener(payload as { sound?: string })),
+      getSpellCheckEnabled: () => edge("getSpellCheckEnabled"),
+      setSpellCheckEnabled: (args: unknown) => edge("setSpellCheckEnabled", args),
     },
     vault: {
       listGrokBotVaultCredentials: () => edge("listGrokBotVaultCredentials"),

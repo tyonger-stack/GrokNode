@@ -40,6 +40,8 @@ export const MAIN_METHOD_TABLE = {
   getDesktopNotificationPermission: { args: "none" },
   requestDesktopNotificationPermission: { args: "none" },
   openDesktopNotificationSettings: { args: "none" },
+  getSpellCheckEnabled: { args: "none" },
+  setSpellCheckEnabled: { args: "object" },
   setAutoReviewInstructions: { args: "object" },
   getLocalToolPermission: { args: "none" },
   getLocalToolPermissionCeiling: { args: "none" },

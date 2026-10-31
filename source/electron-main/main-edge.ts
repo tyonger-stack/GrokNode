@@ -93,6 +93,8 @@ export interface MainEdgeDeps {
   readonly platform: NodeJS.Platform;
   readonly delay?: (milliseconds: number) => Promise<void>;
   readonly detectTimeZone?: () => string | null | undefined;
+  /** 0.78.1 spell-check applier (Electron session spell checker); absent in tests. */
+  readonly applySpellCheckEnabled?: (enabled: boolean) => void;
   readonly computerPreview?: ComputerPreviewController;
   readonly computerUpgrade?: ComputerUpgradeScheduler;
   /** Boolean returned by AF() at process start (0.71.2 `hardwareAccelerationEnabledAtLaunch`). */
@@ -202,6 +204,15 @@ export function createMainEdgeHandlers(deps: MainEdgeDeps): HandlerMap {
     getDesktopNotificationPermission: () => desktop0721(deps).getDesktopNotificationPermission(),
     requestDesktopNotificationPermission: () => desktop0721(deps).requestDesktopNotificationPermission(),
     openDesktopNotificationSettings: () => desktop0721(deps).openDesktopNotificationSettings(),
+    getSpellCheckEnabled: () => invoke(deps.settingsStore, "getSpellCheckEnabled"),
+    setSpellCheckEnabled: (raw) => {
+      const { enabled } = req(raw);
+      const value = enabled === true;
+      invoke(deps.settingsStore, "setSpellCheckEnabled", value);
+      const apply = deps.applySpellCheckEnabled;
+      if (typeof apply === "function") apply(value);
+      return { enabled: value };
+    },
     setAutoReviewInstructions: async (raw) => {
       const value = req(raw).instructions;
       const normalized = normalizeSandAutoReviewInstructions(req(value));

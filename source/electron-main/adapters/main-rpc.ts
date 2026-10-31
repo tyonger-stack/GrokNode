@@ -149,6 +149,14 @@ export function createElectronProductionMainRpcBinding(
           electron.app.relaunch();
           electron.app.quit();
         },
+        applySpellCheckEnabled: (enabled: boolean) => {
+          try {
+            const electron = require("electron") as {
+              session?: { defaultSession?: { setSpellCheckerEnabled?: (enabled: boolean) => void } };
+            };
+            electron.session?.defaultSession?.setSpellCheckerEnabled?.(enabled);
+          } catch { /* spell checker API unavailable in this Electron build */ }
+        },
       };
     },
   });

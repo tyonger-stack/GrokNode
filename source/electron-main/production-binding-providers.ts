@@ -438,6 +438,17 @@ export function createProductionNotificationsBinding(
         isSupported: () => ports.Notification.isSupported(),
         createNotification: (options) => new ports.Notification(options),
         openAgent: (agentId) => context.requireMainEdge().emit("focus-agent", { id: agentId }),
+        notificationSound: {
+          isEnabled: () => {
+            try { return context.settings.settingsStore.getDesktopNotificationPreferences()?.playSound === true; } catch { return false; }
+          },
+          play: () => {
+            try {
+              const sound = context.settings.settingsStore.getDesktopNotificationPreferences()?.sound ?? "ping-1-open-blip";
+              context.requireMainEdge().emit("notification-sound", { sound });
+            } catch { /* renderer may be gone; the notification itself already showed */ }
+          },
+        },
         language: {
           getPreference: () => context.settings.settingsStore.getLanguagePreference(),
           systemTags: ports.app.getPreferredSystemLanguages?.() ?? [],

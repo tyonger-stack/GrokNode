@@ -50,6 +50,9 @@ import { applyOriginalRendererAgentDataCards } from "./lib/agent-data-cards-rend
 import { applyOriginalRendererComputerUpdate } from "./lib/computer-update-renderer-patch.mjs";
 import { applyOriginalRendererLanguagePatch } from "./lib/language-renderer-patch.mjs";
 import { applyHardwareAccelerationSettingsPatch } from "./lib/hardware-acceleration-settings-patch.mjs";
+import { applyNotificationSoundSettingsPatch } from "./lib/notification-sound-settings-0781-patch.mjs";
+import { applyScheduleSettings0781Patch } from "./lib/schedule-settings-0781-patch.mjs";
+import { stageNotificationSounds0781, verifyStagedNotificationSounds0781 } from "./lib/notification-sounds-0781.mjs";
 import { applyOriginalRendererSettingsI18n } from "./lib/settings-i18n-patch.mjs";
 import { applySettingsUpdate0753Patch } from "./lib/settings-update-0753-patch.mjs";
 import { applyConnectorCardHandoff0758Patch } from "./lib/connector-card-handoff-0758-patch.mjs";
@@ -510,6 +513,15 @@ export async function buildFidelityReconstructedAsar({
   // Hardware acceleration toggle: lands in Sa()'s `r` slot after Language (Fragment).
   // Depends on the Language Sa slot rewrite above; independent of i18n (bilingual inline).
   await applyHardwareAccelerationSettingsPatch({ stageRoot });
+  // 0.78.1 notification-sound rows (6EhUT7/0+TImd/wm7RV4/KXGrZy) land after the HW
+  // section in Sa()'s `r` slot; the five bundled wavs stage byte-verified from the
+  // pinned 0.78.1 snapshot. Bilingual inline, independent of i18n.
+  await stageNotificationSounds0781({ stageRoot });
+  await applyNotificationSoundSettingsPatch({ stageRoot });
+  // 0.78.1 timezone + spell-check rows land after the notification-sound section
+  // (its slot rewrite is this pass's anchor). Bilingual inline, independent of i18n.
+  await applyScheduleSettings0781Patch({ stageRoot });
+  await verifyStagedNotificationSounds0781({ stageRoot });
   // Settings → Updates: port the official 0.75.3 Automatic Updates + Version
   // card over the 0.18 update pane. Uses the settings kit and RLocT runtime
   // already present; run after all i18n and settings-row passes.

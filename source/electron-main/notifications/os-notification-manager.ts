@@ -33,6 +33,8 @@ export class SandOsNotificationManager {
     readonly isSupported: () => boolean;
     readonly createNotification: (options: { readonly title: string; readonly body: string; readonly silent: boolean; readonly urgency: "critical" | "normal" }) => DesktopNotificationPort;
     readonly openAgent: (agentId: string) => void;
+    /** 0.78.1 notification sound: opt-in via desktopNotificationPreferences.playSound; playback renders renderer-side. */
+    readonly notificationSound?: { readonly isEnabled: () => boolean; readonly play: () => void };
     readonly language?: DesktopLanguageSource;
     readonly now?: () => number;
   }) {}
@@ -83,11 +85,15 @@ export class SandOsNotificationManager {
   private show(transition: NotificationTransition): void {
     const copy = desktopMessages(resolveDesktopLocale(this.deps.language)).notification;
     const { title, body } = buildNotificationContent(transition, copy);
-    const notification = this.deps.createNotification({ title, body, silent: transition.kind === "agent-done", urgency: transition.kind === "agent-needs-input" ? "critical" : "normal" });
+    // 0.78.1 notification sound: when the opt-in preference is on, our own sound plays
+    // renderer-side, so the OS notification stays silent to avoid a double sound.
+    const soundOn = this.deps.notificationSound?.isEnabled() === true;
+    const notification = this.deps.createNotification({ title, body, silent: soundOn || transition.kind === "agent-done", urgency: transition.kind === "agent-needs-input" ? "critical" : "normal" });
     notification.on("click", () => this.focusAgent(transition.agentId));
     notification.once("close", () => this.active.delete(notification));
     this.active.add(notification);
     notification.show();
+    if (soundOn) this.deps.notificationSound?.play();
   }
 
   private focusAgent(agentId: string): void {
