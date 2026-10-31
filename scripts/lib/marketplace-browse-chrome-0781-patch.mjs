@@ -416,7 +416,7 @@ const REPLACEMENTS = [
     label: "row icon: official's native brand icons, not the first-letter fallback",
     before: "t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
     after:
-      "RM0781NativeIcon(s)??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
+      "RM0781NativeIcon(s,56)??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
   },
   {
     // The browse row's own icon slot. `w` is the row's catalogue view, so the native marker is on
@@ -425,7 +425,7 @@ const REPLACEMENTS = [
     label: "browse row icon: official's native brand icons, not the first-letter fallback",
     before: "t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
     after:
-      "RM0781NativeIcon(w)??t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
+      "RM0781NativeIcon(w,40)??t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
   },
 ];
 
@@ -498,16 +498,20 @@ const INJECTED_SOURCE = normalizeJsxChildren([
   "}",
   "const RM0781NativeIconClasses=" + JSON.stringify(NATIVE_ICON_FRAME.onepassword.spanClass) + ";",
   "const RM0781OnePasswordPathD=" + JSON.stringify(NATIVE_ICON_FRAME.onepassword.pathD) + ";",
-  "function RM0781NativeIcon(entry){",
+  "function RM0781NativeIcon(entry,size){",
   "  const marker=RM0781NativeMarker(entry);",
   "  if(marker==null)return null;",
+  "  const big=size>=56;",
+  "  const edge=big?56:40;",
+  "  const radius=big?16:11;",
+  "  const glyph=big?31:22;",
   "  if(marker===\"onepassword\"){",
-  "    return t.jsx(\"span\",{\"aria-hidden\":\"true\",className:RM0781NativeIconClasses,style:{width:40,height:40,borderRadius:11,backgroundColor:\"#303136\",color:\"rgb(255, 255, 255)\"}},",
-  "      t.jsx(\"svg\",{fill:\"#ffffff\",height:22,role:\"img\",viewBox:\"0 0 24 24\",width:22},",
+  "    return t.jsx(\"span\",{\"aria-hidden\":\"true\",className:RM0781NativeIconClasses,style:{width:edge,height:edge,borderRadius:radius,backgroundColor:\"#303136\",color:\"rgb(255, 255, 255)\"}},",
+  "      t.jsx(\"svg\",{fill:\"#ffffff\",height:glyph,role:\"img\",viewBox:\"0 0 24 24\",width:glyph},",
   "        t.jsx(\"path\",{d:RM0781OnePasswordPathD})));",
   "  }",
-  "  return t.jsx(\"span\",{\"aria-hidden\":\"true\",className:RM0781NativeIconClasses,style:{width:40,height:40,borderRadius:11,backgroundColor:\"var(--sand-bg-magenta-primary)\",color:\"rgb(255, 255, 255)\"}},",
-  "    t.jsx(ue,{name:\"envelope\",size:22}));",
+  "  return t.jsx(\"span\",{\"aria-hidden\":\"true\",className:RM0781NativeIconClasses,style:{width:edge,height:edge,borderRadius:radius,backgroundColor:\"var(--sand-bg-magenta-primary)\",color:\"rgb(255, 255, 255)\"}},",
+  "    t.jsx(ue,{name:\"envelope\",size:glyph}));",
   "}",
   "function RM0781ApplyLeading(items,leading){",
   "  if(leading.length===0)return items.slice();",

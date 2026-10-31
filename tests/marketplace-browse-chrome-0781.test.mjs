@@ -1014,15 +1014,20 @@ test("the port carries official's native brand icons and renders them in the ico
   assert.ok(patched.includes('name:"envelope"'), "official's email glyph");
   assert.ok(
     patched.includes(
-      "RM0781NativeIcon(s)??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
+      "RM0781NativeIcon(s,56)??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
     ),
     "the detail page's icon slot renders the native icon first and falls back to upstream's own icon",
   );
   assert.ok(
     patched.includes(
-      "RM0781NativeIcon(w)??t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
+      "RM0781NativeIcon(w,40)??t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
     ),
     "the browse row's icon slot renders the native icon first, so the two native rows get their brand icon",
+  );
+  assert.ok(patched.includes("function RM0781NativeIcon(entry,size){"), "the icon frame takes the slot's size");
+  assert.ok(
+    patched.includes("const radius=big?16:11;") && patched.includes("const glyph=big?31:22;"),
+    "official's detail header is 56x56/radius 16 with a 31px glyph while rows stay 40/11/22",
   );
 });
 
