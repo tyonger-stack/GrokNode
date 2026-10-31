@@ -1,0 +1,347 @@
+{
+  "_note": "Official Grok Bot 0.78.1's theme tokens for the '连接应用' plugins dialog, captured from the official app. The dark column is official's computed value on the live dialog; the light column is official's own light palette block, except for the theme-independent typography metrics. The --cursor-* colour rows are official's own forwarding to --sand-*, reproduced verbatim; the --cursor-font-size-* rows are official's own literal font sizes, theme-independent.",
+  "_source": {
+    "official": "Grok Bot 0.78.1 (com.anysphere.sand)",
+    "officialAsarSha256": "e8d5e10f94f8b52cd02f696599c8e6503420ad85ceed7b41a27bbff7bff22f4d",
+    "dark": "official 0.78.1 running app — computed custom properties on the live 连接应用 dialog (theme cursor-dark)",
+    "light": "rea-grokbot-0781/app/dist/renderer/assets/index-Dh7EWA8t.css — the `:root,.sand-1vbcnu7` palette block",
+    "typography": "theme-independent in official (its stylesheet declares the sand font sizes at `:root,.sand-1hqobez`, the line heights at `:root,.sand-i7i3ao` and the cursor font sizes at `:root,.ui-qruemj`, all outside any theme selector)"
+  },
+  "_notes": {
+    "--sand-border-focus-primary": "official's palette declares a colour, but official's `:root:not([data-sand-keyboard-nav])` rule forces `transparent!important` while keyboard navigation is off, and upstream 0.18 ships no such rule. The rendered value is captured.",
+    "--cursor-*": "official forwards the whole `--cursor-*` family to `--sand-*`. A custom property's `var()` is substituted where the property is DECLARED, so upstream's `:root` forwarding is already computed against upstream's palette and cannot be reached by overriding `--sand-*` on the dialog. The same forwarding is re-declared on the dialog, against the dialog's own `--sand-*` values.",
+    "initial": "the four tokens official leaves undefined are reset to `initial`, the guaranteed-invalid value, so that upstream's definitions do not render where official renders nothing.",
+    "--cursor-font-size-*": "official's own literal cursor font sizes, declared at `:root,.ui-qruemj` outside any theme selector, so they are the same in both themes. The ported section-title rule `sand-fc7y3v` reads `var(--cursor-font-size-lg)`. Upstream 0.18 declares the same four values, but the port declares them so the rule does not depend on upstream's palette.",
+    "--sand-bg-elevated-hover/--sand-bg-chrome/--sand-bg-sidebar/--sand-bg-luminous": "declared by official and by neither upstream 0.18 nor an earlier revision of this block; reproduced with official's own values so a surface inside the dialog that reads them cannot fall back to an unset token."
+  },
+  "tokens": {
+    "--sand-bg-elevated": {
+      "light": "#fff",
+      "dark": "#1f1f1f"
+    },
+    "--sand-bg-primary": {
+      "light": "#1c1c1c",
+      "dark": "#f5f5f5"
+    },
+    "--sand-bg-primary-hover": {
+      "light": "#363636",
+      "dark": "#dbdbdb"
+    },
+    "--sand-bg-secondary": {
+      "light": "#1c1c1c0f",
+      "dark": "#f5f5f50a"
+    },
+    "--sand-bg-secondary-hover": {
+      "light": "#1c1c1c1a",
+      "dark": "#f5f5f514"
+    },
+    "--sand-bg-hover": {
+      "light": "#1c1c1c0f",
+      "dark": "#f5f5f50f"
+    },
+    "--sand-bg-pane": {
+      "light": "#fff",
+      "dark": "#161616"
+    },
+    "--sand-bg-accent-primary": {
+      "light": "#1680f3",
+      "dark": "#116dd2"
+    },
+    "--sand-text-primary": {
+      "light": "#1c1c1c",
+      "dark": "#f5f5f5"
+    },
+    "--sand-text-secondary": {
+      "light": "#1c1c1cad",
+      "dark": "#f5f5f5a8"
+    },
+    "--sand-text-tertiary": {
+      "light": "#1c1c1c8f",
+      "dark": "#f5f5f58a"
+    },
+    "--sand-text-inverted": {
+      "light": "#fcfcfc",
+      "dark": "#121212"
+    },
+    "--sand-text-on-primary": {
+      "light": "#fff",
+      "dark": "#f5f5f5"
+    },
+    "--sand-text-accent-primary": {
+      "light": "#0b6dd3",
+      "dark": "#4d9bff"
+    },
+    "--sand-text-green-primary": {
+      "light": "#00854a",
+      "dark": "#00ba69"
+    },
+    "--sand-icon-primary": {
+      "light": "#1c1c1ceb",
+      "dark": "#f5f5f5e6"
+    },
+    "--sand-icon-secondary": {
+      "light": "#1c1c1ca8",
+      "dark": "#f5f5f5a3"
+    },
+    "--sand-icon-tertiary": {
+      "light": "#1c1c1c85",
+      "dark": "#f5f5f580"
+    },
+    "--sand-icon-accent-primary": {
+      "light": "#1680f3",
+      "dark": "#116dd2"
+    },
+    "--sand-border-focus-primary": {
+      "light": "transparent",
+      "dark": "transparent"
+    },
+    "--sand-border-tertiary-translucent": {
+      "light": "#1c1c1c14",
+      "dark": "#f5f5f50f"
+    },
+    "--sand-border-secondary-translucent": {
+      "light": "#1c1c1c1f",
+      "dark": "#f5f5f51a"
+    },
+    "--sand-border-primary-translucent": {
+      "light": "#1c1c1c3d",
+      "dark": "#f5f5f538"
+    },
+    "--sand-font-size-xxs": {
+      "light": "11px",
+      "dark": "11px"
+    },
+    "--sand-font-size-xs": {
+      "light": "12px",
+      "dark": "12px"
+    },
+    "--sand-font-size-sm": {
+      "light": "13px",
+      "dark": "13px"
+    },
+    "--sand-font-size-base": {
+      "light": "14px",
+      "dark": "14px"
+    },
+    "--sand-font-size-lg": {
+      "light": "15px",
+      "dark": "15px"
+    },
+    "--sand-font-size-xl": {
+      "light": "17px",
+      "dark": "17px"
+    },
+    "--sand-font-size-xxl": {
+      "light": "22px",
+      "dark": "22px"
+    },
+    "--sand-font-size-xxxl": {
+      "light": "26px",
+      "dark": "26px"
+    },
+    "--sand-line-height-xxs": {
+      "light": "16px",
+      "dark": "16px"
+    },
+    "--sand-line-height-xs": {
+      "light": "16px",
+      "dark": "16px"
+    },
+    "--sand-line-height-sm": {
+      "light": "18px",
+      "dark": "18px"
+    },
+    "--sand-line-height-base": {
+      "light": "20px",
+      "dark": "20px"
+    },
+    "--sand-line-height-lg": {
+      "light": "22px",
+      "dark": "22px"
+    },
+    "--sand-line-height-xl": {
+      "light": "24px",
+      "dark": "24px"
+    },
+    "--sand-line-height-xxl": {
+      "light": "28px",
+      "dark": "28px"
+    },
+    "--sand-letter-spacing-xxs": {
+      "light": "0.01em",
+      "dark": "0.01em"
+    },
+    "--sand-letter-spacing-xs": {
+      "light": "0.01em",
+      "dark": "0.01em"
+    },
+    "--sand-letter-spacing-sm": {
+      "light": "0.015em",
+      "dark": "0.015em"
+    },
+    "--sand-letter-spacing-base": {
+      "light": "0.01em",
+      "dark": "0.01em"
+    },
+    "--sand-letter-spacing-lg": {
+      "light": "0.01em",
+      "dark": "0.01em"
+    },
+    "--sand-letter-spacing-xl": {
+      "light": "0.01em",
+      "dark": "0.01em"
+    },
+    "--sand-letter-spacing-xxl": {
+      "light": "0.01em",
+      "dark": "0.01em"
+    },
+    "--sand-font-weight-regular": {
+      "light": "425",
+      "dark": "425"
+    },
+    "--sand-font-weight-medium": {
+      "light": "500",
+      "dark": "500"
+    },
+    "--sand-font-weight-semibold": {
+      "light": "600",
+      "dark": "600"
+    },
+    "--sand-text-disabled": {
+      "light": "initial",
+      "dark": "initial"
+    },
+    "--sand-fill-ghost-hover": {
+      "light": "initial",
+      "dark": "initial"
+    },
+    "--sand-border-focus": {
+      "light": "initial",
+      "dark": "initial"
+    },
+    "--cursor-easing-default": {
+      "light": "initial",
+      "dark": "initial"
+    },
+    "--cursor-bg-elevated": {
+      "light": "var(--sand-bg-elevated)",
+      "dark": "var(--sand-bg-elevated)"
+    },
+    "--cursor-bg-editor": {
+      "light": "var(--sand-bg-pane)",
+      "dark": "var(--sand-bg-pane)"
+    },
+    "--cursor-bg-input": {
+      "light": "var(--sand-bg-elevated)",
+      "dark": "var(--sand-bg-elevated)"
+    },
+    "--cursor-bg-secondary": {
+      "light": "var(--sand-bg-secondary-hover)",
+      "dark": "var(--sand-bg-secondary-hover)"
+    },
+    "--cursor-bg-tertiary": {
+      "light": "var(--sand-bg-secondary)",
+      "dark": "var(--sand-bg-secondary)"
+    },
+    "--cursor-bg-quaternary": {
+      "light": "var(--sand-bg-secondary)",
+      "dark": "var(--sand-bg-secondary)"
+    },
+    "--cursor-text-primary": {
+      "light": "var(--sand-text-primary)",
+      "dark": "var(--sand-text-primary)"
+    },
+    "--cursor-text-secondary": {
+      "light": "var(--sand-text-secondary)",
+      "dark": "var(--sand-text-secondary)"
+    },
+    "--cursor-text-tertiary": {
+      "light": "var(--sand-text-tertiary)",
+      "dark": "var(--sand-text-tertiary)"
+    },
+    "--cursor-text-invert": {
+      "light": "var(--sand-text-on-primary)",
+      "dark": "var(--sand-text-on-primary)"
+    },
+    "--cursor-text-link": {
+      "light": "var(--sand-text-accent-primary)",
+      "dark": "var(--sand-text-accent-primary)"
+    },
+    "--cursor-icon-primary": {
+      "light": "var(--sand-icon-primary)",
+      "dark": "var(--sand-icon-primary)"
+    },
+    "--cursor-icon-secondary": {
+      "light": "var(--sand-icon-secondary)",
+      "dark": "var(--sand-icon-secondary)"
+    },
+    "--cursor-icon-tertiary": {
+      "light": "var(--sand-icon-tertiary)",
+      "dark": "var(--sand-icon-tertiary)"
+    },
+    "--cursor-icon-accent-primary": {
+      "light": "var(--sand-icon-accent-primary)",
+      "dark": "var(--sand-icon-accent-primary)"
+    },
+    "--cursor-accent-color": {
+      "light": "var(--sand-bg-accent-primary)",
+      "dark": "var(--sand-bg-accent-primary)"
+    },
+    "--cursor-stroke-primary": {
+      "light": "var(--sand-border-primary-translucent)",
+      "dark": "var(--sand-border-primary-translucent)"
+    },
+    "--cursor-stroke-secondary": {
+      "light": "var(--sand-border-secondary-translucent)",
+      "dark": "var(--sand-border-secondary-translucent)"
+    },
+    "--cursor-stroke-tertiary": {
+      "light": "var(--sand-border-tertiary-translucent)",
+      "dark": "var(--sand-border-tertiary-translucent)"
+    },
+    "--cursor-stroke-focused": {
+      "light": "var(--sand-border-focus-primary)",
+      "dark": "var(--sand-border-focus-primary)"
+    },
+    "--cursor-font-weight-normal": {
+      "light": "var(--sand-font-weight-regular)",
+      "dark": "var(--sand-font-weight-regular)"
+    },
+    "--cursor-font-weight-regular": {
+      "light": "var(--sand-font-weight-regular)",
+      "dark": "var(--sand-font-weight-regular)"
+    },
+    "--sand-bg-elevated-hover": {
+      "light": "#f1f1f1",
+      "dark": "#2c2c2c"
+    },
+    "--sand-bg-chrome": {
+      "light": "#fcfcfc",
+      "dark": "#121212"
+    },
+    "--sand-bg-sidebar": {
+      "light": "#f5f5f5",
+      "dark": "#0e0e0e"
+    },
+    "--sand-bg-luminous": {
+      "light": "#fff",
+      "dark": "#f5f5f5"
+    },
+    "--cursor-font-size-xs": {
+      "light": "11px",
+      "dark": "11px"
+    },
+    "--cursor-font-size-sm": {
+      "light": "12px",
+      "dark": "12px"
+    },
+    "--cursor-font-size-base": {
+      "light": "13px",
+      "dark": "13px"
+    },
+    "--cursor-font-size-lg": {
+      "light": "14px",
+      "dark": "14px"
+    }
+  }
+}

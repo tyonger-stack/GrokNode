@@ -17,6 +17,7 @@
  */
 
 import { attachLogoSource } from "./logo-source.js";
+import { buildNativeToolIcon, nativeIconMarkerOf } from "./native-icons.js";
 import {
   ACTION_BUTTON_CLASSES,
   ADDED_PILL_CHECK_CLASSES,
@@ -417,6 +418,14 @@ function buildToolIcon(iconUrl: string, name: string, size: number): HTMLElement
   return box;
 }
 
+/** Official 0.78.1's native rows (1Password, 邮箱) resolve their icon from the entry NAME through
+ * the brand registry instead of upstream's first-letter monogram — see native-icons.ts. */
+function buildRowToolIcon(source: unknown, iconUrl: string, name: string, size: number): HTMLElement {
+  const marker = nativeIconMarkerOf(source);
+  if (marker != null) return buildNativeToolIcon(marker, 40);
+  return buildToolIcon(iconUrl, name, size);
+}
+
 /* ------------------------------------------------------------------ *
  * Search field
  * ------------------------------------------------------------------ */
@@ -495,7 +504,7 @@ function buildBrowseRow(row: BrowseRow, state: MarketplaceViewState, handlers: M
   const open = el("button", ROW_OPEN_CLASSES);
   open.type = "button";
   open.setAttribute("aria-label", `打开 ${row.name}`);
-  open.append(buildToolIcon(row.iconUrl, row.name, 40));
+  open.append(buildRowToolIcon(row, row.iconUrl, row.name, 40));
   open.append(buildRowText(row.name, row.description));
   open.addEventListener("click", () => handlers.onOpenRow(row));
   item.append(open);
@@ -752,7 +761,7 @@ function buildInstalledRow(item: InstalledRow, handlers: MarketplaceViewHandlers
   const open = el("button", ROW_OPEN_CLASSES);
   open.type = "button";
   open.setAttribute("aria-label", `打开 ${item.name}`);
-  open.append(buildToolIcon(item.iconUrl, item.name, 40));
+  open.append(buildRowToolIcon(item.row ?? item, item.iconUrl, item.name, 40));
   open.append(buildRowText(item.name, item.subtitle));
   if (item.row != null) open.addEventListener("click", () => handlers.onOpenRow(item.row as BrowseRow));
   row.append(open);
@@ -1114,7 +1123,7 @@ function renderDetail(
   // worse, left the icon with no box to size against.
   const head = el("div", DETAIL_HEAD_CLASSES);
   const header = el("header", DETAIL_HEADER_CLASSES);
-  header.append(buildDetailToolIcon(detail.iconUrl, detail.name));
+  header.append(buildDetailToolIcon(row, detail.iconUrl, detail.name));
 
   const titleCol = el("div", DETAIL_TITLE_COL_CLASSES);
   const nameRow = el("div", DETAIL_NAME_ROW_CLASSES);
@@ -1326,9 +1335,12 @@ function renderDetail(
   groups.replaceChildren(root);
 }
 
-function buildDetailToolIcon(iconUrl: string, name: string): HTMLElement {
+function buildDetailToolIcon(source: unknown, iconUrl: string, name: string): HTMLElement {
+  // Official 0.78.1's native entries carry the brand mark on the detail header too (56x56, the
+  // same registry): the 1Password SVG at 31px and the envelope glyph at `--icon-size: 31px`.
+  const marker = nativeIconMarkerOf(source);
+  if (marker != null) return buildNativeToolIcon(marker, 56);
   const box = el("span", DETAIL_TOOL_ICON_CLASSES);
-  box.setAttribute("aria-hidden", "true");
   // The 56x56 box comes from an INLINE style on official's span, not from a class: every one of
   // DETAIL_TOOL_ICON_CLASSES resolves identically in 0.18, and `sand-tool-icon--logo` has no rule
   // in either stylesheet. With nothing constraining the span, the img's own `width:100%`

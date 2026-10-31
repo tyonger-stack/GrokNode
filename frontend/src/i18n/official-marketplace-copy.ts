@@ -1,14 +1,19 @@
 /**
- * Official Grok Bot 0.75.8 wording for the two surfaces this build still renders from the
- * 0.66-era replica: the effective-plugins list and the custom-MCP form.
+ * Official Grok Bot's marketplace wording for the surfaces this build still renders from the
+ * 0.66-era replica: the effective-plugins list and the custom-MCP form, plus the connect action
+ * a marketplace row's trailing slot carries.
  *
  * ## Why these strings live here
  *
  * The live "连接应用" surface is upstream 0.18's own plugins implementation (see
- * `docs/MARKETPLACE-0758-PORT.md`). Two panels inside it are still Grok Node's own replica
- * components — the effective-plugins list and the custom-MCP form — and they used to render
- * English titles ("Plugins in effect", "Custom MCP server") inside an otherwise Chinese UI.
- * Official 0.75.8 has no such English leftovers, so the wording is ported from official.
+ * `docs/MARKETPLACE-0758-PORT.md` and `docs/MARKETPLACE-0781-PORT.md`). Two panels inside it are
+ * still Grok Node's own replica components — the effective-plugins list and the custom-MCP form —
+ * and they used to render English titles ("Plugins in effect", "Custom MCP server") inside an
+ * otherwise Chinese UI. Official 0.75.8 has no such English leftovers, so the wording is ported
+ * from official.
+ *
+ * The connect wording is official 0.78.1's, and it is the one the renderer patch writes into the
+ * plugins chunk; it is declared here too so the copy has a single place to read from.
  *
  * ## Every Chinese string below is official 0.75.8's own
  *
@@ -111,6 +116,26 @@ export const CUSTOM_MCP_FORM_WORDING = {
     zh: "出错了，请重试。",
     source: "official D2AZQg",
   },
+} as const satisfies Record<string, OfficialWording>;
+
+/**
+ * Official 0.78.1's wording for a marketplace row's trailing action.
+ *
+ * Upstream 0.18 labels that action "Add" (添加) and shows an "Added" (已添加) badge once the plugin
+ * is installed. Official 0.78.1 replaced both with the connect wording below, and it renders the
+ * connected state as text with NO button at all.
+ *
+ * `connectNamed` is official's ICU template `["连接 ",["0"]]` — the plugin name fills the `{0}`
+ * slot — so the pair below is the template's prefix and the name is appended by the caller.
+ *
+ * @evidence official 0.78.1 `rea-grokbot-0781/app/dist/renderer/assets/chunk-core-CXBwRBzw.js`
+ * @evidence official 0.78.1 `chunk-view-KV06RTpF.js` — the row's trailing action.
+ */
+export const MARKETPLACE_CONNECT_ACTION_WORDING = {
+  connect: { en: "Connect", zh: "连接", source: "official iSLIjg" },
+  connecting: { en: "Connecting…", zh: "正在连接…", source: "official JrFTcr" },
+  connected: { en: "Connected", zh: "已连接", source: "official QHcLEN" },
+  connectNamed: { en: "Connect ", zh: "连接 ", source: "official 5ZzgbQ" },
 } as const satisfies Record<string, OfficialWording>;
 
 /**

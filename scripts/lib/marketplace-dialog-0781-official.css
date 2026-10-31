@@ -1,0 +1,22 @@
+/* Official Grok Bot 0.78.1's plugins-dialog geometry, lifted byte-for-byte from the official
+ * stylesheet (`rea-grokbot-0781/app/dist/renderer/assets/index-Dh7EWA8t.css`).
+ *
+ * These eight rules are the only official dialog/layout classes that upstream 0.18's stylesheet
+ * does not already define. The behavioural difference they carry is the dialog WIDTH:
+ *
+ *   0.18     `sand-1gys7z3` = width:min(1e3px, calc(100vw - 40px))   → 1000px
+ *   0.75.8   `sand-h6vr4k`  = width:min(800px, 100vw - 40px)         →  800px
+ *   0.78.1   `sand-1sdb7ul` = width:min(900px, 100vw - 32px)         →  900px
+ *
+ * and the layout's height cap, which upstream 0.75.8 shipped as `sand-z03ioa` and official 0.78.1
+ * ships as `sand-xe7e0x` (the same declaration, `height:min(700px,100vh - 96px)`, under the name
+ * 0.78.1 hashes it to). Measured live on official 0.78.1: the dialog is 900×702.
+ */
+.sand-1sdb7ul:not(#\#):not(#\#):not(#\#):not(#\#){width:min(900px,100vw - 32px)}
+.sand-tqtr64:has([data-overlay-footprint=custom-connector]):not(#\#):not(#\#):not(#\#):not(#\#){width:min(560px,100vw - 32px)}
+.sand-1eh7du3:not(#\#):not(#\#):not(#\#):not(#\#){max-width:calc(100vw - 32px)}
+.sand-xrbq2n:not(#\#):not(#\#):not(#\#){transition-property:width}
+.sand-1j6au1h:not(#\#):not(#\#):not(#\#){transition-duration:.3s}
+.sand-pe8fed.sand-pe8fed:not(#\#):not(#\#):not(#\#){transition-duration:.12s}
+.sand-1r6a6jf:not(#\#):not(#\#):not(#\#){transition-timing-function:linear(0, .01588 2%, .05618 4%, .11201 6%, .1768 8%, .2458 10%, .31562 12%, .38392 14%, .44914 16%, .51029 18%, .56683 20%, .61852 22%, .66534 24%, .70743 26%, .74501 28%, .77838 30%, .80788 32%, .83383 34%, .85658 36%, .87645 38%, .89376 40%, .92183 44%, .94282 48%, .95838 52%, .96984 56%, .97823 60%, .98435 64%, .98878 68%, .99198 72%, .99594 80%, .99829 90%, 1 100%)}
+.sand-xe7e0x:not(#\#):not(#\#):not(#\#):not(#\#){height:min(700px,100vh - 96px)}

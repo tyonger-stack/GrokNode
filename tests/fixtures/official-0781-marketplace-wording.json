@@ -1,0 +1,186 @@
+{
+  "_note": "Capture of official Grok Bot 0.78.1's own locale entries for the '连接应用' marketplace surface. Extracted verbatim from the official asar tree; not hand-written.",
+  "_source": {
+    "official": "Grok Bot 0.78.1 (com.anysphere.sand)",
+    "zhHans": "rea-grokbot-0781/app/dist/renderer/assets/chunk-core-CXBwRBzw.js",
+    "en": "rea-grokbot-0781/app/dist/renderer/assets/index.eager-common-DbK3Oi_r.js"
+  },
+  "messages": {
+    "dlD2mM": {
+      "en": "Recommended for you",
+      "zh": "为你推荐",
+      "icu": {
+        "en": "\"Recommended for you\"",
+        "zh": "\"为你推荐\""
+      }
+    },
+    "N6Pxr9": {
+      "en": "View all",
+      "zh": "查看全部",
+      "icu": {
+        "en": "\"View all\"",
+        "zh": "\"查看全部\""
+      }
+    },
+    "bpVWP/": {
+      "en": "Bot templates",
+      "zh": "Bot 模板",
+      "icu": {
+        "en": "\"Bot templates\"",
+        "zh": "\"Bot 模板\""
+      }
+    },
+    "iSLIjg": {
+      "en": "Connect",
+      "zh": "连接",
+      "icu": {
+        "en": "\"Connect\"",
+        "zh": "\"连接\""
+      }
+    },
+    "JrFTcr": {
+      "en": "Connecting…",
+      "zh": "正在连接…",
+      "icu": {
+        "en": "\"Connecting…\"",
+        "zh": "\"正在连接…\""
+      }
+    },
+    "QHcLEN": {
+      "en": "Connected",
+      "zh": "已连接",
+      "icu": {
+        "en": "\"Connected\"",
+        "zh": "\"已连接\""
+      }
+    },
+    "5ZzgbQ": {
+      "en": "Connect ",
+      "zh": "连接 ",
+      "icu": {
+        "en": "\"Connect \",[\"0\"",
+        "zh": "\"连接 \",[\"0\""
+      }
+    },
+    "N40H+G": {
+      "en": "All",
+      "zh": "全部",
+      "icu": {
+        "en": "\"All\"",
+        "zh": "\"全部\""
+      }
+    },
+    "2FYpfJ": {
+      "en": "More",
+      "zh": "更多",
+      "icu": {
+        "en": "\"More\"",
+        "zh": "\"更多\""
+      }
+    },
+    "jj4zKl": {
+      "en": "Plugin categories",
+      "zh": "插件分类",
+      "icu": {
+        "en": "\"Plugin categories\"",
+        "zh": "\"插件分类\""
+      }
+    },
+    "8zPg/f": {
+      "en": "More categories",
+      "zh": "更多类别",
+      "icu": {
+        "en": "\"More categories\"",
+        "zh": "\"更多类别\""
+      }
+    },
+    "P+nzjE": {
+      "en": "Password Managers",
+      "zh": "密码管理器",
+      "icu": {
+        "en": "\"Password Managers\"",
+        "zh": "\"密码管理器\""
+      }
+    },
+    "N42ane": {
+      "en": "Productivity",
+      "zh": "效率",
+      "icu": {
+        "en": "\"Productivity\"",
+        "zh": "\"效率\""
+      }
+    },
+    "hZotg6": {
+      "en": "Communication",
+      "zh": "通信",
+      "icu": {
+        "en": "\"Communication\"",
+        "zh": "\"通信\""
+      }
+    },
+    "f8fH8W": {
+      "en": "Design",
+      "zh": "设计",
+      "icu": {
+        "en": "\"Design\"",
+        "zh": "\"设计\""
+      }
+    },
+    "EWPtMO": {
+      "en": "Code",
+      "zh": "代码",
+      "icu": {
+        "en": "\"Code\"",
+        "zh": "\"代码\""
+      }
+    },
+    "HKH+W+": {
+      "en": "Data",
+      "zh": "数据",
+      "icu": {
+        "en": "\"Data\"",
+        "zh": "\"数据\""
+      }
+    },
+    "mUv9U4": {
+      "en": "Sales",
+      "zh": "销售",
+      "icu": {
+        "en": "\"Sales\"",
+        "zh": "\"销售\""
+      }
+    },
+    "vo2a+a": {
+      "en": "Marketing",
+      "zh": "营销",
+      "icu": {
+        "en": "\"Marketing\"",
+        "zh": "\"营销\""
+      }
+    },
+    "8V6XO3": {
+      "en": "Finance",
+      "zh": "财务",
+      "icu": {
+        "en": "\"Finance\"",
+        "zh": "\"财务\""
+      }
+    },
+    "bdztP2": {
+      "en": "Research",
+      "zh": "研究",
+      "icu": {
+        "en": "\"Research\"",
+        "zh": "\"研究\""
+      }
+    },
+    "XYLcNv": {
+      "en": "Support",
+      "zh": "支持",
+      "icu": {
+        "en": "\"Support\"",
+        "zh": "\"支持\""
+      }
+    }
+  }
+}

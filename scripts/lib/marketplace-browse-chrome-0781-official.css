@@ -1,0 +1,58 @@
+/* Official Grok Bot 0.78.1 — the 28 rules upstream 0.18's stylesheet does not ship.
+ *
+ * Lifted byte-for-byte from official 0.78.1's own stylesheet
+ * (`rea-grokbot-0781/app/dist/renderer/assets/index-Dh7EWA8t.css`). A stylix class name is the
+ * hash of its declaration block, so a class that exists in one build and not in another is a
+ * no-op — the chip row would render unstyled while every other test stayed green.
+ *
+ * The three rules 0.75.8's companion file also carried are here (`sand-1n4gmbt`, `sand-n4jrjs`,
+ * `sand-1x57ub9`, `sand-135b78x`, `sand-1lt80kd`, `sand-w01apr`): official 0.78.1 still ships them
+ * under the same names.
+ *
+ * The three rules 0.75.8's companion file did NOT carry are the defect this port fixes:
+ *
+ *   .sand-fwqdrz  →  the unselected chip's background
+ *   .sand-8rotk8  →  the selected chip's background
+ *   .sand-sa7k8x  →  the selected chip's text colour
+ *
+ * Without them the 0.75.8 chip row had no background and no selected-state text colour.
+ *
+ * Official's `sand-ymw2ht` (border-radius:9999px) is carried here for the group action, the
+ * Bot-templates button and the connected status. The chip row uses upstream 0.18's own
+ * `sand-149ho13`, which is the same declaration under the name 0.18 hashes it to.
+ */
+.sand-10hui8a:not(#\#):not(#\#):not(#\#){padding-inline-end:8px}
+.sand-11hyl0l:hover:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary)}
+.sand-135b78x:not(#\#):not(#\#):not(#\#){padding-inline-start:4px}
+.sand-14gdtuo:not(#\#):not(#\#):not(#\#){letter-spacing:var(--sand-letter-spacing-sm)}
+.sand-19nlotp:not(#\#):not(#\#):not(#\#){padding-inline-start:8px}
+.sand-1agbcgv:not(#\#):not(#\#):not(#\#){grid-row-start:1}
+.sand-1ehaq9d:not(#\#):not(#\#):not(#\#){letter-spacing:var(--sand-letter-spacing-xxl)}
+.sand-1lt80kd:not(#\#):not(#\#){border-color:var(--sand-bg-elevated)}
+.sand-1lvvshy:not(#\#):not(#\#):not(#\#){line-height:var(--sand-line-height-base)}
+.sand-1mmermx:not(#\#):not(#\#):not(#\#){font-size:var(--sand-font-size-xxl)}
+.sand-1n4gmbt:hover:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary-hover)}
+.sand-1o2pa38:not(#\#):not(#\#):not(#\#){justify-items:center}
+.sand-1sygd3j:hover:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-hover)}
+.sand-1ufr4hg:not(#\#):not(#\#):not(#\#){color:var(--sand-text-green-primary)}
+.sand-1v39l1b:not(#\#):not(#\#):not(#\#){outline-color:var(--sand-border-focus-primary)}
+.sand-1wpm9rq:focus-visible:not(#\#):not(#\#):not(#\#){outline-color:var(--sand-border-focus-primary)}
+.sand-1x57ub9:not(#\#):not(#\#){margin-inline:-8px}
+.sand-5fd6op:not(#\#):not(#\#){border-color:var(--sand-border-tertiary-translucent)}
+.sand-6dg3xy:not(#\#):not(#\#){border-width:.5px}
+.sand-8rotk8:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-primary)}
+.sand-crlgei:not(#\#):not(#\#):not(#\#){grid-column-start:1}
+.sand-fwqdrz:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary)}
+.sand-ja3w2a:not(#\#):not(#\#):not(#\#){letter-spacing:var(--sand-letter-spacing-base)}
+.sand-n4jrjs:hover:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-primary-hover)}
+.sand-pffxup:not(#\#):not(#\#):not(#\#){margin-inline-end:4px}
+.sand-sa7k8x:not(#\#):not(#\#):not(#\#){color:var(--sand-text-inverted)}
+.sand-vh7mc1:not(#\#):not(#\#):not(#\#){line-height:var(--sand-line-height-xxl)}
+.sand-w01apr:not(#\#):not(#\#):not(#\#){margin-inline-start:-6px}
+.sand-w8bs97:not(#\#):not(#\#):not(#\#){line-height:var(--sand-line-height-sm)}
+.sand-ymw2ht:not(#\#):not(#\#){border-radius:9999px}
+
+/* The native email icon's background token. Official 0.78.1 defines it once in its own :root
+ * theme block (--sand-bg-magenta-primary:#e52f8b); upstream 0.18 ships no magenta scale at
+ * all, so the port carries the definition itself — no collision is possible. */
+:root{--sand-bg-magenta-primary:#e52f8b}

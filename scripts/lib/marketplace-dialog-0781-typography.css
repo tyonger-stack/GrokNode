@@ -1,0 +1,42 @@
+/* Official Grok Bot 0.78.1's typography inside the plugins dialog.
+ *
+ * ## Why this is not a byte-for-byte lift
+ *
+ * Official 0.78.1 ships a global form-control reset:
+ *
+ *   :where(button,input,select,textarea) {
+ *     font-family: inherit;
+ *     font-size: var(--sand-font-size-sm);
+ *     font-weight: inherit;
+ *     line-height: var(--sand-line-height-sm);
+ *     letter-spacing: var(--sand-letter-spacing-sm);
+ *     font-feature-settings: inherit;
+ *   }
+ *
+ * and its `:root` rule carries `font-weight: var(--sand-font-weight-regular)`, which official's
+ * runtime sets to 425 — the regular weight of `XVF`, the variable font official ships.
+ *
+ * Upstream 0.18 has no such global reset: the same rule exists only under
+ * `.sand-info-pane__inner`. Inside the marketplace dialog every `<button>` therefore falls back to
+ * the browser's own `font: 400 13.333px Arial`, which is why the reconstruction renders the chip
+ * labels, the group action and the Bot-templates button at weight 400 while official renders them
+ * at 425.
+ *
+ * The weight itself is also one generation apart: upstream's runtime writes
+ * `--sand-font-weight-regular: 420` on `<html>`, official writes 425.
+ *
+ * ## What this file does
+ *
+ * 1. The dialog subtree renders at official's regular weight. The scope is the dialog, so the rest
+ *    of the app keeps upstream 0.18's own weight.
+ * 2. The form-control reset is reproduced with the same `:where()` construction official uses, so
+ *    it keeps its zero specificity: a class rule that sets a font property still wins over it,
+ *    exactly as in official. Only the scope is narrowed to the dialog.
+ *
+ * The reset is scoped with `:where(.sand-plugins-dialog)` rather than `.sand-plugins-dialog` on
+ * purpose — `:where()` contributes no specificity, so the rule weighs against upstream's own class
+ * rules exactly as official's global rule weighs against official's.
+ */
+:where(.sand-plugins-dialog) :where(button,input,select,textarea){font-family:inherit;font-size:var(--sand-font-size-sm);font-weight:inherit;line-height:var(--sand-line-height-sm);letter-spacing:var(--sand-letter-spacing-sm);font-feature-settings:inherit}
+
+.sand-plugins-dialog{font-weight:var(--sand-font-weight-regular)}
