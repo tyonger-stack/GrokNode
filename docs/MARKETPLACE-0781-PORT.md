@@ -577,12 +577,17 @@ reading was taken before it had arrived.
 ## The measured parity
 
 Measured over CDP on 2026-10-31 against the **deployed** `/Applications/Grok Node.app` — the
-deployed asar and the built asar byte-identical, sha256 `560cc1ca…`, and still identical after the
+deployed asar and the built asar byte-identical, sha256 `46edbdb…`, and still identical after the
 app had run — and against official 0.78.1 on port 9333. Both dialogs are 900 px wide. Both apps were
 started fresh for the comparison and both opened the marketplace list page. The same comparison was
 then repeated through the desktop accessibility tree (a real click on 连接应用 in each app, then the
 AX headings and checkboxes read back), and both trees carry the same thirteen section headings and
 the same seven chip checkboxes.
+
+The package is not byte-reproducible (the asar carries build-time material), so the sha256 above
+identifies *this* build, not every rebuild of the same commit. The equality that matters is the one
+measured at deploy time: the deployed asar's sha256 equals the freshly built asar's sha256, before
+and after the app has run.
 
 | measurement | ours | official 0.78.1 |
 |---|---|---|
