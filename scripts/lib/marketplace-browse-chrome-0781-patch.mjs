@@ -416,7 +416,8 @@ const REPLACEMENTS = [
     label: "row icon: official's native brand icons, not the first-letter fallback",
     before: "t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
     after:
-      "RM0781NativeIcon(s,56)??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
+      "RM0781NativeIcon(s,56)??RM0781LogoIcon(w,56)" +
+      "??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
   },
   {
     // The browse row's own icon slot. `w` is the row's catalogue view, so the native marker is on
@@ -425,7 +426,8 @@ const REPLACEMENTS = [
     label: "browse row icon: official's native brand icons, not the first-letter fallback",
     before: "t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
     after:
-      "RM0781NativeIcon(w,40)??t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
+      "RM0781NativeIcon(w,40)??RM0781LogoIcon(g,40)" +
+      "??t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
   },
 ];
 
@@ -498,6 +500,21 @@ const INJECTED_SOURCE = normalizeJsxChildren([
   "}",
   "const RM0781NativeIconClasses=" + JSON.stringify(NATIVE_ICON_FRAME.onepassword.spanClass) + ";",
   "const RM0781OnePasswordPathD=" + JSON.stringify(NATIVE_ICON_FRAME.onepassword.pathD) + ";",
+  // Official 0.78.1's ToolIcon (`AD` in `index.eager-app-D1juOWZp.js`) draws a marketplace logo as
+  // a border-box tile with a 0.5 px translucent border, a transparent background and an
+  // `object-fit:contain` image. Upstream 0.18's own ToolIcon draws a content-box tile with a
+  // secondary background and a covering image, so the logo is 1 px larger and the hairline border
+  // is missing. Official's recipe is reproduced here, on the logo branch only: the mono fallback
+  // and the native branch keep upstream's own components.
+  "const RM0781LogoIconClasses=\"sand-tool-icon sand-tool-icon--logo sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-l56j7k sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-b3r6kr sand-6dg3xy sand-1y0btm7 sand-5fd6op sand-jbqb8w\";",
+  "const RM0781LogoImageClasses=\"sand-1lliihq sand-h8yej3 sand-5yr21d sand-19kjcj4\";",
+  "function RM0781LogoIcon(iconView,size){",
+  "  if(iconView==null||iconView.iconUrl==null||String(iconView.iconUrl).length===0)return null;",
+  "  const edge=size;",
+  "  const radius=Math.round(edge*0.28);",
+  "  return t.jsx(\"span\",{\"aria-hidden\":true,className:RM0781LogoIconClasses,style:{width:edge,height:edge,borderRadius:radius}},",
+  "    t.jsx(\"img\",{alt:\"\",className:RM0781LogoImageClasses,decoding:\"async\",draggable:false,height:edge,src:iconView.iconUrl,width:edge}));",
+  "}",
   "function RM0781NativeIcon(entry,size){",
   "  const marker=RM0781NativeMarker(entry);",
   "  if(marker==null)return null;",

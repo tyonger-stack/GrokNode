@@ -61,7 +61,7 @@ const UPSTREAM_RESOLVED_CLASSES = [
   "sand-1c4vz4f", "sand-1d3mw78", "sand-1fgtraw", "sand-1g0dm76", "sand-1ghz6dp", "sand-1iorvi4",
   "sand-1jnr06f", "sand-1k57tk5", "sand-1kky2od", "sand-1lliihq", "sand-1lugfcp", "sand-1n2onr6",
   "sand-1nejdyq", "sand-1nn3v0j", "sand-1o0liin", "sand-1pha0wt", "sand-1qmwy7c", "sand-1qughib",
-  "sand-1qx5ct2", "sand-1rhlpx6", "sand-1t137rt", "sand-1uczgqu", "sand-1wm8ruf", "sand-1y0btm7",
+  "sand-1qx5ct2", "sand-19kjcj4", "sand-1rhlpx6", "sand-1t137rt", "sand-1uczgqu", "sand-1wm8ruf", "sand-1y0btm7",
   "sand-1y1aw1k", "sand-1y3gkto", "sand-1ypdohk", "sand-25sj25", "sand-2lah0s", "sand-2vl965",
   "sand-3nfvp2", "sand-5yr21d", "sand-6s0dn4", "sand-784prv", "sand-78zum5", "sand-9f619",
   "sand-9v5kkp", "sand-amitd3", "sand-b3r6kr", "sand-c342km", "sand-dl72j9", "sand-dqyycr",
@@ -87,6 +87,7 @@ const STYLIX_NOOP_CLASSES = [
   "sand-plugins__group-action",
   "sand-plugins__installed-preview",
   "sand-tool-icon",
+  "sand-tool-icon--logo",
 ];
 
 /** Every class the port applies — `var(--sand-…)` custom-property references are not classes. */
@@ -435,7 +436,7 @@ test("official's connected-apps entry moves into the dialog header", () => {
     ".sand-plugins-dialog .sand-plugins__bar{flex-wrap:wrap}",
     ".sand-plugins-dialog .sand-plugins__bar:not(#\\#):not(#\\#):not(#\\#){gap:12px}",
     ".sand-plugins-dialog .sand-plugins__bar:not(#\\#):not(#\\#):not(#\\#):not(#\\#){padding-top:18px}",
-    ".sand-plugins-dialog .sand-plugins:not(#\\#):not(#\\#):not(#\\#):not(#\\#){padding-top:52px}",
+    ".sand-plugins-dialog .sand-plugins-0781-header:not(#\\#):not(#\\#):not(#\\#):not(#\\#){margin-top:52px}",
     ".sand-plugins-dialog .sand-plugins__search:not(#\\#):not(#\\#):not(#\\#):not(#\\#){flex:1 1 auto;padding:0 8px 0 12px;gap:6px}",
     // Official's marketplace view has no filter icon; upstream's button is what shortens the field.
     ".sand-plugins-dialog .sand-plugins__bar>div>button.sand-kit-icon-button:not(#\\#):not(#\\#):not(#\\#):not(#\\#){display:none}",
@@ -1014,13 +1015,15 @@ test("the port carries official's native brand icons and renders them in the ico
   assert.ok(patched.includes('name:"envelope"'), "official's email glyph");
   assert.ok(
     patched.includes(
-      "RM0781NativeIcon(s,56)??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
+      "RM0781NativeIcon(s,56)??RM0781LogoIcon(w,56)" +
+        "??t.jsx(m,{iconId:w.iconId,iconUrl:w.iconUrl,name:s.displayName,size:56})",
     ),
-    "the detail page's icon slot renders the native icon first and falls back to upstream's own icon",
+    "the detail page's icon slot renders the native icon first, then official's logo tile, and falls back to upstream's own icon",
   );
   assert.ok(
     patched.includes(
-      "RM0781NativeIcon(w,40)??t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
+      "RM0781NativeIcon(w,40)??RM0781LogoIcon(g,40)" +
+        "??t.jsx(N,{iconId:g.iconId,iconUrl:g.iconUrl,name:w.displayName,size:40})",
     ),
     "the browse row's icon slot renders the native icon first, so the two native rows get their brand icon",
   );
@@ -1028,6 +1031,35 @@ test("the port carries official's native brand icons and renders them in the ico
   assert.ok(
     patched.includes("const radius=big?16:11;") && patched.includes("const glyph=big?31:22;"),
     "official's detail header is 56x56/radius 16 with a 31px glyph while rows stay 40/11/22",
+  );
+});
+
+test("the marketplace logo tile is official 0.78.1's own tile", () => {
+  const patched = patchMarketplaceBrowseChrome0781(syntheticChunk());
+  // Official's ToolIcon (`AD` in `index.eager-app-D1juOWZp.js`) draws a marketplace logo as a
+  // border-box tile with a 0.5 px translucent border, a transparent background and an
+  // `object-fit:contain` image. Upstream 0.18's own ToolIcon draws a content-box tile with a
+  // secondary background and a covering image, so the logo is 1 px larger and the hairline border
+  // is missing.
+  assert.ok(
+    patched.includes(
+      "RM0781LogoIconClasses=\"sand-tool-icon sand-tool-icon--logo sand-9f619 sand-3nfvp2 " +
+        "sand-6s0dn4 sand-l56j7k sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-b3r6kr sand-6dg3xy " +
+        "sand-1y0btm7 sand-5fd6op sand-jbqb8w\"",
+    ),
+    "the logo tile must carry official's own class recipe",
+  );
+  assert.ok(
+    patched.includes("RM0781LogoImageClasses=\"sand-1lliihq sand-h8yej3 sand-5yr21d sand-19kjcj4\""),
+    "official's logo image is contained, not covered",
+  );
+  assert.ok(
+    patched.includes("const radius=Math.round(edge*0.28);"),
+    "official's tile radius is 28% of its edge, which is 11 at 40 and 16 at 56",
+  );
+  assert.ok(
+    patched.includes("if(iconView==null||iconView.iconUrl==null||String(iconView.iconUrl).length===0)return null;"),
+    "the logo tile only replaces upstream's icon when the entry actually has a logo",
   );
 });
 

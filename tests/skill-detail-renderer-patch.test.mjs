@@ -119,8 +119,28 @@ test("the detail root fills the pane and owns its own scroll region", { skip: bu
   assert.match(patched, /className:ee,children:\[oe,fe,Se\]\}/);
   // 0.62.0 returns a skill detail straight from the pane's dispatch, so the detail must
   // not stay wrapped in the pane-level scroll pane as well.
-  assert.match(patched, /Le=Me!=null\?Rs:t\.jsx\(nl,\{ref:Es,children:Rs\},_s\)/);
+  assert.match(patched, /Le=Me!=null&&E!=null&&E\.kind==="skill"\?Rs:t\.jsx\(nl,\{ref:Es,children:Rs\},_s\)/);
   assert.doesNotMatch(patched, /Le=t\.jsx\(nl,\{ref:Es,children:Rs\},_s\)/);
+});
+
+test("only the skill detail skips the pane; every other detail stays inside it", { skip: bundleSkip }, () => {
+  // Official 0.78.1 draws the same line in `ki()` (chunk-view-KV06RTpF.js): the skill and bot
+  // details come straight out of `renderPane`, and every other detail — plugin, installed
+  // server, setup — is wrapped in the pane. The pane is what gives the detail page its 32px
+  // inline padding, so a plugin detail that skipped it rendered 64px wider than official.
+  const patched = patchOriginalSkillDetail(bundle);
+  const bypass = patched.match(/Le=(Me!=null[^,]*\?Rs:t\.jsx\(nl,\{ref:Es,children:Rs\},_s\))/);
+  assert.ok(bypass, "the patched pane dispatch must still name the skill-only bypass");
+  assert.match(
+    bypass[1],
+    /E\.kind==="skill"/,
+    "the bypass must be limited to the skill detail kind",
+  );
+  assert.doesNotMatch(
+    bypass[1],
+    /Me!=null\?/,
+    "a bare `Me!=null` bypass would also skip the pane for the plugin detail",
+  );
 });
 
 test("mutation controls move where 0.62.0 puts them", { skip: bundleSkip }, () => {

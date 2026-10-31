@@ -1,0 +1,405 @@
+{
+  "_note": "Capture of official Grok Bot 0.78.1's own locale entries for the plugin DETAIL page (the '连接应用' dialog's detail view). Extracted verbatim from the official asar tree; not hand-written.",
+  "_source": {
+    "official": "Grok Bot 0.78.1 (com.anysphere.sand)",
+    "zhHans": "rea-grokbot-0781/app/dist/renderer/assets/chunk-core-CXBwRBzw.js",
+    "en": "rea-grokbot-0781/app/dist/renderer/assets/index.eager-common-DbK3Oi_r.js"
+  },
+  "messages": {
+    "+7fBMP": {
+      "en": "Built-in",
+      "zh": "内置",
+      "icu": {
+        "en": "[\"Built-in\"]",
+        "zh": "[\"内置\"]"
+      }
+    },
+    "20QE6w": {
+      "en": "Team adoption",
+      "zh": "团队使用情况",
+      "icu": {
+        "en": "[\"Team adoption\"]",
+        "zh": "[\"团队使用情况\"]"
+      }
+    },
+    "6V3Ea3": {
+      "en": "Copied",
+      "zh": "已复制",
+      "icu": {
+        "en": "[\"Copied\"]",
+        "zh": "[\"已复制\"]"
+      }
+    },
+    "7aDnUb": {
+      "en": "Developer",
+      "zh": "开发者",
+      "icu": {
+        "en": "[\"Developer\"]",
+        "zh": "[\"开发者\"]"
+      }
+    },
+    "7d1a0d": {
+      "en": "Public",
+      "zh": "公开",
+      "icu": {
+        "en": "[\"Public\"]",
+        "zh": "[\"公开\"]"
+      }
+    },
+    "9sj0G8": {
+      "en": "Copy failed",
+      "zh": "复制失败",
+      "icu": {
+        "en": "[\"Copy failed\"]",
+        "zh": "[\"复制失败\"]"
+      }
+    },
+    "APfagk": {
+      "en": "Removing…",
+      "zh": "正在移除…",
+      "icu": {
+        "en": "[\"Removing…\"]",
+        "zh": "[\"正在移除…\"]"
+      }
+    },
+    "DbZMYM": {
+      "en": "Scheduling",
+      "zh": "日程安排",
+      "icu": {
+        "en": "[\"Scheduling\"]",
+        "zh": "[\"日程安排\"]"
+      }
+    },
+    "FkMol5": {
+      "en": "Featured",
+      "zh": "精选",
+      "icu": {
+        "en": "[\"Featured\"]",
+        "zh": "[\"精选\"]"
+      }
+    },
+    "H0ShEF": {
+      "en": "Payments",
+      "zh": "支付",
+      "icu": {
+        "en": "[\"Payments\"]",
+        "zh": "[\"支付\"]"
+      }
+    },
+    "IzFMeN": {
+      "en": "Inbox and Collaboration",
+      "zh": "收件箱与协作",
+      "icu": {
+        "en": "[\"Inbox and Collaboration\"]",
+        "zh": "[\"收件箱与协作\"]"
+      }
+    },
+    "JrFTcr": {
+      "en": "Connecting…",
+      "zh": "正在连接…",
+      "icu": {
+        "en": "[\"Connecting…\"]",
+        "zh": "[\"正在连接…\"]"
+      }
+    },
+    "K7tIrx": {
+      "en": "Category",
+      "zh": "类别",
+      "icu": {
+        "en": "[\"Category\"]",
+        "zh": "[\"类别\"]"
+      }
+    },
+    "Mo77P4": {
+      "en": "Infrastructure",
+      "zh": "基础设施",
+      "icu": {
+        "en": "[\"Infrastructure\"]",
+        "zh": "[\"基础设施\"]"
+      }
+    },
+    "MoPMW6": {
+      "en": "Added by your team",
+      "zh": "由你的团队添加",
+      "icu": {
+        "en": "[\"Added by your team\"]",
+        "zh": "[\"由你的团队添加\"]"
+      }
+    },
+    "N42ane": {
+      "en": "Productivity",
+      "zh": "效率",
+      "icu": {
+        "en": "[\"Productivity\"]",
+        "zh": "[\"效率\"]"
+      }
+    },
+    "OZJeTZ": {
+      "en": "Skill",
+      "zh": "技能",
+      "icu": {
+        "en": "[\"Skill\"]",
+        "zh": "[\"技能\"]"
+      }
+    },
+    "On0aF2": {
+      "en": "Website",
+      "zh": "网站",
+      "icu": {
+        "en": "[\"Website\"]",
+        "zh": "[\"网站\"]"
+      }
+    },
+    "P+nzjE": {
+      "en": "Password Managers",
+      "zh": "密码管理器",
+      "icu": {
+        "en": "[\"Password Managers\"]",
+        "zh": "[\"密码管理器\"]"
+      }
+    },
+    "PCSkw2": {
+      "en": "Skills",
+      "zh": "技能",
+      "icu": {
+        "en": "[\"Skills\"]",
+        "zh": "[\"技能\"]"
+      }
+    },
+    "Qx7DM7": {
+      "en": "Capabilities",
+      "zh": "功能",
+      "icu": {
+        "en": "[\"Capabilities\"]",
+        "zh": "[\"功能\"]"
+      }
+    },
+    "UhKOdj": {
+      "en": "# more",
+      "zh": "另外 # 个",
+      "icu": {
+        "en": "[[\"hiddenCount\"],\" more\"]",
+        "zh": "[\"另外 \",[\"hiddenCount\"],\" 个\"]"
+      }
+    },
+    "VDvaN2": {
+      "en": "Apps",
+      "zh": "应用",
+      "icu": {
+        "en": "[\"Apps\"]",
+        "zh": "[\"应用\"]"
+      }
+    },
+    "VdObnj": {
+      "en": "",
+      "zh": "",
+      "icu": {
+        "en": "[[\"0\",\"plural\",{\"one\":[\"1 app\"],\"other\":[\"#\",\" apps\"]}]]",
+        "zh": "[[\"0\",\"plural\",{\"other\":[\"#\",\" 个应用\"]}]]"
+      },
+      "plural": {
+        "en": {
+          "one": "1 app",
+          "other": "# apps"
+        },
+        "zh": {
+          "other": "# 个应用"
+        }
+      }
+    },
+    "Yb5NVb": {
+      "en": "",
+      "zh": "",
+      "icu": {
+        "en": "[[\"0\",\"plural\",{\"one\":[\"1 skill\"],\"other\":[\"#\",\" skills\"]}]]",
+        "zh": "[[\"0\",\"plural\",{\"other\":[\"#\",\" 项技能\"]}]]"
+      },
+      "plural": {
+        "en": {
+          "one": "1 skill",
+          "other": "# skills"
+        },
+        "zh": {
+          "other": "# 项技能"
+        }
+      }
+    },
+    "Z8lGw6": {
+      "en": "Share",
+      "zh": "分享",
+      "icu": {
+        "en": "[\"Share\"]",
+        "zh": "[\"分享\"]"
+      }
+    },
+    "Zty/IJ": {
+      "en": "Canvas",
+      "zh": "画布",
+      "icu": {
+        "en": "[\"Canvas\"]",
+        "zh": "[\"画布\"]"
+      }
+    },
+    "bCbNMB": {
+      "en": "",
+      "zh": "",
+      "icu": {
+        "en": "[[\"count\",\"plural\",{\"one\":[\"Used by 1 teammate\"],\"other\":[\"Used by \",\"#\",\" teammates\"]}]]",
+        "zh": "[[\"count\",\"plural\",{\"other\":[\"#\",\" 位队友在使用\"]}]]"
+      },
+      "plural": {
+        "en": {
+          "one": "Used by 1 teammate",
+          "other": "Used by # teammates"
+        },
+        "zh": {
+          "other": "# 位队友在使用"
+        }
+      }
+    },
+    "bXJKzj": {
+      "en": "Copy link to this plugin",
+      "zh": "复制此插件的链接",
+      "icu": {
+        "en": "[\"Copy link to this plugin\"]",
+        "zh": "[\"复制此插件的链接\"]"
+      }
+    },
+    "bdztP2": {
+      "en": "Research",
+      "zh": "研究",
+      "icu": {
+        "en": "[\"Research\"]",
+        "zh": "[\"研究\"]"
+      }
+    },
+    "byAjqm": {
+      "en": "Agent Orchestration",
+      "zh": "智能体编排",
+      "icu": {
+        "en": "[\"Agent Orchestration\"]",
+        "zh": "[\"智能体编排\"]"
+      }
+    },
+    "cQpGeE": {
+      "en": "Connector",
+      "zh": "连接器",
+      "icu": {
+        "en": "[\"Connector\"]",
+        "zh": "[\"连接器\"]"
+      }
+    },
+    "f8fH8W": {
+      "en": "Design",
+      "zh": "设计",
+      "icu": {
+        "en": "[\"Design\"]",
+        "zh": "[\"设计\"]"
+      }
+    },
+    "fo0VXg": {
+      "en": "Uninstall",
+      "zh": "卸载",
+      "icu": {
+        "en": "[\"Uninstall\"]",
+        "zh": "[\"卸载\"]"
+      }
+    },
+    "gDShYL": {
+      "en": "Documents and Files",
+      "zh": "文档与文件",
+      "icu": {
+        "en": "[\"Documents and Files\"]",
+        "zh": "[\"文档与文件\"]"
+      }
+    },
+    "hxm6On": {
+      "en": "Finance and Legal",
+      "zh": "财务与法务",
+      "icu": {
+        "en": "[\"Finance and Legal\"]",
+        "zh": "[\"财务与法务\"]"
+      }
+    },
+    "iSLIjg": {
+      "en": "Connect",
+      "zh": "连接",
+      "icu": {
+        "en": "[\"Connect\"]",
+        "zh": "[\"连接\"]"
+      }
+    },
+    "lXkUEV": {
+      "en": "Availability",
+      "zh": "可用性",
+      "icu": {
+        "en": "[\"Availability\"]",
+        "zh": "[\"可用性\"]"
+      }
+    },
+    "mUv9U4": {
+      "en": "Sales",
+      "zh": "销售",
+      "icu": {
+        "en": "[\"Sales\"]",
+        "zh": "[\"销售\"]"
+      }
+    },
+    "n+xLOH": {
+      "en": "Customer Support",
+      "zh": "客户支持",
+      "icu": {
+        "en": "[\"Customer Support\"]",
+        "zh": "[\"客户支持\"]"
+      }
+    },
+    "nSkB8g": {
+      "en": "Information",
+      "zh": "信息",
+      "icu": {
+        "en": "[\"Information\"]",
+        "zh": "[\"信息\"]"
+      }
+    },
+    "q1LJYo": {
+      "en": "Managed by your team",
+      "zh": "由你的团队管理",
+      "icu": {
+        "en": "[\"Managed by your team\"]",
+        "zh": "[\"由你的团队管理\"]"
+      }
+    },
+    "svH45G": {
+      "en": "Data & Analytics",
+      "zh": "数据与分析",
+      "icu": {
+        "en": "[\"Data & Analytics\"]",
+        "zh": "[\"数据与分析\"]"
+      }
+    },
+    "t/YqKh": {
+      "en": "Remove",
+      "zh": "移除",
+      "icu": {
+        "en": "[\"Remove\"]",
+        "zh": "[\"移除\"]"
+      }
+    },
+    "vhSOwR": {
+      "en": "Your team",
+      "zh": "你的团队",
+      "icu": {
+        "en": "[\"Your team\"]",
+        "zh": "[\"你的团队\"]"
+      }
+    },
+    "vo2a+a": {
+      "en": "Marketing",
+      "zh": "营销",
+      "icu": {
+        "en": "[\"Marketing\"]",
+        "zh": "[\"营销\"]"
+      }
+    }
+  }
+}

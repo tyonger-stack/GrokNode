@@ -1,0 +1,47 @@
+/*
+ * Official Grok Bot 0.78.1's detail-view CSS rules that upstream 0.18's stylesheet does not define.
+ *
+ * Every rule below is COPIED VERBATIM from official 0.78.1's own stylesheet
+ * (index-Dh7EWA8t.css). Nothing here is authored. A stylix class name is the hash of its
+ * declaration block, so a class that exists in both versions already has identical declarations;
+ * only the declarations official 0.78.1 added are missing from 0.18 and listed here.
+ *
+ * The rules are the detail page's own: the header's anchor-reveal pair, the details-table row
+ * padding and value alignment, and the icon/button state recipes the port's copy-link, share and
+ * connect buttons use.
+ *
+ * @evidence official 0.78.1 `rea-grokbot-0781/app/dist/renderer/assets/index-Dh7EWA8t.css`
+ * @evidence upstream 0.18 `src/app/dist/renderer/assets/index-lCyB53CO.css`
+ */
+.sand-1xr8qbc{--sand-anchor-reveal:0}
+.sand-jodmca:hover{--sand-anchor-reveal:1}
+.sand-1t7ft1p:not(#\#):not(#\#):not(#\#){opacity:var(--sand-anchor-reveal,1)}
+.sand-1pic42t:not(#\#):not(#\#):not(#\#){padding-inline-end:14px}
+.sand-1onr9mi:not(#\#):not(#\#):not(#\#){padding-inline-start:14px}
+.sand-2fvf9:not(#\#):not(#\#):not(#\#){margin-inline-end:4px}
+.sand-p4054r:not(#\#):not(#\#):not(#\#){text-align:end}
+.sand-1lziwak:not(#\#):not(#\#):not(#\#){margin-inline-start:0}
+.sand-1tn5z8q:not(#\#):not(#\#):not(#\#):not(#\#){min-height:1lh}
+.sand-1pg8wfp:not(#\#):not(#\#){padding-block:calc(.5lh - .5cap)}
+.sand-1c1uobl:not(#\#):not(#\#):not(#\#){padding-inline-start:0}
+.sand-yri2b:not(#\#):not(#\#):not(#\#){padding-inline-end:0}
+.sand-12rn374:not(#\#):not(#\#):not(#\#){transition-duration:.12s}
+.sand-13hlow9:hover:not(:disabled):not(#\#):not(#\#):not(#\#){color:var(--sand-icon-primary)}
+.sand-1ecwv3n:hover:not(:disabled):not(#\#):not(#\#):not(#\#),.sand-1tlbioc:is([data-pane-row-item]:hover,:root[data-sand-keyboard-nav] [data-pane-row-item]:focus-within,[data-pane-row-item]:has([aria-expanded=true])):not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary)}
+.sand-nxsxl2:not(#\#):not(#\#):not(#\#){color:var(--sand-icon-secondary)}
+.sand-xcn2h6:disabled:not(#\#):not(#\#):not(#\#){color:var(--sand-icon-quaternary)}
+.sand-1g6zli8:disabled:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary-disabled)}
+.sand-1ialtwx:disabled:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-primary-disabled)}
+.sand-5b9xvv:is(:hover,[aria-haspopup][aria-expanded=true]):not(:disabled):not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-primary-hover)}
+.sand-urwpdt:is(:hover,[aria-haspopup][aria-expanded=true]):not(:disabled):not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary-hover)}
+.sand-15cxclc:is(:hover,[aria-haspopup][aria-expanded=true]):not(:disabled):not(#\#):not(#\#):not(#\#),.sand-18ptgz8:focus-visible:not(#\#):not(#\#):not(#\#),.sand-1ecwv3n:hover:not(:disabled):not(#\#):not(#\#):not(#\#),.sand-1tlbioc:is([data-pane-row-item]:hover,:root[data-sand-keyboard-nav] [data-pane-row-item]:focus-within,[data-pane-row-item]:has([aria-expanded=true])):not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary)}
+.sand-1yc453h:not(#\#):not(#\#):not(#\#){text-align:start}
+.sand-1538qzf:focus-within:not(#\#):not(#\#):not(#\#),.sand-1yfcfk6:focus-visible:not(#\#):not(#\#):not(#\#){box-shadow:inset 0 0 0 2px var(--sand-border-focus-primary)}
+.sand-1o2pa38:not(#\#):not(#\#):not(#\#){justify-items:center}
+.sand-1agbcgv:not(#\#):not(#\#):not(#\#){grid-row-start:1}
+.sand-37c5m6:not(#\#):not(#\#):not(#\#){grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
+.sand-e2zdcy:not(#\#):not(#\#):not(#\#){padding-inline-start:10px}
+.sand-1qab1bc:not(#\#):not(#\#):not(#\#){justify-self:end}
+.sand-ibwnj:not(#\#):not(#\#):not(#\#){transition-duration:.15s}
+.sand-ymw2ht:not(#\#):not(#\#){border-radius:9999px}
+.sand-1v39l1b:not(#\#):not(#\#):not(#\#){outline-color:var(--sand-border-focus-primary)}
