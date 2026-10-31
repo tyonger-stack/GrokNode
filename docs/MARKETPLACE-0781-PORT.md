@@ -13,6 +13,7 @@ same wave, and `scripts/clean-build.mjs` now runs the 0.78.1 chain instead.
 | P3 | a 为你推荐 section leads the list, and every over-full section carries a 查看全部 group action | same |
 | P4 | a Bot 模板 ↗ button sits on the search row | same |
 | P5 | a row's trailing action is 连接 / 正在连接… / 已连接, and there is no button once connected | same |
+| P8 | the plugin detail page is official's own page, not upstream 0.18's | `marketplace-detail-view-0781-patch.mjs` + `marketplace-browse-chrome-0781-patch.mjs` (the logo tile) + `skill-detail-renderer-patch.mjs` (the pane) + `marketplace-dialog-0781-layout.css` (the band) |
 
 ## The evidence
 
@@ -459,6 +460,124 @@ CDP port of their own (9245) so that a second session probing 9224 cannot answer
 
 **Match the process by its executable path, not by its working directory.** See the note above.
 
+## P8 — the plugin detail view
+
+Clicking a marketplace row opens a detail page. Official 0.78.1's page and upstream 0.18's page are
+different pages, and the difference is not cosmetic: official's page carries a copy-link button, a
+share button, a connect button, an 应用 card, a 技能 card and an 信息 table, and upstream 0.18's page
+carries a "View Source" link, an "Add" button and one collapsible "Connectors" card.
+
+Official's detail page, as measured live on official 0.78.1 (CDP 9333, plugin `Linear`, a plugin
+present in both catalogues), is a 900×702 dialog holding a 48 px detail bar, a 834×486 detail body
+inset 32 px from the dialog's edges, and these parts.
+
+| part | official 0.78.1 |
+|---|---|
+| detail bar | 898×48, a three-column grid, a 28×28 ghost icon button (aria-label 返回), a hidden title, an empty trailing cell |
+| brand tile | 56×56, border-box, a 0.5 px `rgba(245,245,245,0.06)` border, a transparent background, a 16 px radius, and a 55×55 `object-fit:contain` image |
+| title | 17 px / 500 / 24 px, `rgb(245,245,245)`, with a 20×20 ghost copy-link button beside it |
+| description | 14 px / 425 / 20 px, `rgba(245,245,245,0.66)` |
+| action group | a 111×36 secondary 分享 button and a 98×36 primary 连接 button |
+| 应用 card | a header with the label and the count, then one row per connector |
+| 信息 table | 功能 / 开发者 / 类别 / 网站 / 可用性, each row 38 px tall |
+
+**What the port writes.** `scripts/lib/marketplace-detail-view-0781-patch.mjs` replaces upstream
+0.18's detail surface with official's, in ten fail-closed replacements plus an injected source. The
+upstream component `Ri` itself is kept — its account and setup plumbing survives — and only the
+surface is replaced: official's header recipe and anchor-reveal pair, official's hero-title wrapper
+and copy-link button, official's meta line (the marketplace name and the teammate count, with no
+"View Source" link), official's share + connect action group with official's four button states,
+official's 应用 and 技能 cards with official's collapse at five rows, and official's 信息 table with
+official's row-omission rules. Every user-visible string is official's own, read out of official's
+locale tables and recorded in `tests/fixtures/official-0781-detail-view-messages.json` (46 entries).
+
+**What the port also had to fix to get there.** Three things sit outside the detail component and
+each one was a measurable difference.
+
+The **pane** was the first. The detail body inherits its 32 px inline padding from
+`sand-settings-pane`, and an earlier patch (`skill-detail-renderer-patch.mjs`) had made the whole
+pane-level scroll pane skip itself for *every* detail, because official 0.62.0's skill detail owns
+its own scroll region. Official 0.78.1 draws the line much more narrowly: `ki()` in
+`chunk-view-KV06RTpF.js` returns the **skill and bot** details straight out of `renderPane` and
+wraps every other detail — plugin, installed server, setup — in the pane. The bypass is now limited
+to `E.kind === "skill"`, and the plugin detail renders 834 px wide exactly like official's instead
+of 898 px.
+
+The **detail bar** was the second. Upstream 0.18's bar is a 44 px flex row with a bare 16 px icon as
+the back button and the title visible. Official's is a 48 px three-column grid
+(`sand-rvj5dj sand-37c5m6 sand-sdox4t sand-889kno sand-2vl965 sand-1a8lsjc sand-e2zdcy`) whose back
+button is a 28×28 ghost icon button and whose title is hidden for a plugin detail — the detail page
+carries its own heading, so official's bar title fades to `opacity:0` and is `aria-hidden`. The port
+renders official's bar from its own bytes.
+
+The **band above the title** was the third. Official's dialog reserves a 52 px band above the title
+row in the *browse* state, and no band in the *detail* state, where the detail bar sits at the
+container's top edge. The port reproduced that band as a `padding-top` on the marketplace container,
+which left 52 px of dead space above the detail bar. The band now rides the title band itself
+(`.sand-plugins-0781-header{margin-top:52px}`), so the browse state is unchanged and the detail bar
+starts where official's starts.
+
+**The brand tile** is the fourth, and it is a browse-chrome change rather than a detail one:
+official's ToolIcon (`AD` in `index.eager-app-D1juOWZp.js`) draws a marketplace logo as a border-box
+tile with a 0.5 px translucent border, a transparent background and an `object-fit:contain` image,
+while upstream 0.18's own ToolIcon draws a content-box tile with a secondary background and a covering
+image — 1 px larger, and with the hairline border missing. The port now renders official's logo tile
+in both icon slots it owns, the browse row's and the detail header's, and the two tiles measure the
+same 39×39 and 55×55 images with the same border in both apps.
+
+### The two fields official reads that this build does not carry
+
+Official's availability label (`Wr`) and its plugin URL (`nt`) both read `isPublicListed`, a
+marketplace-listing flag that upstream 0.18's recovered proto does not expose. The port derives it
+from the catalogue shape official's own browse model uses: a listed marketplace plugin has no
+`marketplace` field and is not one of the two native entries, a team- or user-owned published plugin
+carries `marketplace`, and the two native entries carry `native`. That is the same split official's
+browse model draws (`P` groups the entries whose `marketplace` is undefined; `Tjt` collects the ones
+whose `marketplace` is not).
+
+The consequence is measured, not guessed: a user-owned plugin and the two native entries get no
+copy-link or share button, and their availability reads — (official's own empty-value glyph `Dn`).
+Official's in-app `plugin-add` deep link (`Pee` / `hs.buildUrl`) has no 0.18 route to point at, so it
+is dropped rather than faked.
+
+### What is still upstream's
+
+Official 0.78.1 renders the detail page inside a crossfade stage that keeps the list pane and the
+detail pane mounted at once and crossfades between them (`fr` with `variant:"crossfade"` in
+`chunk-view-KV06RTpF.js`). Upstream 0.18 swaps the two. Only one pane is visible at a time in
+either, so the difference is in the DOM, not in what the reader sees.
+
+The **mono fallback tile** is upstream's too: an entry with no logo falls back to upstream 0.18's
+first-letter ToolIcon, which has no hairline border and carries upstream's own letter typography.
+Official's mono tile has the border and a different letter colour token. The logo branch and the
+native branch are official's.
+
+The **font** is the boundary that explains every remaining pixel. Official 0.78.1 sets
+`font-family: XVF, -apple-system, …` and `font-feature-settings: "calt", "case"`; this
+reconstruction ships no XVF, because XVF is Anysphere's proprietary binary font and this repository
+carries no licence to redistribute it. Every Latin glyph therefore falls back to the system font and
+measures slightly differently.
+
+| measurement | ours | official 0.78.1 | why |
+|---|---|---|---|
+| detail title "Linear" | 47.25 px | 47.71 px | the missing XVF |
+| connect button | 100 px | 97.7 px | the missing XVF: the stacked label's widest state is "正在移除…", and the ellipsis is 11.44 px in the system font against 9.14 px in XVF |
+| action group | 219 px | 216 px | the same 2.3 px, carried by the connect button |
+| hero block | 535 px | 538 px | the same, carried by the title and the action group |
+| share button | 111 px | 111 px | CJK glyphs come from the system fallback in both |
+| the stacked label "连接" | 28.28 px | 28.28 px | the same |
+
+**Deployment record (2026-11-01).** The packaged build (`app.asar` sha256
+`7e65ca692e59c490dc7df9058d164aa520457d88a298b104963c7b04da46a32a`) was deployed to
+`/Applications/Grok Node.app` with a full replace (remove, then `ditto`), and the deployed asar's
+sha256 equals the freshly built asar's. Both apps were measured at the same 1395×857 viewport over
+CDP (official on 9333, this build on 9245, plugin `Linear`): dialog 900×702 on both, detail box
+834×486 on both, the five 信息 rows 833×38 on both, the 应用 card 834×71 on both, the tile class
+strings byte-identical, and both detail screenshots show the same page. The remaining
+geometry deltas are the font boundary in the table above. `npm run check` is green except two
+pre-existing failures in `tests/notification-schedule-settings-0781.test.mjs`, which test the
+notification/schedule patches and are untouched by this wave.
+
 ## What official 0.78.1 has that this port does not carry
 
 | official item | why it is skipped |
@@ -554,11 +673,13 @@ both icon slots it owns, the browse row's slot and the detail page's slot. Measu
 build: the 1Password row draws official's brand icon (one official brand path in the dialog) and
 neither native row is left with upstream's first-letter chip.
 
-**The plugin detail page is upstream's.** Clicking a card opens a detail view inside the same dialog.
-Official's shows a back arrow, the icon, the description, a connect button and an information table.
-The reconstruction shows upstream 0.18's own detail view — the name, 查看源码, 添加, the description and
-the plugin's skills. The browse path is the ported surface; the detail view is upstream's component,
-kept as it is.
+**The plugin detail page is official's (P8).** The old paragraph that said the detail view is
+upstream's component kept as it is described the state before P8. Since P8 the detail surface is
+official 0.78.1's own page — header, meta line, copy-link, share + connect, 应用 / 技能 cards,
+信息 table — while the upstream component `Ri` underneath keeps only its account and setup plumbing.
+See "P8 — the plugin detail view" above for the full record, including the two fields that are
+derived rather than carried (`isPublicListed`) and the font boundary that explains the remaining
+pixels.
 
 **The connect action keeps upstream's button component.** Official renders it with its own button
 recipe (a `--sand-bg-secondary` surface); upstream 0.18's button component has a different one. The

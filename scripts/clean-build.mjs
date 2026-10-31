@@ -75,6 +75,8 @@ import { applyMarketplaceDialog0781Typography } from "./lib/marketplace-dialog-0
 import { applyMarketplaceDialog0781Layout } from "./lib/marketplace-dialog-0781-layout-css-patch.mjs";
 import { applyMarketplaceBrowseChrome0781 } from "./lib/marketplace-browse-chrome-0781-patch.mjs";
 import { applyMarketplaceBrowseChrome0781Css } from "./lib/marketplace-browse-chrome-0781-css-patch.mjs";
+import { applyMarketplaceDetailView0781 } from "./lib/marketplace-detail-view-0781-patch.mjs";
+import { applyMarketplaceDetailView0781Css } from "./lib/marketplace-detail-view-0781-css-patch.mjs";
 import { applyUpdatePillCopy0755Patch } from "./lib/update-pill-copy-0755-patch.mjs";
 import { applyTeachGateRestorePatch } from "./lib/teach-gate-restore-patch.mjs";
 import { applyGrokMainAgentGatePatch } from "./lib/grok-main-agent-gate-patch.mjs";
@@ -516,6 +518,13 @@ export async function buildFidelityReconstructedAsar({
   await applyMarketplaceBrowseChrome0781({ stageRoot });
   // The 28 official 0.78.1 browse rules upstream 0.18's stylesheet does not define.
   await applyMarketplaceBrowseChrome0781Css({ stageRoot });
+  // Official 0.78.1's plugin DETAIL page: the header's copy-link button, the share + connect
+  // action group, the 应用 / 技能 cards and the 信息 table.
+  // MUST run after the browse-chrome patch: its anchors are the POST-browse text (the browse
+  // patch rewrites the detail header's icon slot and the row's connect button).
+  await applyMarketplaceDetailView0781({ stageRoot });
+  // The 21 official 0.78.1 detail-page rules upstream 0.18's stylesheet does not define.
+  await applyMarketplaceDetailView0781Css({ stageRoot });
   await applyMessageCopy0753Patch({ stageRoot });
   // The 0.18 renderer already has the footer update pill and Update-ready
   // modal; port the official 0.75.5 copy now that RLocT exists.

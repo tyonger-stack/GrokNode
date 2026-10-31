@@ -93,9 +93,11 @@
 /* Official's dialog reserves a band above the title: the title band starts 53 px below the
    dialog's top edge, because official's dialog shell pads its content and the title is the first
    row of the scrolled pane. Upstream 0.18's marketplace container starts at the dialog's top edge,
-   so the same band is reproduced here. The padding is on the container, not on the title row, so
-   the title row keeps official's 24 px height and the entry stays centred on the title band. */
-.sand-plugins-dialog .sand-plugins:not(#\#):not(#\#):not(#\#):not(#\#){padding-top:52px}
+   so the same band is reproduced here. The band belongs to the title band and not to the
+   container: official's detail view puts its own 48 px detail bar at the container's top edge
+   with no band above it, so a container-level padding would leave 52 px of dead space between
+   the dialog's top edge and the detail bar. */
+.sand-plugins-dialog .sand-plugins-0781-header:not(#\#):not(#\#):not(#\#):not(#\#){margin-top:52px}
 
 /* Official's section list sits in a wrapper that pulls its sections 12 px past the pane's 32 px
    padding, so official's sections start 21 px from the dialog's edge and measure 858 px in the

@@ -198,12 +198,19 @@ const TEXTAREA_ELEMENT_AFTER =
 // 0.18 puts every detail inside the pane-level scroll pane. 0.62.0 returns a skill
 // detail straight from `_s()` (`S.target.kind === "skill"`), so the detail — which now
 // owns its own scroll region — must not be wrapped a second time.
+//
+// 0.78.1 draws the same line, and only that line: `ki()` in `chunk-view-KV06RTpF.js`
+// returns the skill and bot details straight out of `renderPane`, and wraps every
+// other detail — plugin, installed server, setup — in the pane. The pane is what puts
+// the 32px inline padding on the detail page, so a plugin detail that skips it renders
+// 64px wider than official 0.78.1 renders it.
 const PANE_SCROLL_BEFORE =
   "let Le;e[67]!==_s||e[68]!==Es||e[69]!==Rs?"
   + "(Le=t.jsx(nl,{ref:Es,children:Rs},_s),e[67]=_s,e[68]=Es,e[69]=Rs,e[70]=Le):Le=e[70];";
 const PANE_SCROLL_AFTER =
   "let Le;e[67]!==_s||e[68]!==Es||e[69]!==Rs?"
-  + "(Le=Me!=null?Rs:t.jsx(nl,{ref:Es,children:Rs},_s),e[67]=_s,e[68]=Es,e[69]=Rs,e[70]=Le):Le=e[70];";
+  + "(Le=Me!=null&&E!=null&&E.kind===\"skill\"?Rs:t.jsx(nl,{ref:Es,children:Rs},_s),"
+  + "e[67]=_s,e[68]=Es,e[69]=Rs,e[70]=Le):Le=e[70];";
 
 const COMPONENT_SOURCE =
   `const RSkillDetailHeaderActions=${JSON.stringify(HEADER_ACTIONS_CLASS)};`
