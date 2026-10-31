@@ -772,3 +772,7 @@ parameterizing the frame (`edge 40|56`, `radius 11|16`, `glyph 22|31`) and passi
 slot size explicitly at both call sites (`3cddb6e`); `frontend/src`'s own
 `buildNativeToolIcon` already had the correct 40/56 split. Re-probed after repackaging:
 detail tile 56x56/radius 16/31px glyph on both apps, row tiles still 40x40, all green.
+
+Post-merge deployment note: the merged tree was repackaged once more from the same commits and
+deployed (asar head `05f771f9b8ce`; per-run metadata files differ, the JS payload is identical)
+— probe-113 re-verified the 56px detail-header tile and glyph parity live on that build.
