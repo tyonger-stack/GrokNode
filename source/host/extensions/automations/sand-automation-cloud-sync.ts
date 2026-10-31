@@ -566,6 +566,8 @@ export class LocalCronScheduler {
     readonly now?: () => number;
     readonly listAutomations: () => Promise<readonly { agentId: string; automation: LocalCronAutomation }[]>;
     readonly fire: (agentId: string, automation: LocalCronAutomation) => Promise<unknown>;
+    /** User timezone override for schedule math (0.78.1 `overrideTimeZone ?? detectedTimeZone`); undefined = host-local. */
+    readonly getTimeZone?: () => string | undefined;
   }) {}
 
   async tick(): Promise<void> {
@@ -578,7 +580,7 @@ export class LocalCronScheduler {
       for (const { agentId, automation } of await this.deps.listAutomations()) {
         if (!automation.isEnabled || automation.id.length === 0) continue;
         const due = triggerCronSchedules(automation.trigger).some(schedule => {
-          const next = computeNextRunAt(schedule, automation.lastRunAt ?? automation.createdAt);
+          const next = computeNextRunAt(schedule, automation.lastRunAt ?? automation.createdAt, this.deps.getTimeZone?.());
           return next != null && next <= now;
         });
         const key = agentId + ":" + automation.id;

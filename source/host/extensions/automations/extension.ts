@@ -80,6 +80,7 @@ export const automationsExtension = defineHostExtension({
       ledgerPath: join(getSandAgentsRootDir(), "..", "local-cron-ledger.json"),
       listAutomations: () => deps.transcript.listAllAutomationDefinitions() as Promise<readonly { agentId: string; automation: ScheduledCloudAutomation & { id: string; createdAt: number; lastRunAt?: number | null } }[]>,
       fire: (agentId, automation) => deps.transcript.runServerScheduledAutomation({ agentId, automation, runUuid: crypto.randomUUID(), scheduledForMs: Date.now() }),
+      getTimeZone: () => deps.settings.getUserTimeZone(),
     });
     const relay = createBackendRelaySources({ getAccessToken: deps.auth.getAccessToken, getBackendUrl: () => getConfiguredBackendUrl(), polling: createRealPollingPolicy({ name: "automations.relay-poll", intervalMs: RELAY_POLL_INTERVAL_MS }), isNotifyConnected: () => deps["notify-bus"].isConnected(), isNotifySafetyPollEnabled: () => deps["notify-bus"].isSafetyPollEnabled() });
     // Official runs email-triggered routines in its cloud; Grok Node keeps them
