@@ -723,3 +723,39 @@ The provenance JSON lands next to the staged renderer as
 `dist/renderer-marketplace-dialog-0781-theme-tokens.json`. Each records the source chunk's sha256,
 every anchor with its before and after text, every injected official message id with its English and
 Chinese text, and the official CSS rules verbatim.
+
+## Final verification and deployment record (2026-10-31)
+
+The packaged build (app.asar sha256 head `238ec5e272cb`) was deployed to
+`/Applications/Grok Node.app` and probed live over CDP against the official 0.78.1 app
+running side by side on the same machine:
+
+- **probe-104** (native/team parity): 13 sections, section order identical, first section
+  为你推荐, the Bot 模板 button with its svg (`viewBox 0 0 27.6 27.6`) and its
+  `data-grok-state` mark, and the native 1Password row.
+- **probe-105** (native row DOM): the 1Password row renders the native open-button with
+  `aria-label="Open 1Password"` and the brand tile, byte-identical to the official row.
+- **probe-109 / probe-110** (detail dialog): the 1Password detail heading plus the 40px
+  brand tile (`width: 40px; height: 40px; border-radius: 11px`, svg
+  `fill=#ffffff viewBox=0 0 24 24`, real glyph path `M12 0c6.627…`) matching the
+  official's own 0.78.1 SVG source.
+- **probe-107b** (email detail icon): the 邮箱 row detail icon present, no oversized icons.
+- **probe-111** (full inventory, written this session): 62 rows total on both apps across
+  the same 13 sections; per-section row sets identical where the virtualized viewport
+  overlaps (营销 and 支持 sections identical outright); remaining per-section differences
+  are viewport slices (each section renders ~6 visible rows) plus connection-state labels
+  (the official app carries live user connections; the reconstruction shows manifest
+  descriptions until the user connects).
+
+Two probe caveats for future audits: probe-104's `rows` field only records letter-chip rows
+(brand-icon rows are filtered out by `.filter(Boolean)`), and probe-105/110 grab whatever
+native row happens to be open, so use `probe-111-full-inventory.mjs` for row-set comparisons.
+
+Deployment operational notes discovered the hard way (full detail in the root
+`AGENTS.md` 2026-10-31 部署补记): delete the `Grok Node Safe Storage` keychain item after
+re-signing builds or the main process hangs at `mach_msg` waiting on securityd with zero
+CPU; lock the installed `app.asar` (`chmod 444` + `chflags uchg`) because an unidentified
+writer replaces it with a mixed old-shell asar within ~5 minutes of boot; and boot against
+a freshly recreated `grok-node-local-vm` container (rm the stale one) or the boot hangs
+waiting for a dead host-main. With those three applied the deployed build stayed up past
+30 minutes with the asar fingerprint unchanged across restarts.

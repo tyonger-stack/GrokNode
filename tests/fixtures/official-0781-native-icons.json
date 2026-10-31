@@ -1,17 +1,21 @@
 {
-  "source": "official Grok Bot 0.78.1 live CDP capture, port 9333, 2026-10-31; the native rows' icon slots. Official resolves native icons from the entry name through its brand registry (PYe['onepassword'] = brand SVG on #303136, PYe['email'] = envelope glyph on the magenta token), never the first-letter fallback upstream 0.18 falls back to",
-  "onepassword": {
-    "spanClass": "sand-tool-icon sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-l56j7k sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-b3r6kr sand-6dg3xy sand-1y0btm7 sand-5fd6op",
-    "spanStyle": "width: 40px; height: 40px; border-radius: 11px; background-color: rgb(48, 49, 54); color: rgb(255, 255, 255);",
-    "svgAttrs": " fill=\"#ffffff\" height=\"22\" role=\"img\" viewBox=\"0 0 24 24\" width=\"22\"",
-    "pathD": "M12 0c6.627 0 12 5.373 12 12c0 6.628-5.373 12-12 12S0 18.628 0 12C0 5.373 5.373 0 12 0m-.893 4.86c-.485 0-.727.001-.913.095a.87.87 0 0 0-.378.379c-.094.185-.095.428-.095.912v2.747c0 .12 0 .182.016.238q.02.075.065.138a1 1 0 0 0 .175.162l.695.564c.113.092.17.139.19.194a.22.22 0 0 1 0 .15c-.02.056-.077.102-.19.194l-.695.564a1 1 0 0 0-.175.162a.4.4 0 0 0-.065.138a1 1 0 0 0-.016.238v6.019c0 .485 0 .728.095.913a.87.87 0 0 0 .378.378c.186.094.428.094.913.094h1.786c.485 0 .727 0 .913-.094a.87.87 0 0 0 .378-.378c.095-.185.095-.428.095-.913v-2.747c0-.12 0-.182-.016-.238a.4.4 0 0 0-.065-.138a1 1 0 0 0-.175-.162l-.695-.564c-.113-.092-.17-.138-.191-.193a.22.22 0 0 1 0-.152c.02-.055.078-.1.19-.193l.696-.564a1 1 0 0 0 .175-.162a.4.4 0 0 0 .065-.138a1 1 0 0 0 .016-.238V6.246c0-.484 0-.727-.095-.912a.87.87 0 0 0-.378-.379c-.186-.094-.428-.094-.913-.094Z",
-    "background": "#303136"
-  },
-  "email": {
-    "spanClass": "sand-tool-icon sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-l56j7k sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-b3r6kr sand-6dg3xy sand-1y0btm7 sand-5fd6op",
-    "background": "var(--sand-bg-magenta-primary)",
-    "iconName": "envelope",
-    "iconClass": "ui-icon ui-1j61x8r ui-etm3q0 ui-1tachi3 ui-1qt6sjn ui-o5v014 ui-3nfvp2 ui-6s0dn4 ui-l56j7k ui-1heor9g ui-1oai4fc ui-higkf7 ui-xymvpz ui-krqix3 ui-1403hyl ui-2b8uid ui-6mezaz ui-vmahel ui-lh3980 ui-87ps6o ui-1winvzj ui-1u4itkb ui-1q5xvfy ui-jb5y04 ui-1bxnb1t ui-1ehclkv ui-1yj7g93 cursor-icon sand-14ju556",
-    "iconStyle": "--cursor-icon-content: &quot;&quot;; --icon-size: 22px;"
-  }
+ "source": "official Grok Bot 0.78.1 live CDP capture, port 9333, 2026-10-31; the native rows' icon slots. Official resolves native icons from the entry name through its brand registry (PYe['onepassword'] = brand SVG on #303136, PYe['email'] = envelope glyph on the magenta token), never the first-letter fallback upstream 0.18 falls back to Detail frames captured 2026-10-31 via probe-107/probe-107b (official detail page: 56x56 box, radius 16, svg 31px / --icon-size 31px, glyph U+EB1C).",
+ "onepassword": {
+  "spanClass": "sand-tool-icon sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-l56j7k sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-b3r6kr sand-6dg3xy sand-1y0btm7 sand-5fd6op",
+  "spanStyle": "width: 40px; height: 40px; border-radius: 11px; background-color: rgb(48, 49, 54); color: rgb(255, 255, 255);",
+  "svgAttrs": " fill=\"#ffffff\" height=\"22\" role=\"img\" viewBox=\"0 0 24 24\" width=\"22\"",
+  "pathD": "M12 0c6.627 0 12 5.373 12 12c0 6.628-5.373 12-12 12S0 18.628 0 12C0 5.373 5.373 0 12 0m-.893 4.86c-.485 0-.727.001-.913.095a.87.87 0 0 0-.378.379c-.094.185-.095.428-.095.912v2.747c0 .12 0 .182.016.238q.02.075.065.138a1 1 0 0 0 .175.162l.695.564c.113.092.17.139.19.194a.22.22 0 0 1 0 .15c-.02.056-.077.102-.19.194l-.695.564a1 1 0 0 0-.175.162a.4.4 0 0 0-.065.138a1 1 0 0 0-.016.238v6.019c0 .485 0 .728.095.913a.87.87 0 0 0 .378.378c.186.094.428.094.913.094h1.786c.485 0 .727 0 .913-.094a.87.87 0 0 0 .378-.378c.095-.185.095-.428.095-.913v-2.747c0-.12 0-.182-.016-.238a.4.4 0 0 0-.065-.138a1 1 0 0 0-.175-.162l-.695-.564c-.113-.092-.17-.138-.191-.193a.22.22 0 0 1 0-.152c.02-.055.078-.1.19-.193l.696-.564a1 1 0 0 0 .175-.162a.4.4 0 0 0 .065-.138a1 1 0 0 0 .016-.238V6.246c0-.484 0-.727-.095-.912a.87.87 0 0 0-.378-.379c-.186-.094-.428-.094-.913-.094Z",
+  "background": "#303136",
+  "detailSvgAttrs": " fill=\"#ffffff\" height=\"31\" role=\"img\" viewBox=\"0 0 24 24\" width=\"31\"",
+  "detailSpanStyle": "width: 56px; height: 56px; border-radius: 16px; background-color: rgb(48, 49, 54); color: rgb(255, 255, 255);"
+ },
+ "email": {
+  "spanClass": "sand-tool-icon sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-l56j7k sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-b3r6kr sand-6dg3xy sand-1y0btm7 sand-5fd6op",
+  "background": "var(--sand-bg-magenta-primary)",
+  "iconName": "envelope",
+  "iconClass": "ui-icon ui-1j61x8r ui-etm3q0 ui-1tachi3 ui-1qt6sjn ui-o5v014 ui-3nfvp2 ui-6s0dn4 ui-l56j7k ui-1heor9g ui-1oai4fc ui-higkf7 ui-xymvpz ui-krqix3 ui-1403hyl ui-2b8uid ui-6mezaz ui-vmahel ui-lh3980 ui-87ps6o ui-1winvzj ui-1u4itkb ui-1q5xvfy ui-jb5y04 ui-1bxnb1t ui-1ehclkv ui-1yj7g93 cursor-icon sand-14ju556",
+  "iconStyle": "--cursor-icon-content: &quot;&quot;; --icon-size: 22px;",
+  "detailIconStyle": "--cursor-icon-content: \"\\ueb1c\"; --icon-size: 31px;",
+  "detailSpanStyle": "width: 56px; height: 56px; border-radius: 16px; background-color: var(--sand-bg-magenta-primary); color: rgb(255, 255, 255);"
+ }
 }
