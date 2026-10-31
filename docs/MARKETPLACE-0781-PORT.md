@@ -558,8 +558,21 @@ app had run — and against official 0.78.1 on port 9333. Both dialogs are 900 p
 | Bot-templates button | 91×32 | 114×32 |
 | connected-apps entry | 94×24 | 172×28 |
 | icon-only buttons in the dialog | 1 (the close button) | 1 (the close button) |
+| dialog max-height | 728 px = 100vh − 32 px of a 760 px viewport | 825 px = 100vh − 32 px of an 857 px viewport |
+| title glyph, first lit image column | 116 | 115 |
 
 Every remaining difference is accounted for under "Known differences" below.
+
+**The dialog is shorter here because the window is.** The two apps were measured in windows of
+1040×760 and 1395×857 CSS px, and both clamp the dialog with the same rule — `100vh` minus 32 px,
+so 728 px and 825 px of max-height. The dialogs then take their height from their content, which
+is 666 px and 702 px. The rule is identical; the viewport is not.
+
+**The title lands in the same place even though its box does not.** Official's `h2` is a box inset
+33 px from the dialog's edge, while this port's `h2` spans the row and carries the inset as its own
+padding. Measured on the two screenshots, the title's first lit column and the chip row's first lit
+column are the same column in each image (116 in ours, 115 in official's), so the difference is in
+which element owns the padding, not in what the reader sees.
 
 ## The gates
 
