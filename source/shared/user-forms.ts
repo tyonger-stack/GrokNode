@@ -15,17 +15,36 @@ export function normalizeUserFormDomain(raw: string): string | undefined {
     return url.hostname.toLowerCase().replace(/^www\./, "");
   } catch { return undefined; }
 }
+/** 0.78.1 secure card form (`saveToVault:'card'`): official field whitelist `At` (chunk-inline-user-form). */
+export const VAULT_CARD_FORM_FIELD_IDS = ["cc_number", "cc_exp", "cc_csc", "cc_name", "cc_nickname", "billing_line1", "billing_line2", "billing_city", "billing_region", "billing_postal_code", "billing_country", "save_billing_address"] as const;
+/** 0.78.1 required set `jt`: cc_number + cc_exp. */
+const VAULT_CARD_FORM_REQUIRED_IDS = ["cc_number", "cc_exp"];
 export const requestUserFormParameters = z.object({
   title: z.string().trim().min(1).max(120), instruction: z.string().trim().min(1).max(400),
   reason: z.enum(["auth", "checkout", "profile", "other"]), domain: z.string().trim().min(1).optional(),
   fields: z.array(userFormFieldSchema).min(1).max(8), submitAfterFill: z.boolean().optional(),
+  saveToVault: z.enum(["card"]).optional(),
+  vaultKind: z.enum(["card"]).optional(),
+  vaultSaveOnly: z.boolean().optional(),
 }).strict().superRefine((form, ctx) => {
   const domain = form.domain === undefined ? undefined : normalizeUserFormDomain(form.domain);
   if (form.domain !== undefined && domain === undefined) ctx.addIssue({ code: "custom", message: "Invalid domain" });
   if (new Set(form.fields.map(field => field.id)).size !== form.fields.length) ctx.addIssue({ code: "custom", message: "Duplicate field IDs" });
+  if (form.saveToVault === "card") {
+    // 0.78.1 secure card contract (`Mt`/`jt`): chat-filled only (no browser targets),
+    // whitelisted ids, cc_number + cc_exp required, no browsing destination.
+    const ids = form.fields.map(field => field.id);
+    if (!ids.includes("cc_number") || !ids.includes("cc_exp")) ctx.addIssue({ code: "custom", message: "Vault card forms require cc_number and cc_exp" });
+    for (const id of ids) if (!(VAULT_CARD_FORM_FIELD_IDS as readonly string[]).includes(id)) ctx.addIssue({ code: "custom", message: `Field ${id} is not a vault card field` });
+    for (const field of form.fields) if (field.target) ctx.addIssue({ code: "custom", message: "Vault card fields are filled in the chat card, not on a page" });
+  }
   for (const field of form.fields) {
-    if ((isSecretUserFormField(field) || field.target) && !domain) ctx.addIssue({ code: "custom", message: "Verified destination required" });
-    if (isSecretUserFormField(field) && !field.target) ctx.addIssue({ code: "custom", message: "Secret target required" });
+    // Vault card fields are chat-filled by the user (never browser-filled), so the
+    // verified-destination / secret-target requirements do not apply to them.
+    if (form.saveToVault !== "card") {
+      if ((isSecretUserFormField(field) || field.target) && !domain) ctx.addIssue({ code: "custom", message: "Verified destination required" });
+      if (isSecretUserFormField(field) && !field.target) ctx.addIssue({ code: "custom", message: "Secret target required" });
+    }
     if (field.type === "select" && !field.options?.length) ctx.addIssue({ code: "custom", message: "Select options required" });
   }
   if (form.submitAfterFill && (form.fields.length !== 1 || form.fields[0]?.type !== "otp" || !form.fields[0].target || !domain || /card|cvv|ssn|iban|passport|government|routing/i.test(`${form.fields[0].id} ${form.fields[0].label}`))) {
@@ -41,7 +60,7 @@ export const submitUserFormRequestSchema = z.object({ agentId: z.string().min(1)
 export const dismissUserFormRequestSchema = z.object({ agentId: z.string().min(1), requestId: z.string().min(1) }).strict();
 export const remapUserFormTargetsParameters = z.object({ targets: z.array(z.object({ fieldId: z.string().min(1), target: userFormTargetSchema }).strict()).min(1).max(8) }).strict();
 export type UserFormFailure = "driver_unavailable" | "page_moved" | "domain_mismatch" | "stale_locator" | "fill_failed";
-export type UserFormFieldOutcome = { readonly id: string; readonly status: "filled" | "not_filled" | "failed"; readonly reason?: UserFormFailure };
+export type UserFormFieldOutcome = { readonly id: string; readonly status: "filled" | "not_filled" | "failed"; readonly reason?: UserFormFailure; readonly secureValueStorage?: "stored" };
 export type UserFormReceipt = {
   readonly requestId: string;
   readonly status: "shown" | "submitted" | "dismissed" | "expired" | "stopped" | "turn_ended" | "unavailable" | "invalid_values" | "remapped";

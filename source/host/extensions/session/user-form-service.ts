@@ -147,6 +147,19 @@ export class UserFormService {
     this.#pending.delete(id);
   }
   async #fill(pending: Pending, remap: boolean): Promise<UserFormReceipt> {
+    // 0.78.1 secure card form (`saveToVault:'card'`): the renderer stores the values in
+    // the desktop Vault before submitting; the host never browser-fills and the receipt
+    // carries per-field outcomes with `secureValueStorage` only — never values.
+    if (pending.form.saveToVault === "card") {
+      pending.busy = true;
+      const fields = pending.entries.map(({ field }) => ({ id: field.id, status: "filled" as const, secureValueStorage: "stored" as const }));
+      pending.entries = [];
+      pending.busy = false;
+      this.#clear(pending.form.id);
+      const receipt: UserFormReceipt = { requestId: pending.form.id, status: "submitted", fields };
+      await this.#notify(pending, receipt, true);
+      return receipt;
+    }
     pending.busy = true;
     let result: UserFormFillResult;
     try {

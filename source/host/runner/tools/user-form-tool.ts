@@ -11,7 +11,10 @@ export interface UserFormToolDependencies {
 export function createUserFormTools(deps: UserFormToolDependencies) {
   const request = defineCommunicateTool(deps, {
     id: "REQUEST_USER_FORM", name: "RequestUserForm", parameters: requestUserFormParameters,
-    description: "Request a write-only form and end this turn awaiting the user. Values never return to the model. Request only visible fields; secrets require a verified domain and target. Never screenshot filled secrets. Enter submission is limited to a single OTP field.",
+    description: [
+      "Request a write-only form and end this turn awaiting the user. Values never return to the model. Request only visible fields; secrets require a verified domain and target. Never screenshot filled secrets. Enter submission is limited to a single OTP field.",
+      "For payment cards use saveToVault:\"card\" with fields cc_number and cc_exp (required) plus optional cc_csc, cc_name, cc_nickname and billing_* fields. The user's entries are saved to their Vault and you only learn which fields were filled — never the values.",
+    ].join("\n"),
     execute: async (_ctx, args: unknown, runtime) => {
       const result = await runtime.userForms.request(runtime.getAgentId(), runtime.getTurnId(), args);
       if (result.status === "shown") runtime.endThisRunAwaitingUser("user-form");

@@ -11,6 +11,7 @@ export function UserFormTranscriptCard(props: TranscriptCardLeafProps) {
   const providers = useTranscriptCardLeafProviders();
   const [values, setValues] = useState<Record<string, string | boolean>>({});
   const [status, setStatus] = useState("pending");
+  const [saveToVault, setSaveToVault] = useState(true);
   const busy = useRef(false);
   const titleId = useId();
   const lifecycle = entry?.userFormState;
@@ -21,6 +22,10 @@ export function UserFormTranscriptCard(props: TranscriptCardLeafProps) {
   const actions = providers?.serverPortActions;
   const agentId = providers?.scope.agentId;
   const canAct = actions != null && agentId != null && terminal == null && (status === "pending" || status === "failed" || status === "invalid_values");
+  const vaultCard = form.saveToVault === "card";
+  const vaultBridge = vaultCard ? (window.desktop as { vault?: { createGrokBotVaultCard?: (args: unknown) => Promise<unknown> } } | undefined)?.vault : undefined;
+  const saveVaultCard = vaultCard && vaultBridge != null && typeof vaultBridge.createGrokBotVaultCard === "function" ? vaultBridge.createGrokBotVaultCard.bind(vaultBridge) : null;
+  const vaultSaveAvailable = saveVaultCard != null;
   const valid = form.fields.every((field) => !field.required || (field.type === "checkbox" ? values[field.id] === true : typeof values[field.id] === "string" && String(values[field.id]).trim().length > 0));
   async function resolve(submit: boolean) {
     if (!canAct || busy.current || actions == null || agentId == null || form == null) return;
@@ -29,6 +34,17 @@ export function UserFormTranscriptCard(props: TranscriptCardLeafProps) {
     setValues({});
     setStatus("submitting");
     try {
+      if (submit && saveVaultCard != null && saveToVault) {
+        // 0.78.1 secure card contract: values go to the desktop Vault; the submitted
+        // receipt only reports per-field outcomes. cc_nickname / save_billing_address
+        // are official form fields our local card create does not take — stripped here.
+        const allowed = new Set(["cc_number", "cc_exp", "cc_csc", "cc_name", "billing_line1", "billing_line2", "billing_city", "billing_region", "billing_postal_code", "billing_country"]);
+        const cardValues: Record<string, string> = {};
+        for (const [id, value] of Object.entries(submitted)) {
+          if (allowed.has(id) && typeof value === "string") cardValues[id] = value;
+        }
+        await saveVaultCard({ values: cardValues });
+      }
       setStatus(submit ? await actions.submitUserForm({agentId, requestId: form.id, values: submitted}) : await actions.dismissUserForm({agentId, requestId: form.id}));
     } catch {
       // Never render/log exceptions: a connector may include submitted credentials in its error.
@@ -40,7 +56,9 @@ export function UserFormTranscriptCard(props: TranscriptCardLeafProps) {
     <div className={`${css.widget} ${css.card}`}>
     <div className={css.formHeaderRow}><h3 className={css.formTitle} id={titleId}>{form.title}</h3><span className={css.formLock}><SandIcon name="lock" size="xs" /><span>{form.domain ?? "Destination unknown"}</span></span></div>
     <p className={css.formLabelText}>{form.instruction}</p>
-    <p className={css.formLabelText}>{form.submitAfterFill ? "Fill and submit this page by pressing Enter" : "Fill fields only; the page will not be submitted"}</p>
+    {vaultCard
+      ? <p className={css.formLabelText}>Never shown to your Bot</p>
+      : <p className={css.formLabelText}>{form.submitAfterFill ? "Fill and submit this page by pressing Enter" : "Fill fields only; the page will not be submitted"}</p>}
     <div className={css.formGrid}>
     {form.fields.map((field) => {
       const secret = field.secret === true || field.type === "password" || field.type === "otp";
@@ -58,8 +76,14 @@ export function UserFormTranscriptCard(props: TranscriptCardLeafProps) {
       </div>;
     })}
     </div>
+    {vaultCard && vaultSaveAvailable ? (
+      <label className={css.formLabelText}>
+        <input type="checkbox" checked={saveToVault} onChange={(event) => setSaveToVault(event.currentTarget.checked)} />
+        {" Securely save to Bot's vault"}
+      </label>
+    ) : null}
     <div className={css.actions}>
-      <ReviewButton type="submit" disabled={!canAct || !valid}>{form.submitAfterFill ? "Fill and submit" : "Fill fields"}</ReviewButton>
+      <ReviewButton type="submit" disabled={!canAct || !valid}>{vaultCard ? (vaultSaveAvailable ? "Save card" : "Continue") : form.submitAfterFill ? "Fill and submit" : "Fill fields"}</ReviewButton>
       <ReviewButton type="button" variant="secondary" disabled={!canAct} onClick={() => { void resolve(false); }}>Cancel</ReviewButton>
     </div>
     <p className={status === "failed" ? css.formError : css.formLabelText} role={status === "failed" ? "alert" : "status"}>{status === "failed" ? "Unable to confirm the form action. Values cleared." : terminal ?? status}</p>
