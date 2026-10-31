@@ -726,20 +726,21 @@ Chinese text, and the official CSS rules verbatim.
 
 ## Final verification and deployment record (2026-10-31)
 
-The packaged build (app.asar sha256 head `238ec5e272cb`) was deployed to
-`/Applications/Grok Node.app` and probed live over CDP against the official 0.78.1 app
-running side by side on the same machine:
+The packaged build (app.asar sha256 head `0f744d131dfd`, includes the detail-header size fix
+below) was deployed to `/Applications/Grok Node.app` and probed live over CDP against the
+official 0.78.1 app running side by side on the same machine:
 
 - **probe-104** (native/team parity): 13 sections, section order identical, first section
   为你推荐, the Bot 模板 button with its svg (`viewBox 0 0 27.6 27.6`) and its
   `data-grok-state` mark, and the native 1Password row.
 - **probe-105** (native row DOM): the 1Password row renders the native open-button with
-  `aria-label="Open 1Password"` and the brand tile, byte-identical to the official row.
-- **probe-109 / probe-110** (detail dialog): the 1Password detail heading plus the 40px
-  brand tile (`width: 40px; height: 40px; border-radius: 11px`, svg
-  `fill=#ffffff viewBox=0 0 24 24`, real glyph path `M12 0c6.627…`) matching the
-  official's own 0.78.1 SVG source.
-- **probe-107b** (email detail icon): the 邮箱 row detail icon present, no oversized icons.
+  `aria-label="Open 1Password"` and the 40px brand tile, byte-identical to the official row.
+- **probe-113 / probe-114 / probe-109 / probe-110** (detail dialog, deterministic): the
+  1Password detail heading plus the **56x56** brand tile — `width: 56px; height: 56px;
+  border-radius: 16px`, svg `fill=#ffffff viewBox=0 0 24 24`, glyph `M12 0c6.627…` — the
+  style string, svg attributes, and path all equal to the official's live detail tile.
+- **probe-107b** (email detail icon): the 邮箱 row's detail header icon renders at 56px,
+  matching the official's email detail.
 - **probe-111** (full inventory, written this session): 62 rows total on both apps across
   the same 13 sections; per-section row sets identical where the virtualized viewport
   overlaps (营销 and 支持 sections identical outright); remaining per-section differences
@@ -759,3 +760,15 @@ writer replaces it with a mixed old-shell asar within ~5 minutes of boot; and bo
 a freshly recreated `grok-node-local-vm` container (rm the stale one) or the boot hangs
 waiting for a dead host-main. With those three applied the deployed build stayed up past
 30 minutes with the asar fingerprint unchanged across restarts.
+
+### Detail-header size fix (same day, second packaging)
+
+The first same-moment audit caught a real residual difference: the live dialog is rendered
+by the shell's `view-B5Ug8wEm.js` chunk whose native-icon code comes from the
+`RM0781*` patches in `scripts/lib/marketplace-browse-chrome-0781-patch.mjs` — not from
+`frontend/src` — and that injected `RM0781NativeIcon(entry)` hard-coded the 40x40 row frame,
+so it also overrode the detail-header slot where official passes `size:56`. Fixed by
+parameterizing the frame (`edge 40|56`, `radius 11|16`, `glyph 22|31`) and passing the
+slot size explicitly at both call sites (`3cddb6e`); `frontend/src`'s own
+`buildNativeToolIcon` already had the correct 40/56 split. Re-probed after repackaging:
+detail tile 56x56/radius 16/31px glyph on both apps, row tiles still 40x40, all green.
