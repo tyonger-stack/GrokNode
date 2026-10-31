@@ -547,14 +547,12 @@ the same `sand-grok-bot-mark sand-1n2onr6` classes. On the build before the chip
 was added (see below) the mark had no size in the memoized toolbar and the button measured 91 px;
 after the fix it renders, and it renders the same in both apps.
 
-**The two native rows keep upstream's first-letter icon.** Official draws 1Password's brand icon (the
-keyhole on `#303136`) and 邮箱's envelope glyph, because official resolves native icons from its own
-brand registry. The port carries official's brand bytes and official's icon recipe and renders them
-in the detail page's icon slot — the slot this port owns. The browse row's icon slot is not in the
-patched chunk at all: it lives in upstream 0.18's shared `index-UbX-y3il.js`, and this port never
-rewrites that chunk, so those two rows still show upstream's first-letter chip ("1", "邮"). Measured
-on the deployed build: no brand path in the dialog and 62 first-letter chips, where official's
-1Password row carries the brand icon.
+**The native rows carry official's brand icons.** Official draws 1Password's brand icon (the keyhole
+on `#303136`) and 邮箱's envelope glyph, because official resolves native icons from its own brand
+registry. The port carries official's brand bytes and official's icon recipe and renders them in
+both icon slots it owns, the browse row's slot and the detail page's slot. Measured on the deployed
+build: the 1Password row draws official's brand icon (one official brand path in the dialog) and
+neither native row is left with upstream's first-letter chip.
 
 **The plugin detail page is upstream's.** Clicking a card opens a detail view inside the same dialog.
 Official's shows a back arrow, the icon, the description, a connect button and an information table.
@@ -604,6 +602,7 @@ run.
 | sections | 为你推荐 + 11 chips + 团队插件 | 为你推荐 + 11 chips + 团队插件 |
 | section headings, read from the AX tree | identical list | identical list |
 | native catalogue entries | 1Password, 邮箱 | 1Password, 邮箱 |
+| the 1Password row's icon | official's brand icon | official's brand icon |
 | the marketplace-published entry | 71001007 / oh-my-claudecode | 71001007 / oh-my-claudecode |
 | catalogue entries | 488 | 293 |
 | search field | 711×32 | 712×32 |
