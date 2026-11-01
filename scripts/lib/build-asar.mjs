@@ -154,7 +154,10 @@ export async function buildAsar({
   // 0.75.3-reconstructed.1), never the pinned upstream 0.18.0 base. The
   // updater compares this value against GitHub release tags, so the staged
   // package.json is the single source of truth for the installed version.
-  const releaseVersion = process.env.GROK_NODE_APP_VERSION?.trim() || "0.75.5-reconstructed.1";
+  // The default reads the repo package.json version (bumped alongside releases)
+  // so a version bump cannot be silently lost by this hardcoded fallback.
+  const packageJsonVersion = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8")).version;
+  const releaseVersion = process.env.GROK_NODE_APP_VERSION?.trim() || packageJsonVersion;
   const stagedPackagePath = path.join(stageRoot, "package.json");
   const stagedPackage = JSON.parse(await readFile(stagedPackagePath, "utf8"));
   stagedPackage.version = releaseVersion;
