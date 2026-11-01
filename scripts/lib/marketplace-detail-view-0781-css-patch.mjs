@@ -30,7 +30,13 @@ export async function applyMarketplaceDetailView0781Css({ stageRoot }) {
   const rules = official.split("\n").filter((line) => line.startsWith(".sand-"));
   // Another patch in the chain may already carry one of these rules, so only the missing ones are
   // appended. The rule text is the identity, not the class name.
-  const missing = rules.filter((rule) => !original.includes(rule));
+  //
+  // The comparison is line-exact on purpose. A plain substring search would read
+  // `.r-conversation-computer-card .sand-1lun4ml{…}` as "the rule for sand-1lun4ml is already
+  // there", because the scoped rule contains the unscoped one as a substring — and the unscoped
+  // rule is the one that actually applies to the detail page's button.
+  const originalLines = new Set(original.split("\n").map((line) => line.trim()));
+  const missing = rules.filter((rule) => !originalLines.has(rule.trim()));
   if (missing.length > 0) {
     await writeFile(cssPath, `${original}\n${missing.join("\n")}\n`);
   } else {
@@ -38,6 +44,15 @@ export async function applyMarketplaceDetailView0781Css({ stageRoot }) {
   }
   const sha256 = (text) => createHash("sha256").update(text, "utf8").digest("hex");
   const patched = missing.length > 0 ? `${original}\n${missing.join("\n")}\n` : original;
+  // Fail closed: after this step every official rule must stand on its own line, unscoped.
+  const patchedLines = new Set(patched.split("\n").map((line) => line.trim()));
+  const unresolved = rules.filter((rule) => !patchedLines.has(rule.trim()));
+  if (unresolved.length > 0) {
+    throw new Error(
+      `Marketplace detail view CSS patch: ${unresolved.length} official rule(s) are not present ` +
+        `as standalone rules in ${file}: ${unresolved.map((r) => r.slice(0, 60)).join(" | ")}`,
+    );
+  }
   const provenance = {
     mode: "marketplace-detail-view-0781-css",
     referenceVersion: "0.78.1",

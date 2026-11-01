@@ -142,6 +142,46 @@ export const MARKETPLACE_DETAIL_VIEW_0781_MESSAGES = Object.freeze({
   builtIn: Object.freeze({ id: "+7fBMP", en: "Built-in", zh: "内置" }),
   yourTeam: Object.freeze({ id: "vhSOwR", en: "Your team", zh: "你的团队" }),
   publicListed: Object.freeze({ id: "7d1a0d", en: "Public", zh: "公开" }),
+  // The tools section's count sentence. Official composes it at runtime from its locale entry, so
+  // the port writes the two halves around the runtime counts.
+  toolsEnabled: Object.freeze({
+    id: "bWyJ+b",
+    composed: true,
+    en: "{enabledCount} of {0} enabled",
+    zh: "已启用 {enabledCount}/{0} 个",
+    source: 'RLocT(h+" of "+r.length+" enabled","已启用 "+h+"/"+r.length+" 个")',
+  }),
+  // The information table's Tools row. Official's locale entry names the first value differently.
+  detailsEnabled: Object.freeze({
+    id: "CzixCu",
+    composed: true,
+    en: "{enabledToolCount} of {0} enabled",
+    zh: "已启用 {enabledToolCount}/{0} 个",
+    source: 'RLocT(y+" of "+f.length+" enabled","已启用 "+y+"/"+f.length+" 个")',
+  }),
+  // The add-account label the port writes into upstream's own row.
+  addAnotherAccount: Object.freeze({
+    id: "FGnQEW",
+    en: "Add Another Account",
+    zh: "添加其他账户",
+  }),
+});
+
+/**
+ * Official 0.78.1's own message ids for the detail page's section headings and labels.
+ *
+ * Upstream 0.18 writes these as hardcoded English strings that the extra-i18n pass localizes
+ * under official's own message ids, so the port does not write them itself. The ids are recorded
+ * here so the port record points at official's locale table and so the ids the repository's i18n
+ * table uses can be checked against official's own.
+ */
+export const MARKETPLACE_DETAIL_VIEW_0781_SECTION_MESSAGES = Object.freeze({
+  tools: Object.freeze({ id: "xdA/+p", en: "Tools", zh: "工具" }),
+  accounts: Object.freeze({ id: "bPwFdf", en: "Accounts", zh: "账户" }),
+  defaultAccount: Object.freeze({ id: "ovBPCi", en: "Default", zh: "默认" }),
+  setup: Object.freeze({ id: "RDjuBN", en: "Setup", zh: "配置" }),
+  setupValues: Object.freeze({ id: "mrRDVU", en: "Setup Values", zh: "配置值" }),
+  editValues: Object.freeze({ id: "kDCdbL", en: "Edit Values", zh: "编辑值" }),
 });
 
 /**
@@ -170,6 +210,64 @@ export const MARKETPLACE_DETAIL_VIEW_0781_CATEGORIES = Object.freeze({
   MARKETING: Object.freeze({ en: "Marketing", zh: "营销" }),
   LOGIN_AND_CREDENTIAL_MANAGEMENT: Object.freeze({ en: "Password Managers", zh: "密码管理器" }),
 });
+
+/**
+ * Official 0.78.1's own class recipes for the detail page's shared surfaces.
+ *
+ * Every string here was read off official 0.78.1's own renderer — the plugin detail page's DOM,
+ * measured live on official's CDP port 9333 on 2026-11-01 — and cross-checked against official's
+ * stylesheet (`index-Dh7EWA8t.css`), where every token resolves to a declaration. A stylix class
+ * name is the hash of its declaration block, so a token that exists on both sides carries the same
+ * declarations and needs no new CSS.
+ *
+ * @evidence official 0.78.1 `chunk-plugin-detail-view-KNB3B4mm.js` — `hr` (the collapsible card),
+ *   `Nr` (the tools section), `Br` (the setup section), `kn` (the row label recipe).
+ * @evidence official 0.78.1 `chunk-plugin-detail-sharepoint-write-MAPmM3e9.js` — the account row,
+ *   the account title recipe and the add-account row recipe.
+ */
+const OFFICIAL_0781_SECTION_LABEL =
+  "sand-9f619 sand-1y1aw1k sand-1pic42t sand-10b6aqq sand-1onr9mi";
+const OFFICIAL_0781_DETAIL_CARD =
+  "sand-9f619 sand-7giv3 sand-13ly8rp sand-1xlntvz sand-4hv7ue sand-1y0btm7 sand-5fd6op sand-1pkpdue sand-10e981r";
+const OFFICIAL_0781_TOOLS_CARD =
+  "sand-9f619 sand-7giv3 sand-4hv7ue sand-1y0btm7 sand-5fd6op sand-1pkpdue sand-10e981r sand-exx8yu sand-18d9i69";
+const OFFICIAL_0781_DETAILS_ROW =
+  "sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-oyc9vk sand-1pic42t sand-2lprc sand-1onr9mi";
+const OFFICIAL_0781_ROW_LABEL =
+  "sand-9f619 sand-2lah0s sand-thy2uy sand-b3r6kr sand-uxw1ft sand-lyipyv sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-tyxrsu";
+const OFFICIAL_0781_ACCOUNT_TITLE =
+  "sand-9f619 sand-b3r6kr sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-tyxrsu sand-lyipyv sand-uxw1ft";
+const OFFICIAL_0781_SUMMARY_BUTTON =
+  "sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-oyc9vk sand-1pic42t sand-2lprc sand-1onr9mi sand-jyslct sand-1lugfcp sand-h8yej3 sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-c342km sand-ng3xce sand-jb2p0i sand-1qlqyl8 sand-1yc453h sand-1ypdohk sand-jbqb8w sand-1ecwv3n sand-1t137rt sand-1yfcfk6";
+const OFFICIAL_0781_SM_SECONDARY_BUTTON =
+  "sand-button sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-l56j7k sand-2lah0s sand-17d4w8g sand-178xt8z " +
+  "sand-1lun4ml sand-so031l sand-pilrb4 sand-13fuv20 sand-18b5jzi sand-1q0q8m5 sand-1t7ytsu sand-1v8p93f " +
+  "sand-1o3jo1z sand-16stqrj sand-v5lvn5 sand-jb2p0i sand-1k6tqyu sand-uxw1ft sand-2b8uid sand-krqix3 " +
+  "sand-87ps6o sand-ggy1nq sand-1ypdohk sand-1s07b3s sand-1hc1fzr sand-uhm2yv sand-67bb7w sand-aqnwrm " +
+  "sand-1k57tk5 sand-784prv sand-1t137rt sand-9v5kkp sand-1uczgqu sand-1wpm9rq sand-1wfwxd8 sand-7s97pk " +
+  "sand-1eaenvl sand-4meti sand-1pbvl4h sand-d7y6wv sand-exx8yu sand-2vl965 sand-18d9i69 sand-e2zdcy " +
+  "sand-9h44rk sand-1wm8ruf sand-spwq11 sand-fwqdrz sand-19jy9ex sand-tyxrsu";
+const OFFICIAL_0781_CHEVRON =
+  "sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-169k319 sand-11xpdln sand-12rn374 sand-wji4o3";
+const OFFICIAL_0781_ADD_ACCOUNT =
+  "sand-9f619 sand-78zum5 sand-6s0dn4 sand-17d4w8g sand-h8yej3 sand-oyc9vk sand-1pic42t sand-2lprc sand-1onr9mi sand-c342km sand-ng3xce sand-jbqb8w sand-1o0liin sand-n4ifyr sand-jb2p0i sand-11wthnw sand-12oo3zp sand-1yc453h sand-1ypdohk sand-1t137rt sand-1yfcfk6";
+const OFFICIAL_0781_EDIT_ACCOUNT =
+  "sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-1717udv sand-c342km sand-ng3xce sand-jbqb8w sand-169k319 sand-n4ifyr sand-1ypdohk";
+
+/** Upstream 0.18's own recipes for the same surfaces, which the port replaces. */
+const UPSTREAM_018_SECTION_LABEL =
+  "sand-9f619 sand-1y1aw1k sand-19tmk5i sand-10b6aqq sand-zjhap9";
+const UPSTREAM_018_DETAIL_CARD = "sand-9f619 sand-ixl9f9 sand-i07v4r";
+const UPSTREAM_018_DETAILS_ROW =
+  "sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-z9dl7a sand-19tmk5i sand-sag5q8 sand-zjhap9";
+const UPSTREAM_018_ROW_LABEL =
+  "sand-9f619 sand-2lah0s sand-thy2uy sand-b3r6kr sand-uxw1ft sand-lyipyv sand-dj266r sand-1yf7rl7 sand-at24cr sand-j3b58b sand-4z9k3i sand-d4r4e8 sand-12oo3zp sand-1wd3ewq";
+const UPSTREAM_018_ACCOUNT_TITLE =
+  "sand-9f619 sand-b3r6kr sand-4z9k3i sand-d4r4e8 sand-12oo3zp sand-1wd3ewq sand-lyipyv sand-uxw1ft";
+const UPSTREAM_018_ADD_ACCOUNT =
+  "sand-9f619 sand-78zum5 sand-6s0dn4 sand-17d4w8g sand-h8yej3 sand-z9dl7a sand-19tmk5i sand-sag5q8 sand-zjhap9 sand-c342km sand-ng3xce sand-jbqb8w sand-19aaqeu sand-7gh5u8 sand-jb2p0i sand-4z9k3i sand-12oo3zp sand-dpxx8g sand-1ypdohk";
+const UPSTREAM_018_EDIT_ACCOUNT =
+  "sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-1717udv sand-c342km sand-ng3xce sand-jbqb8w sand-4b2ntj sand-7gh5u8 sand-1ypdohk";
 
 const REPLACEMENTS = [
   {
@@ -306,6 +404,133 @@ const REPLACEMENTS = [
       "t.jsx(RM0781DetailsList,{label:RLocT(\"Information\",\"信息\")," +
       "rows:RM0781DetailRows(s,_)})]})",
   },
+  {
+    // Official's tools section reads its count sentence from its locale table: id `bWyJ+b` is
+    // "{enabledCount} of {0} enabled" in English and "已启用 {enabledCount}/{0} 个" in Chinese.
+    // Upstream 0.18 builds the same sentence as an English template literal, so the Chinese
+    // build renders "23 of 23 enabled" inside a Chinese page.
+    label: "detail tools section: official's enabled-count sentence",
+    before: "x=`${h} of ${r.length} enabled`",
+    after: 'x=RLocT(h+" of "+r.length+" enabled","已启用 "+h+"/"+r.length+" 个")',
+  },
+  {
+    // Official's information table reads the same sentence from its own locale entry, id
+    // `CzixCu`: "{enabledToolCount} of {0} enabled" / "已启用 {enabledToolCount}/{0} 个".
+    label: "detail information table: official's enabled-count sentence",
+    before: "V=f.length>0?`${y} of ${f.length} enabled`:String(s.toolCount)",
+    after: 'V=f.length>0?RLocT(y+" of "+f.length+" enabled","已启用 "+y+"/"+f.length+" 个"):String(s.toolCount)',
+  },
+  {
+    // Official's section heading carries official's own section-label recipe
+    // (`rt.sectionLabel`: sand-9f619 / sand-1y1aw1k / sand-1pic42t / sand-10b6aqq / sand-1onr9mi).
+    // Upstream 0.18 pads the heading with physical left and right padding; official pads it
+    // logically. Official uses the one recipe for every section heading on the page, so all four
+    // of upstream's heading sites take it.
+    label: "detail sections: official's section-label recipe",
+    before: `k("${UPSTREAM_018_SECTION_LABEL}")`,
+    after: `k("${OFFICIAL_0781_SECTION_LABEL}")`,
+    occurrences: 4,
+  },
+  {
+    // Official's card is an elevated surface with a hairline border and the xl radius; upstream's
+    // is a translucent fill with a 14px radius and no border. Official's tools card drops the
+    // vertical padding because its only child is the summary button.
+    label: "detail tools card: official's card recipe",
+    before: `h=k(l,"${UPSTREAM_018_DETAIL_CARD}")`,
+    after: `h=k(l,"${OFFICIAL_0781_TOOLS_CARD}")`,
+  },
+  {
+    // Official's summary button composes `$.detailsRow` with `$.summaryRow`, the interactive recipe
+    // and the inset focus ring. Upstream composes its own pair, which pads the row by 12px, keeps
+    // a 14px radius on the button and draws an outline focus ring instead of an inset one.
+    label: "detail tools card: official's summary button recipe",
+    before:
+      "k(Re(Fs.detailsRow,Fs.summaryRow,d&&Fs.summaryRowExpanded,wn.interactive,wn.keyboardFocus).className)",
+    after: `k("${OFFICIAL_0781_SUMMARY_BUTTON}")`,
+  },
+  {
+    // Official's chevron wrapper carries the tertiary text colour and a 120ms transition.
+    label: "detail tools card: official's chevron recipe",
+    before:
+      'k({0:{className:"sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-4b2ntj sand-11xpdln sand-gdialr sand-wji4o3"},' +
+      '1:{className:"sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-4b2ntj sand-11xpdln sand-gdialr sand-wji4o3 sand-19jd1h0"}}' +
+      "[!!d<<0].className)",
+    after:
+      `k({0:{className:"${OFFICIAL_0781_CHEVRON}"},` +
+      `1:{className:"${OFFICIAL_0781_CHEVRON} sand-19jd1h0"}}[!!d<<0].className)`,
+  },
+  {
+    // Official's details row is the row every section on the page uses: the accounts row, the
+    // per-tool row, the setup row and the information row. Upstream pads its rows by 12px with
+    // physical left and right padding; official pads them by 10px logically.
+    label: "detail rows: official's details-row recipe",
+    before: `k("${UPSTREAM_018_DETAILS_ROW}")`,
+    after: `k("${OFFICIAL_0781_DETAILS_ROW}")`,
+    occurrences: 7,
+  },
+  {
+    // Official's row label is one recipe (`kn`) for the tools summary, the per-tool name, the
+    // setup values and the information table's term. Upstream's carries a 13px size and physical
+    // margins; official's carries the base size and logical margins.
+    label: "detail row labels: official's label recipe",
+    before: `k("${UPSTREAM_018_ROW_LABEL}")`,
+    after: `k("${OFFICIAL_0781_ROW_LABEL}")`,
+    occurrences: 5,
+  },
+  {
+    // Official's accounts card is the elevated bordered surface, not upstream's translucent fill.
+    label: "detail accounts section: official's card recipe",
+    before: `A=k("sand-plugins-detail__accounts","${UPSTREAM_018_DETAIL_CARD}")`,
+    after: `A=k("sand-plugins-detail__accounts","${OFFICIAL_0781_DETAIL_CARD}")`,
+  },
+  {
+    // Official's account title is the base-size primary-colour label.
+    label: "detail accounts section: official's account-title recipe",
+    before: `t.jsx("span",{className:k("${UPSTREAM_018_ACCOUNT_TITLE}"),children:B})`,
+    after: `t.jsx("span",{className:k("${OFFICIAL_0781_ACCOUNT_TITLE}"),children:B})`,
+  },
+  {
+    // Official's edit/rename icon on the account row carries official's own recipe.
+    label: "detail accounts section: official's edit-account recipe",
+    before: `k("${UPSTREAM_018_EDIT_ACCOUNT}")`,
+    after: `k("${OFFICIAL_0781_EDIT_ACCOUNT}")`,
+  },
+  {
+    // Official's add-account row carries official's own recipe, and its label is official's own
+    // text under official's own message id (`FGnQEW`). The row only renders for a multi-account
+    // connector, which the reconstruction's local credential store is not, so this keeps the
+    // source faithful rather than changing a pixel.
+    label: "detail accounts section: official's add-account row recipe",
+    before: `k("sand-plugins-detail__add-account","${UPSTREAM_018_ADD_ACCOUNT}")`,
+    after: `k("sand-plugins-detail__add-account","${OFFICIAL_0781_ADD_ACCOUNT}")`,
+  },
+  {
+    // Official's add-account label is "Add Another Account" in English and "添加其他账户" in
+    // Chinese, under official's message id `FGnQEW`. Upstream 0.18 leaves the English literal in
+    // a Chinese page.
+    label: "detail accounts section: official's add-account label",
+    before: `,"Add Another Account"`,
+    after: `,RLocT("Add Another Account","添加其他账户")`,
+  },
+  {
+    // Official's setup section's "Edit Values" button is official's own small secondary button.
+    // Upstream 0.18 builds it from its own `sand-button` recipe, which differs from official's in
+    // the border side, the transition duration and the secondary tone. The attributes official's
+    // button carries are the same ones upstream's button already renders, so only the recipe
+    // changes.
+    label: "detail setup section: official's small secondary button",
+    before:
+      't.jsx(ve,{disabled:s,onClick:a,size:"sm",type:"button",variant:"secondary",children:(RLocT("Edit Values","编辑值"))})',
+    after:
+      't.jsx(RM0781DetailSmallSecondaryButton,{disabled:s,onClick:a,children:(RLocT("Edit Values","编辑值"))})',
+  },
+  {
+    // Official's setup card is the elevated bordered surface.
+    label: "detail setup section: official's card recipe",
+    before: `i=k("sand-plugins-detail__setup","${UPSTREAM_018_DETAIL_CARD}")`,
+    after: `i=k("sand-plugins-detail__setup","${OFFICIAL_0781_DETAIL_CARD}")`,
+  },
+
 ];
 
 /**
@@ -342,6 +567,7 @@ const INJECTED_SOURCE = [
   "const RM0781DetailBarIconClasses=\"sand-kit-icon sand-3nfvp2 sand-6s0dn4 sand-l56j7k sand-2lah0s sand-1heor9g sand-w4jnvo sand-1qx5ct2\";",
   "const RM0781DetailBarTitleClasses=\"sand-fc7y3v sand-1lvvshy sand-ja3w2a sand-9f619 sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-euugli sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-b3r6kr sand-1rhlpx6 sand-tyxrsu sand-2b8uid sand-lyipyv sand-uxw1ft sand-19991ni sand-ibwnj sand-12w9bfk sand-9lcvmn sand-g01cxk\";",
   "const RM0781DetailBarTrailingClasses=\"sand-78zum5 sand-6s0dn4 sand-1qab1bc sand-euugli\";",
+  "const RM0781DetailSmallSecondaryButtonClasses=" + JSON.stringify(OFFICIAL_0781_SM_SECONDARY_BUTTON) + ";",
   "const RM0781DetailCardHeaderClasses=\"sand-9f619 sand-78zum5 sand-6s0dn4 sand-17d4w8g sand-1y1aw1k sand-1pic42t sand-10b6aqq sand-1onr9mi\";",
   "const RM0781DetailCardClasses=\"sand-9f619 sand-7giv3 sand-13ly8rp sand-1xlntvz sand-4hv7ue sand-1y0btm7 sand-5fd6op sand-1pkpdue sand-10e981r\";",
   "const RM0781DetailCardClassesMore=\"sand-9f619 sand-7giv3 sand-13ly8rp sand-4hv7ue sand-1y0btm7 sand-5fd6op sand-1pkpdue sand-10e981r sand-18d9i69\";",
@@ -580,6 +806,19 @@ const INJECTED_SOURCE = [
   "    id:cardId,children:[rows,more]});",
   "  return t.jsxs(\"div\",{children:[header,body]});",
   "}",
+  "function RM0781DetailSmallSecondaryButton(props){",
+  "  const{children,disabled,onClick}=props;",
+  "  return t.jsx(\"button\",{",
+  "    \"data-size\":\"sm\",",
+  "    \"data-variant\":\"secondary\",",
+  "    className:RM0781DetailSmallSecondaryButtonClasses,",
+  "    disabled:disabled,",
+  "    onClick:onClick,",
+  "    tabIndex:0,",
+  "    type:\"button\",",
+  "    children:children,",
+  "  });",
+  "}",
   "function RM0781DetailsList(props){",
   "  const{label,rows}=props;",
   "  const head=t.jsx(me,{as:\"h3\",className:RM0781DetailSectionLabelClasses,color:\"tertiary\",size:\"sm\",children:label});",
@@ -607,20 +846,26 @@ export const MARKETPLACE_DETAIL_VIEW_0781_REPLACEMENTS = REPLACEMENTS;
 /** The injected source, exported so the regression test can parse it on its own. */
 export const MARKETPLACE_DETAIL_VIEW_0781_INJECTED_SOURCE = NORMALIZED_INJECTED_SOURCE;
 
-function replaceExactlyOnce(source, before, after, label) {
-  const first = source.indexOf(before);
-  if (first < 0) throw new Error(`Original renderer marketplace detail view anchor is missing: ${label}`);
-  if (source.indexOf(before, first + 1) >= 0) {
+/**
+ * Replaces one anchor, exactly the number of times the entry declares.
+ *
+ * An anchor that is missing, or that occurs a different number of times than the entry declares,
+ * fails the patch: a patch that cannot identify its site must not run.
+ */
+function replaceExactly(source, before, after, label, occurrences) {
+  const count = source.split(before).length - 1;
+  if (count === 0) throw new Error(`Original renderer marketplace detail view anchor is missing: ${label}`);
+  if (count !== occurrences) {
     throw new Error(`Original renderer marketplace detail view anchor is ambiguous: ${label}`);
   }
-  return source.slice(0, first) + after + source.slice(first + before.length);
+  return source.split(before).join(after);
 }
 
 /** Applies official 0.78.1's plugin detail page to upstream 0.18's plugins chunk. */
 export function patchMarketplaceDetailView0781(source) {
   let patched = source;
-  for (const { label, before, after } of REPLACEMENTS) {
-    patched = replaceExactlyOnce(patched, before, after, label);
+  for (const { label, before, after, occurrences } of REPLACEMENTS) {
+    patched = replaceExactly(patched, before, after, label, occurrences ?? 1);
   }
   patched = `${patched}\n${NORMALIZED_INJECTED_SOURCE}\n`;
   return patched;
