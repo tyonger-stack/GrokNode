@@ -180,7 +180,11 @@ export function CustomMcpForm(props: {
   const copy: CustomMcpFormCopy = customMcpFormCopy(props.copy);
   const [draft, setDraft] = useState<CustomMcpServerDraft>(props.initial ?? EMPTY_CUSTOM_MCP_DRAFT);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  // 官方语义（0.78.1 chunk-custom-mcp-form：footer 在校验不过时禁用保存、不预画错误）：
+  // 校验反馈只在一次保存尝试之后出现；未触碰的空表单只有一个禁用的保存钮。
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const error = validateCustomMcpDraft(draft);
+  const showValidationError = submitAttempted && error != null;
   const setHeader = (index: number, patch: Partial<CustomMcpHeaderDraft>): void => {
     setDraft((current) => ({
       ...current,
@@ -198,8 +202,8 @@ export function CustomMcpForm(props: {
         <div className={`sand-custom-mcp-field ${SETUP_FIELD_ROW}`}>
           <label className={`sand-custom-mcp-label ${SETUP_LABEL}`} htmlFor="customMcpName">{copy.nameLabel}</label>
           <input
-            aria-invalid={error === "required-name" ? true : undefined}
-            className={`sand-custom-mcp-input ${error === "required-name" ? SETUP_INPUT_INVALID : SETUP_INPUT}`}
+            aria-invalid={showValidationError && error === "required-name" ? true : undefined}
+            className={`sand-custom-mcp-input ${showValidationError && error === "required-name" ? SETUP_INPUT_INVALID : SETUP_INPUT}`}
             disabled={props.disabled}
             id="customMcpName"
             name="customMcpName"
@@ -210,8 +214,8 @@ export function CustomMcpForm(props: {
         <div className={`sand-custom-mcp-field ${SETUP_FIELD_ROW}`}>
           <label className={`sand-custom-mcp-label ${SETUP_LABEL}`} htmlFor="customMcpUrl">{copy.urlLabel}</label>
           <input
-            aria-invalid={error === "invalid-url" || error === "non-http-url" || error === "credentials-in-url" ? true : undefined}
-            className={`sand-custom-mcp-input ${error === "invalid-url" || error === "non-http-url" || error === "credentials-in-url" ? SETUP_INPUT_INVALID : SETUP_INPUT}`}
+            aria-invalid={showValidationError && (error === "invalid-url" || error === "non-http-url" || error === "credentials-in-url") ? true : undefined}
+            className={`sand-custom-mcp-input ${showValidationError && (error === "invalid-url" || error === "non-http-url" || error === "credentials-in-url") ? SETUP_INPUT_INVALID : SETUP_INPUT}`}
             disabled={props.disabled}
             id="customMcpUrl"
             inputMode="url"
@@ -260,14 +264,14 @@ export function CustomMcpForm(props: {
           >{copy.addHeader}</button>
         </div>
       </div>
-      {error == null ? null : <p className={`sand-custom-mcp-error ${SETUP_ERROR}`} role="alert">{customMcpDraftErrorMessage(copy, error)}</p>}
+      {showValidationError ? <p className={`sand-custom-mcp-error ${SETUP_ERROR}`} role="alert">{customMcpDraftErrorMessage(copy, error)}</p> : null}
       {props.testState === "testing" ? <p className={`sand-custom-mcp-status ${ROW_NAME}`} role="status">{copy.testing}</p> : null}
       {props.testState === "ok" ? <p className={`sand-custom-mcp-status ${ROW_NAME}`} role="status">{copy.testOk}</p> : null}
       {props.testState === "failed" ? <p className={`sand-custom-mcp-error ${SETUP_ERROR}`} role="alert">{props.testMessage ?? copy.testFailed}</p> : null}
       {props.submitError == null || props.submitError === "" ? null : <p className={`sand-custom-mcp-error ${SETUP_ERROR}`} role="alert">{props.submitError}</p>}
       <div className={`sand-custom-mcp-form-actions ${SETUP_ACTIONS}`}>
         {props.onTest == null ? null : <button className={`sand-custom-mcp-test ${BUTTON_SECONDARY}`} disabled={props.disabled || props.testState === "testing"} onClick={props.onTest} type="button">{copy.testConnection}</button>}
-        <button className={`sand-custom-mcp-save ${BUTTON_SECONDARY}`} disabled={saveDisabled} onClick={() => props.onSubmit(draft)} type="button">{copy.save}</button>
+        <button className={`sand-custom-mcp-save ${BUTTON_SECONDARY}`} disabled={saveDisabled} onClick={() => { setSubmitAttempted(true); props.onSubmit(draft); }} type="button">{copy.save}</button>
         <button className={`sand-custom-mcp-cancel ${BUTTON_SECONDARY}`} onClick={props.onCancel} type="button">{copy.cancel}</button>
         {props.onRemove == null ? null : confirmingRemove
           ? <span className="sand-custom-mcp-remove-confirm">

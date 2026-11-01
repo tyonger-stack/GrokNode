@@ -56,6 +56,36 @@ test('headers can be added and the test hook reports progress', async () => {
   assert.match(host.textContent, /boom/);
 });
 
+test('untouched invalid forms stay quiet: no red text, no invalid styling, only a disabled save', async () => {
+  await render({ key: 'quiet-form', onSubmit: () => {} });
+  const name = host.querySelector('input[name="customMcpName"]');
+  assert.equal(name.getAttribute('aria-invalid'), null, 'empty name is not painted invalid on mount');
+  assert.equal(name.className.includes('sand-setup-input-invalid'), false);
+  assert.equal(host.querySelector('[role="alert"]'), null, 'no validation alert before a save attempt');
+  assert.ok([...host.querySelectorAll('button')].find((b) => b.textContent === 'Save').disabled);
+});
+
+test('validation feedback appears only after a save attempt, then follows edits', async () => {
+  let submitted = 0;
+  await render({ key: 'attempt-form', onSubmit: () => { submitted += 1; } });
+  const save = () => [...host.querySelectorAll('button')].find((b) => b.textContent === 'Save');
+  const name = host.querySelector('input[name="customMcpName"]');
+  const url = host.querySelector('input[name="customMcpUrl"]');
+  // A valid save attempt latches the attempted flag…
+  await ui.act(async () => setNativeValue(name, 'superpowers'));
+  await ui.act(async () => setNativeValue(url, 'https://example.com/mcp'));
+  await ui.act(async () => save().click());
+  assert.equal(submitted, 1);
+  // …and a later invalid edit shows the red text (attempted + invalid).
+  await ui.act(async () => setNativeValue(url, 'not a url'));
+  const alert = host.querySelector('[role="alert"]');
+  assert.ok(alert, 'invalid edit after an attempt shows the alert');
+  assert.match(alert.textContent, /not a valid URL/i);
+  // Fixing the draft clears it again.
+  await ui.act(async () => setNativeValue(url, 'https://example.com/mcp'));
+  assert.equal(host.querySelector('[role="alert"]'), null);
+});
+
 test.after(async () => {
   try { await ui.act(async () => root.unmount()); } catch { /* already unmounted */ }
   host.remove();

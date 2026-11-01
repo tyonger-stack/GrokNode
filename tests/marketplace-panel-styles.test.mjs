@@ -71,7 +71,7 @@ test("the panels apply the recipes instead of raw markup", () => {
   }
   assert.match(panelSource, /sand-effective-plugins-list \$\{GRID\}/, "the installed list must use the two-column grid recipe");
   assert.match(panelSource, /sand-effective-plugins-action \$\{BUTTON_SECONDARY\}/, "the uninstall action must use the button recipe");
-  assert.match(formSource, /sand-custom-mcp-input \$\{error/, "the form inputs must use the upstream input recipe");
+  assert.match(formSource, /sand-custom-mcp-input \$\{showValidationError/, "the form inputs must use the upstream input recipe (gated on a save attempt)");
   assert.match(formSource, /sand-custom-mcp-form-actions \$\{SETUP_ACTIONS\}/, "the form actions must use the upstream action row");
   // The panel dropped its own heading: the dialog's own "已安装" section title sits right above it,
   // and a second one read as a duplicate.
