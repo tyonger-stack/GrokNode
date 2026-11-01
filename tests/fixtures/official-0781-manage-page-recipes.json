@@ -1,0 +1,109 @@
+{
+  "page": "manage",
+  "dialog": {
+    "class": "ui-dialog ui-ixxii4 ui-wa60dl ui-1nrll8i ui-3vbryh ui-78zum5 ui-dt5ytf ui-w7nakj ui-f1vpex ui-178xt8z ui-13fuv20 ui-2kampu ui-1lun4ml ui-18b5jzi ui-15nuqqu ui-so031l ui-1q0q8m5 ui-1jfuf7k ui-pilrb4 ui-1t7ytsu ui-19smxde ui-1pkpdue ui-6ikm8r ui-10wlt62 ui-1acoasx ui-11wthnw ui-1wd3ewq ui-1t137rt ui-chxttu ui-gyzkii ui-18ctxkd ui-10e4vud ui-11i3ho8 sand-11lhmoz sand-9f619 sand-qyufaf sand-u366gq sand-1a5igra ui-dialog--xxl sand-plugins-dialog sand-1sdb7ul sand-tqtr64 sand-1eh7du3 sand-1717udv sand-xrbq2n sand-1j6au1h sand-pe8fed sand-1r6a6jf",
+    "ariaLabel": "连接应用"
+  },
+  "layout": {
+    "class": "sand-plugins-layout sand--default-marker sand-9f619 sand-1n2onr6 sand-78zum5 sand-dt5ytf sand-xe7e0x sand-2lwn1j sand-7giv3"
+  },
+  "yours": {
+    "class": "sand-plugins__yours sand-9f619 sand-78zum5 sand-dt5ytf sand-1665zp3"
+  },
+  "hero": {
+    "class": "sand-79ao00 sand-10ux60h sand-k0i524 sand-1ghz6dp sand-tyxrsu sand-1rhlpx6",
+    "text": "管理插件和技能",
+    "attrs": {
+      "data-detail-hero-title": "",
+      "class": "sand-79ao00 sand-10ux60h sand-k0i524 sand-1ghz6dp sand-tyxrsu sand-1rhlpx6",
+      "tabindex": "-1"
+    },
+    "wrapperTag": "HEADER",
+    "wrapperClass": "sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-1v2ro7d sand-euugli sand-f159sx sand-mzvs34",
+    "wrapperAttrs": {
+      "class": "sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-1v2ro7d sand-euugli sand-f159sx sand-mzvs34"
+    }
+  },
+  "detailBar": {
+    "class": "sand-settings-detail-bar sand-9f619 sand-rvj5dj sand-37c5m6 sand-6s0dn4 sand-sdox4t sand-889kno sand-2vl965 sand-1a8lsjc sand-e2zdcy",
+    "buttonClass": "sand-11wthnw sand-w8bs97 sand-14gdtuo sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-195vfkc sand-193iq5w sand-1fgtraw sand-exx8yu sand-2vl965 sand-18d9i69 sand-25sj25 sand-c342km sand-ng3xce sand-ymw2ht sand-jbqb8w sand-11hyl0l sand-1o0liin sand-jb2p0i sand-1ypdohk sand-1t137rt sand-9v5kkp sand-1k57tk5 sand-784prv sand-1uczgqu sand-1wpm9rq",
+    "buttonText": "连接应用",
+    "buttonAriaLabel": null,
+    "iconName": "chevron-left",
+    "h3Class": "sand-fc7y3v sand-1lvvshy sand-ja3w2a sand-9f619 sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-euugli sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-b3r6kr sand-1rhlpx6 sand-tyxrsu sand-2b8uid sand-lyipyv sand-uxw1ft sand-19991ni sand-ibwnj sand-12w9bfk sand-9lcvmn",
+    "h3Text": "管理",
+    "h3Attrs": {
+      "class": "sand-fc7y3v sand-1lvvshy sand-ja3w2a sand-9f619 sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-euugli sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-b3r6kr sand-1rhlpx6 sand-tyxrsu sand-2b8uid sand-lyipyv sand-uxw1ft sand-19991ni sand-ibwnj sand-12w9bfk sand-9lcvmn",
+      "id": "sand-plugins-modal-heading"
+    },
+    "h3HiddenClass": "sand-fc7y3v sand-1lvvshy sand-ja3w2a sand-9f619 sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-euugli sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-b3r6kr sand-1rhlpx6 sand-tyxrsu sand-2b8uid sand-lyipyv sand-uxw1ft sand-19991ni sand-ibwnj sand-12w9bfk sand-9lcvmn sand-g01cxk",
+    "h3HiddenAttrs": {
+      "class": "sand-fc7y3v sand-1lvvshy sand-ja3w2a sand-9f619 sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-euugli sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-b3r6kr sand-1rhlpx6 sand-tyxrsu sand-2b8uid sand-lyipyv sand-uxw1ft sand-19991ni sand-ibwnj sand-12w9bfk sand-9lcvmn sand-g01cxk",
+      "id": "sand-plugins-modal-heading",
+      "aria-hidden": "true"
+    },
+    "trailingClass": "sand-78zum5 sand-6s0dn4 sand-1qab1bc sand-euugli"
+  },
+  "installedSection": {
+    "class": "sand-plugins__group sand-9f619 sand-78zum5 sand-dt5ytf sand-xhr3t",
+    "headerClass": "sand-9f619 sand-78zum5 sand-1pha0wt sand-1qughib sand-167g77z",
+    "h3Class": "ui-text ui-1acoasx ui-dj266r ui-14z9mp ui-at24cr ui-1lziwak ui-exx8yu ui-yri2b ui-18d9i69 ui-1c1uobl ui-vmahel ui-lh3980 ui-1wm8ruf ui-spwq11 ui-14s4slr ui-vxqr21 sand-9f619 sand-1y1aw1k sand-f159sx sand-10b6aqq sand-1g0dm76 sand-169k319",
+    "h3Text": "已安装",
+    "h3Attrs": {
+      "class": "ui-text ui-1acoasx ui-dj266r ui-14z9mp ui-at24cr ui-1lziwak ui-exx8yu ui-yri2b ui-18d9i69 ui-1c1uobl ui-vmahel ui-lh3980 ui-1wm8ruf ui-spwq11 ui-14s4slr ui-vxqr21 sand-9f619 sand-1y1aw1k sand-f159sx sand-10b6aqq sand-1g0dm76 sand-169k319",
+      "data-variant": "default",
+      "data-size": "sm",
+      "data-weight": "regular",
+      "id": "_r_5d7_"
+    },
+    "gridClass": "sand-plugins__grid sand-gpehar sand-12h1iku sand-9f619 sand-rvj5dj sand-nby9oq sand-uvv9dw sand-1dbijih sand-3ct3a4 sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-exx8yu sand-yri2b sand-18d9i69 sand-1c1uobl",
+    "visibleRows": 24
+  },
+  "privateSection": {
+    "class": "sand-plugins__group sand-9f619 sand-78zum5 sand-dt5ytf sand-xhr3t",
+    "headerClass": "sand-9f619 sand-78zum5 sand-1pha0wt sand-1qughib sand-167g77z",
+    "h3Class": "ui-text ui-1acoasx ui-dj266r ui-14z9mp ui-at24cr ui-1lziwak ui-exx8yu ui-yri2b ui-18d9i69 ui-1c1uobl ui-vmahel ui-lh3980 ui-1wm8ruf ui-spwq11 ui-14s4slr ui-vxqr21 sand-9f619 sand-1y1aw1k sand-f159sx sand-10b6aqq sand-1g0dm76 sand-169k319",
+    "h3Text": "私有技能",
+    "gridClass": "sand-plugins__grid sand-gpehar sand-12h1iku sand-9f619 sand-rvj5dj sand-uvv9dw sand-1dbijih sand-3ct3a4 sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-exx8yu sand-yri2b sand-18d9i69 sand-1c1uobl sand-1mkdm3x",
+    "rows": 31
+  },
+  "row": {
+    "class": "sand-plugins-row sand-9f619 sand-1snpyr7 sand-193nyv9 sand-1n2onr6 sand-c8icb0 sand-78zum5 sand-6s0dn4 sand-1v2ro7d sand-euugli sand-z9dl7a sand-1sodtw3 sand-sag5q8 sand-a6wfpx sand-gqmno8 sand-jbqb8w sand-h6mt2a",
+    "openClass": "sand-plugins-row__open sand-9f619 sand-78zum5 sand-6s0dn4 sand-883omv sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-euugli sand-exx8yu sand-yri2b sand-18d9i69 sand-1c1uobl sand-c342km sand-ng3xce sand-jbqb8w sand-1heor9g sand-jb2p0i sand-1yc453h sand-1ypdohk sand-1t137rt sand-1kogg8i sand-1s928wv sand-1j6awrg sand-arstr8 sand-1w00h3t sand-1ybvw9k",
+    "openAriaLabel": "打开 Gmail",
+    "mainClass": "sand-plugins-row__main sand-9f619 sand-78zum5 sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-dt5ytf sand-12mrbbr sand-euugli",
+    "nameClass": "sand-plugins-row__name sand-9f619 sand-b3r6kr sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-1rhlpx6 sand-tyxrsu sand-lyipyv sand-uxw1ft",
+    "subtitleClass": "sand-plugins-row__subtitle sand-9f619 sand-b3r6kr sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-1o0liin sand-lyipyv sand-uxw1ft",
+    "subtitleText": "1 个连接器",
+    "trailingClass": "sand-plugins-row__trailing sand-9f619 sand-78zum5 sand-6s0dn4 sand-17d4w8g sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-1n2onr6 sand-1vjfegm",
+    "statusClass": "sand-plugins__status sand-9f619 sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-uxw1ft sand-1ufr4hg",
+    "statusAttrs": {
+      "class": "sand-plugins__status sand-9f619 sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-uxw1ft sand-1ufr4hg",
+      "data-status": "connected",
+      "role": "status"
+    },
+    "statusText": "已连接"
+  },
+  "privateRow": {
+    "class": "sand-plugins-row sand-9f619 sand-1snpyr7 sand-193nyv9 sand-1n2onr6 sand-c8icb0 sand-78zum5 sand-6s0dn4 sand-1v2ro7d sand-euugli sand-z9dl7a sand-1sodtw3 sand-sag5q8 sand-a6wfpx sand-gqmno8 sand-jbqb8w sand-h6mt2a",
+    "openClass": "sand-plugins-row__open sand-9f619 sand-78zum5 sand-6s0dn4 sand-883omv sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-euugli sand-exx8yu sand-yri2b sand-18d9i69 sand-1c1uobl sand-c342km sand-ng3xce sand-jbqb8w sand-1heor9g sand-jb2p0i sand-1yc453h sand-1ypdohk sand-1t137rt sand-1kogg8i sand-1s928wv sand-1j6awrg sand-arstr8 sand-1w00h3t sand-1ybvw9k",
+    "mainClass": "sand-plugins-row__main sand-9f619 sand-78zum5 sand-1iyjqo2 sand-s83m0k sand-dl72j9 sand-dt5ytf sand-12mrbbr sand-euugli",
+    "nameClass": "sand-plugins-row__name sand-9f619 sand-b3r6kr sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-1rhlpx6 sand-tyxrsu sand-lyipyv sand-uxw1ft",
+    "subtitleClass": "sand-plugins-row__subtitle sand-9f619 sand-b3r6kr sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-1o0liin sand-lyipyv sand-uxw1ft",
+    "subtitleText": "本地创建 · Use this when the user wants to see what's trending on Baidu right now (百度热搜 / 实时热搜榜), e.g. a quick look or a daily list of China's hot search topics.",
+    "trailingClass": "sand-plugins-row__trailing sand-9f619 sand-78zum5 sand-6s0dn4 sand-17d4w8g sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-1n2onr6 sand-1vjfegm",
+    "iconClass": "sand-9f619 sand-78zum5 sand-6s0dn4 sand-l56j7k sand-100vrsf sand-1vqgdyp sand-2lah0s sand-1kogg8i sand-wpq65r"
+  },
+  "showAll": {
+    "class": "sand-plugins__show-all sand-9f619 sand-qcrz7y sand-1iorvi4 sand-f159sx sand-jkvuk6 sand-1g0dm76 sand-c342km sand-ng3xce sand-jbqb8w sand-1o0liin sand-n4ifyr sand-jb2p0i sand-1wm8ruf sand-1ypdohk",
+    "text": "显示全部 24 个插件"
+  },
+  "collapsed": {
+    "class": "sand-rvj5dj sand-ihq33y sand-g01cxk sand-1bvilyr sand-uupxpy sand-47corl sand-icbapw sand-1ympp8d sand-1upsisp sand-t35mv4 sand-1r6a6jf",
+    "innerClass": "sand-2lwn1j sand-b3r6kr",
+    "listLabel": "更多已安装的插件",
+    "listLabelClass": null,
+    "gridClass": "sand-plugins__grid sand-gpehar sand-12h1iku sand-9f619 sand-rvj5dj sand-nby9oq sand-uvv9dw sand-1dbijih sand-3ct3a4 sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-exx8yu sand-yri2b sand-18d9i69 sand-1c1uobl",
+    "rows": 18
+  }
+}
