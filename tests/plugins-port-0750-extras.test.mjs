@@ -13,10 +13,6 @@ const built = await build({ stdin: { contents: `export {act} from 'react'; expor
 const ui = await import('data:text/javascript;base64,' + Buffer.from(built.outputFiles[0].text).toString('base64'));
 const host = document.createElement('div'); document.body.append(host);
 const root = ui.createRoot(host);
-const plugins = [
-  { pluginId: 'linear', name: 'linear', displayName: 'Linear', installMode: 'user', isEnabled: true },
-  { pluginId: 'team-docs', name: 'team-docs', displayName: 'Team Docs', installMode: 'team-required', isEnabled: true },
-];
 const mcp = { list: async () => ({ servers: [] }), add: async () => {}, remove: async () => {} };
 
 async function render(props) {
@@ -24,17 +20,11 @@ async function render(props) {
   await ui.act(async () => { await Promise.resolve(); });
 }
 
-test('user plugins uninstall and the custom MCP form is mounted', async () => {
-  const removed = [];
-  await render({ plugins, mcp, onRemovePlugin: (id) => { removed.push(id); } });
+test('the custom MCP form is mounted and the uninstall panel is gone', async () => {
+  await render({ mcp });
   assert.match(host.textContent, /MCP Servers/);
-  const userRow = host.querySelector('[data-plugin-id="linear"]');
-  const uninstall = [...userRow.querySelectorAll('button')].find((button) => button.textContent === 'Uninstall');
-  assert.ok(uninstall);
-  await ui.act(async () => uninstall.click());
-  assert.deepEqual(removed, ['linear']);
-  const teamRow = host.querySelector('[data-plugin-id="team-docs"]');
-  assert.equal([...teamRow.querySelectorAll('button')].some((button) => button.textContent === 'Uninstall' || button.textContent === 'Remove'), false);
+  assert.equal(host.querySelector('.sand-effective-plugins-panel'), null);
+  assert.equal(host.querySelector('[data-plugin-id]'), null);
 });
 
 test.after(async () => {

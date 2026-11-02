@@ -75,6 +75,8 @@ import { applyMarketplaceDialog0781Typography } from "./lib/marketplace-dialog-0
 import { applyMarketplaceDialog0781Layout } from "./lib/marketplace-dialog-0781-layout-css-patch.mjs";
 import { applyMarketplaceBrowseChrome0781 } from "./lib/marketplace-browse-chrome-0781-patch.mjs";
 import { applyMarketplaceBrowseChrome0781Css } from "./lib/marketplace-browse-chrome-0781-css-patch.mjs";
+import { applyMarketplaceManagePage0781 } from "./lib/marketplace-manage-page-0781-patch.mjs";
+import { applyMarketplaceManagePage0781Css } from "./lib/marketplace-manage-page-0781-css-patch.mjs";
 import { applyMarketplaceDetailView0781 } from "./lib/marketplace-detail-view-0781-patch.mjs";
 import { applyMarketplaceDetailView0781Css } from "./lib/marketplace-detail-view-0781-css-patch.mjs";
 import { applyUpdatePillCopy0755Patch } from "./lib/update-pill-copy-0755-patch.mjs";
@@ -518,6 +520,17 @@ export async function buildFidelityReconstructedAsar({
   await applyMarketplaceBrowseChrome0781({ stageRoot });
   // The 28 official 0.78.1 browse rules upstream 0.18's stylesheet does not define.
   await applyMarketplaceBrowseChrome0781Css({ stageRoot });
+  // Official 0.78.1's SECOND-LEVEL page — the "管理插件和技能" page the "已连接 N 个" entry
+  // opens: its detail bar with a labelled back button, its "管理插件和技能" hero, its installed
+  // section (official's rows, its "显示全部 N 个插件" control and its collapsed remainder) and its
+  // private-skills section. It also re-recipes the four shared components (row, grid, section,
+  // show-all) to official 0.78.1's recipes, which official uses on both pages.
+  // MUST run after the browse-chrome patch: its chrome anchors are the POST-browse text (the
+  // header, the search row and the chip row the browse patch rewrote).
+  await applyMarketplaceManagePage0781({ stageRoot });
+  // The official 0.78.1 rules the second-level page introduces and upstream 0.18's stylesheet
+  // does not define.
+  await applyMarketplaceManagePage0781Css({ stageRoot });
   // Official 0.78.1's plugin DETAIL page: the header's copy-link button, the share + connect
   // action group, the 应用 / 技能 cards and the 信息 table.
   // MUST run after the browse-chrome patch: its anchors are the POST-browse text (the browse

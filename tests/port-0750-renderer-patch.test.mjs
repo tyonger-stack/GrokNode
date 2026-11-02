@@ -8,13 +8,11 @@ import { Window } from "happy-dom";
 import { closeLibraryDom } from "./library-dom-teardown.mjs";
 import {
   buildPort0750HostBundle,
-  patchPort0750Plugins,
   patchPort0750Settings,
 } from "../scripts/lib/port-0750-renderer-patch.mjs";
 
 const rendererDir = path.resolve(import.meta.dirname, "../src/app/dist/renderer/assets");
 const settingsAnchor = "a.jsx(Te,{children:a.jsx(Sa,{auth:t})})";
-const pluginsAnchor = "children:[t.jsx(Ws,{labelledBy:w,children:J.map";
 
 const dom = new Window({ settings: { disableCSSFileLoading: true } });
 globalThis.window = dom;
@@ -73,30 +71,21 @@ test.after(() => {
   closeLibraryDom(dom);
 });
 
-test("settings and plugins bundles mount the recovered hosts on the chunk React", async () => {
-  const [settingsBundle, pluginsBundle] = await Promise.all([
-    buildPort0750HostBundle("settings"),
-    buildPort0750HostBundle("plugins"),
-  ]);
+test("the settings bundle carries the custom MCP form", async () => {
+  const settingsBundle = await buildPort0750HostBundle();
   assert.doesNotMatch(settingsBundle, /Choose file|New card/);
+  assert.match(settingsBundle, /MCP Servers/);
   assert.match(settingsBundle, /\(de,a\);$/);
-  assert.match(pluginsBundle, /Installed/);
-  assert.match(pluginsBundle, /MCP Servers/);
-  assert.match(pluginsBundle, /\(C,t\);$/);
   assert.doesNotMatch(settingsBundle, /node_modules\/react/);
-  assert.doesNotMatch(pluginsBundle, /createRoot\(/);
+  assert.doesNotMatch(settingsBundle, /createRoot\(/);
 
   const settings = await renderPack(settingsBundle, "RPort0750Settings", { de: React, a: jsxRuntime });
-  assert.equal(settings.host.querySelectorAll("button, input, textarea").length, 0);
+  assert.ok(settings.host.querySelector("[aria-label='MCP Servers']"));
+  assert.equal(settings.host.querySelector("[aria-label='Installed']"), null);
   await React.act(async () => { settings.root.unmount(); });
-
-  const plugins = await renderPack(pluginsBundle, "RPort0750Plugins", { C: React, t: jsxRuntime });
-  assert.ok(plugins.host.querySelector("[aria-label='Installed']"));
-  assert.ok(plugins.host.querySelector("[aria-label='MCP Servers']"));
-  await React.act(async () => { plugins.root.unmount(); });
 });
 
-test("the patch applies once to the checksum-pinned settings and plugins chunks", async (t) => {
+test("the patch applies once to the checksum-pinned settings chunk", async (t) => {
   let entries;
   try {
     entries = await readdir(rendererDir);
@@ -105,32 +94,23 @@ test("the patch applies once to the checksum-pinned settings and plugins chunks"
     return;
   }
   let settings = null;
-  let plugins = null;
   for (const name of entries.filter((entry) => entry.endsWith(".js"))) {
     const text = await readFile(path.join(rendererDir, name), "utf8");
     if (text.includes(settingsAnchor)) settings = text;
-    if (text.includes(pluginsAnchor)) plugins = text;
   }
-  if (settings == null || plugins == null) {
-    t.skip("0.18 settings or plugins anchor is absent");
+  if (settings == null) {
+    t.skip("0.18 settings anchor is absent");
     return;
   }
-  const [settingsBundle, pluginsBundle] = await Promise.all([
-    buildPort0750HostBundle("settings"),
-    buildPort0750HostBundle("plugins"),
-  ]);
+  const settingsBundle = await buildPort0750HostBundle("settings");
   const generalBefore = 'Q=x==="general"?a.jsx(Te,{children:a.jsx(Sa,{auth:t})}):null';
   const generalAfter = 'Q=x==="general"?a.jsx(Te,{children:a.jsx(Sa,{auth:t})}):x==="router"?a.jsx(RRouterPanel,{}):null';
   assert.equal(settings.split(generalBefore).length, 2);
   const routed = settings.replace(generalBefore, generalAfter);
   assert.equal(routed.split(settingsAnchor).length, 2);
   const patchedSettings = patchPort0750Settings(routed, settingsBundle);
-  const patchedPlugins = patchPort0750Plugins(plugins, pluginsBundle);
   assert.match(patchedSettings, /x==="router"\?a\.jsx\(RRouterPanel,\{\}\)/);
   assert.match(patchedSettings, /x==="general"\?a\.jsx\(Te,\{children:\[a\.jsx\(Sa,\{auth:t\}\),a\.jsx\(RPort0750Settings\.RPort0750SettingsPack,\{\}\)\]\}\)/);
-  assert.match(patchedPlugins, /t\.jsx\(RPort0750Plugins\.RPort0750PluginsPack,\{\}\),t\.jsx\(Ws,\{labelledBy:w,children:J\.map/);
   assert.doesNotThrow(() => parse(patchedSettings, { ecmaVersion: "latest", sourceType: "module" }));
-  assert.doesNotThrow(() => parse(patchedPlugins, { ecmaVersion: "latest", sourceType: "module" }));
   assert.throws(() => patchPort0750Settings(patchedSettings, settingsBundle), /already exists/);
-  assert.throws(() => patchPort0750Plugins(patchedPlugins, pluginsBundle), /already exists/);
 });

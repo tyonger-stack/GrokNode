@@ -1,0 +1,118 @@
+/* Official Grok Bot 0.78.1's second-level "管理插件和技能" page rules, lifted byte-for-byte
+ * from official 0.78.1's own stylesheet
+ * (`rea-grokbot-0781/app/dist/renderer/assets/index-Dh7EWA8t.css`, sha256
+ * c788cd1f8ba34abde8f15f564f45cf53f459be070e50a222d2b2c21e8902cbac).
+ *
+ * ## Which rules are here, and why only these
+ *
+ * The ported page renders official 0.78.1's own class recipes: the hero `h1`, the detail bar's
+ * labelled back button, the installed/private section headers, the two-column plugin grid, the
+ * plugin row, the "显示全部 N 个插件" control and the collapsed remainder list. A stylix class name
+ * is the hash of its declaration block, so a class that exists in one build and not in another is
+ * a NO-OP — the element renders unstyled and every other test stays green.
+ *
+ * Of the 166 distinct class names the ported markup carries:
+ *
+ *   * 110 already resolve in upstream 0.18's stylesheet WITHIN the plugins dialog, with the same
+ *     declaration. They are NOT repeated here: re-lifting a rule that upstream already carries
+ *     is noise.
+ *   * 14 are stylix namespace markers or hooks that official itself gives no rule to
+ *     (`sand-plugins__yours`, `sand-plugins__group`, `sand-plugins-row`, `sand-kit-icon`, …).
+ *     They carry no style on either side and nothing is lifted for them.
+ *   * 42 do not resolve inside the dialog and are lifted here — one official rule each.
+ *
+ * Two of those 42 — `sand-1ufr4hg`, the connected badge's green, and `ui-vxqr21`, the regular
+ * weight — have no rule in upstream 0.18's stylesheet at all, but the STAGED stylesheet does
+ * carry them: the repo's own conversation-computer-card port carries official's connected-badge
+ * rule scoped to `.r-conversation-computer-card`, and the 0.75.5 group-author CSS carries the
+ * unscoped weight. Neither scope reaches the plugins dialog. "The class token appears somewhere
+ * in the stylesheet" is therefore not the test this file is built on — the scope is.
+ *
+ * ## The `:not(#\#)` guards are part of the rule
+ *
+ * Official writes stylix rules with a selector suffix like `:not(#\#):not(#\#)`. The repetitions
+ * are the specificity ladder that orders a rule against its neighbours, so their COUNT is part of
+ * the rule: a rule with the right declaration but too few guards loses to a neighbour upstream
+ * 0.18's own stylesheet already carries. Every guard is copied exactly as official writes it.
+ *
+ * ## How the rules are scoped
+ *
+ * The scope is the plugins-dialog subtree, the same convention the sibling wave's theme-token and
+ * typography companions use:
+ *
+ *   `:where(.sand-plugins-dialog) ` — a DESCENDANT prefix on every selector of the rule.
+ *
+ * `:where()` contributes NO specificity, so the ported rule weighs against upstream 0.18's own
+ * class rules exactly as official's rule weighs against official's — the scope narrows where the
+ * rule applies without changing how strongly it applies. A plain `.sand-plugins-dialog` prefix
+ * would add one class of specificity and silently reorder the ladder.
+ *
+ * The rules that official writes inside an at-rule keep it: `sand-1snpyr7` / `sand-193nyv9`
+ * are official's `@container sand-plugin-rows (width<560px)` rules and `sand-t35mv4` is
+ * official's `@media (prefers-reduced-motion:reduce)` rule. Dropping the wrapper would drop the
+ * condition with it.
+ *
+ * ## The tokens these rules read
+ *
+ * `--sand-font-size-xl`, `--sand-line-height-xl`, `--sand-letter-spacing-xl`,
+ * `--sand-line-height-sm`, `--sand-letter-spacing-sm`, `--sand-line-height-base`,
+ * `--sand-letter-spacing-base`, `--cursor-font-weight-normal`, `--sand-bg-secondary`,
+ * `--sand-border-focus-primary`, `--sand-text-green-primary`, `--sand-text-yellow-primary`,
+ * `--sand-text-red-primary` and `--sand-text-primary` are declared on the dialog by
+ * `marketplace-dialog-0781-theme-tokens.css`. Upstream 0.18's palette does not define them, so
+ * an undefined token would make `var()` invalid at computed-value time and the property would
+ * silently fall back. The 0.75.5 group-author CSS declares the yellow and red text tokens too,
+ * but under `.rg0755-colors`, a scope the dialog is not inside.
+ *
+ * @evidence official 0.78.1 `rea-grokbot-0781/app/dist/renderer/assets/index-Dh7EWA8t.css`
+ * @evidence upstream 0.18 `src/app/dist/renderer/assets/index-lCyB53CO.css`
+ * @evidence `tests/fixtures/official-0781-manage-page-recipes.json` — the measured recipes.
+ */
+:where(.sand-plugins-dialog) .sand-79ao00:not(#\#):not(#\#):not(#\#){font-size:var(--sand-font-size-xl)}
+:where(.sand-plugins-dialog) .sand-10ux60h:not(#\#):not(#\#):not(#\#){line-height:var(--sand-line-height-xl)}
+:where(.sand-plugins-dialog) .sand-k0i524:not(#\#):not(#\#):not(#\#){letter-spacing:var(--sand-letter-spacing-xl)}
+:where(.sand-plugins-dialog) .sand-37c5m6:not(#\#):not(#\#):not(#\#){grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
+:where(.sand-plugins-dialog) .sand-e2zdcy:not(#\#):not(#\#):not(#\#){padding-inline-start:10px}
+:where(.sand-plugins-dialog) .sand-w8bs97:not(#\#):not(#\#):not(#\#){line-height:var(--sand-line-height-sm)}
+:where(.sand-plugins-dialog) .sand-14gdtuo:not(#\#):not(#\#):not(#\#){letter-spacing:var(--sand-letter-spacing-sm)}
+:where(.sand-plugins-dialog) .sand-ymw2ht:not(#\#):not(#\#){border-radius:9999px}
+:where(.sand-plugins-dialog) .sand-11hyl0l:hover:not(#\#):not(#\#):not(#\#){background-color:var(--sand-bg-secondary)}
+:where(.sand-plugins-dialog) .sand-1wpm9rq:focus-visible:not(#\#):not(#\#):not(#\#){outline-color:var(--sand-border-focus-primary)}
+:where(.sand-plugins-dialog) .sand-1lvvshy:not(#\#):not(#\#):not(#\#){line-height:var(--sand-line-height-base)}
+:where(.sand-plugins-dialog) .sand-ja3w2a:not(#\#):not(#\#):not(#\#){letter-spacing:var(--sand-letter-spacing-base)}
+:where(.sand-plugins-dialog) .sand-1lziwak:not(#\#):not(#\#):not(#\#){margin-inline-start:0}
+:where(.sand-plugins-dialog) .sand-ibwnj:not(#\#):not(#\#):not(#\#){transition-duration:.15s}
+:where(.sand-plugins-dialog) .sand-1qab1bc:not(#\#):not(#\#):not(#\#){justify-self:end}
+:where(.sand-plugins-dialog) .ui-vxqr21{font-weight:var(--cursor-font-weight-normal)}
+:where(.sand-plugins-dialog) .sand-gpehar:not(#\#):not(#\#):not(#\#){container-name:sand-plugin-rows}
+:where(.sand-plugins-dialog) .sand-uvv9dw:not(#\#):not(#\#):not(#\#){column-gap:8px}
+:where(.sand-plugins-dialog) .sand-yri2b:not(#\#):not(#\#):not(#\#){padding-inline-end:0}
+:where(.sand-plugins-dialog) .sand-1c1uobl:not(#\#):not(#\#):not(#\#){padding-inline-start:0}
+:where(.sand-plugins-dialog) .sand-c8icb0:not(#\#):not(#\#):not(#\#){isolation:isolate}
+:where(.sand-plugins-dialog) .sand-1sodtw3:not(#\#):not(#\#):not(#\#),:where(.sand-plugins-dialog) .sand-11ct0s3:not(#\#):not(#\#):not(#\#){padding-inline-end:12px}
+:where(.sand-plugins-dialog) .sand-a6wfpx:not(#\#):not(#\#):not(#\#),:where(.sand-plugins-dialog) .sand-vhurb8:not(#\#):not(#\#):not(#\#){padding-inline-start:12px}
+:where(.sand-plugins-dialog) .sand-h6mt2a:hover:not(#\#):not(#\#):not(#\#){background-color:color-mix(in srgb,var(--sand-text-primary) 5%,transparent)}
+:where(.sand-plugins-dialog) .sand-1yc453h:not(#\#):not(#\#):not(#\#){text-align:start}
+:where(.sand-plugins-dialog) .sand-1f9r7lp:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):before,:where(.sand-plugins-dialog) .sand-1w00h3t:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):after{border-radius:16px}
+:where(.sand-plugins-dialog) .sand-1ybvw9k:focus-visible:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):after{box-shadow:inset 0 0 0 2px var(--sand-border-focus-primary)}
+:where(.sand-plugins-dialog) .sand-1ufr4hg:not(#\#):not(#\#):not(#\#){color:var(--sand-text-green-primary)}
+:where(.sand-plugins-dialog) .sand-132xtu3:not(#\#):not(#\#):not(#\#){color:var(--sand-text-yellow-primary)}
+:where(.sand-plugins-dialog) .sand-wtpwev:not(#\#):not(#\#):not(#\#){color:var(--sand-text-red-primary)}
+:where(.sand-plugins-dialog) .sand-wpq65r:not(#\#):not(#\#):not(#\#){background-color:color-mix(in srgb,var(--sand-text-primary) 6%,transparent)}
+:where(.sand-plugins-dialog) .sand-mzvs34:not(#\#):not(#\#):not(#\#){padding-inline-start:8px}
+:where(.sand-plugins-dialog) .sand-ihq33y:not(#\#):not(#\#):not(#\#){grid-template-rows:0fr}
+:where(.sand-plugins-dialog) .sand-1bvilyr:not(#\#):not(#\#):not(#\#){transform:translateY(-4px)}
+:where(.sand-plugins-dialog) .sand-icbapw:not(#\#):not(#\#):not(#\#){transition-property:grid-template-rows,opacity,transform}
+:where(.sand-plugins-dialog) .sand-1upsisp:not(#\#):not(#\#):not(#\#){transition-duration:.26s}
+:where(.sand-plugins-dialog) .sand-1r6a6jf:not(#\#):not(#\#):not(#\#){transition-timing-function:linear(0, .01588 2%, .05618 4%, .11201 6%, .1768 8%, .2458 10%, .31562 12%, .38392 14%, .44914 16%, .51029 18%, .56683 20%, .61852 22%, .66534 24%, .70743 26%, .74501 28%, .77838 30%, .80788 32%, .83383 34%, .85658 36%, .87645 38%, .89376 40%, .92183 44%, .94282 48%, .95838 52%, .96984 56%, .97823 60%, .98435 64%, .98878 68%, .99198 72%, .99594 80%, .99829 90%, 1 100%)}
+:where(.sand-plugins-dialog) .sand-1erjwpq:not(#\#):not(#\#):not(#\#){transition-property:grid-template-rows,opacity}
+:where(.sand-plugins-dialog) .sand-1tu4anv:not(#\#):not(#\#):not(#\#){grid-template-rows:1fr}
+
+@container sand-plugin-rows (width<560px){
+:where(.sand-plugins-dialog) .sand-1snpyr7.sand-1snpyr7:not(#\#):not(#\#):not(#\#){grid-column-start:1}
+:where(.sand-plugins-dialog) .sand-193nyv9.sand-193nyv9:not(#\#):not(#\#):not(#\#){grid-column-end:-1}
+}
+
+@media (prefers-reduced-motion:reduce){
+:where(.sand-plugins-dialog) .sand-t35mv4.sand-t35mv4:not(#\#):not(#\#):not(#\#){transition-duration:.12s}
+}

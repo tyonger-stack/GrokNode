@@ -693,6 +693,35 @@ that fall out of every chip bucket, plus official's two built-in cursor plugins)
 of "eleven sections here" was a measurement artifact: the catalogue loads asynchronously, and the
 reading was taken before it had arrived.
 
+**The keyboard focus ring is not official's.** Official 0.78.1's
+`.sand-1wpm9rq:focus-visible{outline-color:var(--sand-border-focus-primary)}` resolves to
+`#1884fc` on the second-level page's back button, and the rendered outline is a 2 px solid blue
+ring. This build renders the same button's ring in the inherited text colour,
+`rgba(245, 245, 245, 0.66)`, because two earlier waves left a different rule in front of
+official's. The repository's app-link-card port writes an unscoped
+`.sand-1wpm9rq:focus-visible{outline-color:var(--sand-border-focus)}`, and the dialog resets
+`--sand-border-focus` to `initial` because official does not define it, so that rule falls back to
+`currentcolor`. Official's own rule is never reached, because the marketplace companions skip a
+rule whose class "already resolves in the dialog" — and the app-link rule makes it look resolved.
+
+Official's rule is in the companion here, and it is skipped for the same reason. Fixing it is not a
+one-line change to the companion: official's blue comes from its runtime theme stylesheet
+(`<style id="sand-cursor-theme">`, `:root { --sand-border-focus-primary: #1884fc }`) reaching the
+button through a `[data-sand-tone="dark"]` subtree, while the dialog element itself computes
+`transparent`. Declaring the blue on the dialog would make every focus ring in the dialog blue,
+where official renders only the ones inside that subtree blue. That needs official's tone scope
+reproduced rather than a token swapped, so it stays a separate wave.
+
+Measured over CDP on 2026-11-02, on the second-level page's back button under keyboard focus:
+
+| | official 0.78.1 | this build |
+| --- | --- | --- |
+| `outline-color` | `rgb(24, 132, 252)` | `rgba(245, 245, 245, 0.66)` |
+| `outline-style` / `outline-width` | `solid` / `2px` | `solid` / `2px` |
+
+Nothing else about the page is affected: the ring only appears on keyboard focus, and no pixel
+comparison in this document can see it.
+
 ## The measured parity
 
 Measured over CDP on 2026-10-31 against the **deployed** `/Applications/Grok Node.app` — the
@@ -897,3 +926,224 @@ detail tile 56x56/radius 16/31px glyph on both apps, row tiles still 40x40, all 
 Post-merge deployment note: the merged tree was repackaged once more from the same commits and
 deployed (asar head `05f771f9b8ce`; per-run metadata files differ, the JS payload is identical)
 — probe-113 re-verified the 56px detail-header tile and glyph parity live on that build.
+
+## The second-level page — 管理插件和技能 (2026-11-01)
+
+The browse dialog's `已连接 N 个` entry opens a second-level page. Official 0.78.1 titles it
+管理插件和技能. This wave ports that page.
+
+### Where official's behaviour comes from
+
+| behaviour | official's bytes |
+|---|---|
+| the page component | `chunk-view-KV06RTpF.js` |
+| the status registry and the badge component | `index.eager-app-D1juOWZp.js` (`Nq`, `LAt`) |
+| the connector's auth action | `chunk-plugin-detail-sharepoint-write-MAPmM3e9.js` (`W`, exported as `mr`) |
+| the detail bar and its title state | `chunk-pane-header-DaY0itEE.js` (`S`) |
+
+The page is re-recipeed from upstream's own components rather than rewritten. Upstream's
+`view-B5Ug8wEm.js` already owns the grid, the row and the section; the patch changes what those
+components render, not what they are.
+
+The fixture `tests/fixtures/official-0781-manage-page-recipes.json` is captured live from the
+running official app by `.audit/capture-official-0781-manage-fixture.mjs` and read at patch load
+time. It is a capture, not a hand-written copy of official's classes.
+
+The port lives in three files:
+
+| file | role |
+|---|---|
+| `scripts/lib/marketplace-manage-page-0781-patch.mjs` | the renderer patch, applied to the pristine upstream chunk |
+| `scripts/lib/marketplace-manage-page-0781-css-patch.mjs` | the CSS injector |
+| `scripts/lib/marketplace-manage-page-0781-official.css` | the lifted official rules, verbatim |
+
+`tests/marketplace-manage-page-0781.test.mjs` guards all four: the pristine chunk, the staged
+chunk, the green rule, and the lifted CSS.
+
+### Four defects found against official and fixed
+
+**A. The green 已连接 badge rendered white.** Official's green rule lives in `sand-1ufr4hg`.
+Upstream 0.18 does not define that class at all, and this repository's own
+`conversation-computer-card-renderer-patch.mjs` carries official's rule scoped to
+`.r-conversation-computer-card`, so the staged stylesheet held the class token without ever
+styling it inside the dialog. The injector tested "the class token appears somewhere", which is
+not the same question as "does this rule apply in this scope". It now tests the scope with
+`classesStyledInDialog(css, dialogClass)`. All 40 companion rules append, and the green rule
+lands as `:where(.sand-plugins-dialog) .sand-1ufr4hg:not(#\#)…{color:var(--sand-text-green-primary)}`.
+
+**B. The auth rows read 身份验证 instead of 连接.** Official's chain `mr` → `le` → `K` picks its
+label from the `grok_bot_connect_ux_desktop` experiment: `iSLIjg` for Connect, `gcoiFh` for
+Reconnect, `6gRgw8` for Retry. Upstream's shared `Qn` hardcoded the authorize-mode literals
+(Authenticate, Reopen, Retry). Two `between` replacements rewrite `Qn`'s label expression to
+official's connect-mode choice.
+
+**C. The detail-bar title was always visible.** Official's title is hidden at the scroll top and
+appears once the hero scrolls out of view. Official's `qa` hook observes the hero with an
+`IntersectionObserver` rooted at the pane's scroll viewport and derives
+`isTitleVisible = heroTitle === 'hidden'`. The port injects the same observer.
+
+**D. The hero `h1` had no `<header>` wrapper.** Official wraps it in
+`<header class="sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-1v2ro7d sand-euugli sand-f159sx sand-mzvs34">`.
+
+### The measured parity
+
+Measured over CDP against the deployed `/Applications/Grok Node.app` and against official 0.78.1
+on port 9333, both dialogs pinned to 832x702 at (16, 161).
+
+| measurement | ours | official 0.78.1 |
+|---|---|---|
+| every class recipe on the page | matches | the reference |
+| detail-bar title at the scroll top | `sand-g01cxk`, `aria-hidden="true"`, opacity 0 | the same |
+| detail-bar title after the hero scrolls out | `sand-19991ni sand-ibwnj sand-12w9bfk sand-9lcvmn`, opacity 1 | the same |
+| the hero's wrapper | `<header class="… sand-mzvs34">` | the same |
+| the connected row's badge | 已连接, `rgb(0, 186, 105)` | 已连接, `rgb(0, 186, 105)` |
+| the needsAuth row's action | 连接 | 连接 |
+| the collapsed-rows structure | official's | official's |
+| the browse chip row and search field | gone | gone |
+
+The two apps hold different installed plugin sets (official 24 installed and 18 collapsed, this
+build 8 and 2) and different private skills, so a row-for-row pixel comparison of the page body
+cannot reach zero.
+
+### The pixel diff, and what it is made of
+
+`.audit/diff-manage-page.mjs` drives both apps to the page, pins both viewports, captures the
+dialog region and compares the two PNGs. The delta is 170770 of 2336256 pixels, 7.310 percent.
+
+`.audit/classify-header-delta.mjs` breaks that delta into connected clusters and reports each
+cluster's bounding box, pixel count and maximum channel delta. Two sources account for it.
+
+**The plugin content.** Different installed sets and different private skills. This is the bulk of
+the delta and it is data, not code.
+
+**The font.** Official sets `:root { font-family: var(--cursor-font-family-sans) }` and
+`--cursor-font-family-sans` starts with `XVF`, the variable font official ships as
+`X-VF-C7NyO54W.woff2`. Upstream 0.18 has neither the `@font-face` nor the variable value, so its
+stack starts at `-apple-system`.
+
+The two apps paint the same CJK glyphs from the same platform face. Chromium reports
+`PingFang SC` / `PingFangSC-Medium` for all four glyphs of 连接应用 on both sides, and the
+per-character advances are equal to three decimals on both sides. What differs is the line box,
+because the primary family differs: official's CJK glyph box is 15.5 px tall and this build's is
+15.0 px, and the baseline sits half a pixel lower.
+
+Injecting official's `@font-face` and variable into this build's live page at runtime, with no
+binary copied into the repository, measures the effect directly.
+
+| region | before | after | hard pixels (max channel delta above 12) before | after |
+|---|---|---|---|---|
+| the whole dialog | 7.310 % | 6.030 % | 130801 | 103754 |
+| the chrome, the header and the hero | 7003 px | 3240 px | 3618 | 0 |
+
+So the font accounts for every visible difference in the page's chrome. What remains there is
+antialiasing noise, a maximum channel delta of 12 or less.
+
+The font is not shipped. XVF is Anysphere's proprietary binary font and this repository carries no
+licence to redistribute it, which is the same call the typography section above already recorded.
+Closing that gap would mean shipping official's font binary, which is the operator's decision and
+not the port's.
+
+### One difference left in the shared button
+
+Upstream 0.18's shared `sand-button` secondary recipe and official 0.78.1's carry different class
+recipes, and the difference is narrower than the class strings suggest. Measured on the running
+apps, the connect button's computed border widths, border colours, border styles, padding,
+transition duration and height are the same on both sides. Two things make the class names differ
+without changing what the button looks like.
+
+Upstream writes the physical properties, so `sand-s1s249` is `border-right-width: 1px` where
+official's `sand-1lun4ml` is `border-inline-end-width: 1px`. LTR renders them the same. Upstream's
+stylix emits one more `:not(#\#)` guard than official's, so an identical declaration hashes to a
+different class name.
+
+One property does differ. Official's secondary background is `var(--sand-bg-secondary)`, which
+computes to `rgba(245, 245, 245, 0.04)`. Upstream's is
+`color-mix(in srgb, var(--cursor-bg-tertiary) 82%, var(--cursor-bg-editor))`, which computes to
+`rgba(56, 56, 56, 0.212)`. On the dialog's background the two land about two levels apart out of
+255.
+
+Re-recipeing the shared button would change every button in the app, and the `--sand-*` palette
+those recipes read is only defined inside the marketplace dialog. The difference is recorded here
+and left for a wave that can scope it.
+
+### Deployment record (2026-11-01)
+
+The packaged build (`app.asar` sha256
+`baf3ad589b857476707a01abdfc168e26412238dd40029b0fb74a0d351225376`) was deployed to
+`/Applications/Grok Node.app` with a full replace, and the deployed asar's sha256 equals the
+freshly built asar's. All 102 shipped chunks parse, no `"(RLocT("` quote bug is present, and 43
+stylix rules resolve with 0 unresolved and 0 not-byte-for-byte-official.
+
+The flow was verified by real computer operation on the deployed build, not only over CDP: a real
+cursor click on the composer's 连接应用 opens the browse dialog, a real cursor click on its
+已连接 8 个 entry opens 管理插件和技能, and the page shows the green 已连接 badge on the connected
+row and grey 连接 pills on the rows that need authorisation. Official was driven through the same
+path in the same session and the two pages were compared side by side.
+
+### The status badge's warning and error colours (2026-11-02)
+
+Official 0.78.1's status badge has three variants — connected, warn and error — and each carries
+its own colour class. The capture only ever saw the connected variant, because the live dialog
+showed no warning and no failing connector. The port replaced upstream 0.18's three badge recipes
+with official's, but the companion CSS lifted the connected variant's rule only, so the warning
+and error badges resolved nowhere inside the plugins dialog and rendered with the inherited text
+colour.
+
+Upstream 0.18's stylesheet defines neither `sand-132xtu3` nor `sand-wtpwev` at all, and the
+0.75.5 group-author CSS that does declare `--sand-text-yellow-primary` and
+`--sand-text-red-primary` scopes them to `.rg0755-colors`, a scope the dialog is not inside. There
+were two missing pieces: the rules, and the tokens the rules read.
+
+Both are official 0.78.1's own bytes. The rules are
+`:where(.sand-plugins-dialog) .sand-132xtu3:not(#\#):not(#\#):not(#\#){color:var(--sand-text-yellow-primary)}`
+and the same shape for `sand-wtpwev`, lifted verbatim out of official's `index-Dh7EWA8t.css`. The
+tokens are declared on the dialog subtree: light `#aa6300` and `#cd2834`, dark `#e28600` and
+`#ff6463`. The light pair is official's own `:root,.sand-1vbcnu7` palette block, and the dark pair
+is the running official app's `cursor-dark` theme.
+
+The three variant classes now sit in the ported-class set, so the CSS patch fails the build when
+one of them resolves nowhere. The guard in `tests/marketplace-manage-page-0781.test.mjs` walks all
+three variants instead of the connected one alone, and a second guard asserts that every token the
+ported rules read is declared in the dialog's light block and, where official's two themes differ,
+in its dark block too. An undeclared `var()` is invalid at computed-value time, so the rule falls
+back to its initial value without failing anything else.
+
+Four mutants confirm the guards bite: dropping the warning rule, dropping the light yellow token,
+dropping the dark yellow token, and taking the variant classes out of the ported-class set each
+turn the suite red.
+
+Measured on the running apps, with a real badge cloned and its variant class swapped the way the
+port does, the computed colour is the same on both sides:
+
+| variant | official 0.78.1 | Grok Node |
+| --- | --- | --- |
+| connected | `rgb(0, 186, 105)` | `rgb(0, 186, 105)` |
+| warn | `rgb(226, 134, 0)` | `rgb(226, 134, 0)` |
+| error | `rgb(255, 100, 99)` | `rgb(255, 100, 99)` |
+
+### The 0.75 hosts leave the dialog's second-level page (2026-11-02)
+
+The second-level page's Installed section was the 0.75.0 wave's host for the repo's
+"已安装 / 卸载" panel and the custom-MCP form. Official 0.78.1's second-level page carries
+neither, and official keeps the connector form on a page of its own (`qLe/7o`,
+`chunk-user-custom-connector-M5UeTEiw.js`). The panel is therefore what made this
+reconstruction's page differ from official's.
+
+It also broke the build. The second-level port rewrites the section's children from `J.map` to
+`(RM0781ManageRowElements=U.map`, so the host's anchor stopped occurring and the pack step failed
+with `Expected one settings panel and one plugins list for the 0.75 hosts`. The CI workflow never
+packages, so it could not see this.
+
+The plugins host goes away. The custom-MCP form moves to the settings host slot, which is a
+reconstruction surface rather than an official-parity one. The uninstall action is not lost: the
+plugin detail page upstream already ships carries 卸载, and the desktop plugins controller keeps
+its own removal path.
+
+### Deployment record (2026-11-02)
+
+The packaged build (`app.asar` sha256
+`b2803efb37b4fd42f9292520153550236cf9fcfc2c8dc10f551c09f6d272272b`) was deployed to
+`/Applications/Grok Node.app` with a full replace, and the deployed asar's sha256 equals the
+freshly built asar's. The three badge variants measure the same as official's, as the table above
+records.
+

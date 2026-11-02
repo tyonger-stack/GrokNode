@@ -75,6 +75,14 @@
       "light": "#00854a",
       "dark": "#00ba69"
     },
+    "--sand-text-yellow-primary": {
+      "light": "#aa6300",
+      "dark": "#e28600"
+    },
+    "--sand-text-red-primary": {
+      "light": "#cd2834",
+      "dark": "#ff6463"
+    },
     "--sand-icon-primary": {
       "light": "#1c1c1ceb",
       "dark": "#f5f5f5e6"
