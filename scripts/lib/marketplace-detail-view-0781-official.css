@@ -51,3 +51,17 @@
 .sand-1o3jo1z:not(#\#):not(#\#):not(#\#){border-inline-end-color:#0000}
 .sand-v5lvn5:not(#\#):not(#\#):not(#\#){border-inline-start-color:#0000}
 .sand-4meti:not(#\#):not(#\#):not(#\#){transition-duration:.14s}
+
+/*
+ * Official 0.78.1's own Switch, the control the plugin detail page's per-tool rows use.
+ *
+ * The checked track is the accent primary (the `sand-1cgqir` recipe, which the routine-surface
+ * companion already carries) with a 0.5px inset rim, and the knob is the luminous surface with a
+ * drop shadow. Upstream 0.18's stylesheet declares none of these five, so they are lifted here
+ * verbatim from official's own stylesheet.
+ */
+.sand-2k1e5v:not(#\#):not(#\#):not(#\#){box-shadow:inset 0 0 0 .5px var(--sand-border-quaternary-translucent)}
+.sand-lrd64x:not(#\#):not(#\#):not(#\#):not(#\#){min-width:26px}
+.sand-1akln4p:not(#\#):not(#\#):not(#\#):not(#\#){max-height:16px}
+.sand-1gdvyqu:not(#\#):not(#\#):not(#\#){box-shadow:0 1px 3px 0 var(--sand-shadow-control)}
+.sand-1r4y97:not(#\#):not(#\#):not(#\#){inset-inline-start:12px}

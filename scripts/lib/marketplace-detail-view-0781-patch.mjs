@@ -40,6 +40,8 @@
  *    official's collapse at five rows and its "N more" button.
  * 5. **The 信息 table** — official's `dl` with 功能 / 开发者 / 类别 / 团队使用情况 / 网站 / 可用性,
  *    and official's rule for which rows exist at all.
+ * 6. **The tool rows' switch** — official's own Switch (the accent-primary track and the luminous
+ *    knob) instead of upstream 0.18's shared grey switch.
  *
  * ## Every string here is official 0.78.1's own
  *
@@ -253,6 +255,37 @@ const OFFICIAL_0781_ADD_ACCOUNT =
   "sand-9f619 sand-78zum5 sand-6s0dn4 sand-17d4w8g sand-h8yej3 sand-oyc9vk sand-1pic42t sand-2lprc sand-1onr9mi sand-c342km sand-ng3xce sand-jbqb8w sand-1o0liin sand-n4ifyr sand-jb2p0i sand-11wthnw sand-12oo3zp sand-1yc453h sand-1ypdohk sand-1t137rt sand-1yfcfk6";
 const OFFICIAL_0781_EDIT_ACCOUNT =
   "sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-1717udv sand-c342km sand-ng3xce sand-jbqb8w sand-169k319 sand-n4ifyr sand-1ypdohk";
+
+/**
+ * Official 0.78.1's own switch recipes for the detail page's per-tool rows.
+ *
+ * Upstream 0.18 renders those rows' on/off switches with its shared switch component, whose
+ * checked track is the grey `--sand-fill-control-checked`. Official renders the same control with
+ * its own switch: the checked track is the accent primary (`--sand-bg-accent-primary`), the knob
+ * is the luminous surface (`--sand-bg-luminous`), and the track carries no border. Both sides
+ * render `role="switch"`, `aria-checked="true"`, a 26x16 track and a 12x12 knob; only the recipes
+ * differ.
+ *
+ * Official's track recipe table is a 16-entry literal map indexed by
+ * `(size==="md")<<3 | checked<<2 | disabled<<1 | (disabled&&checked)`. The detail page's tool
+ * switch is the `sm` size and is never disabled, so only the unchecked and the checked variants
+ * are reachable — the two strings below. The knob recipes are official's `knob`, `knobSm` and
+ * `knobSmChecked` merged the way official's own merge helper merges them: a key a later recipe
+ * overrides moves to the end of the class string.
+ *
+ * @evidence official 0.78.1 `index.eager-app-D1juOWZp.js` — `SD` (the switch component), `xD`
+ *   (its knob recipes) and its 16-entry track recipe table.
+ * @evidence official 0.78.1 live (CDP 9333, 2026-11-01) — the plugin detail page's tool-row
+ *   switch DOM: the checked track's class string and the knob's.
+ */
+const OFFICIAL_0781_SWITCH_TRACK_ON =
+  "sand-jyslct sand-1lugfcp sand-9f619 sand-1n2onr6 sand-3nfvp2 sand-6s0dn4 sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-amitd3 sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-exx8yu sand-yri2b sand-18d9i69 sand-1c1uobl sand-c342km sand-ng3xce sand-ymw2ht sand-2k1e5v sand-6ikm8r sand-10wlt62 sand-14ju556 sand-gxxoiu sand-xymvpz sand-1ypdohk sand-1s07b3s sand-15406qy sand-12rn374 sand-wji4o3 sand-23j0i4 sand-lup9mm sand-lrd64x sand-1hshjfz sand-1akln4p sand-1cgqir sand-1moagsb sand-jhkic0";
+const OFFICIAL_0781_SWITCH_TRACK_OFF =
+  "sand-jyslct sand-1lugfcp sand-9f619 sand-1n2onr6 sand-3nfvp2 sand-6s0dn4 sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-amitd3 sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-exx8yu sand-yri2b sand-18d9i69 sand-1c1uobl sand-c342km sand-ng3xce sand-ymw2ht sand-fwqdrz sand-19jy9ex sand-1g6zli8 sand-2k1e5v sand-6ikm8r sand-10wlt62 sand-14ju556 sand-gxxoiu sand-xymvpz sand-1ypdohk sand-1s07b3s sand-15406qy sand-12rn374 sand-wji4o3 sand-23j0i4 sand-lup9mm sand-lrd64x sand-1hshjfz sand-1akln4p";
+const OFFICIAL_0781_SWITCH_KNOB_ON =
+  "sand-9f619 sand-10l6tqk sand-s7f9wi sand-16rqkct sand-7qiiw0 sand-1gdvyqu sand-2hifos sand-12rn374 sand-wji4o3 sand-smyaan sand-1kpxq89 sand-1r4y97";
+const OFFICIAL_0781_SWITCH_KNOB_OFF =
+  "sand-9f619 sand-10l6tqk sand-s7f9wi sand-aoy8p5 sand-16rqkct sand-7qiiw0 sand-1gdvyqu sand-2hifos sand-12rn374 sand-wji4o3 sand-smyaan sand-1kpxq89";
 
 /** Upstream 0.18's own recipes for the same surfaces, which the port replaces. */
 const UPSTREAM_018_SECTION_LABEL =
@@ -478,6 +511,30 @@ const REPLACEMENTS = [
     occurrences: 5,
   },
   {
+    // Official's plugin detail page renders the per-tool row's on/off switch with official's own
+    // Switch: the checked track is the accent primary (`--sand-bg-accent-primary`) and the knob is
+    // the luminous surface (`--sand-bg-luminous`). Upstream 0.18 renders the same control with its
+    // shared switch, whose checked track is the grey `--sand-fill-control-checked`.
+    //
+    // The port swaps the component and keeps the props: upstream's `Kn` takes the same
+    // `{isChecked, label, onToggle}` triple, so the row's own behaviour — the label it computes,
+    // the optimistic toggle and the failure callback — is untouched. Only the recipes change, so
+    // the row keeps upstream's own markup and the port adds official's own switch next to it.
+    //
+    // The label is official's own in both languages. Official builds it from two locale ids —
+    // `y5UgU8` ("Disable {0}" / "停用 {0}") for a tool that is enabled and `FZtBeR`
+    // ("Enable {0}" / "启用 {0}") for a tool that is not. Upstream 0.18 builds the same label from
+    // two English literals, and the extra-i18n pass localizes only the "Enable" half, so the
+    // enabled branch reads "Disable <name>" inside a Chinese page. The port rewrites this exact
+    // expression, so it writes official's whole label.
+    label: "detail tool rows: official's own switch",
+    before:
+      't.jsx(Kn,{isChecked:!j.isDisabled,label:`${j.isDisabled?(RLocT("Enable","启用")):"Disable"} ${P.get(j.name)??j.name}`,onToggle:()=>{c(()=>Ci({toggle:l,serverId:s,toolName:j.name,applyOptimisticToggle:o,setToggleFailure:d}))}})',
+    after:
+      't.jsx(RM0781DetailToolSwitch,{isChecked:!j.isDisabled,label:`${j.isDisabled?(RLocT("Enable","启用")):RLocT("Disable","停用")} ${P.get(j.name)??j.name}`,onToggle:()=>{c(()=>Ci({toggle:l,serverId:s,toolName:j.name,applyOptimisticToggle:o,setToggleFailure:d}))}})',
+    occurrences: 1,
+  },
+  {
     // Official's accounts card is the elevated bordered surface, not upstream's translucent fill.
     label: "detail accounts section: official's card recipe",
     before: `A=k("sand-plugins-detail__accounts","${UPSTREAM_018_DETAIL_CARD}")`,
@@ -583,6 +640,14 @@ const INJECTED_SOURCE = [
   "const RM0781DetailRowClasses=\"sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-oyc9vk sand-1pic42t sand-2lprc sand-1onr9mi\";",
   "const RM0781DetailTermClasses=\"sand-9f619 sand-2lah0s sand-thy2uy sand-b3r6kr sand-uxw1ft sand-lyipyv sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-tyxrsu\";",
   "const RM0781DetailValueClasses=\"sand-9f619 sand-dj266r sand-2fvf9 sand-at24cr sand-1lziwak sand-b3r6kr sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-169k319 sand-p4054r sand-lyipyv sand-uxw1ft\";",
+  // Official's own Switch, the control the per-tool rows use. The recipes are official's own class
+  // strings, copied verbatim from its rendered DOM and from its switch recipe table; they are NOT
+  // routed through the chunk's `k()` stylix helper, because that helper would prepend a custom name
+  // and the recipes would stop being byte-identical to official's.
+  "const RM0781DetailSwitchOn=" + JSON.stringify(OFFICIAL_0781_SWITCH_TRACK_ON) + ";",
+  "const RM0781DetailSwitchOff=" + JSON.stringify(OFFICIAL_0781_SWITCH_TRACK_OFF) + ";",
+  "const RM0781DetailKnobOn=" + JSON.stringify(OFFICIAL_0781_SWITCH_KNOB_ON) + ";",
+  "const RM0781DetailKnobOff=" + JSON.stringify(OFFICIAL_0781_SWITCH_KNOB_OFF) + ";",
   "const RM0781DetailCategories=" + JSON.stringify(MARKETPLACE_DETAIL_VIEW_0781_CATEGORIES) + ";",
   "function RM0781DetailTitleCase(text){",
   "  const locale=RM0781Locale();",
@@ -817,6 +882,19 @@ const INJECTED_SOURCE = [
   "    tabIndex:0,",
   "    type:\"button\",",
   "    children:children,",
+  "  });",
+  "}",
+  "function RM0781DetailToolSwitch(props){",
+  "  const{isChecked,label,onToggle}=props;",
+  "  const on=isChecked===true;",
+  "  return t.jsx(\"button\",{",
+  "    \"aria-checked\":on,",
+  "    \"aria-label\":label,",
+  "    children:t.jsx(\"span\",{\"aria-hidden\":true,className:on?RM0781DetailKnobOn:RM0781DetailKnobOff}),",
+  "    className:on?RM0781DetailSwitchOn:RM0781DetailSwitchOff,",
+  "    onClick:()=>onToggle(!on),",
+  "    role:\"switch\",",
+  "    type:\"button\",",
   "  });",
   "}",
   "function RM0781DetailsList(props){",

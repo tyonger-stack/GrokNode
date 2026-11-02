@@ -12,7 +12,10 @@
     "--cursor-*": "official forwards the whole `--cursor-*` family to `--sand-*`. A custom property's `var()` is substituted where the property is DECLARED, so upstream's `:root` forwarding is already computed against upstream's palette and cannot be reached by overriding `--sand-*` on the dialog. The same forwarding is re-declared on the dialog, against the dialog's own `--sand-*` values.",
     "initial": "the four tokens official leaves undefined are reset to `initial`, the guaranteed-invalid value, so that upstream's definitions do not render where official renders nothing.",
     "--cursor-font-size-*": "official's own literal cursor font sizes, declared at `:root,.ui-qruemj` outside any theme selector, so they are the same in both themes. The ported section-title rule `sand-fc7y3v` reads `var(--cursor-font-size-lg)`. Upstream 0.18 declares the same four values, but the port declares them so the rule does not depend on upstream's palette.",
-    "--sand-bg-elevated-hover/--sand-bg-chrome/--sand-bg-sidebar/--sand-bg-luminous": "declared by official and by neither upstream 0.18 nor an earlier revision of this block; reproduced with official's own values so a surface inside the dialog that reads them cannot fall back to an unset token."
+    "--sand-bg-elevated-hover/--sand-bg-chrome/--sand-bg-sidebar/--sand-bg-luminous": "declared by official and by neither upstream 0.18 nor an earlier revision of this block; reproduced with official's own values so a surface inside the dialog that reads them cannot fall back to an unset token.",
+    "--sand-border-quaternary-translucent": "declared by official at `:root,.sand-1vbcnu7` and by neither upstream 0.18's `:root` nor an earlier revision of this block. The plugin detail page's tool rows carry official's own Switch, whose track reads it for a 0.5px inset rim; upstream 0.18 declares that token only inside the computer-card patch's own scope, which the dialog is not inside, so without this row the rim would be invalid at computed-value time and the track would render `box-shadow: none`. The dark column is official's computed value on the live dialog.",
+    "--sand-shadow-control": "declared by official at `:root,.sand-1vbcnu7` as `#1c1c1c1f`; the dark column is official's computed value on the live dialog (`#f5f5f500`). The plugin detail page's tool-row switch knob reads it for its drop shadow. Upstream 0.18 declares the token at `:root,.sand-1wuigm2` as `#0000001f`, but the running 0.18 app computes it as `#00000000` in the cursor-dark theme, so without this row the knob's shadow would resolve to a different colour than official's.",
+    "--sand-bg-accent-primary-hover/--sand-bg-accent-primary-disabled/--sand-bg-secondary-disabled": "declared by official and by neither upstream 0.18's own stylesheet nor an earlier revision of this block. The ported switch's track reads the accent hover variant when the pointer is over it, and the two disabled variants when it is disabled. This repository's own routine-surface companion declares the same three tokens, but inside the conversation info pane's scope (`.sand-info-pane__inner`), which the plugins dialog is not inside, so they do not reach the switch. No upstream 0.18 rule reads any of the three, so declaring them on the dialog cannot change any other surface; the light column is official's `:root,.sand-1vbcnu7` palette block and the dark column is official's computed value on the live dialog."
   },
   "tokens": {
     "--sand-bg-elevated": {
@@ -35,6 +38,10 @@
       "light": "#1c1c1c1a",
       "dark": "#f5f5f514"
     },
+    "--sand-bg-secondary-disabled": {
+      "light": "#1c1c1c0a",
+      "dark": "#f5f5f505"
+    },
     "--sand-bg-hover": {
       "light": "#1c1c1c0f",
       "dark": "#f5f5f50f"
@@ -46,6 +53,14 @@
     "--sand-bg-accent-primary": {
       "light": "#1680f3",
       "dark": "#116dd2"
+    },
+    "--sand-bg-accent-primary-hover": {
+      "light": "#126fd4",
+      "dark": "#1784fb"
+    },
+    "--sand-bg-accent-primary-disabled": {
+      "light": "#1680f32b",
+      "dark": "#116dd226"
     },
     "--sand-text-primary": {
       "light": "#1c1c1c",
@@ -114,6 +129,14 @@
     "--sand-border-primary-translucent": {
       "light": "#1c1c1c3d",
       "dark": "#f5f5f538"
+    },
+    "--sand-border-quaternary-translucent": {
+      "light": "#1c1c1c0f",
+      "dark": "#f5f5f50a"
+    },
+    "--sand-shadow-control": {
+      "light": "#1c1c1c1f",
+      "dark": "#f5f5f500"
     },
     "--sand-font-size-xxs": {
       "light": "11px",
