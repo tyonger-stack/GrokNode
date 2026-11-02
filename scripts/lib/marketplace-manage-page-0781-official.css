@@ -11,7 +11,7 @@
  * is the hash of its declaration block, so a class that exists in one build and not in another is
  * a NO-OP — the element renders unstyled and every other test stays green.
  *
- * Of the 163 distinct class names the ported markup carries:
+ * Of the 166 distinct class names the ported markup carries:
  *
  *   * 110 already resolve in upstream 0.18's stylesheet WITHIN the plugins dialog, with the same
  *     declaration. They are NOT repeated here: re-lifting a rule that upstream already carries
@@ -19,14 +19,14 @@
  *   * 14 are stylix namespace markers or hooks that official itself gives no rule to
  *     (`sand-plugins__yours`, `sand-plugins__group`, `sand-plugins-row`, `sand-kit-icon`, …).
  *     They carry no style on either side and nothing is lifted for them.
- *   * 40 do not resolve inside the dialog and are lifted here — one official rule each.
+ *   * 42 do not resolve inside the dialog and are lifted here — one official rule each.
  *
- * Of those 40, 39 resolve nowhere in upstream 0.18's stylesheet at all. The 40th is
- * `sand-1ufr4hg`, the connected badge's green: upstream 0.18 does not define it at all, but the
- * repo's own conversation-computer-card port carries official's rule scoped to
- * `.r-conversation-computer-card`, so the staged stylesheet holds the class token and never
- * styles it inside the plugins dialog. "The class token appears somewhere in the stylesheet" is
- * therefore not the test this file is built on — the scope is.
+ * Two of those 42 — `sand-1ufr4hg`, the connected badge's green, and `ui-vxqr21`, the regular
+ * weight — have no rule in upstream 0.18's stylesheet at all, but the STAGED stylesheet does
+ * carry them: the repo's own conversation-computer-card port carries official's connected-badge
+ * rule scoped to `.r-conversation-computer-card`, and the 0.75.5 group-author CSS carries the
+ * unscoped weight. Neither scope reaches the plugins dialog. "The class token appears somewhere
+ * in the stylesheet" is therefore not the test this file is built on — the scope is.
  *
  * ## The `:not(#\#)` guards are part of the rule
  *
@@ -57,10 +57,12 @@
  * `--sand-font-size-xl`, `--sand-line-height-xl`, `--sand-letter-spacing-xl`,
  * `--sand-line-height-sm`, `--sand-letter-spacing-sm`, `--sand-line-height-base`,
  * `--sand-letter-spacing-base`, `--cursor-font-weight-normal`, `--sand-bg-secondary`,
- * `--sand-border-focus-primary`, `--sand-text-green-primary` and `--sand-text-primary` are
- * declared on the dialog by `marketplace-dialog-0781-theme-tokens.css`. Upstream 0.18's palette
- * does not define them, so an undefined token would make `var()` invalid at computed-value time
- * and the property would silently fall back.
+ * `--sand-border-focus-primary`, `--sand-text-green-primary`, `--sand-text-yellow-primary`,
+ * `--sand-text-red-primary` and `--sand-text-primary` are declared on the dialog by
+ * `marketplace-dialog-0781-theme-tokens.css`. Upstream 0.18's palette does not define them, so
+ * an undefined token would make `var()` invalid at computed-value time and the property would
+ * silently fall back. The 0.75.5 group-author CSS declares the yellow and red text tokens too,
+ * but under `.rg0755-colors`, a scope the dialog is not inside.
  *
  * @evidence official 0.78.1 `rea-grokbot-0781/app/dist/renderer/assets/index-Dh7EWA8t.css`
  * @evidence upstream 0.18 `src/app/dist/renderer/assets/index-lCyB53CO.css`
@@ -94,6 +96,8 @@
 :where(.sand-plugins-dialog) .sand-1f9r7lp:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):before,:where(.sand-plugins-dialog) .sand-1w00h3t:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):after{border-radius:16px}
 :where(.sand-plugins-dialog) .sand-1ybvw9k:focus-visible:not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):not(#\#):after{box-shadow:inset 0 0 0 2px var(--sand-border-focus-primary)}
 :where(.sand-plugins-dialog) .sand-1ufr4hg:not(#\#):not(#\#):not(#\#){color:var(--sand-text-green-primary)}
+:where(.sand-plugins-dialog) .sand-132xtu3:not(#\#):not(#\#):not(#\#){color:var(--sand-text-yellow-primary)}
+:where(.sand-plugins-dialog) .sand-wtpwev:not(#\#):not(#\#):not(#\#){color:var(--sand-text-red-primary)}
 :where(.sand-plugins-dialog) .sand-wpq65r:not(#\#):not(#\#):not(#\#){background-color:color-mix(in srgb,var(--sand-text-primary) 6%,transparent)}
 :where(.sand-plugins-dialog) .sand-mzvs34:not(#\#):not(#\#):not(#\#){padding-inline-start:8px}
 :where(.sand-plugins-dialog) .sand-ihq33y:not(#\#):not(#\#):not(#\#){grid-template-rows:0fr}

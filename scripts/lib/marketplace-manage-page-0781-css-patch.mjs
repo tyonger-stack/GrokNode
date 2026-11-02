@@ -54,6 +54,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { MARKETPLACE_MANAGE_PAGE_0781_STATUS_VARIANT_CLASSES } from "./marketplace-manage-page-0781-patch.mjs";
 
 const OFFICIAL_CSS_FILE = "marketplace-manage-page-0781-official.css";
 const OFFICIAL_STYLESHEET = new URL(
@@ -411,7 +412,14 @@ export const MARKETPLACE_MANAGE_PAGE_0781_OFFICIAL_RULES = (() => {
   return Object.freeze(official);
 })();
 
-/** The class names the port applies, read out of the measured fixture. */
+/**
+ * The class names the port applies.
+ *
+ * The measured fixture carries the recipes the capture saw, and the port's own declared
+ * recipes carry the rest — the status-badge variants in particular, because the capture only
+ * ever saw the connected one. Every class here must resolve inside the plugins dialog once
+ * the companion CSS has run; a class that resolves nowhere fails the build.
+ */
 export const MARKETPLACE_MANAGE_PAGE_0781_PORTED_CLASSES = (() => {
   const fixture = JSON.parse(readFileSync(RECIPES_FIXTURE, "utf8"));
   const classes = new Set();
@@ -426,6 +434,9 @@ export const MARKETPLACE_MANAGE_PAGE_0781_PORTED_CLASSES = (() => {
   }
   for (const value of Object.values(SPEC_MEASUREMENTS)) {
     for (const name of value.split(/\s+/)) if (name) classes.add(name);
+  }
+  for (const value of Object.values(MARKETPLACE_MANAGE_PAGE_0781_STATUS_VARIANT_CLASSES)) {
+    classes.add(value);
   }
   return Object.freeze([...classes].sort());
 })();
