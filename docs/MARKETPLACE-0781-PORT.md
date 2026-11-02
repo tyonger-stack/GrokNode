@@ -1051,3 +1051,70 @@ cursor click on the composer's 连接应用 opens the browse dialog, a real curs
 row and grey 连接 pills on the rows that need authorisation. Official was driven through the same
 path in the same session and the two pages were compared side by side.
 
+### The status badge's warning and error colours (2026-11-02)
+
+Official 0.78.1's status badge has three variants — connected, warn and error — and each carries
+its own colour class. The capture only ever saw the connected variant, because the live dialog
+showed no warning and no failing connector. The port replaced upstream 0.18's three badge recipes
+with official's, but the companion CSS lifted the connected variant's rule only, so the warning
+and error badges resolved nowhere inside the plugins dialog and rendered with the inherited text
+colour.
+
+Upstream 0.18's stylesheet defines neither `sand-132xtu3` nor `sand-wtpwev` at all, and the
+0.75.5 group-author CSS that does declare `--sand-text-yellow-primary` and
+`--sand-text-red-primary` scopes them to `.rg0755-colors`, a scope the dialog is not inside. There
+were two missing pieces: the rules, and the tokens the rules read.
+
+Both are official 0.78.1's own bytes. The rules are
+`:where(.sand-plugins-dialog) .sand-132xtu3:not(#\#):not(#\#):not(#\#){color:var(--sand-text-yellow-primary)}`
+and the same shape for `sand-wtpwev`, lifted verbatim out of official's `index-Dh7EWA8t.css`. The
+tokens are declared on the dialog subtree: light `#aa6300` and `#cd2834`, dark `#e28600` and
+`#ff6463`. The light pair is official's own `:root,.sand-1vbcnu7` palette block, and the dark pair
+is the running official app's `cursor-dark` theme.
+
+The three variant classes now sit in the ported-class set, so the CSS patch fails the build when
+one of them resolves nowhere. The guard in `tests/marketplace-manage-page-0781.test.mjs` walks all
+three variants instead of the connected one alone, and a second guard asserts that every token the
+ported rules read is declared in the dialog's light block and, where official's two themes differ,
+in its dark block too. An undeclared `var()` is invalid at computed-value time, so the rule falls
+back to its initial value without failing anything else.
+
+Four mutants confirm the guards bite: dropping the warning rule, dropping the light yellow token,
+dropping the dark yellow token, and taking the variant classes out of the ported-class set each
+turn the suite red.
+
+Measured on the running apps, with a real badge cloned and its variant class swapped the way the
+port does, the computed colour is the same on both sides:
+
+| variant | official 0.78.1 | Grok Node |
+| --- | --- | --- |
+| connected | `rgb(0, 186, 105)` | `rgb(0, 186, 105)` |
+| warn | `rgb(226, 134, 0)` | `rgb(226, 134, 0)` |
+| error | `rgb(255, 100, 99)` | `rgb(255, 100, 99)` |
+
+### The 0.75 hosts leave the dialog's second-level page (2026-11-02)
+
+The second-level page's Installed section was the 0.75.0 wave's host for the repo's
+"已安装 / 卸载" panel and the custom-MCP form. Official 0.78.1's second-level page carries
+neither, and official keeps the connector form on a page of its own (`qLe/7o`,
+`chunk-user-custom-connector-M5UeTEiw.js`). The panel is therefore what made this
+reconstruction's page differ from official's.
+
+It also broke the build. The second-level port rewrites the section's children from `J.map` to
+`(RM0781ManageRowElements=U.map`, so the host's anchor stopped occurring and the pack step failed
+with `Expected one settings panel and one plugins list for the 0.75 hosts`. The CI workflow never
+packages, so it could not see this.
+
+The plugins host goes away. The custom-MCP form moves to the settings host slot, which is a
+reconstruction surface rather than an official-parity one. The uninstall action is not lost: the
+plugin detail page upstream already ships carries 卸载, and the desktop plugins controller keeps
+its own removal path.
+
+### Deployment record (2026-11-02)
+
+The packaged build (`app.asar` sha256
+`b2803efb37b4fd42f9292520153550236cf9fcfc2c8dc10f551c09f6d272272b`) was deployed to
+`/Applications/Grok Node.app` with a full replace, and the deployed asar's sha256 equals the
+freshly built asar's. The three badge variants measure the same as official's, as the table above
+records.
+

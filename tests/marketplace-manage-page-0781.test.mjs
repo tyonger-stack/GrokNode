@@ -328,18 +328,51 @@ test("every token the ported rules read is declared on the dialog", () => {
     path.join(repo, "scripts/lib/marketplace-dialog-0781-theme-tokens.css"),
     "utf8",
   );
-  const declared = new Set([...css.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)].map((m) => m[1]));
+  const light = css.match(/^\.sand-plugins-dialog\{(.+)\}$/m);
+  const dark = css.match(/^html\[data-theme="cursor-dark"\] \.sand-plugins-dialog\{(.+)\}$/m);
+  assert.ok(light != null, "the light token block must be scoped to the dialog");
+  assert.ok(dark != null, "the dark token block must be scoped to the dialog under cursor-dark");
+  const declared = (body) =>
+    new Set([...body.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)].map((m) => m[1]));
+  const lightTokens = declared(light[1]);
+  const darkTokens = declared(dark[1]);
+  const official = JSON.parse(
+    readFileSync(
+      path.join(repo, "tests/fixtures/official-0781-marketplace-theme-tokens.json"),
+      "utf8",
+    ),
+  ).tokens;
+
   const referenced = new Set();
   for (const rule of Object.values(MARKETPLACE_MANAGE_PAGE_0781_OFFICIAL_RULES)) {
     for (const match of rule.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)/g)) referenced.add(match[1]);
   }
   assert.ok(referenced.size > 0, "the ported rules must read at least one token");
-  const missing = [...referenced].filter((token) => !declared.has(token)).sort();
+
+  // The light block carries the base value. A token declared only in the dark block resolves in
+  // the dark theme and nowhere else, so the light theme falls back to the initial value.
+  const missingLight = [...referenced].filter((token) => !lightTokens.has(token)).sort();
   assert.deepEqual(
-    missing,
+    missingLight,
     [],
-    "these tokens are read by the ported rules but not declared on the dialog, so they resolve to " +
-      "an invalid value at computed-value time and the rule renders its initial value",
+    "these tokens are read by the ported rules but not declared in the dialog's light block, so " +
+      "they resolve to an invalid value at computed-value time and the rule renders its initial " +
+      "value",
+  );
+
+  // The dark theme overrides what it must. A token whose official value differs between the two
+  // themes has to be declared in the dark block, or the dark theme keeps the light one.
+  const missingDark = [...referenced]
+    .filter((token) => {
+      const captured = official[token];
+      return captured != null && captured.light !== captured.dark && !darkTokens.has(token);
+    })
+    .sort();
+  assert.deepEqual(
+    missingDark,
+    [],
+    "these tokens differ between official's two themes, so the dialog's dark block must declare " +
+      "them, or the dark theme renders the light value",
   );
 });
 
