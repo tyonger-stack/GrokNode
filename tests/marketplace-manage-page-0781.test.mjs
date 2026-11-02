@@ -7,6 +7,7 @@ import test from "node:test";
 import { parse } from "acorn";
 import {
   MARKETPLACE_MANAGE_PAGE_0781_MESSAGES,
+  MARKETPLACE_MANAGE_PAGE_0781_STATUS_VARIANT_CLASSES,
 } from "../scripts/lib/marketplace-manage-page-0781-patch.mjs";
 import { applyMarketplaceManagePage0781 } from "../scripts/lib/marketplace-manage-page-0781-patch.mjs";
 import {
@@ -252,7 +253,7 @@ test("the staged chunk carries the ported second-level page", () => {
   assert.equal(chunk.split('"(RLocT(').length - 1, 0, "the staged chunk must not double-wrap RLocT");
 });
 
-test("the connected badge's green rule is scoped to the dialog, not skipped as 'already carried'", async (t) => {
+test("every status badge variant carries official's own rule inside the dialog", async (t) => {
   const upstreamCss = path.join(upstreamDir, "index-lCyB53CO.css");
   let upstream;
   try {
@@ -262,15 +263,28 @@ test("the connected badge's green rule is scoped to the dialog, not skipped as '
     return;
   }
 
-  // Upstream 0.18 does not define the green at all. The repo's own conversation-computer-card
-  // port carries official's rule scoped to `.r-conversation-computer-card`, so the staged
-  // stylesheet holds the class token and never styles it inside the plugins dialog. A test on
-  // "the class token appears somewhere" would wrongly call it carried.
+  // Official ships three badge variants — connected, warn and error — and each carries its own
+  // colour class. Upstream 0.18 styles none of the three inside the plugins dialog, so the port
+  // has to carry official's rules itself. The capture only ever saw the connected variant,
+  // because the live dialog showed no warning and no failing connector, and the two missing
+  // rules shipped as colourless badges before this guard existed.
   const styledInDialog = marketplaceManagePage0781ClassesStyledInDialog(upstream);
-  assert.ok(
-    !styledInDialog.has("sand-1ufr4hg"),
-    "upstream must not style the connected badge's green inside the plugins dialog",
-  );
+  for (const [variant, name] of Object.entries(MARKETPLACE_MANAGE_PAGE_0781_STATUS_VARIANT_CLASSES)) {
+    assert.ok(
+      !styledInDialog.has(name),
+      `upstream must not style the ${variant} badge inside the plugins dialog`,
+    );
+    assert.ok(
+      MARKETPLACE_MANAGE_PAGE_0781_OFFICIAL_RULES[name] != null,
+      `the companion CSS must lift official's ${variant} badge rule`,
+    );
+  }
+
+  // A rule scoped away from the dialog does not count as carried. The repo's own
+  // conversation-computer-card port carries official's connected-badge rule scoped to
+  // `.r-conversation-computer-card`, so the staged stylesheet holds the class token and never
+  // styles it inside the plugins dialog. A test on "the class token appears somewhere" would
+  // wrongly call it carried.
   const scopedAway = ".r-conversation-computer-card .sand-1ufr4hg";
   assert.ok(
     !marketplaceManagePage0781ClassesStyledInDialog(
@@ -285,23 +299,48 @@ test("the connected badge's green rule is scoped to the dialog, not skipped as '
   try {
     const provenance = await applyMarketplaceManagePage0781Css({ stageRoot: root });
     const patchedCss = await readFile(path.join(assets, "index-lCyB53CO.css"), "utf8");
-    const green = MARKETPLACE_MANAGE_PAGE_0781_OFFICIAL_RULES["sand-1ufr4hg"];
-    assert.ok(green != null, "the companion CSS must lift official's green rule");
-    assert.ok(
-      patchedCss.includes(`:where(.sand-plugins-dialog) ${green}`),
-      "the green rule must be carried inside the plugins dialog",
-    );
-    assert.ok(
-      marketplaceManagePage0781ClassesStyledInDialog(patchedCss).has("sand-1ufr4hg"),
-      "the connected badge's green must resolve inside the plugins dialog",
-    );
-    assert.ok(
-      provenance.appendedRules.some((rule) => rule.includes("sand-1ufr4hg")),
-      "the injector must append the green rule instead of skipping it",
-    );
+    for (const [variant, name] of Object.entries(MARKETPLACE_MANAGE_PAGE_0781_STATUS_VARIANT_CLASSES)) {
+      const rule = MARKETPLACE_MANAGE_PAGE_0781_OFFICIAL_RULES[name];
+      assert.ok(
+        patchedCss.includes(`:where(.sand-plugins-dialog) ${rule}`),
+        `the ${variant} badge rule must be carried inside the plugins dialog`,
+      );
+      assert.ok(
+        marketplaceManagePage0781ClassesStyledInDialog(patchedCss).has(name),
+        `the ${variant} badge must resolve inside the plugins dialog`,
+      );
+      assert.ok(
+        provenance.appendedRules.some((appended) => appended.includes(name)),
+        `the injector must append the ${variant} badge rule instead of skipping it`,
+      );
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("every token the ported rules read is declared on the dialog", () => {
+  // A `var(--x)` whose target is not declared on the dialog subtree is invalid at computed-value
+  // time: the rule falls back to its initial value, so the badge loses its colour while every
+  // other test stays green. Upstream 0.18 ships an older palette, so "upstream happens to define
+  // it" is not good enough — the value would be the wrong one.
+  const css = readFileSync(
+    path.join(repo, "scripts/lib/marketplace-dialog-0781-theme-tokens.css"),
+    "utf8",
+  );
+  const declared = new Set([...css.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)].map((m) => m[1]));
+  const referenced = new Set();
+  for (const rule of Object.values(MARKETPLACE_MANAGE_PAGE_0781_OFFICIAL_RULES)) {
+    for (const match of rule.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)/g)) referenced.add(match[1]);
+  }
+  assert.ok(referenced.size > 0, "the ported rules must read at least one token");
+  const missing = [...referenced].filter((token) => !declared.has(token)).sort();
+  assert.deepEqual(
+    missing,
+    [],
+    "these tokens are read by the ported rules but not declared on the dialog, so they resolve to " +
+      "an invalid value at computed-value time and the rule renders its initial value",
+  );
 });
 
 test("every lifted CSS rule is official 0.78.1's own and resolves in the shipped stylesheet", async (t) => {

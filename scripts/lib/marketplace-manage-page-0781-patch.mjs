@@ -196,6 +196,27 @@ export const MARKETPLACE_MANAGE_PAGE_0781_EXTRA_CLASSES = Object.freeze({
 });
 
 /**
+ * Official 0.78.1's status-badge variant recipes, read out of official's own registry.
+ *
+ * Official ships three variants of one badge recipe — connected, warn and error — and each
+ * carries its own colour class. The capture only ever saw the connected variant, because the
+ * live dialog showed no warning and no failing connector; the other two are read out of
+ * official's bytes.
+ *
+ * Upstream 0.18 ships its own three, and the port replaces them with official's, so the ported
+ * page has to carry official's colour rules itself. Each of the three classes resolves nowhere
+ * inside upstream 0.18's plugins dialog, and each of official's rules reads a `--sand-text-*`
+ * colour token that upstream 0.18's palette does not define.
+ *
+ * @evidence official 0.78.1 `index.eager-app-D1juOWZp.js` — the `status` recipe registry.
+ */
+export const MARKETPLACE_MANAGE_PAGE_0781_STATUS_VARIANT_CLASSES = Object.freeze({
+  connected: "sand-1ufr4hg",
+  warn: "sand-132xtu3",
+  error: "sand-wtpwev",
+});
+
+/**
  * Official 0.78.1's message ids used by this patch, with official's own text.
  *
  * `zh` is the text the patch writes into the chunk, so it is always a contiguous literal there.
@@ -393,7 +414,9 @@ const REPLACEMENTS = [
       'statusConnected:{kMwMTN:"sand-98zg7y",$$css:!0},statusWarn:{kMwMTN:"sand-1izesbo",$$css:!0},statusError:{kMwMTN:"sand-pmgbkh",$$css:!0}};',
     after:
       'const cs={status:{kB7OPa:"sand-9f619",kGuDYH:"sand-11wthnw",kLWn49:"sand-d4r4e8",kb6lSQ:"sand-12oo3zp",kMwMTN:"sand-169k319",khDVqt:"sand-uxw1ft",$$css:!0},' +
-      'statusConnected:{kMwMTN:"sand-1ufr4hg",$$css:!0},statusWarn:{kMwMTN:"sand-132xtu3",$$css:!0},statusError:{kMwMTN:"sand-wtpwev",$$css:!0}};',
+      `statusConnected:{kMwMTN:"${MARKETPLACE_MANAGE_PAGE_0781_STATUS_VARIANT_CLASSES.connected}",$$css:!0},` +
+      `statusWarn:{kMwMTN:"${MARKETPLACE_MANAGE_PAGE_0781_STATUS_VARIANT_CLASSES.warn}",$$css:!0},` +
+      `statusError:{kMwMTN:"${MARKETPLACE_MANAGE_PAGE_0781_STATUS_VARIANT_CLASSES.error}",$$css:!0}};`,
   },
   {
     label:
