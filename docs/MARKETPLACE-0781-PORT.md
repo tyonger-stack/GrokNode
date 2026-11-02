@@ -1373,3 +1373,246 @@ through 连接应用, 已连接 N 个, 查看全部 and a plugin row with real m
 | `"(RLocT("` quote-bug chunks | 0 |
 | the detail page's sections in the driven build | 账户, 工具, 配置, 应用, 信息 |
 
+## The tool rows' switch (2026-11-02)
+
+### What was different
+
+Official 0.78.1's plugin detail page draws each tool row's on/off switch with its own Switch
+component. Its checked track is accent-primary and its knob is luminous. Upstream 0.18's plugin
+detail page draws the same switch with 0.18's own shared Switch component, whose checked track is
+`--sand-fill-control-checked`.
+
+Measured over CDP on the two apps running side by side, with the Gmail detail page open and the
+工具 list expanded, both switches report `aria-checked="true"`, a 26x16 track and a 12x12 knob.
+Only the recipes differ:
+
+| property | official 0.78.1 | this build before the fix |
+|---|---|---|
+| track background | `rgb(17, 109, 210)` (`--sand-bg-accent-primary`) | `rgb(90, 90, 90)` (`--sand-fill-control-checked`) |
+| track box-shadow | `rgba(245, 245, 245, 0.04) 0px 0px 0px 0.5px inset` | none |
+| track border | none | `0.5px solid` `--sand-border-subtle` |
+| knob background | `rgb(245, 245, 245)` (`--sand-bg-luminous`) | `rgb(252, 252, 252)` (`--sand-text-on-color`) |
+| knob box-shadow | `rgba(245, 245, 245, 0) 0px 1px 3px 0px` | `rgba(0, 0, 0, 0) 0px 1px 3px 0px` |
+| knob placement | `inset-inline-start: 2px` off, `12px` on | `left: 1.5px` plus `translate(10px)` on |
+
+The rebuilt app's switch therefore rendered grey while official's rendered blue, on a row that
+carries official's own label recipe and official's own row recipe.
+
+### Why the shared switch could not be reused
+
+Official 0.78.1's Switch is the component `SD` in
+`rea-grokbot-0781/app/dist/renderer/assets/index.eager-app-D1juOWZp.js`, with its knob recipes in
+`xD` and a sixteen-entry track recipe table indexed by
+`(size === "md") << 3 | isChecked << 2 | isDisabled << 1 | (isDisabled && isChecked)`.
+
+Upstream 0.18's shared switch is `Hlt` in `index-UbX-y3il.js` (exported as `bU`, imported into the
+detail chunk as `Kn`). Its props are
+`{label, labelledBy, isChecked, isDisabled, size, onToggle}` and it accepts no className, so
+official's recipe cannot be passed through it. Rewriting the shared component's recipe table would
+have changed every switch in the whole app, which is outside this port's scope.
+
+That scope is empty on both sides. Measured over CDP, this build's **only** `[role="switch"]` in the
+whole app is the detail page's tool row — the browse dialog and the 管理插件和技能 page carry none,
+and this build's conversation pane carries none either, where official's has eight schedule-pause
+switches in its `md` size. So the detail page's tool rows are the only surface where the two apps
+have a switch at all, and it is the only one that differs.
+
+### What the port writes
+
+The detail view patch replaces the one call site that renders the tool row's switch with an
+injected component that carries official's own class strings. The anchor is upstream 0.18's
+`view-B5Ug8wEm.js`, the second of its two `t.jsx(Kn,{` occurrences (the first is the manage
+page's workflow row, which PR 26 already replaced with `trailing:null`), so the patch fails closed
+if the anchor ever goes missing or ambiguous.
+
+| surface | official 0.78.1's recipe |
+|---|---|
+| track, checked | the table's index 4 (`sm` + checked), whose `sand-1cgqir` declares `background-color: var(--sand-bg-accent-primary)` |
+| track, unchecked | the table's index 0 (`sm`), whose `sand-fwqdrz` declares `background-color: var(--sand-bg-secondary)` |
+| knob, checked | official's `xD.knob` + `xD.knobSm` + `xD.knobSmChecked`, merged the way official's own `so()` merges them |
+| knob, unchecked | official's `xD.knob` + `xD.knobSm` |
+
+Only the two `sm`-and-enabled entries are reachable: upstream's tool-row call site passes no
+`isDisabled`, and official's `SD` renders its disabled variants only when `isDisabled` is set. The
+disabled recipes are not ported, because nothing can reach them.
+
+All four class strings are byte-exact, and each is verified twice over: against official's own
+`SD` recipe table in `index.eager-app-D1juOWZp.js`, and against the class attribute on the
+running official app's live switch. Official's merge moves a key that a later recipe overrides to
+the end of the class string, which is why the checked knob carries `sand-1r4y97` at the end and
+not `sand-aoy8p5`.
+
+The unchecked pair is not observable live — all 25 of Gmail's tools are enabled — so it comes from
+official's own recipe table alone. It was still checked on screen, without touching either app's
+state: the live switch is cloned, official's own OFF class strings are swapped onto the clone, the
+clone is inserted next to the real one and its computed styles are read. The same official class
+strings are applied in both apps, so the two readings have to agree — that proves the shipped CSS
+and the dialog's token scope resolve official's OFF recipe identically on both sides.
+
+### The DOM contract is unchanged
+
+Both sides render the same element, with the same five attributes and the same child:
+
+```
+<button aria-checked="true" aria-label="…" role="switch" type="button" class="…">
+  <span aria-hidden="true" class="…"></span>
+</button>
+```
+
+so the injected component adds no attribute and no class. Official's class string is passed
+straight through as `className` rather than through upstream's `k()` helper, because `k(name,
+recipe)` renders `name recipe` — that helper would have put a marker class in front of official's
+string and broken the byte-for-byte match. The guard finds the element through
+`[role="switch"]` inside `.sand-plugins-detail__tools` instead.
+
+`onToggle` keeps upstream's contract: `onToggle(!isChecked)`, which is also official's `SD`
+contract (`c(!i)`).
+
+### The rules that had to be lifted
+
+Of the class tokens the four recipes use, 13 are declared by upstream 0.18's stylesheet with the
+identical declaration, 35 more are already declared by one of this repository's own official CSS
+companions, and 5 are declared by neither. Those 5 are copied verbatim from official 0.78.1's
+stylesheet:
+
+| class | official's declaration |
+|---|---|
+| `sand-2k1e5v` | `box-shadow: inset 0 0 0 .5px var(--sand-border-quaternary-translucent)` |
+| `sand-lrd64x` | `min-width: 26px` |
+| `sand-1akln4p` | `max-height: 16px` |
+| `sand-1gdvyqu` | `box-shadow: 0 1px 3px 0 var(--sand-shadow-control)` |
+| `sand-1r4y97` | `inset-inline-start: 12px` |
+
+The CSS patch appends only the rules upstream's stylesheet does not already carry, compares whole
+lines, and fails closed when any of them is not present as a standalone rule.
+
+### The two tokens the dialog did not have
+
+The switch's checked track reads `--sand-bg-accent-primary` and its knob reads `--sand-bg-luminous`.
+The dialog subtree already declares both, with official's own values: `#1680f3` and `#fff` in the
+light block, `#116dd2` and `#f5f5f5` in the `cursor-dark` block. Those are exactly the values
+official computes on its live dialog, so the ported switch comes out the same colour.
+
+Five more tokens the switch reads were missing from the dialog scope, and all five are declared
+now, with official's own values:
+
+| token | what reads it | light | `cursor-dark` |
+|---|---|---|---|
+| `--sand-border-quaternary-translucent` | the track's 0.5px inset rim | `#1c1c1c0f` | `#f5f5f50a` |
+| `--sand-shadow-control` | the knob's drop shadow | `#1c1c1c1f` | `#f5f5f500` |
+| `--sand-bg-accent-primary-hover` | the track's hover state | `#126fd4` | `#1784fb` |
+| `--sand-bg-accent-primary-disabled` | the track's disabled state | `#1680f32b` | `#116dd226` |
+| `--sand-bg-secondary-disabled` | the off track's disabled state | `#1c1c1c0a` | `#f5f5f505` |
+
+`--sand-border-quaternary-translucent` is the reason the rim matters: upstream 0.18 declares that
+token only inside the computer-card patch's own scope, which the dialog is not inside, so without
+the row the value would be invalid at computed-value time and the track would render
+`box-shadow: none` instead of official's 0.5px inset rim.
+
+`--sand-shadow-control` is the reason the knob's shadow matters. Upstream 0.18 declares it at
+`:root` as `#0000001f`, but the running 0.18 app computes it as `#00000000` in the `cursor-dark`
+theme, while official computes `#f5f5f500` — so the knob's shadow resolves to a different colour
+than official's without the row.
+
+`--sand-bg-accent-primary-hover` is the reason the hover state matters. The track's hover rule is
+`.sand-1moagsb:hover{background-color:var(--sand-bg-accent-primary-hover)}` and upstream 0.18
+declares no such token, so without the row the rule would be invalid at computed-value time and the
+track's background would compute to `transparent` while the pointer is over it.
+
+The three disabled and hover tokens are safe to declare: **no upstream 0.18 rule reads any of
+them** (0 matches in `index-lCyB53CO.css`), so they cannot change any other surface inside the
+dialog. Upstream 0.18's own stylesheet declares none of the three either. This repository's
+routine-surface companion does declare them, but inside the conversation info pane's own scope
+(`.sand-info-pane__inner`), which the plugins dialog is not inside, so they never reached the
+switch. A sixth token the switch's recipes read, `--sand-bg-secondary-hover`, was already declared
+in both blocks.
+
+Both values are official's own. The light column is official's `:root,.sand-1vbcnu7` palette block
+in `index-Dh7EWA8t.css`; the dark column is official's computed value on the live dialog.
+
+### The tool row's label
+
+Official builds the tool row's switch label from two locale ids, read out of official's own
+`chunk-plugin-detail-view-KNB3B4mm.js`:
+
+| id | English | zh-Hans | when |
+|---|---|---|---|
+| `y5UgU8` | `Disable {0}` | `停用 {0}` | the tool is enabled, so the action is to disable it |
+| `FZtBeR` | `Enable {0}` | `启用 {0}` | the tool is disabled, so the action is to enable it |
+
+The live official app agrees: the enabled Gmail tool `Get me` carries `aria-label="停用 Get me"`.
+
+This build rendered only one half of that. The repository's own `extra-i18n-patch.mjs` localises the
+literal `"Enable"`, but there is no `"Disable"` entry, so in the Chinese UI the enabled tool read
+`Disable Create draft` while official read `停用 Get me`. The port now localises the other half
+too, through the same `RLocT(english, chinese)` helper the extra-i18n patch already uses, and the
+tool name stays upstream's own expression — the same one official uses.
+### The commits
+
+The wave is two commits, and the history shows the defect before the fix:
+
+| commit | what it is | the detail-page suite |
+|---|---|---|
+| `32e6ba3` | the guards only | 42 tests, 37 pass, **5 fail** — the five new switch guards |
+| `b4c18f2` | the fix — the patch, the companion CSS and the token scope | 42 tests, **42 pass**, 0 fail |
+
+The five guards that are red at `32e6ba3` are the tool-row switch's own recipes, its label, the
+companion's five rules, the mutation that swaps official's recipes back to upstream's, and the
+token scope.
+
+### Deployment record (2026-11-02)
+
+| check | result |
+|---|---|
+| packaged `app.asar` sha256 | `e921d4e4b085f3a8ccd32c78a63009e7c642dc219d6eb42dd86dded12607da9c` |
+| deployed `/Applications/Grok Node.app` asar sha256 | the same |
+| the switch in the deployed `app.asar` | official's track and knob class strings present, upstream's `sand-1jq8sgu` gone |
+| official-only switch CSS rules in the deployed stylesheet | 5 of 5, standalone and byte-for-byte official |
+| shipped renderer chunks that parse | 102 of 102 |
+| `"(RLocT("` quote-bug chunks | 0 |
+| the whole repository's offline suite | 2737 tests, 2703 pass, 0 fail, 34 skipped |
+| the detail-page suite | 42 tests, 42 pass, 0 fail |
+
+Driven against the two apps running side by side, with the Gmail detail page open and the 工具 list
+expanded, the deployed build's switch and official's agree on **every** measured property, in the
+checked state and in the unchecked state reached by the clone:
+
+| property | official 0.78.1 | this build after the fix |
+|---|---|---|
+| track class | official's own, 41 classes | byte-for-byte the same |
+| knob class | official's own, 12 classes | byte-for-byte the same |
+| track size | 26×16 | 26×16 |
+| knob size | 12×12 | 12×12 |
+| track background | `rgb(17, 109, 210)` | `rgb(17, 109, 210)` |
+| track box-shadow | `rgba(245, 245, 245, 0.04) 0px 0px 0px 0.5px inset` | the same |
+| track border | `0px none` | `0px none` |
+| knob background | `rgb(245, 245, 245)` | `rgb(245, 245, 245)` |
+| knob box-shadow | `rgba(245, 245, 245, 0) 0px 1px 3px 0px` | the same |
+| knob `inset-inline-start`, on | `12px` | `12px` |
+| track background, off | `rgba(245, 245, 245, 0.04)` | `rgba(245, 245, 245, 0.04)` |
+| knob `inset-inline-start`, off | `2px` | `2px` |
+| `aria-label` | `停用 Get me` | `停用 Create draft` — the same official wording, on this build's own tool |
+
+Sixteen of sixteen measured properties match, on both states.
+
+The two screenshots of the switch itself — the same crop of the live switch in each app — are
+**byte-for-byte identical**:
+
+```
+ec247f09f4a69bf1fc4ee671933d6adadb99b400f34750bb1f410d366326402f  switch-official.png
+ec247f09f4a69bf1fc4ee671933d6adadb99b400f34750bb1f410d366326402f  switch-node.png
+```
+
+### What was not exercised, and why
+
+The switch was **not clicked**. Clicking it toggles a tool's permission mode on the installed
+plugin, which is real state on the user's machine, and the wave had no reason to change it. The
+wiring was verified without clicking instead: React's own props on the deployed button carry an
+`onClick` whose source is `()=>onToggle(!on)`, which is upstream 0.18's contract for the same
+control (`()=>l(!r)`), and the `onToggle` and `isChecked` props the port passes are byte-identical
+to the ones upstream passed. The button's `role`, `type` and `aria-checked` props and the knob's
+`aria-hidden` prop were read the same way.
+
+One committed tool, `scripts/verify-marketplace-detail-parity.mjs`, does not run against this
+build: it opens the detail row by an `aria-label` prefix that now matches the account-menu entry,
+so it measures the wrong page and reports 0 of 3. That predates this wave and was left alone.
