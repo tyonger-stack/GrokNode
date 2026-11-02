@@ -55,6 +55,62 @@ const layoutCss = read("scripts", "lib", "marketplace-dialog-0781-layout.css");
 const routineCss = read("scripts", "lib", "routine-surface-0758-official.css");
 
 /**
+ * Official 0.78.1's own switch recipes for the detail page's per-tool rows.
+ *
+ * They are written out here rather than read from the port, so a port that swapped official's
+ * recipes for upstream's cannot satisfy itself. Every string is official's own class string: the
+ * checked track and the checked knob were read off official's live DOM, and the unchecked track is
+ * official's own recipe-table entry for the same control in its unchecked state — official's live
+ * plugin has every tool enabled, so the unchecked variant is not observable on screen.
+ */
+const OFFICIAL_0781_SWITCH_TRACK_ON =
+  "sand-jyslct sand-1lugfcp sand-9f619 sand-1n2onr6 sand-3nfvp2 sand-6s0dn4 sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-amitd3 sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-exx8yu sand-yri2b sand-18d9i69 sand-1c1uobl sand-c342km sand-ng3xce sand-ymw2ht sand-2k1e5v sand-6ikm8r sand-10wlt62 sand-14ju556 sand-gxxoiu sand-xymvpz sand-1ypdohk sand-1s07b3s sand-15406qy sand-12rn374 sand-wji4o3 sand-23j0i4 sand-lup9mm sand-lrd64x sand-1hshjfz sand-1akln4p sand-1cgqir sand-1moagsb sand-jhkic0";
+const OFFICIAL_0781_SWITCH_TRACK_OFF =
+  "sand-jyslct sand-1lugfcp sand-9f619 sand-1n2onr6 sand-3nfvp2 sand-6s0dn4 sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-amitd3 sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-exx8yu sand-yri2b sand-18d9i69 sand-1c1uobl sand-c342km sand-ng3xce sand-ymw2ht sand-fwqdrz sand-19jy9ex sand-1g6zli8 sand-2k1e5v sand-6ikm8r sand-10wlt62 sand-14ju556 sand-gxxoiu sand-xymvpz sand-1ypdohk sand-1s07b3s sand-15406qy sand-12rn374 sand-wji4o3 sand-23j0i4 sand-lup9mm sand-lrd64x sand-1hshjfz sand-1akln4p";
+const OFFICIAL_0781_SWITCH_KNOB_ON =
+  "sand-9f619 sand-10l6tqk sand-s7f9wi sand-16rqkct sand-7qiiw0 sand-1gdvyqu sand-2hifos sand-12rn374 sand-wji4o3 sand-smyaan sand-1kpxq89 sand-1r4y97";
+const OFFICIAL_0781_SWITCH_KNOB_OFF =
+  "sand-9f619 sand-10l6tqk sand-s7f9wi sand-aoy8p5 sand-16rqkct sand-7qiiw0 sand-1gdvyqu sand-2hifos sand-12rn374 sand-wji4o3 sand-smyaan sand-1kpxq89";
+
+/** Upstream 0.18's own shared-switch recipes, the ones the port replaces. */
+const UPSTREAM_018_SWITCH_CLASSES = ["sand-1jq8sgu", "sand-khjh7l"];
+
+/**
+ * Official's five switch rules that upstream 0.18's stylesheet does not declare.
+ *
+ * They are byte-for-byte official's own rules; the two that read a token read the tokens the
+ * dialog's own token block declares.
+ */
+const OFFICIAL_0781_SWITCH_RULES = [
+  ".sand-2k1e5v:not(#\\#):not(#\\#):not(#\\#){box-shadow:inset 0 0 0 .5px var(--sand-border-quaternary-translucent)}",
+  ".sand-lrd64x:not(#\\#):not(#\\#):not(#\\#):not(#\\#){min-width:26px}",
+  ".sand-1akln4p:not(#\\#):not(#\\#):not(#\\#):not(#\\#){max-height:16px}",
+  ".sand-1gdvyqu:not(#\\#):not(#\\#):not(#\\#){box-shadow:0 1px 3px 0 var(--sand-shadow-control)}",
+  ".sand-1r4y97:not(#\\#):not(#\\#):not(#\\#){inset-inline-start:12px}",
+];
+
+/**
+ * The tokens official's switch reads.
+ *
+ * Measured from the switch's own recipes — the 53 classes the port applies — and the
+ * declarations those classes carry in upstream 0.18's stylesheet, in this repository's official
+ * CSS companions and in official 0.78.1's own stylesheet. The set is written out so the guard can
+ * bite on a runner that carries no upstream payload at all, and so a recipe that starts reading a
+ * tenth token is caught on a runner that does.
+ */
+const OFFICIAL_0781_SWITCH_TOKENS = [
+  "--sand-bg-accent-primary",
+  "--sand-bg-accent-primary-disabled",
+  "--sand-bg-accent-primary-hover",
+  "--sand-bg-luminous",
+  "--sand-bg-secondary",
+  "--sand-bg-secondary-disabled",
+  "--sand-bg-secondary-hover",
+  "--sand-border-quaternary-translucent",
+  "--sand-shadow-control",
+];
+
+/**
  * The classes upstream 0.18's stylesheet already defines, so the port does not have to lift them.
  *
  * This list is the port's declared style contract. It is cross-checked against upstream 0.18's own
@@ -79,6 +135,8 @@ const UPSTREAM_RESOLVED_CLASSES = [
   "sand-11xpdln", "sand-1717udv", "sand-19jd1h0", "sand-1v2ro7d", "sand-n4ifyr", "sand-wji4o3",
   // Official's small secondary button recipe (the setup section's "Edit Values" button).
   "sand-178xt8z", "sand-so031l", "sand-13fuv20", "sand-1q0q8m5", "sand-1t7ytsu", "sand-1v8p93f", "sand-16stqrj", "sand-1k6tqyu", "sand-krqix3", "sand-87ps6o", "sand-ggy1nq", "sand-1s07b3s", "sand-1hc1fzr", "sand-uhm2yv", "sand-67bb7w", "sand-aqnwrm", "sand-1uczgqu", "sand-1wfwxd8", "sand-7s97pk", "sand-1eaenvl", "sand-1pbvl4h", "sand-d7y6wv", "sand-9h44rk", "sand-spwq11",
+  // The tool-row switch's own recipes (official 0.78.1's accent-primary track and its knob).
+  "sand-amitd3", "sand-6ikm8r", "sand-10wlt62", "sand-14ju556", "sand-xymvpz", "sand-15406qy", "sand-23j0i4", "sand-1hshjfz", "sand-10l6tqk", "sand-s7f9wi", "sand-16rqkct", "sand-smyaan", "sand-1kpxq89",
 ];
 
 /**
@@ -151,6 +209,120 @@ function builders() {
       "RM0781DetailPluginUrl,RM0781DetailConnectors,RM0781DetailHostname};",
   );
   return factory((en, zh) => zh, () => "en");
+}
+
+/**
+ * The port's own switch component, evaluated with a stub jsx runtime.
+ *
+ * The component IS the port's code, so the guard reads what it actually renders: the button's
+ * attribute set, the track's recipe and the knob's recipe.
+ */
+function toolSwitch() {
+  const factory = new Function(
+    "RLocT",
+    "RM0781Locale",
+    "C",
+    "t",
+    `${MARKETPLACE_DETAIL_VIEW_0781_INJECTED_SOURCE}\nreturn RM0781DetailToolSwitch;`,
+  );
+  const t = { jsx: (type, props) => ({ type, props }) };
+  const component = factory((en, zh) => zh, () => "en", {}, t);
+  return (props) => component(props);
+}
+
+/**
+ * The classes the port's own switch applies.
+ *
+ * They are read out of the port's injected source — the four recipe constants the switch picks
+ * between — so the guard follows the port instead of a copy of it.
+ */
+function switchRecipeClasses() {
+  const source = MARKETPLACE_DETAIL_VIEW_0781_INJECTED_SOURCE;
+  const classes = new Set();
+  for (const name of [
+    "RM0781DetailSwitchOn",
+    "RM0781DetailSwitchOff",
+    "RM0781DetailKnobOn",
+    "RM0781DetailKnobOff",
+  ]) {
+    const at = source.indexOf(`const ${name}=`);
+    assert.ok(at >= 0, `the port must define ${name}, the switch's own recipe`);
+    const literal = source.slice(at, source.indexOf(";", at));
+    for (const match of literal.matchAll(/sand-[a-z0-9+_-]+/g)) classes.add(match[0]);
+  }
+  return classes;
+}
+
+/**
+ * The tokens the switch's own recipes read.
+ *
+ * A recipe's declaration lives in upstream 0.18's stylesheet, in one of this repository's official
+ * CSS companions, or — for the five the port lifts — in the detail companion itself, so the union
+ * of the available stylesheets is read. Comments are stripped first: a class named in a comment
+ * is not a rule, and counting it would report a rule that does not exist.
+ */
+function switchRecipeTokens() {
+  const classes = switchRecipeClasses();
+  const sources = [detailCss, browseCss, layoutCss, routineCss];
+  const assets = path.join(repoRoot, "src", "app", "dist", "renderer", "assets");
+  if (existsSync(assets)) {
+    const cssFile = readdirSync(assets).find((name) => /^index-.*\.css$/.test(name));
+    if (cssFile != null) sources.push(readFileSync(path.join(assets, cssFile), "utf8"));
+  }
+  const tokens = new Set();
+  for (const css of sources) {
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const name of classes) {
+      const rule = new RegExp(`\\.${name}(?![A-Za-z0-9_+-])[^}]*\\{([^}]*)\\}`, "g");
+      let match;
+      while ((match = rule.exec(bare)) !== null) {
+        for (const token of match[1].matchAll(/var\(\s*(--[A-Za-z0-9_-]+)/g)) tokens.add(token[1]);
+      }
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Every token the switch's recipes read must be declared on the dialog in BOTH themes.
+ *
+ * A `var(--x)` whose target is not declared on the dialog subtree is invalid at computed-value
+ * time: the rule falls back to its initial value, so the track loses its colour while every other
+ * guard stays green. Upstream 0.18 ships an older palette, so "upstream happens to define it" is
+ * not good enough — the value would be the wrong one.
+ */
+function assertSwitchTokensDeclared(cssText) {
+  const light = cssText.match(/^\.sand-plugins-dialog\{(.+)\}$/m);
+  const dark = cssText.match(/^html\[data-theme="cursor-dark"\] \.sand-plugins-dialog\{(.+)\}$/m);
+  assert.ok(light != null, "the light token block must be scoped to the dialog");
+  assert.ok(dark != null, "the dark token block must be scoped to the dialog under cursor-dark");
+  const official = JSON.parse(
+    read("tests", "fixtures", "official-0781-marketplace-theme-tokens.json"),
+  ).tokens;
+  const declared = (body) =>
+    new Map([...body.matchAll(/(--[A-Za-z0-9_-]+)\s*:\s*([^;]+)/g)].map((match) => [match[1], match[2]]));
+  const lightTokens = declared(light[1]);
+  const darkTokens = declared(dark[1]);
+  const referenced = switchRecipeTokens();
+  assert.deepEqual(
+    [...referenced].sort(),
+    [...OFFICIAL_0781_SWITCH_TOKENS].sort(),
+    "the ported switch's recipes must read exactly the tokens official's switch reads",
+  );
+  for (const token of referenced) {
+    const captured = official[token];
+    assert.ok(captured != null, `official's fixture is missing ${token}`);
+    assert.equal(
+      lightTokens.get(token),
+      captured.light,
+      `the dialog's light block must declare ${token} as official does`,
+    );
+    assert.equal(
+      darkTokens.get(token),
+      captured.dark,
+      `the dialog's dark block must declare ${token} as official does`,
+    );
+  }
 }
 
 /** An entry with official's own shape for a listed marketplace plugin. */
@@ -888,4 +1060,164 @@ test("the staged chunk carries the ported detail page", () => {
   ]) {
     assert.ok(chunk.includes(marker), `the staged chunk must carry ${marker}`);
   }
+});
+
+test("the tool-row switch carries official 0.78.1's own track and knob recipes", () => {
+  // Upstream 0.18 renders the per-tool row's on/off switch with its shared switch, whose checked
+  // track is the grey `--sand-fill-control-checked`. Official renders the same control with its
+  // own switch: the checked track is the accent primary and the knob is the luminous surface.
+  const render = toolSwitch();
+  const on = render({ isChecked: true, label: "Disable Get me", onToggle: () => {} });
+  const off = render({ isChecked: false, label: "Enable Get me", onToggle: () => {} });
+
+  assert.equal(on.type, "button", "official's switch is a button");
+  assert.deepEqual(
+    Object.keys(on.props).sort(),
+    ["aria-checked", "aria-label", "children", "className", "onClick", "role", "type"],
+    "official's switch renders aria-checked, aria-label, role, type and class, and nothing else",
+  );
+  assert.equal(on.props.role, "switch", "official's switch carries role=switch");
+  assert.equal(on.props.type, "button", "official's switch is a button");
+  assert.equal(on.props["aria-checked"], true, "a checked switch reports aria-checked=true");
+  assert.equal(on.props["aria-label"], "Disable Get me", "the switch carries the row's own label");
+  assert.equal(
+    on.props.className,
+    OFFICIAL_0781_SWITCH_TRACK_ON,
+    "the checked track must be official's own recipe",
+  );
+  assert.equal(
+    off.props["aria-checked"],
+    false,
+    "an unchecked switch reports aria-checked=false",
+  );
+  assert.equal(
+    off.props.className,
+    OFFICIAL_0781_SWITCH_TRACK_OFF,
+    "the unchecked track must be official's own recipe",
+  );
+
+  assert.equal(on.props.children.type, "span", "the knob is a span");
+  assert.deepEqual(
+    Object.keys(on.props.children.props).sort(),
+    ["aria-hidden", "className"],
+    "the knob carries nothing but its hidden flag and its recipe",
+  );
+  assert.equal(
+    on.props.children.props["aria-hidden"],
+    true,
+    "the knob is hidden from the accessibility tree",
+  );
+  assert.equal(
+    on.props.children.props.className,
+    OFFICIAL_0781_SWITCH_KNOB_ON,
+    "the checked knob must be official's own recipe",
+  );
+  assert.equal(
+    off.props.children.props.className,
+    OFFICIAL_0781_SWITCH_KNOB_OFF,
+    "the unchecked knob must be official's own recipe",
+  );
+
+  for (const upstream of UPSTREAM_018_SWITCH_CLASSES) {
+    assert.ok(
+      !MARKETPLACE_DETAIL_VIEW_0781_INJECTED_SOURCE.includes(upstream),
+      `upstream's shared switch recipe ${upstream} must not be on the tool-row switch`,
+    );
+  }
+
+  const patched = patchMarketplaceDetailView0781(syntheticChunk());
+  assert.ok(
+    patched.includes("t.jsx(RM0781DetailToolSwitch,"),
+    "the tool row must render official's switch",
+  );
+  assert.ok(!patched.includes("t.jsx(Kn,"), "upstream's shared switch must not render the tool row");
+});
+
+test("the tool-row switch's label is official's own text in both languages", () => {
+  // Official builds the label from two locale ids: `y5UgU8` ("Disable {0}" / "停用 {0}") for a
+  // tool that is enabled and `FZtBeR` ("Enable {0}" / "启用 {0}") for a tool that is not. Official's
+  // live plugin carries `aria-label="停用 Get me"` on an enabled tool. Upstream 0.18 builds the
+  // same label from two English literals, and the extra-i18n pass localizes only the "Enable"
+  // half, so the enabled branch reads "Disable <name>" inside a Chinese page.
+  const entry = MARKETPLACE_DETAIL_VIEW_0781_REPLACEMENTS.find((candidate) =>
+    candidate.label.startsWith("detail tool rows"),
+  );
+  assert.ok(entry != null, "the patch must own the tool row's switch");
+  assert.ok(
+    entry.after.includes('RLocT("Disable","停用")'),
+    "the tool row's switch must carry official's own Disable text",
+  );
+  assert.ok(
+    !entry.after.includes(':"Disable"'),
+    "the tool row's switch must not keep the bare English Disable literal",
+  );
+  const patched = patchMarketplaceDetailView0781(syntheticChunk());
+  assert.ok(
+    patched.includes('RLocT("Disable","停用")'),
+    "the patched chunk must carry official's own Disable text at the tool-row switch",
+  );
+  assert.ok(
+    !patched.includes(':"Disable"} ${P.get(j.name)??j.name}'),
+    "the patched chunk must not keep upstream's bare English Disable branch",
+  );
+});
+
+test("the detail companion carries official's switch rules", () => {
+  for (const rule of OFFICIAL_0781_SWITCH_RULES) {
+    assert.ok(
+      detailCss.includes(rule),
+      `official's switch rule must be lifted into the detail companion: ${rule}`,
+    );
+  }
+});
+
+test("mutations: swapping official's switch recipes back to upstream's fails the guard", async () => {
+  const original = path.join(repoRoot, "scripts/lib/marketplace-detail-view-0781-patch.mjs");
+  const source = readFileSync(original, "utf8");
+  const mutated = source
+    .replace(
+      OFFICIAL_0781_SWITCH_TRACK_ON,
+      OFFICIAL_0781_SWITCH_TRACK_ON.replace("sand-amitd3", "sand-1jq8sgu"),
+    )
+    .replace(
+      OFFICIAL_0781_SWITCH_KNOB_ON,
+      OFFICIAL_0781_SWITCH_KNOB_ON.replace("sand-1r4y97", "sand-khjh7l"),
+    );
+  assert.notEqual(mutated, source, "the mutation must apply");
+  const mutantFile = path.join(repoRoot, "scripts/lib/.mutant-0781-detail-switch.mjs");
+  writeFileSync(mutantFile, mutated);
+  try {
+    const mutant = await import(pathToFileURL(mutantFile).href);
+    const mutantSource = mutant.MARKETPLACE_DETAIL_VIEW_0781_INJECTED_SOURCE;
+    assert.ok(
+      !mutantSource.includes(OFFICIAL_0781_SWITCH_TRACK_ON),
+      "the guard must fail when the checked track is not official's",
+    );
+    assert.ok(
+      mutantSource.includes("sand-1jq8sgu"),
+      "the mutant must carry upstream's grey checked track",
+    );
+    assert.ok(
+      !mutantSource.includes(OFFICIAL_0781_SWITCH_KNOB_ON),
+      "the guard must fail when the knob is not official's",
+    );
+    assert.ok(
+      mutantSource.includes("sand-khjh7l"),
+      "the mutant must carry upstream's knob recipe",
+    );
+  } finally {
+    rmSync(mutantFile, { force: true });
+  }
+});
+
+test("every token the ported switch's recipes read is declared on the dialog in both themes", () => {
+  const css = read("scripts", "lib", "marketplace-dialog-0781-theme-tokens.css");
+  assertSwitchTokensDeclared(css);
+  // The guard must bite: a dialog that stops declaring one of the switch's own tokens renders
+  // the rule at its initial value, so the track loses its colour.
+  assert.throws(
+    () => assertSwitchTokensDeclared(css.replace(/--sand-shadow-control:[^;]+;/, "")),
+    /--sand-shadow-control/,
+    "the guard must fail on a dialog that stops declaring the switch's own token",
+  );
 });
