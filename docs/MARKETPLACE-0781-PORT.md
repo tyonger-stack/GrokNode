@@ -693,6 +693,35 @@ that fall out of every chip bucket, plus official's two built-in cursor plugins)
 of "eleven sections here" was a measurement artifact: the catalogue loads asynchronously, and the
 reading was taken before it had arrived.
 
+**The keyboard focus ring is not official's.** Official 0.78.1's
+`.sand-1wpm9rq:focus-visible{outline-color:var(--sand-border-focus-primary)}` resolves to
+`#1884fc` on the second-level page's back button, and the rendered outline is a 2 px solid blue
+ring. This build renders the same button's ring in the inherited text colour,
+`rgba(245, 245, 245, 0.66)`, because two earlier waves left a different rule in front of
+official's. The repository's app-link-card port writes an unscoped
+`.sand-1wpm9rq:focus-visible{outline-color:var(--sand-border-focus)}`, and the dialog resets
+`--sand-border-focus` to `initial` because official does not define it, so that rule falls back to
+`currentcolor`. Official's own rule is never reached, because the marketplace companions skip a
+rule whose class "already resolves in the dialog" — and the app-link rule makes it look resolved.
+
+Official's rule is in the companion here, and it is skipped for the same reason. Fixing it is not a
+one-line change to the companion: official's blue comes from its runtime theme stylesheet
+(`<style id="sand-cursor-theme">`, `:root { --sand-border-focus-primary: #1884fc }`) reaching the
+button through a `[data-sand-tone="dark"]` subtree, while the dialog element itself computes
+`transparent`. Declaring the blue on the dialog would make every focus ring in the dialog blue,
+where official renders only the ones inside that subtree blue. That needs official's tone scope
+reproduced rather than a token swapped, so it stays a separate wave.
+
+Measured over CDP on 2026-11-02, on the second-level page's back button under keyboard focus:
+
+| | official 0.78.1 | this build |
+| --- | --- | --- |
+| `outline-color` | `rgb(24, 132, 252)` | `rgba(245, 245, 245, 0.66)` |
+| `outline-style` / `outline-width` | `solid` / `2px` | `solid` / `2px` |
+
+Nothing else about the page is affected: the ring only appears on keyboard focus, and no pixel
+comparison in this document can see it.
+
 ## The measured parity
 
 Measured over CDP on 2026-10-31 against the **deployed** `/Applications/Grok Node.app` — the
