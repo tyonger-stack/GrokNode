@@ -62,12 +62,28 @@
         "zh": "[\"正在移除…\"]"
       }
     },
+    "CzixCu": {
+      "en": "{enabledToolCount} of {0} enabled",
+      "zh": "已启用 {enabledToolCount}/{0} 个",
+      "icu": {
+        "en": "[[\"enabledToolCount\"],\" of \",[\"0\"],\" enabled\"]",
+        "zh": "[\"已启用 \",[\"enabledToolCount\"],\"/\",[\"0\"],\" 个\"]"
+      }
+    },
     "DbZMYM": {
       "en": "Scheduling",
       "zh": "日程安排",
       "icu": {
         "en": "[\"Scheduling\"]",
         "zh": "[\"日程安排\"]"
+      }
+    },
+    "FGnQEW": {
+      "en": "Add Another Account",
+      "zh": "添加其他账户",
+      "icu": {
+        "en": "[\"Add Another Account\"]",
+        "zh": "[\"添加其他账户\"]"
       }
     },
     "FkMol5": {
@@ -174,6 +190,14 @@
         "zh": "[\"功能\"]"
       }
     },
+    "RDjuBN": {
+      "en": "Setup",
+      "zh": "配置",
+      "icu": {
+        "en": "[\"Setup\"]",
+        "zh": "[\"配置\"]"
+      }
+    },
     "UhKOdj": {
       "en": "# more",
       "zh": "另外 # 个",
@@ -257,6 +281,22 @@
         }
       }
     },
+    "bPwFdf": {
+      "en": "Accounts",
+      "zh": "账户",
+      "icu": {
+        "en": "[\"Accounts\"]",
+        "zh": "[\"账户\"]"
+      }
+    },
+    "bWyJ+b": {
+      "en": "{enabledCount} of {0} enabled",
+      "zh": "已启用 {enabledCount}/{0} 个",
+      "icu": {
+        "en": "[[\"enabledCount\"],\" of \",[\"0\"],\" enabled\"]",
+        "zh": "[\"已启用 \",[\"enabledCount\"],\"/\",[\"0\"],\" 个\"]"
+      }
+    },
     "bXJKzj": {
       "en": "Copy link to this plugin",
       "zh": "复制此插件的链接",
@@ -329,6 +369,14 @@
         "zh": "[\"连接\"]"
       }
     },
+    "kDCdbL": {
+      "en": "Edit Values",
+      "zh": "编辑值",
+      "icu": {
+        "en": "[\"Edit Values\"]",
+        "zh": "[\"编辑值\"]"
+      }
+    },
     "lXkUEV": {
       "en": "Availability",
       "zh": "可用性",
@@ -345,6 +393,14 @@
         "zh": "[\"销售\"]"
       }
     },
+    "mrRDVU": {
+      "en": "Setup Values",
+      "zh": "配置值",
+      "icu": {
+        "en": "[\"Setup Values\"]",
+        "zh": "[\"配置值\"]"
+      }
+    },
     "n+xLOH": {
       "en": "Customer Support",
       "zh": "客户支持",
@@ -359,6 +415,14 @@
       "icu": {
         "en": "[\"Information\"]",
         "zh": "[\"信息\"]"
+      }
+    },
+    "ovBPCi": {
+      "en": "Default",
+      "zh": "默认",
+      "icu": {
+        "en": "[\"Default\"]",
+        "zh": "[\"默认\"]"
       }
     },
     "q1LJYo": {
@@ -399,6 +463,14 @@
       "icu": {
         "en": "[\"Marketing\"]",
         "zh": "[\"营销\"]"
+      }
+    },
+    "xdA/+p": {
+      "en": "Tools",
+      "zh": "工具",
+      "icu": {
+        "en": "[\"Tools\"]",
+        "zh": "[\"工具\"]"
       }
     }
   }

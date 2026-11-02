@@ -1147,3 +1147,229 @@ The packaged build (`app.asar` sha256
 freshly built asar's. The three badge variants measure the same as official's, as the table above
 records.
 
+## The plugin detail page against this build's installed plugins (2026-11-02)
+
+The P8 wave measured the detail page against `Linear`, a plugin that exists in both catalogues.
+This wave measures it against the plugins this build actually has installed, because those are the
+pages the operator sees. The measurement also found a defect in the port's own CSS injector, and a
+defect in the measurement harness, both of which are fixed below.
+
+### The defect in the CSS injector
+
+`marketplace-detail-view-0781-css-patch.mjs` decided which official rules to append with
+
+```js
+const missing = rules.filter((rule) => !original.includes(rule));
+```
+
+A substring search. This repository's own computer-card patch ships
+`.r-conversation-computer-card .sand-1lun4ml:not(#\#)…{border-inline-end-width:1px}`, and that
+scoped rule **contains** the unscoped rule
+`.sand-1lun4ml:not(#\#)…{border-inline-end-width:1px}` as a substring. The injector therefore read
+the unscoped rule as "already present" and skipped it. The same happened to `sand-pilrb4`
+(`border-inline-start-width:1px`).
+
+Both rules belong to official's small secondary button, which is the recipe the Setup section's
+编辑值 button uses, so the deployed build was rendering that button without its border widths while
+every other guard stayed green.
+
+The comparison is now line-exact, and the injector fails closed if any official rule is not present
+as a standalone line afterwards:
+
+```js
+const originalLines = new Set(original.split("\n").map((line) => line.trim()));
+const missing = rules.filter((rule) => !originalLines.has(rule.trim()));
+```
+
+The packaged build appends **15 of 38** official detail rules, against **10 of 38** before the fix.
+
+`tests/marketplace-detail-view-0781.test.mjs` carries the regression guard: it stages a stylesheet
+whose only mention of `sand-1lun4ml` and `sand-pilrb4` is the scoped rule and asserts that both
+standalone rules ship. Reverting the injector to the substring comparison turns that guard red
+(36 pass / 1 fail).
+
+### The defect in the measurement harness
+
+The detail page lives in a dialog with an **internal** scroller — `window.scrollY` is 0, the
+`ui-scroll-area__viewport` element scrolls instead. A section below the fold therefore has no pixels
+in the viewport, and `Page.captureScreenshot` with `captureBeyondViewport: false` returns **black**
+for a clip that reaches past it, not the content.
+
+The first section-aligned run was wrong for exactly this reason: Notion's 信息 heading sits at
+viewport y = 1048 in a 1024 px viewport, so its band was black on the official side and produced a
+99.953 % "difference". `.audit/diff-detail-sections.mjs` now scrolls the internal scroller so each
+section is in view, then reads the band from the live viewport. Notion's total falls from 31.232 %
+to 4.845 %, and the 信息 section from 99.953 % to 1.519 %.
+
+This also settles a question the earlier whole-page crop could not answer: the 68 px width gap
+between the two apps' detail regions was not a port defect at all. With both viewports pinned to
+864×1024 the detail region is x = 49, width = 766 on **both** sides. The gap was the two windows
+being different sizes.
+
+### The guarded, deployed build
+
+| check | result |
+|---|---|
+| packaged `app.asar` sha256 | `b13738658d4f1096fc6854fb6621e31bf38418985d2e42d7ed9d7f7a19790a04` |
+| deployed `/Applications/Grok Node.app` asar sha256 | the same |
+| shipped renderer chunks that parse | 102 of 102 |
+| `"(RLocT("` quote-bug chunks | 0 |
+| official-only CSS rules shipped, standalone and byte-for-byte official | 6 of 6 |
+| class tokens the ported recipes use that resolve in the deployed stylesheet | 37 of 37 |
+| `tests/marketplace-detail-view-0781.test.mjs` | 37 pass, 0 fail |
+
+### The measured parity, plugin by plugin
+
+Both apps were driven to the same plugin's detail page with both viewports pinned to 864×1024 at
+device scale 2, and each section was compared separately. The seven plugins this build shares with
+official 0.78.1:
+
+| plugin | total delta over the compared sections | what the delta is |
+|---|---|---|
+| Gmail | 1.055 % | the Setup section node has and official does not; 23 of 23 tools against 25 of 25; the account row's text |
+| Google Calendar | 1.772 % | the Tools section official has and node does not (this build's Calendar is not connected); the Setup section |
+| Google Drive | 1.905 % | the Tools section official has and node does not |
+| Granola | 3.013 % | the 技能 card's private skill list |
+| Slack | 4.430 % | the 技能 card's private skill list; the Setup section |
+| Notion | 4.845 % | the Tools section official has and node does not (not connected); the 技能 card's private skill list |
+| Canva | 4.849 % | the 技能 card's private skill list |
+
+No section's maximum channel delta exceeds 214, and the worst rows hold 30 to 180 differing pixels
+out of a 1532 px row — glyph edges, not a moved box. The sections that hold the page's structure
+are the quietest:
+
+| section | Gmail | Google Calendar | Google Drive | Granola | Slack |
+|---|---|---|---|---|---|
+| the account card | 0.276 % | 0.928 % | 2.023 % | 1.502 % | 0.781 % |
+| the Tools card | 0.352 % | only official | only official | both absent | only official |
+| the 应用 card | 0.705 % | 1.351 % | 1.103 % | 0.879 % | 0.674 % |
+| the 信息 table | 1.012 % | 1.012 % | 1.500 % | 1.517 % | 1.451 % |
+
+The account and Tools cards are compared against the same card in official, and the crops are
+indistinguishable apart from the text: the card's border, radius, the green 已连接 badge and the
+chevron are the same, while official's account row reads `tyonger@gmail.com` with an edit icon and
+an 添加其他账户 row, and node's reads 默认 with neither.
+
+This build's eighth installed plugin is **Figma**, which official 0.78.1's marketplace does not
+carry, so there is no official side to compare it against.
+
+### The button the CSS fix repaired
+
+Official 0.78.1's small secondary button is the same recipe in both apps. Measured live:
+
+| | official's 连接 button | node's 编辑值 button |
+|---|---|---|
+| class recipe | `sand-button sand-9f619 … sand-tyxrsu` | the same, character for character |
+| `border-inline-end-width` | 1 px | 1 px |
+| `border-inline-start-width` | 1 px | 1 px |
+| `border-inline-end-color` | `rgba(0, 0, 0, 0)` | `rgba(0, 0, 0, 0)` |
+| `border-inline-start-color` | `rgba(0, 0, 0, 0)` | `rgba(0, 0, 0, 0)` |
+| `border-inline-end-style` | solid | solid |
+| height | 26 px | 26 px |
+| width | 78.64 px | 58.55 px — the text differs, not the recipe: official's button stacks 连接 / 正在连接… / 已连接 |
+
+Before the injector fix, node's button carried `sand-1lun4ml` and `sand-pilrb4` in its class but
+had no rule for either, because the scoped computer-card rule had swallowed both. The border
+widths above are the evidence that they now ship.
+
+### Real operation on the deployed build
+
+The deployed `/Applications/Grok Node.app` was driven with real mouse events — CDP
+`Input.dispatchMouseEvent`, not `element.click()` — through the path an operator takes, with a
+screenshot at every step:
+
+1. the composer's 连接应用 opens the browse dialog, with official's chip taxonomy, 为你推荐
+   section and the 已连接 8 个 entry;
+2. 已连接 8 个 opens 管理插件和技能;
+3. 查看全部 expands the installed list;
+4. the Gmail row opens the detail page, which shows the detail bar, the brand tile, the share and
+   卸载 actions, the account card with the green 已连接 badge, the Tools card with its chevron,
+   the Setup card with the 编辑值 button, the 应用 card and the 信息 table.
+
+Official 0.78.1 was driven through the same path in the same session.
+
+### What is still different, and why
+
+| difference | cause |
+|---|---|
+| the typeface | official ships XVF, Anysphere's proprietary binary font, which this repository has no licence to redistribute. Every Latin glyph falls back to the platform face and measures a fraction of a pixel differently. This is the bulk of the remaining delta, and the P8 section already measured it. |
+| the account row's text | official reads the user's e-mail from its own server; upstream 0.18's recovered connector record carries no `accountEmail` and the local credential store keeps only `{client, tokens}` under a `(user_id, server_url)` index, so there is nothing to read |
+| the edit icon and the 添加其他账户 row | both are behind official's `mcp_multi_account` experiment. The gate stays off here because the local credential store indexes by `(user_id, server_url)` and forbids a second slot for the same server |
+| the Setup section | official renders it from the plugin's declared `fields`; none of these ten plugins declares any, so official shows nothing. This build's Setup section carries the Google and Slack OAuth client id and secret and is the only configuration path for them, so it stays |
+| the Tools section for Calendar, Notion and Drive | those three are not connected in this build, so they have no tool list to show; official has them connected |
+| 23 of 23 against 25 of 25 | this build's Gmail connector exposes two fewer tools than official's |
+| the 技能 card | both apps list the operator's own private skills, and the two lists differ |
+
+None of these is a recipe difference. Every class recipe the port writes into the chunk is
+official's own, and every section that both apps render agrees on geometry and on styling.
+
+### Deployment record (2026-11-02)
+
+| check | result |
+|---|---|
+| packaged `app.asar` sha256 | `b13738658d4f1096fc6854fb6621e31bf38418985d2e42d7ed9d7f7a19790a04` |
+| deployed `/Applications/Grok Node.app` asar sha256 | the same |
+| shipped renderer chunks that parse | 102 of 102 |
+| `"(RLocT("` quote-bug chunks | 0 |
+| official-only detail CSS rules, standalone and byte-for-byte official | 6 of 6 |
+| class tokens the ported recipes use that resolve in the deployed stylesheet | 37 of 37 |
+| `tests/marketplace-detail-view-0781.test.mjs` | 37 pass, 0 fail |
+| `npm run check` | 2735 tests: 2698 pass, 0 fail, 37 skipped without the packaging staging dir, and 2701 pass, 0 fail, 34 skipped with it |
+
+The three tests that move are the ones that read the packaged staging directory
+(`.build/fidelity`), so the two figures are the same suite in the two states a
+checkout can be in. Both are 0 fail.
+
+### Rebuilding on the merged manage-page wave
+
+The manage-page wave landed first, so this wave was rebased onto it and rebuilt. The
+rebase moved the tree by two files, and neither one changes the bundle:
+
+| file | change |
+|---|---|
+| `docs/MARKETPLACE-0781-PORT.md` | this document |
+| `scripts/clean-build.mjs` | a comment only. The rule-count wording became a mechanism description, so it cannot drift |
+
+The packaged `app.asar` is **not** bit-reproducible. Two independent per-build byte
+sources make any two builds differ, even two builds of one tree in two worktrees:
+
+1. `node-gyp` regenerates `dist/node-deps/tree-sitter*/build/Makefile` and compiles
+   `binding.o` and `parser.o` with the absolute build path and a random
+   `.tmp-tree-sitter-node-XXXXXX` directory written into the file.
+2. The renderer bundle copies embed the random upstream extraction directory
+   `grok-upstream-module-XXXXXX`.
+
+The `Makefile` line is the whole difference, with both worktrees' paths spelled out:
+
+```
+cmd_regen_makefile = cd $(srcdir); /Users/Apple/Documents/grokbot/wt-detail/node_modules/node-gyp/gyp/gyp_main.py ...
+  "-Dmodule_root_dir=/Users/Apple/Documents/grokbot/wt-detail/.tmp-tree-sitter-node-MWicHR/node_modules/tree-sitter-bash"
+```
+
+So the rebuilt asar was compared with the build the independent verifier checked, file by
+file, at the content level:
+
+| comparison | result |
+|---|---|
+| files in the two asars | 1337 in each, none added and none removed |
+| files whose bytes differ | 5 |
+| `dist/renderer/assets/grok-node-0721-d3.mjs`, `-three.mjs`, `-visualization.mjs` | one differing run each, the random upstream module directory |
+| `dist/renderer-0721-visualization.json` | the hash manifest of those three files |
+| `dist/reconstruction-build.json` | the hash manifest of the tree-sitter native objects `node-gyp` rebuilt with this worktree's path |
+| the patched renderer chunk `dist/renderer/assets/view-B5Ug8wEm.js` | byte-for-byte identical |
+| the patched stylesheet `dist/renderer/assets/index-lCyB53CO.css` | byte-for-byte identical |
+
+Every file the port writes is byte-for-byte the file the verifier checked. The guards
+were then re-run against the newly deployed asar, and the deployed build was driven
+through 连接应用, 已连接 N 个, 查看全部 and a plugin row with real mouse events:
+
+| check | result |
+|---|---|
+| deployed `/Applications/Grok Node.app` asar sha256 | `b13738658d4f1096fc6854fb6621e31bf38418985d2e42d7ed9d7f7a19790a04`, equal to the freshly built asar's |
+| official recipes present in the deployed chunk | 6 of 6, at the official counts |
+| official-only detail CSS rules, standalone and byte-for-byte official | 6 of 6 |
+| class tokens the ported recipes use that resolve in the deployed stylesheet | 37 of 37, 0 unresolved |
+| shipped renderer chunks that parse | 102 of 102 |
+| `"(RLocT("` quote-bug chunks | 0 |
+| the detail page's sections in the driven build | 账户, 工具, 配置, 应用, 信息 |
+

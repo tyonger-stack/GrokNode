@@ -536,7 +536,9 @@ export async function buildFidelityReconstructedAsar({
   // MUST run after the browse-chrome patch: its anchors are the POST-browse text (the browse
   // patch rewrites the detail header's icon slot and the row's connect button).
   await applyMarketplaceDetailView0781({ stageRoot });
-  // The 21 official 0.78.1 detail-page rules upstream 0.18's stylesheet does not define.
+  // The official 0.78.1 detail-page rules upstream 0.18's stylesheet does not ship. The companion
+  // carries them verbatim; this step appends the ones the staged stylesheet still lacks and fails
+  // closed when any of them does not stand on its own line.
   await applyMarketplaceDetailView0781Css({ stageRoot });
   await applyMessageCopy0753Patch({ stageRoot });
   // The 0.18 renderer already has the footer update pill and Update-ready

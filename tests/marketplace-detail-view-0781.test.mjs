@@ -18,7 +18,16 @@
 // The staged chunk is checked too when a build is present.
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -28,8 +37,11 @@ import {
   MARKETPLACE_DETAIL_VIEW_0781_INJECTED_SOURCE,
   MARKETPLACE_DETAIL_VIEW_0781_MESSAGES,
   MARKETPLACE_DETAIL_VIEW_0781_REPLACEMENTS,
+  MARKETPLACE_DETAIL_VIEW_0781_SECTION_MESSAGES,
   patchMarketplaceDetailView0781,
 } from "../scripts/lib/marketplace-detail-view-0781-patch.mjs";
+import { applyMarketplaceDetailView0781Css } from "../scripts/lib/marketplace-detail-view-0781-css-patch.mjs";
+import { EXTRA_I18N_FILES } from "../scripts/lib/extra-i18n-patch.mjs";
 import { MARKETPLACE_BROWSE_CHROME_0781_REPLACEMENTS } from "../scripts/lib/marketplace-browse-chrome-0781-patch.mjs";
 import { findDomChildrenInThirdArgument } from "../scripts/lib/marketplace-jsx-children.mjs";
 
@@ -40,6 +52,7 @@ const fixture = JSON.parse(read("tests", "fixtures", "official-0781-detail-view-
 const detailCss = read("scripts", "lib", "marketplace-detail-view-0781-official.css");
 const browseCss = read("scripts", "lib", "marketplace-browse-chrome-0781-official.css");
 const layoutCss = read("scripts", "lib", "marketplace-dialog-0781-layout.css");
+const routineCss = read("scripts", "lib", "routine-surface-0758-official.css");
 
 /**
  * The classes upstream 0.18's stylesheet already defines, so the port does not have to lift them.
@@ -62,6 +75,10 @@ const UPSTREAM_RESOLVED_CLASSES = [
   "sand-h8yej3", "sand-jb2p0i", "sand-jbqb8w", "sand-jyslct", "sand-l56j7k", "sand-lshs6z", "sand-lup9mm", "sand-lyipyv",
   "sand-mix8c7", "sand-ng3xce", "sand-oyc9vk", "sand-rvj5dj", "sand-s2xxs2", "sand-s83m0k", "sand-sdox4t", "sand-tgyt42", "sand-thy2uy",
   "sand-tyxrsu", "sand-uxw1ft", "sand-v54qhq", "sand-w4jnvo", "sand-wib8y2", "sand-wz0xwf",
+  // The recipes the detail page's own rows, buttons and chevrons carry.
+  "sand-11xpdln", "sand-1717udv", "sand-19jd1h0", "sand-1v2ro7d", "sand-n4ifyr", "sand-wji4o3",
+  // Official's small secondary button recipe (the setup section's "Edit Values" button).
+  "sand-178xt8z", "sand-so031l", "sand-13fuv20", "sand-1q0q8m5", "sand-1t7ytsu", "sand-1v8p93f", "sand-16stqrj", "sand-1k6tqyu", "sand-krqix3", "sand-87ps6o", "sand-ggy1nq", "sand-1s07b3s", "sand-1hc1fzr", "sand-uhm2yv", "sand-67bb7w", "sand-aqnwrm", "sand-1uczgqu", "sand-1wfwxd8", "sand-7s97pk", "sand-1eaenvl", "sand-1pbvl4h", "sand-d7y6wv", "sand-9h44rk", "sand-spwq11",
 ];
 
 /**
@@ -70,7 +87,24 @@ const UPSTREAM_RESOLVED_CLASSES = [
  * They are stylix namespace markers (`sand-kit-button`, `sand-kit-icon`, …), so they carry no
  * style on either side.
  */
-const STYLIX_NOOP_CLASSES = ["sand-kit-button", "sand-kit-icon", "sand-kit-icon-button", "sand-settings-detail-bar"];
+const STYLIX_NOOP_CLASSES = ["sand-button", "sand-kit-button", "sand-kit-icon", "sand-kit-icon-button", "sand-settings-detail-bar"];
+
+/**
+ * Upstream 0.18's own semantic hooks on the detail page.
+ *
+ * They name a part of the page for upstream's own code and for the repository's tests; neither
+ * upstream's stylesheet nor official's gives them a rule, so they resolve to nothing on either
+ * side and carry no style.
+ */
+const SEMANTIC_MARKER_CLASSES = [
+  "sand-plugins-detail__accounts",
+  "sand-plugins-detail__add-account",
+  "sand-plugins-detail__connectors",
+  "sand-plugins-detail__desc",
+  "sand-plugins-detail__header",
+  "sand-plugins-detail__setup",
+  "sand-plugins-detail__skills",
+];
 
 /** Every class the port applies — `var(--sand-…)` custom-property references are not classes. */
 function appliedClasses() {
@@ -86,10 +120,19 @@ function companionClasses(css) {
   return new Set([...css.matchAll(/\.(sand-[a-z0-9+_-]+)/g)].map((match) => match[1]));
 }
 
-/** A chunk that contains every anchor exactly once (the anchors are fragments, so this is text). */
+/**
+ * A chunk that contains every anchor exactly as many times as the entry declares (the anchors are
+ * fragments, so this is text).
+ *
+ * An entry that replaces one recipe everywhere it appears declares how many places that is; the
+ * fragment is repeated that many times so the patch's own count check bites here as well.
+ */
 function syntheticChunk() {
   let source = "const Os=1,Re=2,ue=3,C=4,t=5,k=6,RLocT=7,Pl=8,nt=9,qn={};\n";
-  for (const entry of MARKETPLACE_DETAIL_VIEW_0781_REPLACEMENTS) source += `/*${entry.label}*/${entry.before}\n`;
+  for (const entry of MARKETPLACE_DETAIL_VIEW_0781_REPLACEMENTS) {
+    const times = entry.occurrences ?? 1;
+    for (let i = 0; i < times; i += 1) source += `/*${entry.label}*/${entry.before}\n`;
+  }
   return source;
 }
 
@@ -127,11 +170,11 @@ function pluginEntry(overrides = {}) {
   };
 }
 
-test("every anchor is replaced exactly once", () => {
+test("every anchor is replaced exactly the declared number of times", () => {
   const source = syntheticChunk();
   for (const entry of MARKETPLACE_DETAIL_VIEW_0781_REPLACEMENTS) {
     const hits = source.split(entry.before).length - 1;
-    assert.equal(hits, 1, `the anchor for "${entry.label}" must appear exactly once`);
+    assert.equal(hits, entry.occurrences ?? 1, `the anchor for "${entry.label}" must appear exactly the declared number of times`);
   }
   const patched = patchMarketplaceDetailView0781(source);
   for (const entry of MARKETPLACE_DETAIL_VIEW_0781_REPLACEMENTS) {
@@ -264,6 +307,7 @@ test("every class the port applies resolves in upstream 0.18 or in an official C
     ...companionClasses(browseCss),
     ...companionClasses(detailCss),
     ...companionClasses(layoutCss),
+    ...companionClasses(routineCss),
   ]);
   const upstream = new Set(UPSTREAM_RESOLVED_CLASSES);
   const noop = new Set(STYLIX_NOOP_CLASSES);
@@ -276,6 +320,58 @@ test("every class the port applies resolves in upstream 0.18 or in an official C
     missing,
     [],
     "these classes have no rule in upstream 0.18's stylesheet and none in an official CSS companion, so the port would render unstyled",
+  );
+});
+
+test("every class the port writes into the upstream chunk resolves", () => {
+  // The port's own source is checked above. This guard covers the other half: the class recipes the
+  // port writes INTO upstream 0.18's chunk, where a token that resolves nowhere renders the row
+  // unstyled while every other guard stays green.
+  const companion = new Set([
+    ...companionClasses(browseCss),
+    ...companionClasses(detailCss),
+    ...companionClasses(layoutCss),
+    ...companionClasses(routineCss),
+  ]);
+  const upstream = new Set(UPSTREAM_RESOLVED_CLASSES);
+  const noop = new Set([...STYLIX_NOOP_CLASSES, ...SEMANTIC_MARKER_CLASSES]);
+  const written = new Set();
+  for (const entry of MARKETPLACE_DETAIL_VIEW_0781_REPLACEMENTS) {
+    for (const match of entry.after.matchAll(/sand-[a-z0-9+_-]+/g)) written.add(match[0]);
+  }
+  const missing = [...written].filter(
+    (name) => !companion.has(name) && !upstream.has(name) && !noop.has(name),
+  );
+  assert.deepEqual(
+    missing,
+    [],
+    "these classes have no rule in upstream 0.18's stylesheet and none in an official CSS companion, so the port would render unstyled",
+  );
+});
+
+test("every section message id is official's own and the repository's i18n table uses it", () => {
+  const sections = MARKETPLACE_DETAIL_VIEW_0781_SECTION_MESSAGES;
+  for (const message of Object.values(sections)) {
+    const official = fixture.messages[message.id];
+    assert.ok(official != null, `the official fixture is missing ${message.id}`);
+    assert.equal(official.en, message.en, `official's ${message.id} must be ${message.en}`);
+    assert.equal(official.zh, message.zh, `official's ${message.id} must be ${message.zh}`);
+  }
+  // The repository's own extra-i18n table localizes these strings; it must use official's ids, so a
+  // message that drifts in either app is caught here rather than on screen.
+  const plugins = EXTRA_I18N_FILES.find((entry) => entry.file === "view-B5Ug8wEm.js");
+  assert.ok(plugins != null, "the extra-i18n table must carry the plugins chunk");
+  const byEnglish = new Map(plugins.pairs.map(([en, zh, id]) => [en, { zh, id }]));
+  for (const message of Object.values(sections)) {
+    const entry = byEnglish.get(message.en);
+    if (entry == null) continue; // "Tools" is localized by the marketplace wording patch
+    assert.equal(entry.id, message.id, `the i18n table must localize "${message.en}" under official's ${message.id}`);
+    assert.equal(entry.zh, message.zh, `the i18n table must write official's ${message.zh}`);
+  }
+  const wording = read("scripts", "lib", "marketplace-official-wording-patch.mjs");
+  assert.ok(
+    wording.includes('RLocT("Tools","工具")'),
+    "the wording patch must localize the tools heading with official's own text",
   );
 });
 
@@ -315,9 +411,44 @@ test("the detail companion carries every rule the port needs that upstream lacks
     ...companionClasses(browseCss),
     ...companionClasses(detailCss),
     ...companionClasses(layoutCss),
+    ...companionClasses(routineCss),
   ]);
   for (const name of ["sand-1xr8qbc", "sand-jodmca", "sand-1pic42t", "sand-1onr9mi", "sand-2fvf9", "sand-p4054r", "sand-1lziwak"]) {
     assert.ok(companion.has(name), `official's ${name} must be lifted into a companion CSS`);
+  }
+});
+
+test("the CSS patch ships a standalone rule even when a scoped rule names the same class", async () => {
+  // Regression: the patch used to decide "this rule is already here" with a substring search.
+  // Our own computer-card patch ships `.r-conversation-computer-card .sand-1lun4ml{…}`, which
+  // *contains* the unscoped rule as a substring, so the unscoped rule was silently skipped — and
+  // the detail page's button lost its border width while every other guard stayed green.
+  const stage = mkdtempSync(path.join(tmpdir(), "sand-detail-css-"));
+  try {
+    const assets = path.join(stage, "dist", "renderer", "assets");
+    mkdirSync(assets, { recursive: true });
+    writeFileSync(
+      path.join(assets, "index-scoped.css"),
+      [
+        ".r-conversation-computer-card .sand-1lun4ml:not(#\\#):not(#\\#):not(#\\#){border-inline-end-width:1px}",
+        ".r-conversation-computer-card .sand-pilrb4:not(#\\#):not(#\\#):not(#\\#){border-inline-start-width:1px}",
+        "",
+      ].join("\n"),
+    );
+    await applyMarketplaceDetailView0781Css({ stageRoot: stage });
+    const lines = readFileSync(path.join(assets, "index-scoped.css"), "utf8")
+      .split("\n")
+      .map((line) => line.trim());
+    for (const name of ["sand-1lun4ml", "sand-pilrb4"]) {
+      const standalone = lines.filter((line) => line.startsWith(`.${name}`));
+      assert.equal(
+        standalone.length,
+        1,
+        `official's unscoped ${name} rule must ship as its own rule, got ${standalone.length}`,
+      );
+    }
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
   }
 });
 
@@ -451,6 +582,111 @@ test("the native tile on the detail page is official's 56×56 one", () => {
     rowSlot.after.includes("RM0781NativeIcon(w,40)"),
     "the browse row must keep the 40×40 tile",
   );
+});
+
+test("the detail page's rows and cards carry official's own recipes", () => {
+  const patched = patchMarketplaceDetailView0781(syntheticChunk());
+  // The port's own injected source is appended after the chunk; the recipes this guard counts are
+  // the ones the port writes INTO upstream 0.18's chunk.
+  const chunk = patched.slice(0, patched.indexOf(MARKETPLACE_DETAIL_VIEW_0781_INJECTED_SOURCE));
+  const count = (needle) => chunk.split(needle).length - 1;
+  const cases = [
+    ["the section heading", 'k("sand-9f619 sand-1y1aw1k sand-1pic42t sand-10b6aqq sand-1onr9mi")', 4],
+    ["the details row", 'k("sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-oyc9vk sand-1pic42t sand-2lprc sand-1onr9mi")', 7],
+    ["the row label", 'k("sand-9f619 sand-2lah0s sand-thy2uy sand-b3r6kr sand-uxw1ft sand-lyipyv sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-tyxrsu")', 5],
+    ["the accounts card", 'k("sand-plugins-detail__accounts","sand-9f619 sand-7giv3 sand-13ly8rp sand-1xlntvz sand-4hv7ue sand-1y0btm7 sand-5fd6op sand-1pkpdue sand-10e981r")', 1],
+    ["the setup card", 'k("sand-plugins-detail__setup","sand-9f619 sand-7giv3 sand-13ly8rp sand-1xlntvz sand-4hv7ue sand-1y0btm7 sand-5fd6op sand-1pkpdue sand-10e981r")', 1],
+    ["the tools card", 'k(l,"sand-9f619 sand-7giv3 sand-4hv7ue sand-1y0btm7 sand-5fd6op sand-1pkpdue sand-10e981r sand-exx8yu sand-18d9i69")', 1],
+    ["the account title", 'k("sand-9f619 sand-b3r6kr sand-11wthnw sand-d4r4e8 sand-12oo3zp sand-tyxrsu sand-lyipyv sand-uxw1ft")', 1],
+    ["the add-account row", 'k("sand-plugins-detail__add-account","sand-9f619 sand-78zum5 sand-6s0dn4 sand-17d4w8g sand-h8yej3 sand-oyc9vk sand-1pic42t sand-2lprc sand-1onr9mi sand-c342km sand-ng3xce sand-jbqb8w sand-1o0liin sand-n4ifyr sand-jb2p0i sand-11wthnw sand-12oo3zp sand-1yc453h sand-1ypdohk sand-1t137rt sand-1yfcfk6")', 1],
+    ["the edit-account button", 'k("sand-9f619 sand-3nfvp2 sand-6s0dn4 sand-1c4vz4f sand-2lah0s sand-dl72j9 sand-1717udv sand-c342km sand-ng3xce sand-jbqb8w sand-169k319 sand-n4ifyr sand-1ypdohk")', 1],
+    ["the tools summary button", 'k("sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-oyc9vk sand-1pic42t sand-2lprc sand-1onr9mi sand-jyslct sand-1lugfcp sand-h8yej3 sand-dj266r sand-14z9mp sand-at24cr sand-1lziwak sand-c342km sand-ng3xce sand-jb2p0i sand-1qlqyl8 sand-1yc453h sand-1ypdohk sand-jbqb8w sand-1ecwv3n sand-1t137rt sand-1yfcfk6")', 1],
+  ];
+  for (const [name, recipe, expected] of cases) {
+    assert.equal(count(recipe), expected, `official's ${name} recipe must be applied ${expected} time(s)`);
+  }
+  const upstream = [
+    ["the section heading", 'k("sand-9f619 sand-1y1aw1k sand-19tmk5i sand-10b6aqq sand-zjhap9")'],
+    ["the details row", 'k("sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-z9dl7a sand-19tmk5i sand-sag5q8 sand-zjhap9")'],
+    ["the row label", 'k("sand-9f619 sand-2lah0s sand-thy2uy sand-b3r6kr sand-uxw1ft sand-lyipyv sand-dj266r sand-1yf7rl7 sand-at24cr sand-j3b58b sand-4z9k3i sand-d4r4e8 sand-12oo3zp sand-1wd3ewq")'],
+  ];
+  for (const [name, recipe] of upstream) {
+    assert.equal(count(recipe), 0, `upstream's ${name} recipe must be gone`);
+  }
+});
+
+test("the setup section's button is official's own small secondary button", () => {
+  const source = MARKETPLACE_DETAIL_VIEW_0781_INJECTED_SOURCE;
+  for (const token of [
+    "sand-1lun4ml",
+    "sand-pilrb4",
+    "sand-18b5jzi",
+    "sand-1o3jo1z",
+    "sand-v5lvn5",
+    "sand-4meti",
+    "sand-fwqdrz",
+    "sand-19jy9ex",
+    "sand-tyxrsu",
+  ]) {
+    assert.ok(source.includes(token), `official's ${token} must be on the button`);
+  }
+  for (const token of ["sand-s1s249", "sand-1kxuqrf", "sand-uo9n5k"]) {
+    assert.ok(!source.includes(token), `upstream's ${token} must not be on the button`);
+  }
+});
+
+test("mutations: swapping official's small secondary button back to upstream's fails the guard", async () => {
+  const original = path.join(repoRoot, "scripts/lib/marketplace-detail-view-0781-patch.mjs");
+  const source = readFileSync(original, "utf8");
+  const mutated = source.replace(
+    "sand-1lun4ml sand-so031l sand-pilrb4 sand-13fuv20 sand-18b5jzi",
+    "sand-s1s249 sand-so031l sand-e0pwq sand-13fuv20 sand-32b0ac",
+  );
+  assert.notEqual(mutated, source, "the mutation must apply");
+  const mutantFile = path.join(repoRoot, "scripts/lib/.mutant-0781-detail-button.mjs");
+  writeFileSync(mutantFile, mutated);
+  try {
+    const mutant = await import(pathToFileURL(mutantFile).href);
+    assert.ok(
+      !mutant.MARKETPLACE_DETAIL_VIEW_0781_INJECTED_SOURCE.includes("sand-1lun4ml"),
+      "the guard must fail on a button that carries upstream's recipe",
+    );
+  } finally {
+    rmSync(mutantFile, { force: true });
+  }
+});
+
+test("mutations: swapping official's details row back to upstream's fails the guard", async () => {
+  const original = path.join(repoRoot, "scripts/lib/marketplace-detail-view-0781-patch.mjs");
+  const source = readFileSync(original, "utf8");
+  const mutated = source.replace(
+    "sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-oyc9vk sand-1pic42t sand-2lprc sand-1onr9mi",
+    "sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-z9dl7a sand-19tmk5i sand-sag5q8 sand-zjhap9",
+  );
+  assert.notEqual(mutated, source, "the mutation must apply");
+  const mutantFile = path.join(repoRoot, "scripts/lib/.mutant-0781-detail-recipes.mjs");
+  writeFileSync(mutantFile, mutated);
+  try {
+    const mutant = await import(pathToFileURL(mutantFile).href);
+    const official = "sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-oyc9vk sand-1pic42t sand-2lprc sand-1onr9mi";
+    const upstream = "sand-9f619 sand-78zum5 sand-6s0dn4 sand-1qughib sand-167g77z sand-z9dl7a sand-19tmk5i sand-sag5q8 sand-zjhap9";
+    const chunkOf = (module) => {
+      const patched = module.patchMarketplaceDetailView0781(syntheticChunk());
+      return patched.slice(0, patched.indexOf(module.MARKETPLACE_DETAIL_VIEW_0781_INJECTED_SOURCE));
+    };
+    const real = chunkOf(await import(pathToFileURL(original).href));
+    const mutatedChunk = chunkOf(mutant);
+    assert.ok(
+      real.split(official).length - 1 > mutatedChunk.split(official).length - 1,
+      "the guard must fail on a patch that writes upstream's details row instead of official's",
+    );
+    assert.ok(
+      mutatedChunk.split(upstream).length - 1 > real.split(upstream).length - 1,
+      "the mutant must write upstream's details row everywhere official's was written",
+    );
+  } finally {
+    rmSync(mutantFile, { force: true });
+  }
 });
 
 test("mutations: dropping the information table fails the port's guard", async () => {
