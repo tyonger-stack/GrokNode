@@ -1314,4 +1314,8 @@ official's own, and every section that both apps render agrees on geometry and o
 | official-only detail CSS rules, standalone and byte-for-byte official | 6 of 6 |
 | class tokens the ported recipes use that resolve in the deployed stylesheet | 37 of 37 |
 | `tests/marketplace-detail-view-0781.test.mjs` | 37 pass, 0 fail |
-| `npm run check` | 2700 pass, 0 fail, 34 skipped |
+| `npm run check` | 2735 tests: 2698 pass, 0 fail, 37 skipped without the packaging staging dir, and 2701 pass, 0 fail, 34 skipped with it |
+
+The three tests that move are the ones that read the packaged staging directory
+(`.build/fidelity`), so the two figures are the same suite in the two states a
+checkout can be in. Both are 0 fail.
