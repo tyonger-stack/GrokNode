@@ -333,11 +333,6 @@ export function PluginsDesktopSurface({ bridge, githubAuth, activeAgentId = null
             remove: (serverId) => bridge.mcp.remove(serverId),
           }}
           onChanged={() => { void controller.load(); }}
-          onRemovePlugin={async (pluginId) => {
-            await bridge.mcp.uninstallPlugin(pluginId);
-            await controller.load();
-          }}
-          plugins={snapshot.effectivePlugins}
         />
       }
     />

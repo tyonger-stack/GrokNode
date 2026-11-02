@@ -11,15 +11,21 @@ const mark = "/* sand-port-0750-hosts */";
 const namespace = "__sandPort0750Hosts";
 const settingsAnchor = "a.jsx(Te,{children:a.jsx(Sa,{auth:t})})";
 const settingsReplacement = "a.jsx(Te,{children:[a.jsx(Sa,{auth:t}),a.jsx(RPort0750Settings.RPort0750SettingsPack,{})]})";
-const pluginsAnchor = "children:[t.jsx(Ws,{labelledBy:w,children:J.map";
-const pluginsReplacement = "children:[t.jsx(RPort0750Plugins.RPort0750PluginsPack,{}),t.jsx(Ws,{labelledBy:w,children:J.map";
+// The plugins host used to inject the repo's "已安装 / 卸载" panel and its custom-MCP form
+// into upstream's Installed section — the "连接应用" dialog's second-level "管理插件和技能"
+// page. Official 0.78.1's second-level page carries neither: its installed list is the plain
+// plugin grid, and official keeps the connector form on a page of its own (`qLe/7o`,
+// `chunk-user-custom-connector-M5UeTEiw.js`). Parking the pack there is what made the
+// reconstruction's second-level page differ from official's, so the plugins host is gone: the
+// form moved to the settings host slot, and the uninstall action stays on the plugin detail
+// page upstream already ships.
 
 function replaceOnce(source, before, after, label) {
   if (source.split(before).length !== 2) throw new Error(`0.75 host ${label} anchor must occur exactly once`);
   return source.replace(before, after);
 }
 
-export async function buildPort0750HostBundle(jsxBinding) {
+export async function buildPort0750HostBundle() {
   const result = await build({
     absWorkingDir: root,
     entryPoints: ["frontend/src/extensions/port-0750-packaged-hosts.tsx"],
@@ -40,21 +46,13 @@ export async function buildPort0750HostBundle(jsxBinding) {
   }
   const code = result.outputFiles[0].text;
   if (/\b(createRoot|MutationObserver)\b/.test(code)) throw new Error("0.75 host must stay inside the existing React tree");
-  const binding = jsxBinding === "settings" ? "de,a" : "C,t";
-  const constName = jsxBinding === "settings" ? "RPort0750Settings" : "RPort0750Plugins";
-  return `${mark}\nconst ${constName}=((S,p)=>{${code}\nreturn ${namespace};})(${binding});`;
+  return `${mark}\nconst RPort0750Settings=((S,p)=>{${code}\nreturn ${namespace};})(de,a);`;
 }
 
 export function patchPort0750Settings(source, bundle) {
   if (!bundle.startsWith(mark)) throw new Error("0.75 settings bundle is missing");
   if (source.includes("RPort0750SettingsPack")) throw new Error("0.75 settings host already exists");
   return `${replaceOnce(source, settingsAnchor, settingsReplacement, "settings")}\n${bundle}\n`;
-}
-
-export function patchPort0750Plugins(source, bundle) {
-  if (!bundle.startsWith(mark)) throw new Error("0.75 plugins bundle is missing");
-  if (source.includes("RPort0750PluginsPack")) throw new Error("0.75 plugins host already exists");
-  return `${replaceOnce(source, pluginsAnchor, pluginsReplacement, "plugins")}\n${bundle}\n`;
 }
 
 export async function applyPort0750RendererPatch({ stageRoot }) {
@@ -64,15 +62,10 @@ export async function applyPort0750RendererPatch({ stageRoot }) {
     source: await readFile(path.join(assets, name), "utf8"),
   })));
   const settings = candidates.filter((file) => file.source.includes(settingsAnchor));
-  const plugins = candidates.filter((file) => file.source.includes(pluginsAnchor));
-  if (settings.length !== 1 || plugins.length !== 1) throw new Error("Expected one settings panel and one plugins list for the 0.75 hosts");
-  const [settingsBundle, pluginsBundle] = await Promise.all([
-    buildPort0750HostBundle("settings"),
-    buildPort0750HostBundle("plugins"),
-  ]);
+  if (settings.length !== 1) throw new Error("Expected one settings panel for the 0.75 hosts");
+  const settingsBundle = await buildPort0750HostBundle();
   const changes = [
     { ...settings[0], patched: patchPort0750Settings(settings[0].source, settingsBundle) },
-    { ...plugins[0], patched: patchPort0750Plugins(plugins[0].source, pluginsBundle) },
   ];
   for (const change of changes) parse(change.patched, { ecmaVersion: "latest", sourceType: "module" });
   const sha256 = (text) => createHash("sha256").update(text).digest("hex");
@@ -89,6 +82,6 @@ export async function applyPort0750RendererPatch({ stageRoot }) {
   for (const change of changes) await writeFile(path.join(assets, change.name), change.patched);
   const provenance = { version: 1, feature: "port-0750-hosts", files };
   await writeFile(path.join(stageRoot, "dist/renderer-port-0750-hosts.json"), `${JSON.stringify(provenance, null, 2)}\n`);
-  console.log(`0.75 hosts: vault card, memory import, MCP form, and effective plugins mounted into ${settings[0].name} + ${plugins[0].name}`);
+  console.log(`0.75 hosts: vault card, memory import and the custom MCP form mounted into ${settings[0].name}`);
   return provenance;
 }
