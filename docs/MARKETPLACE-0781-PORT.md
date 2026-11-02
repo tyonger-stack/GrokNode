@@ -1210,7 +1210,7 @@ being different sizes.
 
 | check | result |
 |---|---|
-| packaged `app.asar` sha256 | `ee8e59b0dbc3db7ee926666c8d7a151fb089ab57398746d73257001396966bd7` |
+| packaged `app.asar` sha256 | `b13738658d4f1096fc6854fb6621e31bf38418985d2e42d7ed9d7f7a19790a04` |
 | deployed `/Applications/Grok Node.app` asar sha256 | the same |
 | shipped renderer chunks that parse | 102 of 102 |
 | `"(RLocT("` quote-bug chunks | 0 |
@@ -1307,7 +1307,7 @@ official's own, and every section that both apps render agrees on geometry and o
 
 | check | result |
 |---|---|
-| packaged `app.asar` sha256 | `ee8e59b0dbc3db7ee926666c8d7a151fb089ab57398746d73257001396966bd7` |
+| packaged `app.asar` sha256 | `b13738658d4f1096fc6854fb6621e31bf38418985d2e42d7ed9d7f7a19790a04` |
 | deployed `/Applications/Grok Node.app` asar sha256 | the same |
 | shipped renderer chunks that parse | 102 of 102 |
 | `"(RLocT("` quote-bug chunks | 0 |
@@ -1319,3 +1319,57 @@ official's own, and every section that both apps render agrees on geometry and o
 The three tests that move are the ones that read the packaged staging directory
 (`.build/fidelity`), so the two figures are the same suite in the two states a
 checkout can be in. Both are 0 fail.
+
+### Rebuilding on the merged manage-page wave
+
+The manage-page wave landed first, so this wave was rebased onto it and rebuilt. The
+rebase moved the tree by two files, and neither one changes the bundle:
+
+| file | change |
+|---|---|
+| `docs/MARKETPLACE-0781-PORT.md` | this document |
+| `scripts/clean-build.mjs` | a comment only. The rule-count wording became a mechanism description, so it cannot drift |
+
+The packaged `app.asar` is **not** bit-reproducible. Two independent per-build byte
+sources make any two builds differ, even two builds of one tree in two worktrees:
+
+1. `node-gyp` regenerates `dist/node-deps/tree-sitter*/build/Makefile` and compiles
+   `binding.o` and `parser.o` with the absolute build path and a random
+   `.tmp-tree-sitter-node-XXXXXX` directory written into the file.
+2. The renderer bundle copies embed the random upstream extraction directory
+   `grok-upstream-module-XXXXXX`.
+
+The `Makefile` line is the whole difference, with both worktrees' paths spelled out:
+
+```
+cmd_regen_makefile = cd $(srcdir); /Users/Apple/Documents/grokbot/wt-detail/node_modules/node-gyp/gyp/gyp_main.py ...
+  "-Dmodule_root_dir=/Users/Apple/Documents/grokbot/wt-detail/.tmp-tree-sitter-node-MWicHR/node_modules/tree-sitter-bash"
+```
+
+So the rebuilt asar was compared with the build the independent verifier checked, file by
+file, at the content level:
+
+| comparison | result |
+|---|---|
+| files in the two asars | 1337 in each, none added and none removed |
+| files whose bytes differ | 5 |
+| `dist/renderer/assets/grok-node-0721-d3.mjs`, `-three.mjs`, `-visualization.mjs` | one differing run each, the random upstream module directory |
+| `dist/renderer-0721-visualization.json` | the hash manifest of those three files |
+| `dist/reconstruction-build.json` | the hash manifest of the tree-sitter native objects `node-gyp` rebuilt with this worktree's path |
+| the patched renderer chunk `dist/renderer/assets/view-B5Ug8wEm.js` | byte-for-byte identical |
+| the patched stylesheet `dist/renderer/assets/index-lCyB53CO.css` | byte-for-byte identical |
+
+Every file the port writes is byte-for-byte the file the verifier checked. The guards
+were then re-run against the newly deployed asar, and the deployed build was driven
+through 连接应用, 已连接 N 个, 查看全部 and a plugin row with real mouse events:
+
+| check | result |
+|---|---|
+| deployed `/Applications/Grok Node.app` asar sha256 | `b13738658d4f1096fc6854fb6621e31bf38418985d2e42d7ed9d7f7a19790a04`, equal to the freshly built asar's |
+| official recipes present in the deployed chunk | 6 of 6, at the official counts |
+| official-only detail CSS rules, standalone and byte-for-byte official | 6 of 6 |
+| class tokens the ported recipes use that resolve in the deployed stylesheet | 37 of 37, 0 unresolved |
+| shipped renderer chunks that parse | 102 of 102 |
+| `"(RLocT("` quote-bug chunks | 0 |
+| the detail page's sections in the driven build | 账户, 工具, 配置, 应用, 信息 |
+
